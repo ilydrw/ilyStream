@@ -4,7 +4,7 @@ let videoEncoder: VideoEncoder | null = null
 let layers: any[] = []
 let cw = 1920
 let ch = 1080
-let captureFormat: 'h264' | 'mjpeg' = 'h264'
+let captureFormat: 'h264' | 'mjpeg' | 'raw' = 'h264'
 let streamFps = 30
 let encodeInterval = 1000 / streamFps
 let jpegEncodeInFlight = false
@@ -32,7 +32,7 @@ self.onmessage = async (e) => {
     ctx.imageSmoothingQuality = 'high'
     cw = payload.width
     ch = payload.height
-    captureFormat = payload.format === 'mjpeg' ? 'mjpeg' : 'h264'
+    captureFormat = payload.format === 'mjpeg' || payload.format === 'raw' ? payload.format : 'h264'
     streamFps = Math.max(1, Math.min(60, Math.round(payload.fps || 30)))
     encodeInterval = 1000 / streamFps
     frameCountTotal = 0
@@ -212,6 +212,12 @@ function renderLoop() {
     return
   }
 
+  if (targetFrame > frameCountTotal && captureFormat === 'raw') {
+    frameCountTotal = targetFrame
+    emitRawFrame()
+    return
+  }
+
   if (targetFrame > frameCountTotal && videoEncoder && videoEncoder.state === 'configured') {
     const framesToEncode = Math.min(targetFrame - frameCountTotal, 5)
 
@@ -232,6 +238,11 @@ function renderLoop() {
 }
 
 function encodeVideoFrame(frame: VideoFrame) {
+  if (captureFormat === 'mjpeg' || captureFormat === 'raw') {
+    void emitCanvasFrame(frame)
+    return
+  }
+
   if (!videoEncoder || videoEncoder.state !== 'configured') {
     frame.close()
     return
@@ -254,6 +265,37 @@ function encodeVideoFrame(frame: VideoFrame) {
   }
 }
 
+async function emitCanvasFrame(frame: VideoFrame) {
+  if (!offscreenCanvas || !ctx || jpegEncodeInFlight) {
+    frame.close()
+    return
+  }
+
+  jpegEncodeInFlight = true
+  try {
+    ctx.clearRect(0, 0, cw, ch)
+    ctx.drawImage(frame, 0, 0, cw, ch)
+    frame.close()
+    frameCountTotal++
+    const timestamp = Math.round((frameCountTotal / streamFps) * 1_000_000)
+
+    if (captureFormat === 'raw') {
+      const imageData = ctx.getImageData(0, 0, cw, ch)
+      const buffer = imageData.data.buffer
+      self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
+    } else {
+      const blob = await offscreenCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.86 })
+      const buffer = await blob.arrayBuffer()
+      self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
+    }
+  } catch (err) {
+    try { frame.close() } catch {}
+    self.postMessage({ type: 'error', message: String(err) })
+  } finally {
+    jpegEncodeInFlight = false
+  }
+}
+
 async function emitJpegFrame() {
   if (!offscreenCanvas || jpegEncodeInFlight) return
   jpegEncodeInFlight = true
@@ -264,6 +306,21 @@ async function emitJpegFrame() {
     self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
   } catch (err) {
     console.error(' MJPEG encode error:', err)
+  } finally {
+    jpegEncodeInFlight = false
+  }
+}
+
+function emitRawFrame() {
+  if (!offscreenCanvas || !ctx || jpegEncodeInFlight) return
+  jpegEncodeInFlight = true
+  try {
+    const timestamp = Math.round((frameCountTotal / streamFps) * 1_000_000)
+    const imageData = ctx.getImageData(0, 0, cw, ch)
+    const buffer = imageData.data.buffer
+    self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
+  } catch (err) {
+    self.postMessage({ type: 'error', message: String(err) })
   } finally {
     jpegEncodeInFlight = false
   }

@@ -10,7 +10,7 @@ import s3Icon from '../assets/s3.svg';
 import studioSettingsPreview from '../assets/studio-settings-preview.png';
 import ttsPreview from '../assets/tts-preview.png';
 
-const latestVersion = '0.0.3';
+const latestVersion = '0.0.4';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
@@ -25,6 +25,9 @@ const highlights = [
 ];
 
 const releaseNotes = [
+  'GPU-aware encoder detection with NVIDIA NVENC, AMD AMF, Intel Quick Sync, and x264 fallback',
+  'Hardware encoder test controls in broadcast defaults',
+  'Raw-frame FFmpeg path for hardware encoding from the studio canvas',
   'Packaged app navigation works after installation',
   'Studio projector launches on packaged builds',
   'Window audio capture refuses whole-computer fallback',

@@ -29,6 +29,8 @@ import { AudioMixer } from './components/AudioMixer'
 import { Select, type SelectOption } from '../../components/ui/Select'
 import { TwitchIcon } from '../../components/ui/TwitchIcon'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
+import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
+import { isHardwareStreamingEncoder, type StreamingInputFormat, type StreamingVideoEncoder } from '../../../shared/streaming'
 
 const LAYER_TYPE_ICONS: Record<string, typeof Video> = {
   camera: Video, display: Monitor, widget: Layers, browser: Globe, text: Type, image: ImageIcon
@@ -99,8 +101,9 @@ export default function BroadcastPage() {
   const [customStreamKey, setCustomStreamKey] = useState('')
   const [showSourceModal, setShowSourceModal] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<{ x: number, y: number, layer: StudioLayer } | null>(null)
-  const [captureInputFormat, setCaptureInputFormat] = useState<'h264' | 'mjpeg'>('h264')
+  const [captureInputFormat, setCaptureInputFormat] = useState<StreamingInputFormat>('h264')
   const [outputConfig, setOutputConfig] = useState({ fps: 30, bitrateKbps: 6000 })
+  const [broadcastSettings, setBroadcastSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
@@ -161,6 +164,17 @@ export default function BroadcastPage() {
         setStreamError(streamingStatus.error)
       }
     })
+  }, [])
+
+  useEffect(() => {
+    if (!window.api?.settings) return
+    void window.api.settings.getAll().then((settings: AppSettings) => {
+      setBroadcastSettings(resolveAppSettings(settings))
+    })
+    const unsubscribe = window.api.on?.('settings:changed', (settings: unknown) => {
+      setBroadcastSettings(resolveAppSettings(settings as Partial<Record<keyof AppSettings, unknown>>))
+    })
+    return unsubscribe
   }, [])
 
   // Recording Timer
@@ -715,14 +729,18 @@ export default function BroadcastPage() {
       setStreamError(`${platform.name || 'Destination'} is missing an RTMP URL or stream key.`)
       return
     }
-    const streamBitrateKbps = platform.id === 'twitch' ? 3500 : 6000
-    const streamFps = 30
+    const streamBitrateKbps = broadcastSettings.streamingBitrate
+    const streamFps = Math.min(60, broadcastSettings.streamingFps)
     setOutputConfig({ fps: streamFps, bitrateKbps: streamBitrateKbps })
-    const inputFormat = await getOptimizedCaptureInputFormat(
+    const encoderPreference = broadcastSettings.streamingEncoder
+    const encoderDiagnostics = await window.api.streaming.getEncoderDiagnostics?.(encoderPreference).catch(() => null)
+    const inputFormat = await getCaptureInputFormatForEncoder(
       store.canvasWidth,
       store.canvasHeight,
       streamFps,
-      streamBitrateKbps * 1000
+      streamBitrateKbps * 1000,
+      encoderPreference,
+      encoderDiagnostics?.selectedEncoder
     )
     setCaptureInputFormat(inputFormat)
     const res = await window.api.streaming.start({
@@ -730,7 +748,8 @@ export default function BroadcastPage() {
       width: store.canvasWidth, height: store.canvasHeight,
       fps: streamFps, bitrateKbps: streamBitrateKbps,
       inputFormat,
-      audioFormat: 'f32le'
+      audioFormat: 'f32le',
+      encoderPreference
     })
     if (res.success) { setIsStreaming(true); setStatus('Live') }
     else {
@@ -749,17 +768,27 @@ export default function BroadcastPage() {
   const startRecording = async () => {
     if (!window.api?.streaming) return
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const recordingFps = 30
-    const recordingBitrateKbps = 12000
+    const recordingFps = Math.min(60, broadcastSettings.streamingFps)
+    const recordingBitrateKbps = Math.max(broadcastSettings.streamingBitrate, 12000)
     setOutputConfig({ fps: recordingFps, bitrateKbps: recordingBitrateKbps })
-    const inputFormat = await getOptimizedCaptureInputFormat(store.canvasWidth, store.canvasHeight, recordingFps, recordingBitrateKbps * 1000)
+    const encoderPreference = broadcastSettings.streamingEncoder
+    const encoderDiagnostics = await window.api.streaming.getEncoderDiagnostics?.(encoderPreference).catch(() => null)
+    const inputFormat = await getCaptureInputFormatForEncoder(
+      store.canvasWidth,
+      store.canvasHeight,
+      recordingFps,
+      recordingBitrateKbps * 1000,
+      encoderPreference,
+      encoderDiagnostics?.selectedEncoder
+    )
     setCaptureInputFormat(inputFormat)
     const res = await window.api.streaming.startRecording({
       width: store.canvasWidth, height: store.canvasHeight,
       fps: recordingFps, bitrateKbps: recordingBitrateKbps,
       outputPath: `${(process.env.USERPROFILE || process.env.HOME || '').replace(/\\/g, '/')}/Videos/ilyStream/Recordings/ilyStream_${timestamp}.mp4`,
       inputFormat,
-      audioFormat: 'f32le'
+      audioFormat: 'f32le',
+      encoderPreference
     })
     if (res.success) setIsRecording(true)
   }
@@ -1222,6 +1251,19 @@ async function getOptimizedCaptureInputFormat(
     console.warn('[BroadcastPage] H.264 capture preflight failed; using MJPEG pipe:', err)
     return 'mjpeg'
   }
+}
+
+async function getCaptureInputFormatForEncoder(
+  width: number,
+  height: number,
+  fps: number,
+  bitrate: number,
+  preference: AppSettings['streamingEncoder'],
+  selectedEncoder?: StreamingVideoEncoder
+): Promise<StreamingInputFormat> {
+  if (preference !== 'auto') return 'raw'
+  if (selectedEncoder && isHardwareStreamingEncoder(selectedEncoder)) return 'raw'
+  return getOptimizedCaptureInputFormat(width, height, fps, bitrate)
 }
 
 function pickAvcCodecString(width: number, height: number, fps: number): string {

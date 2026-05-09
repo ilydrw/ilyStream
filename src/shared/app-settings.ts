@@ -12,6 +12,7 @@ import {
   isKokoroVoiceId,
   type TTSVoiceProvider
 } from './tts-providers'
+import { resolveStreamingEncoderPreference, type StreamingEncoderPreference } from './streaming'
 
 export interface VoiceModifiers {
   radioFilter: boolean
@@ -180,6 +181,7 @@ export interface AppSettings {
   streamingFps: number
   streamingWidth: number
   streamingHeight: number
+  streamingEncoder: StreamingEncoderPreference
   
   // Alert Position
   alertTop: number
@@ -401,6 +403,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   streamingFps: 60,
   streamingWidth: 1920,
   streamingHeight: 1080,
+  streamingEncoder: 'auto',
   alertTop: 10,
   alertLeft: 50
 }
@@ -687,6 +690,7 @@ export function resolveAppSetting<K extends AppSettingKey>(
   if (key === 'chatRelayTagMode') return resolveRelayTagMode(value) as AppSettings[K]
   if (key === 'theme') return resolveAppTheme(value) as AppSettings[K]
   if (key === 'interfaceDensity') return resolveInterfaceDensity(value) as AppSettings[K]
+  if (key === 'streamingEncoder') return resolveStreamingEncoderPreference(value) as AppSettings[K]
   if (key === 'accentColor') {
     const color = resolveHexColor(value, DEFAULT_APP_SETTINGS.accentColor)
     return (color.length === 9 ? color.slice(0, 7) : color) as AppSettings[K]

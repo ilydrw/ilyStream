@@ -1,11 +1,12 @@
 import type { MutableRefObject } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
+import type { StreamingInputFormat } from '../../../../shared/streaming'
 
 export interface CanvasEditorProps {
   activeScene: StudioScene
   isStreaming: boolean
   isRecording: boolean
-  captureInputFormat: 'h264' | 'mjpeg'
+  captureInputFormat: StreamingInputFormat
   outputFps: number
   outputBitrateKbps: number
   videoRefs: MutableRefObject<Record<string, HTMLVideoElement>>

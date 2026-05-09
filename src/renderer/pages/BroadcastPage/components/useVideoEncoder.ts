@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 import RendererWorker from '../../../workers/renderer.worker?worker'
+import type { StreamingInputFormat } from '../../../../shared/streaming'
 
 export function useVideoEncoder(
   outputActive: boolean,
   config: {
-    format: 'h264' | 'mjpeg'
+    format: StreamingInputFormat
     fps: number
     bitrate: number
     width: number
