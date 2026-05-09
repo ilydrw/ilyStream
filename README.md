@@ -4,7 +4,7 @@ Multi-platform livestream control center for chat, TTS, overlays, alerts, broadc
 
 ## Version
 
-`0.0.1`
+`0.0.2`
 
 ## Development
 
@@ -17,8 +17,8 @@ npm run dev
 
 End users should install ilyStream from the Windows setup file attached to a GitHub Release:
 
-- `ilyStream-Setup-0.0.1.exe` for the normal installer
-- `ilyStream-Portable-0.0.1.exe` for a portable build
+- `ilyStream-Setup-0.0.2.exe` for the normal installer
+- `ilyStream-Portable-0.0.2.exe` for a portable build
 
 The packaged app does not require a terminal window. When future versions are published as GitHub Releases, ilyStream checks for updates in the background, downloads them, and installs them the next time the app quits.
 

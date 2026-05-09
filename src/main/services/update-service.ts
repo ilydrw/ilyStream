@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 import log from 'electron-log'
-import { autoUpdater } from 'electron-updater'
+import updater from 'electron-updater'
+
+const { autoUpdater } = updater
 
 type UpdateState =
   | 'checking'
