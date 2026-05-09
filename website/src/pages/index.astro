@@ -15,7 +15,8 @@ const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVe
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
-const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
+const deskThingVersion = '0.0.4';
+const deskThingReleaseUrl = `https://github.com/ilydrw/ilyStream-DeskThing/releases/tag/v${deskThingVersion}`;
 
 const highlights = [
   ['Studio', 'Scenes, capture, source controls, and stream output in one Windows app.'],
@@ -223,10 +224,10 @@ const screenshots = [
         <h2 id="companion-title">DeskThing stays on deck.</h2>
         <p>
           Pair over your local network and keep quick actions, refreshes, clocks,
-          and live status checks on a small second screen.
+          live status checks, and a header Unpair control on a small second screen.
         </p>
         <a class="button button--ghost" href={deskThingReleaseUrl}>
-          DeskThing builds
+          DeskThing v{deskThingVersion}
           <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
         </a>
       </div>
