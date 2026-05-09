@@ -17,6 +17,7 @@ import {
   resolveCameraAudioDeviceId,
   buildRawAudioConstraints,
   disposeMediaElement,
+  isDisplayAudioCaptureFailure,
   isTransientMediaError,
   drawVideoCover,
   clampNumber
@@ -442,7 +443,7 @@ export default function BroadcastPage() {
             throw new Error('No audio tracks in stream')
           }
         } catch (err) {
-          const isNoAudio = err instanceof Error && (err.message.includes('No audio tracks') || err.name === 'NotReadableError')
+          const isNoAudio = isDisplayAudioCaptureFailure(err)
           const needsAudio = type === 'audio' || layer.config.captureAudio === true
           const isWindowSource = effectiveSourceId.startsWith('window:')
           const errorMessage = err instanceof Error ? err.message : String(err)

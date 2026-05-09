@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage }
 import { join } from 'path'
 import { execFileSync } from 'child_process'
 import { is } from '@electron-toolkit/utils'
+import { pathToFileURL } from 'url'
 import { Database } from '../../db/database'
 import { OverlayServer } from '../overlay/overlay-server'
 import { BrowserSourceService, type BrowserSourceCaptureConfig } from '../../services/browser-source-service'
@@ -181,7 +182,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       skipTaskbar: false,
       backgroundColor: '#000000',
       webPreferences: {
-        preload: join(__dirname, '../preload/index.mjs'),
+        preload: join(__dirname, '../preload/index.js'),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -191,9 +192,11 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     })
 
     const encodedSceneId = encodeURIComponent(String(sceneId || ''))
-    const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
-      ? `${process.env['ELECTRON_RENDERER_URL']}?projectorSceneId=${encodedSceneId}`
-      : `file://${join(__dirname, '../renderer/index.html')}?projectorSceneId=${encodedSceneId}`
+    const route = `#/overlay/studio/${encodedSceneId}`
+    const baseUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
+      ? (process.env['ELECTRON_RENDERER_URL'].endsWith('/') ? process.env['ELECTRON_RENDERER_URL'] : `${process.env['ELECTRON_RENDERER_URL']}/`)
+      : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+    const loadUrl = `${baseUrl}${route}`
 
     await projectorWindow.loadURL(loadUrl)
 

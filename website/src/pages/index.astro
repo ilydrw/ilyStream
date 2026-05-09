@@ -10,7 +10,7 @@ import s3Icon from '../assets/s3.svg';
 import studioSettingsPreview from '../assets/studio-settings-preview.png';
 import ttsPreview from '../assets/tts-preview.png';
 
-const latestVersion = '0.0.2';
+const latestVersion = '0.0.3';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
@@ -25,6 +25,9 @@ const highlights = [
 ];
 
 const releaseNotes = [
+  'Packaged app navigation works after installation',
+  'Studio projector launches on packaged builds',
+  'Window audio capture refuses whole-computer fallback',
   'Windows installer and portable build',
   'GitHub Release updater metadata',
   'TTS broadcast routing fixes',
@@ -160,7 +163,7 @@ const screenshots = [
     <section class="section release" aria-labelledby="release-title">
       <div class="section__heading">
         <p class="eyebrow">What is in v{latestVersion}</p>
-        <h2 id="release-title">A cleaner first public build.</h2>
+        <h2 id="release-title">A cleaner preview build.</h2>
       </div>
       <ul class="release-list">
         {releaseNotes.map((note) => <li>{note}</li>)}

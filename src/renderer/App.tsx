@@ -99,7 +99,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 export default function App() {
   const [isMounted, setIsMounted] = useState(false)
-  const [keepBroadcastMounted, setKeepBroadcastMounted] = useState(() => window.location.pathname === '/broadcast')
+  const [keepBroadcastMounted, setKeepBroadcastMounted] = useState(false)
 
   useEffect(() => {
     console.log('[Lifecycle] App starting mount sequence...')
