@@ -1,0 +1,19 @@
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); filter: blur(5px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
+.animate-in {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes alert-popup {
+  0% { opacity: 0; transform: scale(0.4); filter: blur(10px); }
+  15% { opacity: 1; transform: scale(1); filter: blur(0px); }
+  85% { opacity: 1; transform: scale(1); filter: blur(0px); }
+  100% { opacity: 0; transform: scale(1.15) blur(20px); }
+}
+
+.animate-alert {
+  animation: alert-popup var(--alert-duration, 4s) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

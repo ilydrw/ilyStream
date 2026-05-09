@@ -1,0 +1,46 @@
+import React from 'react'
+
+interface HueIconProps {
+  size?: number
+  className?: string
+}
+
+export function HueIcon({ size = 16, className = '' }: HueIconProps) {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+      className={`hue-icon ${className}`}
+    >
+      <defs>
+        <linearGradient id="hue-gradient" x1="0" x2="512" y1="258" y2="258" gradientTransform="matrix(1 0 0 -1 0 514)" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#e20613"/>
+          <stop offset=".07" stopColor="#e6350d"/>
+          <stop offset=".14" stopColor="#e95809"/>
+          <stop offset=".17" stopColor="#eb6608"/>
+          <stop offset=".25" stopColor="#f18b07"/>
+          <stop offset=".33" stopColor="#f7a607"/>
+          <stop offset=".37" stopColor="#f9b107"/>
+          <stop offset=".42" stopColor="#eab30a"/>
+          <stop offset=".51" stopColor="#c4b813"/>
+          <stop offset=".61" stopColor="#93c01f"/>
+          <stop offset=".67" stopColor="#73b942"/>
+          <stop offset=".77" stopColor="#3bae81"/>
+          <stop offset=".82" stopColor="#26aa9a"/>
+          <stop offset=".88" stopColor="#1b989e"/>
+          <stop offset=".99" stopColor="#016ca9"/>
+          <stop offset="1" stopColor="#006aaa"/>
+        </linearGradient>
+      </defs>
+      <path 
+        className="hue-path"
+        fill="url(#hue-gradient)" 
+        fillRule="evenodd" 
+        clipRule="evenodd" 
+        d="M434.4 356.2c-44.7 0-77.9-26.2-82.7-65.1v-.5h-13.3c-.7-3.8-1-7.7-1-11.4 0-3.8.3-7.7 1-11.4h14v-.4c6.9-36.4 39.9-60.9 82.1-60.9 45.6 0 77.5 30 77.5 73.1v11l-131.5.2v.6c4.6 23.7 25.8 39 54 39 19.8 0 37-8.6 46.2-23l26.6 9.7c-9.2 18.3-33.6 39.3-72.8 39.3zm-1.6-124.5c-25.1 0-44.6 13-50.8 33.8l-.6 2.1h101l-.3-1.9c-2.5-16.7-21.5-34.1-49.2-34.1v.1zm-184 124.5c-16.6 0-30.5-2.8-41.4-8.1-10.8-5.4-19-13-24.4-22.6-5.2-9.4-8-20.8-8.1-33.8H207c.3 7.2 1.8 13.6 4.6 18.9 3.1 6 7.7 10.6 13.7 13.8 5.9 3.2 13.9 4.8 23.5 4.8s17.6-1.6 23.5-4.8c6-3.2 10.6-7.9 13.7-13.8 2.8-5.2 4.3-11.6 4.6-18.9h32.2c-.1 13.1-2.9 24.4-8.1 33.8-5.4 9.6-13.6 17.3-24.4 22.6-10.9 5.4-24.9 8.1-41.5 8.1m-132-3.1v-61.4h32.1v61.4zM0 353.1v-61.4h32.1v61.4zm290.5-86.5V209h32.1v57.6zm-115.6 0V209H207v57.6zm-59.6 0c-4.4-20-18.3-31-39.3-31-22.6 0-37.6 11-42.4 31H0v-91.9c7.8-8.9 19.1-15.6 32.1-19V229l1-1.1c11.8-13.8 31.2-21.6 53.3-21.6 36 0 59.3 22.6 62.3 60.3z"
+      />
+    </svg>
+  )
+}

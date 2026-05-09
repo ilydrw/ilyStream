@@ -1,0 +1,116 @@
+/**
+ * Shared types for the lifetime stats feature.
+ *
+ * The stats system aggregates per-user, per-platform totals across all stream
+ * events for the lifetime of the install. There are also global totals and a
+ * separate breakdown by platform.
+ */
+
+import type { Platform } from '../main/platforms/types'
+
+/** Per-user, per-platform lifetime totals. */
+export interface UserStat {
+  username: string
+  platform: Platform
+  displayName: string
+  profilePictureUrl: string | null
+  totalLikes: number
+  totalGifts: number
+  totalGiftValueCents: number
+  totalSubscriptions: number
+  totalFollows: number
+  totalShares: number
+  totalRaids: number
+  totalChats: number
+  totalSongRequests: number
+  isFanClubMember?: boolean
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+/** Lifetime totals across all users and platforms. */
+export interface GlobalStats {
+  totalLikes: number
+  totalGifts: number
+  totalGiftValueCents: number
+  totalSubscriptions: number
+  totalFollows: number
+  totalShares: number
+  totalRaids: number
+  totalChats: number
+  totalSongRequests: number
+  peakViewerCount: number
+  uniqueUserCount: number
+  /** ISO timestamp of the most recent counted event. */
+  lastUpdatedAt: string | null
+  /** Per-platform breakdown for at-a-glance comparison. */
+  byPlatform: Record<Platform, PlatformStats>
+}
+
+export interface PlatformStats {
+  totalLikes: number
+  totalGifts: number
+  totalGiftValueCents: number
+  totalSubscriptions: number
+  totalFollows: number
+  totalShares: number
+  totalRaids: number
+  totalChats: number
+  totalSongRequests: number
+  uniqueUserCount: number
+}
+
+export type UserStatSortKey =
+  | 'totalLikes'
+  | 'totalGifts'
+  | 'totalGiftValueCents'
+  | 'totalSubscriptions'
+  | 'totalFollows'
+  | 'totalShares'
+  | 'totalRaids'
+  | 'totalChats'
+  | 'totalSongRequests'
+  | 'lastSeenAt'
+
+export interface GetTopUsersOptions {
+  sortBy: UserStatSortKey
+  platform?: Platform | 'all'
+  /** Free-text filter on username/displayName (case-insensitive). */
+  query?: string
+  limit?: number
+  offset?: number
+}
+
+export const EMPTY_PLATFORM_STATS: PlatformStats = {
+  totalLikes: 0,
+  totalGifts: 0,
+  totalGiftValueCents: 0,
+  totalSubscriptions: 0,
+  totalFollows: 0,
+  totalShares: 0,
+  totalRaids: 0,
+  totalChats: 0,
+  totalSongRequests: 0,
+  uniqueUserCount: 0
+}
+
+export const EMPTY_GLOBAL_STATS: GlobalStats = {
+  totalLikes: 0,
+  totalGifts: 0,
+  totalGiftValueCents: 0,
+  totalSubscriptions: 0,
+  totalFollows: 0,
+  totalShares: 0,
+  totalRaids: 0,
+  totalChats: 0,
+  totalSongRequests: 0,
+  peakViewerCount: 0,
+  uniqueUserCount: 0,
+  lastUpdatedAt: null,
+  byPlatform: {
+    tiktok: { ...EMPTY_PLATFORM_STATS },
+    twitch: { ...EMPTY_PLATFORM_STATS },
+    youtube: { ...EMPTY_PLATFORM_STATS },
+    kick: { ...EMPTY_PLATFORM_STATS }
+  }
+}

@@ -1,0 +1,18 @@
+@import "./theme.css";
+@import "./base.css";
+@import "./layout.css";
+@import "./components.css";
+@import "./animations.css";
+@import "./tts.css";
+@import "./spotify.css";
+
+iframe { 
+  background: transparent !important; 
+  background-color: transparent !important;
+  color-scheme: only light !important;
+}
+
+.widget-preview-container {
+  background: transparent !important;
+  overflow: hidden;
+}

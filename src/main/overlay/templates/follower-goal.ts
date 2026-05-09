@@ -1,0 +1,361 @@
+import { FollowerGoalConfig, DEFAULT_FOLLOWER_GOAL_CONFIG } from '../../../shared/widgets'
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const cleaned = (hex || '').replace('#', '').trim()
+  if (cleaned.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(cleaned)) {
+    return { r: 100, g: 100, b: 100 }
+  }
+  return {
+    r: parseInt(cleaned.slice(0, 2), 16),
+    g: parseInt(cleaned.slice(2, 4), 16),
+    b: parseInt(cleaned.slice(4, 6), 16)
+  }
+}
+
+export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
+  const cfg: FollowerGoalConfig = { ...DEFAULT_FOLLOWER_GOAL_CONFIG, ...(widget?.config || {}) }
+  const bgOpacity = isPreview ? 0 : cfg.backgroundOpacity
+
+  const positionMap: Record<string, string> = {
+    'top-left':      'align-items:flex-start;justify-content:flex-start',
+    'top-center':    'align-items:flex-start;justify-content:center',
+    'top-right':     'align-items:flex-start;justify-content:flex-end',
+    'bottom-left':   'align-items:flex-end;justify-content:flex-start',
+    'bottom-center': 'align-items:flex-end;justify-content:center',
+    'bottom-right':  'align-items:flex-end;justify-content:flex-end',
+  }
+  const shellStyle = positionMap[cfg.position] ?? positionMap['top-right']
+  
+  const accentRgb = hexToRgb(cfg.accentColor)
+  const configJson = JSON.stringify(cfg)
+
+  return `<!doctype html>
+<html lang="en" style="background: transparent !important; background-color: transparent !important;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ilyStream Follower Goal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        color-scheme: dark;
+        --font-heading: "Outfit", system-ui, sans-serif;
+        --blur: ${cfg.blur}px;
+        --bg: rgba(4, 5, 8, ${bgOpacity});
+        --accent: ${cfg.accentColor};
+        --accent-rgb: ${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b};
+        --width: ${cfg.width}px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { 
+        background: transparent !important; 
+        background-color: transparent !important; 
+        color: #fff; 
+        min-height: 100vh; 
+        overflow: hidden;
+        font-family: var(--font-heading);
+      }
+      .shell {
+        min-height: 100vh;
+        display: flex;
+        padding: 40px;
+        ${shellStyle};
+      }
+      .card {
+        width: auto;
+        min-width: var(--width);
+        max-width: calc(100vw - 80px);
+        border-radius: 999px;
+        padding: 12px 28px;
+        background: var(--bg);
+        backdrop-filter: blur(var(--blur)) saturate(220%);
+        -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
+        border: ${cfg.showBorder ? '2px solid rgba(255, 255, 255, 0.15)' : 'none'};
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        animation: card-appear 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+      .info-group {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-shrink: 0;
+      }
+      .lbl {
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: #FFFFFF;
+        opacity: 0.6;
+        white-space: nowrap;
+      }
+      .counts {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        white-space: nowrap;
+      }
+      .current {
+        font-size: 26px;
+        font-weight: 900;
+        color: #FFFFFF;
+        line-height: 1;
+        letter-spacing: 0.02em;
+      }
+      .goal-text {
+        font-size: 14px;
+        font-weight: 700;
+        color: #FFFFFF;
+        opacity: 0.4;
+      }
+      .progress-area {
+        flex: 1;
+        min-width: 100px;
+      }
+      .track {
+        height: 12px; 
+        border-radius: 999px;
+        background: rgba(255,255,255,0.1);
+        overflow: hidden;
+        position: relative;
+      }
+      .fill {
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+        width: 0%;
+        transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+        position: relative;
+      }
+      .pct-badge {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 6px 18px;
+        min-width: 75px; 
+        text-align: center;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: 14px;
+        letter-spacing: 0.05em;
+        backdrop-filter: blur(10px);
+        flex-shrink: 0;
+        margin-left: 4px;
+      }
+
+      /* Chroma Mode */
+      .chroma-text {
+        background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: chroma-flow 8s linear infinite;
+      }
+      .chroma-bg {
+        background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000) !important;
+        background-size: 400px 100% !important;
+        animation: chroma-flow-fixed 8s linear infinite !important;
+      }
+
+      /* Cyberneon Mode */
+      .cyberneon-text {
+        background: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: chroma-flow 6s linear infinite;
+      }
+      .cyberneon-bg {
+        background: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1) !important;
+        background-size: 400px 100% !important;
+        animation: chroma-flow-fixed 6s linear infinite !important;
+      }
+
+      /* Advanced Border Gradient */
+      .card.has-gradient-border {
+        border: none;
+      }
+      .card.has-gradient-border::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: var(--gradient-border);
+        background-size: 200% 100%;
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+        animation: border-flow 12s linear infinite;
+      }
+      .card.chroma-border {
+        --gradient-border: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000);
+      }
+      .card.cyberneon-border {
+        --gradient-border: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1);
+      }
+      @keyframes border-flow {
+        0% { background-position: 0% 0%; }
+        100% { background-position: -100% 0%; }
+      }
+      @keyframes card-appear {
+        from { opacity: 0; transform: scale(0.85) translateY(60px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="card" id="card">
+        <div class="info-group">
+          <div class="lbl" id="lbl-text"></div>
+          <div class="counts">
+            <div class="current" id="current">0</div>
+            <div class="goal-text" id="goal-text"></div>
+          </div>
+        </div>
+        <div class="progress-area">
+          <div class="track">
+            <div class="fill" id="fill"></div>
+          </div>
+        </div>
+        <div class="pct-badge" id="pct-badge"><span id="pct">0%</span></div>
+      </div>
+    </div>
+
+    <script>
+      var CFG = ${configJson};
+      var params = new URLSearchParams(window.location.search);
+      
+      var IS_CHROMA = params.get('chroma') === '1' || params.get('chroma') === 'true' || CFG.accentColor === 'chroma';
+      var IS_CYBERNEON = params.get('cyberneon') === '1' || params.get('cyberneon') === 'true' || CFG.accentColor === 'cyberneon';
+      var OFFSET = parseInt(params.get('offset') || '0', 10);
+      var GOAL_OVERRIDE = params.get('goal') ? parseInt(params.get('goal'), 10) : null;
+
+      if (GOAL_OVERRIDE) CFG.goal = GOAL_OVERRIDE;
+      if (params.get('label')) CFG.label = params.get('label');
+
+      var elCard = document.getElementById('card');
+      var elLbl = document.getElementById('lbl-text');
+      var elCurrent = document.getElementById('current');
+      var elGoalText = document.getElementById('goal-text');
+      var elFill = document.getElementById('fill');
+      var elPct = document.getElementById('pct');
+      var elPctBadge = document.getElementById('pct-badge');
+      
+      var displayedCount = 0;
+      var countAnimFrame = null;
+
+      elLbl.textContent = CFG.label;
+
+      if (IS_CHROMA) {
+        elCurrent.classList.add('chroma-text');
+        elFill.classList.add('chroma-bg');
+        elPct.classList.add('chroma-text');
+        if (CFG.showBorder) elCard.classList.add('has-gradient-border', 'chroma-border');
+      } else if (IS_CYBERNEON) {
+        elCurrent.classList.add('cyberneon-text');
+        elFill.classList.add('cyberneon-bg');
+        elPct.classList.add('cyberneon-text');
+        if (CFG.showBorder) elCard.classList.add('has-gradient-border', 'cyberneon-border');
+      }
+
+      function animateCount(target) {
+        if (countAnimFrame) cancelAnimationFrame(countAnimFrame);
+        const start = displayedCount;
+        const duration = 1800;
+        const startTime = performance.now();
+
+        function step(now) {
+          const progress = Math.min(1, (now - startTime) / duration);
+          const ease = 1 - Math.pow(1 - progress, 5);
+          displayedCount = Math.floor(start + (target - start) * ease);
+          if (CFG.showCount) elCurrent.textContent = displayedCount.toLocaleString();
+          if (progress < 1) countAnimFrame = requestAnimationFrame(step);
+          else {
+            displayedCount = target;
+            if (CFG.showCount) elCurrent.textContent = target.toLocaleString();
+          }
+        }
+        countAnimFrame = requestAnimationFrame(step);
+      }
+
+      function update(count) {
+        var total = count + OFFSET;
+        var goal = CFG.goal;
+        var pct = goal > 0 ? Math.min(100, (total / goal) * 100) : 0;
+
+        animateCount(total);
+        elGoalText.textContent = goal > 0 ? '/ ' + goal.toLocaleString() : '';
+        elFill.style.width = pct.toFixed(2) + '%';
+        
+        if (CFG.showPercentage) {
+          elPct.textContent = Math.round(pct) + '%';
+          elPctBadge.style.display = 'block';
+        } else {
+          elPctBadge.style.display = 'none';
+        }
+      }
+
+      function hydrate() {
+        var isPreview = params.get('preview') === '1' || params.get('preview') === 'true' || params.get('test') === '1';
+        return fetch('/overlay/goals/state', { cache: 'no-store' })
+          .then(function(r) { 
+            if (!r.ok) throw new Error('Goals state fetch failed');
+            return r.json(); 
+          })
+          .then(function(state) { 
+            var realCount = state.totalFollows || 0;
+            if (realCount > 0) {
+              update((CFG.startCount || 0) + realCount);
+            } else if (isPreview) {
+              update(750);
+            } else {
+              update(CFG.startCount || 0);
+            }
+          })
+          .catch(function(err) {
+            console.error('[overlay] Goal hydration error:', err);
+            if (isPreview) update(750);
+            else update(0);
+          });
+      }
+
+      function connectSSE() {
+        var isPreview = params.get('preview') === '1' || params.get('preview') === 'true' || params.get('test') === '1';
+        var reconnectDelay = 1500;
+        var src = new EventSource('/overlay/events?channel=goals');
+        src.onmessage = function(e) {
+          reconnectDelay = 1500;
+          var msg = JSON.parse(e.data);
+          if (msg.type === 'snapshot') {
+            var count = msg.payload.totalFollows || 0;
+            if (count > 0 || !isPreview) {
+              update((CFG.startCount || 0) + count);
+            } else if (isPreview) {
+              update(750);
+            }
+          } else if (msg.type === 'reload') {
+            window.location.reload();
+          }
+        };
+        src.onerror = function() {
+          src.close();
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+          setTimeout(connectSSE, reconnectDelay);
+        };
+      }
+
+      hydrate().catch(console.error);
+      connectSSE();
+    </script>
+  </body>
+</html>`
+}
