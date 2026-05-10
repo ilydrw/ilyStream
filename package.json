@@ -7,11 +7,12 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "build:native-audio": "npm exec -- node-gyp rebuild --directory=src/renderer/utils/native-audio",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build && electron-builder --win",
-    "release": "npm run build && electron-builder --win --publish always",
+    "package": "npm run build:native-audio && npm run build && electron-builder --win",
+    "release": "npm run build:native-audio && npm run build && electron-builder --win --publish always",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -101,6 +102,7 @@
     "electron-vite": "^3.0.0",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.503.0",
+    "node-gyp": "^11.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.5.0",
