@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Activity, GripVertical, Headphones, Lock, Mic2, Music2, Plus, Power,
-  Radio, Route, SlidersHorizontal, Sparkles, Trash2, Volume1, Volume2, VolumeX,
-  Waves, Unlock
-} from 'lucide-react'
+import {IconActivity, IconGripVertical, IconHeadphones, IconLock, IconMicrophone, IconMusic, IconPlus, IconPower, IconRadio, IconRoute, IconAdjustmentsHorizontal, IconSparkles, IconTrash, IconVolume2, IconVolume, IconVolumeOff, IconWaveSine, IconLockOpen} from '@tabler/icons-react'
 import { useStudioStore } from '../../../stores/studio-store'
 import type { AudioSource, StudioScene } from '../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../components/ui/ContextMenu'
@@ -78,7 +74,7 @@ const FX_PRESETS: FxPreset[] = [
   { type: 'eq', label: '3-Band EQ', params: { low: 0, mid: 0, high: 0 } },
   { type: 'limiter', label: 'Limiter', params: { threshold: -3 } },
   { type: 'radio', label: 'Radio Color', params: { drive: 12 } },
-  { type: 'echo', label: 'Delay Send', params: { delay: 0.22, feedback: 0.28, mix: 0.22 } }
+  { type: 'echo', label: 'Delay IconSend', params: { delay: 0.22, feedback: 0.28, mix: 0.22 } }
 ]
 
 const VOLUME_MARKS = [
@@ -225,28 +221,28 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
     return [
       {
         id: 'lock',
-        label: locked ? 'Unlock Track' : 'Lock Track',
-        icon: locked ? <Unlock size={16} /> : <Lock size={16} />,
+        label: locked ? 'IconLockOpen Track' : 'IconLock Track',
+        icon: locked ? <IconLockOpen size={16} /> : <IconLock size={16} />,
         onClick: () => lockMixerTrack(source, !locked)
       },
       { id: 'divider-1', label: '', divider: true },
       {
         id: 'mute',
         label: source.muted ? 'Unmute Track' : 'Mute Track',
-        icon: source.muted ? <Volume2 size={16} /> : <VolumeX size={16} />,
+        icon: source.muted ? <IconVolume size={16} /> : <IconVolumeOff size={16} />,
         onClick: () => updateSource(source.id, { muted: !source.muted })
       },
       {
         id: 'monitor',
         label: source.monitoring ? 'Disable Monitor' : 'Monitor Track',
-        icon: <Headphones size={16} />,
+        icon: <IconHeadphones size={16} />,
         onClick: () => updateSource(source.id, { monitoring: !source.monitoring })
       },
       { id: 'divider-2', label: '', divider: true },
       {
         id: 'delete',
-        label: locked ? 'Unlock to Delete' : 'Delete Source + Track',
-        icon: <Trash2 size={16} />,
+        label: locked ? 'IconLockOpen to Delete' : 'Delete Source + Track',
+        icon: <IconTrash size={16} />,
         danger: true,
         disabled: locked,
         onClick: () => removeMixerTrack(source)
@@ -260,7 +256,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
         <div className="h-12 shrink-0 px-5 border-b border-white/[0.06] flex items-center justify-between bg-[#070707]">
           <div className="flex items-center gap-3">
             <div className="h-7 w-7 rounded-lg bg-accent/12 border border-accent/25 text-accent flex items-center justify-center">
-              <SlidersHorizontal size={15} />
+              <IconAdjustmentsHorizontal size={15} />
             </div>
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.26em] text-white/55">Audio Console</div>
@@ -268,7 +264,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             </div>
           </div>
           <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/25">
-            <Activity size={13} className="text-accent" />
+            <IconActivity size={13} className="text-accent" />
               48 kHz stereo engine
           </div>
         </div>
@@ -357,19 +353,19 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             <InspectorToggle
               active={!selectedSource.muted}
               label="Output"
-              icon={selectedSource.muted ? VolumeX : Volume2}
+              icon={selectedSource.muted ? IconVolumeOff : IconVolume}
               onClick={() => updateSource(selectedSource.id, { muted: !selectedSource.muted })}
             />
             <InspectorToggle
               active={selectedSource.monitoring}
               label="Monitor"
-              icon={Headphones}
+              icon={IconHeadphones}
               onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
             />
             <InspectorToggle
               active={(selectedSource.fxChain || []).some((fx: any) => fx.enabled)}
               label="Inserts"
-              icon={Sparkles}
+              icon={IconSparkles}
               onClick={() => {
                 const hasActive = (selectedSource.fxChain || []).some((fx: any) => fx.enabled)
                 updateSource(selectedSource.id, {
@@ -385,7 +381,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
               className="mt-3 h-9 w-full rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/15 transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
               title="Remove this channel from the mixer"
             >
-              <Trash2 size={14} />
+              <IconTrash size={14} />
               Delete Mixer Track
             </button>
           )}
@@ -394,7 +390,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">
           <section>
             <div className="flex items-center justify-between mb-3">
-              <HeaderLabel icon={Route} label="Routing" />
+              <HeaderLabel icon={IconRoute} label="Routing" />
               <span className="text-[9px] font-black uppercase tracking-[0.18em] text-white/22">Master bus</span>
             </div>
             {selectedSource.id !== 'master' && (
@@ -438,7 +434,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
 
           <section>
             <div className="flex items-center justify-between mb-3">
-              <HeaderLabel icon={Waves} label="Insert Rack" />
+              <HeaderLabel icon={IconWaveSine} label="Insert Rack" />
               <select
                 value=""
                 onChange={event => {
@@ -456,7 +452,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             <div className="space-y-3">
               {(selectedSource.fxChain || []).length === 0 ? (
                 <div className="h-28 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.015] flex flex-col items-center justify-center gap-2 text-white/20">
-                  <Plus size={18} />
+                  <IconPlus size={18} />
                   <span className="text-[10px] font-black uppercase tracking-[0.22em]">No inserts loaded</span>
                 </div>
               ) : (
@@ -475,7 +471,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
           </section>
 
           <section>
-            <HeaderLabel icon={Activity} label="Spectrum" />
+            <HeaderLabel icon={IconActivity} label="Spectrum" />
             <Spectrum id={selectedSource.id} />
           </section>
         </div>
@@ -543,7 +539,7 @@ function useLiveMeters(
           // If this source is a layer in the current scene, wait for BroadcastPage to init it
           const isLayer = activeScene.layers.some(l => l.id === source.id)
           if (isLayer) {
-            // Check videoRefs one more time
+            // IconCheck videoRefs one more time
             const el = videoRefs.current[source.id] as any
             stream = (el?.__ilyRawStream || el?.srcObject) as MediaStream | null
             if (!stream) return // Wait for BroadcastPage
@@ -923,7 +919,7 @@ function ChannelStrip({
   onDrop?: () => void
   onContextMenu?: (event: React.MouseEvent) => void
 }) {
-  const Icon = isMaster ? Radio : source.type === 'mic' ? Mic2 : source.type === 'media' ? Music2 : Volume1
+  const Icon = isMaster ? IconRadio : source.type === 'mic' ? IconMicrophone : source.type === 'media' ? IconMusic : IconVolume2
   const db = linearToDb(source.volume)
   const [trackHeight, setTrackHeight] = useState(160)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -963,7 +959,7 @@ function ChannelStrip({
             className={`shrink-0 ${locked ? 'cursor-not-allowed text-amber-400/45' : 'cursor-grab active:cursor-grabbing text-white/12'}`}
             title={locked ? 'Track locked' : 'Drag to reorder'}
           >
-            {locked ? <Lock size={12} /> : <GripVertical size={12} />}
+            {locked ? <IconLock size={12} /> : <IconGripVertical size={12} />}
           </span>
         )}
         <Icon size={14} className={selected || isMaster ? 'text-accent' : 'text-white/28'} />
@@ -1048,14 +1044,14 @@ function ChannelStrip({
           className={`flex-1 h-8 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent/15 ring-accent/35 text-accent' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
           title="Monitor"
         >
-          <Headphones size={14} />
+          <IconHeadphones size={14} />
         </button>
         <button
           onClick={event => { event.stopPropagation(); onUpdate({ muted: !source.muted }) }}
           className={`flex-1 h-8 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.muted ? 'bg-red-500/15 ring-red-500/35 text-red-300' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
           title="Mute"
         >
-          {source.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          {source.muted ? <IconVolumeOff size={14} /> : <IconVolume size={14} />}
         </button>
       </div>
     </div>
@@ -1128,8 +1124,8 @@ function PanControl({ value, onChange }: { value: number; onChange: (value: numb
   }
 
   const menuItems: ContextMenuItem[] = [
-    { id: 'reset', label: 'Reset to Center', icon: <Activity size={14} />, onClick: () => onChange(0) },
-    { id: 'input', label: 'Enter Value (-1 to 1)', icon: <Plus size={14} />, onClick: () => setIsEditing(true) }
+    { id: 'reset', label: 'Reset to Center', icon: <IconActivity size={14} />, onClick: () => onChange(0) },
+    { id: 'input', label: 'Enter Value (-1 to 1)', icon: <IconPlus size={14} />, onClick: () => setIsEditing(true) }
   ]
 
   return (
@@ -1186,7 +1182,7 @@ function PanControl({ value, onChange }: { value: number; onChange: (value: numb
 function InspectorToggle({ active, label, icon: Icon, onClick }: {
   active: boolean
   label: string
-  icon: typeof Volume2
+  icon: typeof IconVolume
   onClick: () => void
 }) {
   return (
@@ -1202,7 +1198,7 @@ function InspectorToggle({ active, label, icon: Icon, onClick }: {
   )
 }
 
-function HeaderLabel({ icon: Icon, label }: { icon: typeof Activity; label: string }) {
+function HeaderLabel({ icon: Icon, label }: { icon: typeof IconActivity; label: string }) {
   return (
     <div className="flex items-center gap-2 text-white/50 mb-3">
       <Icon size={15} className="text-accent/75" />
@@ -1259,8 +1255,8 @@ function Knob({ label, value, min, max, display, onChange, compact }: {
   }
 
   const menuItems: ContextMenuItem[] = [
-    { id: 'reset', label: 'Reset to Default', icon: <Activity size={14} />, onClick: () => onChange(label === 'Pan' ? 0 : label === 'Trim' ? 1.0 : 0) },
-    { id: 'input', label: 'Enter Specific Value', icon: <Plus size={14} />, onClick: () => setIsEditing(true) }
+    { id: 'reset', label: 'Reset to Default', icon: <IconActivity size={14} />, onClick: () => onChange(label === 'Pan' ? 0 : label === 'Trim' ? 1.0 : 0) },
+    { id: 'input', label: 'Enter Specific Value', icon: <IconPlus size={14} />, onClick: () => setIsEditing(true) }
   ]
 
   return (
@@ -1367,10 +1363,10 @@ function FxCard({ fx, index, onToggle, onRemove, onParam }: {
           <div className="text-[9px] font-bold uppercase tracking-widest text-white/20">{fx.type}</div>
         </div>
         <button onClick={onToggle} className={fx.enabled ? 'text-accent' : 'text-white/20'} title="Bypass">
-          <Power size={16} />
+          <IconPower size={16} />
         </button>
         <button onClick={onRemove} className="text-white/18 hover:text-red-300" title="Remove">
-          <Trash2 size={16} />
+          <IconTrash size={16} />
         </button>
       </div>
       <div className="space-y-3">

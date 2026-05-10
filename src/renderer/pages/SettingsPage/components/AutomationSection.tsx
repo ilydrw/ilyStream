@@ -2,7 +2,7 @@ import React from 'react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { AppSettings, AutomationKeystrokeMapping } from '../../../../shared/app-settings'
 import { SettingRow, TextInput } from './SettingsShared'
-import { Trash2, Plus, Keyboard } from 'lucide-react'
+import {IconTrash, IconPlus, IconKeyboard} from '@tabler/icons-react'
 
 interface AutomationSectionProps {
   settings: AppSettings
@@ -39,7 +39,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Keyboard size={32} />
+            <IconKeyboard size={32} />
           </div>
           <div>
             <h2>System Automation</h2>
@@ -84,7 +84,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
                       className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm font-medium focus:outline-none focus:border-accent transition-all hover:bg-black/60"
                     >
                       <option value="chat-command">Chat Command</option>
-                      <option value="gift">Gift Name</option>
+                      <option value="gift">IconGift Name</option>
                     </select>
                   </div>
                 </div>
@@ -93,14 +93,14 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
                   onClick={() => removeMapping(mapping.id)}
                   className="w-12 h-12 flex items-center justify-center text-white/20 hover:text-red-400 transition-colors bg-white/5 rounded-2xl hover:bg-red-400/10"
                 >
-                  <Trash2 size={18} />
+                  <IconTrash size={18} />
                 </button>
               </div>
             ))}
 
             {mappings.length === 0 && (
               <div className="text-center py-16 border-2 border-dashed border-white/5 rounded-[32px] bg-white/[0.01]">
-                <Keyboard size={48} className="mx-auto text-white/5 mb-4" />
+                <IconKeyboard size={48} className="mx-auto text-white/5 mb-4" />
                 <p className="text-sm text-white/20 font-black uppercase tracking-widest">No automation mappings</p>
                 <p className="text-[10px] text-white/10 uppercase tracking-[0.2em] mt-2">Add a command to start controlling your PC</p>
               </div>
@@ -110,7 +110,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
               onClick={addMapping}
               className="w-full h-20 border-2 border-dashed border-white/5 hover:border-accent/30 hover:bg-accent/5 rounded-[32px] flex items-center justify-center gap-4 text-xs font-black uppercase tracking-[0.2em] text-white/20 hover:text-accent transition-all group mt-2"
             >
-              <Plus size={24} className="group-hover:rotate-90 transition-transform" />
+              <IconPlus size={24} className="group-hover:rotate-90 transition-transform" />
               Add New Key Mapping
             </button>
           </div>

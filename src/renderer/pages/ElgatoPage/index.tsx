@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Cpu, Radio, Monitor, Lightbulb, Keyboard, Plus, RefreshCw, ExternalLink } from 'lucide-react'
+import {IconCpu, IconRadio, IconDeviceDesktop, IconBulb, IconKeyboard, IconPlus, IconRefresh, IconExternalLink} from '@tabler/icons-react'
 import { motion } from 'framer-motion'
 import { ElgatoIcon } from '../../components/ui/ElgatoIcon'
 
@@ -39,10 +39,6 @@ export default function ElgatoPage() {
             <ElgatoIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>Elgato Ecosystem</h1>
             <p className="app-page-intro">
               Manage your Stream Deck, Key Lights, and Prompter. 
@@ -54,13 +50,13 @@ export default function ElgatoPage() {
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <Metric icon={<Radio size={20} />} label="Control Center" value="OFFLINE" sub="Searching..." accent="text-danger" />
-        <Metric icon={<Lightbulb size={20} />} label="Lights Found" value="0" sub="No lights detected" />
-        <Metric icon={<Monitor size={20} />} label="Controllers" value="0" sub="No Stream Deck detected" />
+        <Metric icon={<IconRadio size={20} />} label="Control Center" value="OFFLINE" sub="Searching..." accent="text-danger" />
+        <Metric icon={<IconBulb size={20} />} label="Lights Found" value="0" sub="No lights detected" />
+        <Metric icon={<IconDeviceDesktop size={20} />} label="Controllers" value="0" sub="No Stream Deck detected" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* Device List */}
+        {/* Device IconList */}
         <div className="lg:col-span-8 space-y-8">
           <section>
             <div className="flex items-center justify-between mb-6">
@@ -75,7 +71,7 @@ export default function ElgatoPage() {
                 disabled={isDiscovering}
                 className="flex items-center gap-2 !h-10 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
               >
-                <RefreshCw size={14} className={isDiscovering ? 'animate-spin' : ''} />
+                <IconRefresh size={14} className={isDiscovering ? 'animate-spin' : ''} />
                 {isDiscovering ? 'Scanning...' : 'Scan for Devices'}
               </button>
             </div>
@@ -86,9 +82,9 @@ export default function ElgatoPage() {
                   <div key={device.id} className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl hover:border-white/10 transition-all group">
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 flex items-center justify-center text-white/20 group-hover:text-white transition-colors">
-                        {device.type === 'light' && <Lightbulb size={32} />}
-                        {device.type === 'deck' && <Keyboard size={32} />}
-                        {device.type === 'display' && <Monitor size={32} />}
+                        {device.type === 'light' && <IconBulb size={32} />}
+                        {device.type === 'deck' && <IconKeyboard size={32} />}
+                        {device.type === 'display' && <IconDeviceDesktop size={32} />}
                       </div>
                       <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
                         device.status === 'connected' ? 'bg-success/10 text-success' : 'bg-white/5 text-white/20'
@@ -107,7 +103,7 @@ export default function ElgatoPage() {
               ) : (
                 <div className="col-span-2 border border-dashed border-white/5 rounded-2xl p-10 flex flex-col items-center justify-center text-center">
                   <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white/10 mb-4">
-                    <Cpu size={32} />
+                    <IconCpu size={32} />
                   </div>
                   <h3 className="font-bold text-white/40 mb-1">No Hardware Found</h3>
                   <p className="text-xs text-white/20 max-w-[240px]">
@@ -116,7 +112,7 @@ export default function ElgatoPage() {
                 </div>
               )}
               <button className="border-2 border-dashed border-white/5 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 hover:border-accent/30 hover:bg-accent/5 transition-all text-white/20 hover:text-accent">
-                <Plus size={24} />
+                <IconPlus size={24} />
                 <span className="text-[10px] font-black uppercase tracking-widest">Add Manual IP</span>
               </button>
             </div>
@@ -156,7 +152,7 @@ export default function ElgatoPage() {
             </div>
             <div className="mt-8 pt-6 border-t border-white/5">
               <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-white transition-colors">
-                <ExternalLink size={12} />
+                <IconExternalLink size={12} />
                 Elgato Support
               </button>
             </div>

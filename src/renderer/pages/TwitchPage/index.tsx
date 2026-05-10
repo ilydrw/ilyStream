@@ -1,4 +1,4 @@
-import { MessageSquareMore, Radio, Send, Users, Wifi } from 'lucide-react'
+import {IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { 
@@ -77,22 +77,22 @@ export default function TwitchPage() {
         platformId={PLATFORM_ID}
         title="Twitch Integration"
         description="Link your Twitch channel for IRC chat processing, subscription alerts, and live stream telemetry."
-        icon={<Wifi size={14} />}
+        icon={<IconWifi size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric 
-          icon={<Users size={20} className="text-twitch" />} 
+          icon={<IconUsers size={20} className="text-twitch" />} 
           label="Twitch Viewers" 
           value={viewers.toLocaleString()} 
         />
         <Metric 
-          icon={<Radio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
+          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
           label="IRC Status" 
           value={isConnected ? 'Active' : isConnecting ? 'Auth' : 'Offline'} 
         />
         <Metric 
-          icon={<Wifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
           label="API Health" 
           value={error ? 'Error' : isConnected ? 'Optimal' : 'Standby'} 
           tone={error ? 'danger' : 'neutral'}
@@ -158,13 +158,13 @@ export default function TwitchPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-12">
               <DiagnosticLine
-                icon={<Radio size={16} />}
+                icon={<IconRadio size={16} />}
                 label="Helix API"
                 value={isConnected ? 'Ready / Token Valid' : status.toUpperCase()}
                 tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine
-                icon={<Send size={16} />}
+                icon={<IconSend size={16} />}
                 label="Chat Write Capability"
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
@@ -176,7 +176,7 @@ export default function TwitchPage() {
         <section className="app-section-card glass flex flex-col">
           <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <MessageSquareMore size={18} className="text-twitch" />
+              <IconMessage2 size={18} className="text-twitch" />
               <h2 className="!text-lg">Twitch Feed</h2>
             </div>
           </div>
@@ -184,7 +184,7 @@ export default function TwitchPage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
             {platformEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-                <Wifi size={48} className="mb-6 opacity-10" />
+                <IconWifi size={48} className="mb-6 opacity-10" />
                 <p className="text-sm font-medium">Waiting for Twitch events...</p>
               </div>
             ) : (

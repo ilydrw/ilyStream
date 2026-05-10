@@ -1,5 +1,5 @@
 import React from 'react'
-import { Layout } from 'lucide-react'
+import {IconLayout} from '@tabler/icons-react'
 import { AppSettings } from '../../../../shared/app-settings'
 import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 import { NumberInput, RuntimeLink, StatusBadge } from './SettingsShared'
@@ -16,7 +16,7 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Layout size={32} />
+            <IconLayout size={32} />
           </div>
           <div>
             <h2>Overlay Hub</h2>

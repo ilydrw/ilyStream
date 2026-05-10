@@ -1,4 +1,4 @@
-import { Music, Plus, Upload } from 'lucide-react'
+import {IconMusic, IconPlus, IconUpload} from '@tabler/icons-react'
 import { SoundFile } from '../../hooks/useSoundboard'
 import { SoundRow } from './components/SoundRow'
 
@@ -24,7 +24,7 @@ export function SoundLibrary({
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Music size={32} />
+            <IconMusic size={32} />
           </div>
           <div>
             <h2 className="text-sm font-black tracking-tight leading-none uppercase">Audio Assets</h2>
@@ -35,7 +35,7 @@ export function SoundLibrary({
           onClick={onUpload}
           className="app-button !h-10 !px-6 !text-[10px] font-black tracking-widest"
         >
-          <Plus size={14} />
+          <IconPlus size={14} />
           ADD AUDIO
         </button>
       </div>
@@ -55,7 +55,7 @@ export function SoundLibrary({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center text-white/10 border border-dashed border-white/5 rounded-3xl">
-            <Upload size={32} className="mb-4 opacity-10" />
+            <IconUpload size={32} className="mb-4 opacity-10" />
             <p className="text-[10px] font-black uppercase tracking-widest">Library Empty</p>
           </div>
         )}

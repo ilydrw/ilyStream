@@ -1,4 +1,4 @@
-import { Edit2, Trash2 } from 'lucide-react'
+import {IconPencil, IconTrash} from '@tabler/icons-react'
 import { AssetFile } from '../../../hooks/useAssets'
 
 interface ImageRowProps {
@@ -41,14 +41,14 @@ export function ImageRow({ image, onPreview, onDelete, onEdit }: ImageRowProps) 
           className="app-button !h-10 !w-10 !p-0 !bg-white/[0.03] !text-white/40 hover:!text-white"
           title="Edit Properties"
         >
-          <Edit2 size={14} />
+          <IconPencil size={14} />
         </button>
         <button
           onClick={onDelete}
           className="app-button !h-10 !w-10 !p-0 !bg-white/[0.03] !text-white/40 hover:!text-danger"
           title="Delete"
         >
-          <Trash2 size={14} />
+          <IconTrash size={14} />
         </button>
       </div>
     </div>

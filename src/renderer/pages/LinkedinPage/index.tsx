@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Shield, Activity, Users, ExternalLink } from 'lucide-react'
+import {IconWorld, IconShield, IconActivity, IconUsers, IconExternalLink} from '@tabler/icons-react'
 import { LinkedinIcon } from '../../components/ui/LinkedinIcon'
 
 export default function LinkedinPage() {
@@ -7,10 +7,6 @@ export default function LinkedinPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div>
-          <div className="app-header-eyebrow">
-            <Globe size={14} className="text-accent" />
-            <span>Platform Integration</span>
-          </div>
           <div className="flex items-center gap-4 mb-2">
             <LinkedinIcon size={48} className="text-[#0A66C2]" />
             <h1>LinkedIn Live</h1>
@@ -23,17 +19,17 @@ export default function LinkedinPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 
-          icon={<Shield size={20} className="text-white/20" />} 
+          icon={<IconShield size={20} className="text-white/20" />} 
           label="Account Status" 
           value="Not Linked" 
         />
         <Metric 
-          icon={<Users size={20} className="text-white/20" />} 
+          icon={<IconUsers size={20} className="text-white/20" />} 
           label="Connections" 
           value="0" 
         />
         <Metric 
-          icon={<Activity size={20} className="text-blue-600" />} 
+          icon={<IconActivity size={20} className="text-blue-600" />} 
           label="Engagement" 
           value="0%" 
         />

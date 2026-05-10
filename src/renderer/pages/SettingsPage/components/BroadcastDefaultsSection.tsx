@@ -1,4 +1,4 @@
-import { Activity, Clapperboard, Gauge, Radio } from 'lucide-react'
+import {IconActivity, IconMovie, IconGauge, IconRadio} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { AppSettings } from '../../../../shared/app-settings'
 import { NumberInput, SettingRow, TextInput } from './SettingsShared'
@@ -16,7 +16,7 @@ export function BroadcastDefaultsSection({ settings, onUpdate }: BroadcastDefaul
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Clapperboard size={32} />
+            <IconMovie size={32} />
           </div>
           <div>
             <h2>Broadcast Defaults</h2>
@@ -87,21 +87,21 @@ export function BroadcastDefaultsSection({ settings, onUpdate }: BroadcastDefaul
 
           <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <Radio size={18} className="text-accent" />
+              <IconRadio size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Output</p>
                 <p className="text-sm font-bold text-white">{settings.streamingEnabled ? 'Armed' : 'Standby'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <Gauge size={18} className="text-accent" />
+              <IconGauge size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Encoder</p>
                 <p className="text-sm font-bold text-white">{settings.streamingBitrate} Kbps</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <Activity size={18} className="text-accent" />
+              <IconActivity size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Canvas</p>
                 <p className="text-sm font-bold text-white">{resolution} @ {settings.streamingFps}</p>

@@ -2,7 +2,7 @@ import type { MutableRefObject } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 
 export type CanvasOutputLayoutId = 'horizontal' | 'vertical'
-export type CanvasPreviewMode = 'single' | 'dual'
+export type CanvasPreviewMode = 'horizontal' | 'vertical' | 'dual' | 'dual-portrait' | 'dual-horizontal'
 
 export interface CanvasStreamOutput {
   id: CanvasOutputLayoutId

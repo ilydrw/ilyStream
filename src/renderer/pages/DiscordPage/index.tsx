@@ -1,4 +1,4 @@
-import { Bell, Layout, MessageSquare, Send, ShieldCheck, Wifi } from 'lucide-react'
+import {IconBell, IconLayout, IconMessage, IconSend, IconShieldCheck, IconWifi} from '@tabler/icons-react'
 import { useState } from 'react'
 import { 
   PlatformPageHeader, 
@@ -10,7 +10,7 @@ import {
 const PLATFORM_ID = 'discord'
 const FIELDS = [
   { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://discord.com/api/webhooks/...' },
-  { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Discord Bot Token' },
+  { key: 'botToken', label: 'Robot Token', type: 'password', placeholder: 'Discord IconRobot Token' },
   { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'Discord Application ID' }
 ]
 
@@ -23,23 +23,23 @@ export default function DiscordPage() {
       <PlatformPageHeader 
         platformId={PLATFORM_ID as any}
         title="Discord Integration"
-        description="Bridge your stream community to your Discord server. Send automated alerts, sync chat messages, and manage roles based on viewer activity."
-        icon={<MessageSquare size={14} />}
+        description="Bridge your stream community to your Discord server. IconSend automated alerts, sync chat messages, and manage roles based on viewer activity."
+        icon={<IconMessage size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric 
-          icon={<Bell size={20} className="text-indigo-400" />} 
+          icon={<IconBell size={20} className="text-indigo-400" />} 
           label="Active Webhooks" 
           value="0" 
         />
         <Metric 
-          icon={<ShieldCheck size={20} className="text-success" />} 
-          label="Bot Status" 
+          icon={<IconShieldCheck size={20} className="text-success" />} 
+          label="Robot Status" 
           value="Standby" 
         />
         <Metric 
-          icon={<Layout size={20} className="text-accent" />} 
+          icon={<IconLayout size={20} className="text-accent" />} 
           label="Presence Sync" 
           value="Off" 
         />
@@ -87,13 +87,13 @@ export default function DiscordPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-12">
               <DiagnosticLine
-                icon={<Wifi size={16} />}
+                icon={<IconWifi size={16} />}
                 label="Gateway Socket"
                 value="Offline"
                 tone="muted"
               />
               <DiagnosticLine
-                icon={<Send size={16} />}
+                icon={<IconSend size={16} />}
                 label="Webhook Delivery"
                 value="Standby"
                 tone="muted"
@@ -105,14 +105,14 @@ export default function DiscordPage() {
         <section className="app-section-card glass flex flex-col">
           <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <MessageSquare size={18} className="text-indigo-400" />
+              <IconMessage size={18} className="text-indigo-400" />
               <h2 className="!text-lg">Relay Log</h2>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
             <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-              <MessageSquare size={48} className="mb-6 opacity-10" />
+              <IconMessage size={48} className="mb-6 opacity-10" />
               <p className="text-sm font-medium">Waiting for Discord bridge activity...</p>
             </div>
           </div>

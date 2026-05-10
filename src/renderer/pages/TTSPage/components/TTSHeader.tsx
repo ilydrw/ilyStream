@@ -1,5 +1,5 @@
 import React from 'react'
-import { Volume2 } from 'lucide-react'
+import {IconVolume} from '@tabler/icons-react'
 
 interface TTSHeaderProps {
   enabled: boolean
@@ -11,18 +11,10 @@ export function TTSHeader({ enabled, onToggle }: TTSHeaderProps) {
     <header className="app-page-header">
       <div className="flex items-center gap-6">
         <div className="flex items-center justify-center">
-          <Volume2 size={32} className="text-accent" />
+          <IconVolume size={32} className="text-accent" />
         </div>
         <div>
-          <div className="app-header-eyebrow">
-            <Volume2 size={14} className="text-accent" />
-            <span>Core Configuration</span>
-          </div>
           <h1>Text-to-Speech</h1>
-          <p className="app-page-intro">
-            Neural voice synthesis for your broadcast. Configure custom profiles, 
-            audience permissions, and global speech logic.
-          </p>
         </div>
       </div>
       <div className="flex items-center gap-4">

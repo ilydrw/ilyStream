@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Check, Plus, Trash2 } from 'lucide-react'
+import {IconCheck, IconPlus, IconTrash} from '@tabler/icons-react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import type { BroadcastLayoutId } from '../utils/streaming-config'
 
@@ -55,7 +55,7 @@ export function LayoutPlatformPicker({
           >
             <PlatformLogo platform={platform.id} size={14} />
             <span className="text-[10px] font-black">{platform.name}</span>
-            <Trash2 size={11} className="text-white/45" />
+            <IconTrash size={11} className="text-white/45" />
           </button>
         ))}
       </div>
@@ -64,7 +64,7 @@ export function LayoutPlatformPicker({
         if (isStreaming || disabled) (event.currentTarget as HTMLDetailsElement).open = false
       }}>
         <summary className={`list-none h-7 w-7 rounded-lg border flex items-center justify-center transition-all ${isStreaming || disabled ? 'cursor-not-allowed border-white/5 text-white/15' : 'cursor-pointer border-white/10 bg-black/30 text-white/50 hover:text-white hover:bg-white/10'}`} title={`Add platform to ${label}`}>
-          <Plus size={14} />
+          <IconPlus size={14} />
         </summary>
         <div className="absolute right-0 top-9 z-[200] w-52 rounded-xl border border-white/10 bg-[#080808] shadow-2xl p-1.5">
           {platforms.map((platform) => {
@@ -83,7 +83,7 @@ export function LayoutPlatformPicker({
               >
                 <PlatformLogo platform={platform.id} size={16} />
                 <span className="flex-1 text-[11px] font-black">{platform.name}</span>
-                {selectedHere && <Check size={14} className="text-accent" />}
+                {selectedHere && <IconCheck size={14} className="text-accent" />}
               </button>
             )
           })}

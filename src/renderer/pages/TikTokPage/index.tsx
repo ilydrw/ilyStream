@@ -1,4 +1,4 @@
-import { MessageSquareMore, Radio, Send, Users, Wifi } from 'lucide-react'
+import {IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -78,23 +78,23 @@ export default function TikTokPage() {
         platformId={PLATFORM_ID}
         title="TikTok Integration"
         description="Connect your TikTok Live stream to IlyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
-        icon={<Wifi size={14} />}
+        icon={<IconWifi size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Users size={20} className="text-tiktok" />} 
+          icon={<IconUsers size={20} className="text-tiktok" />} 
           label="TikTok Viewers" 
           value={viewers.toLocaleString()} 
         />
         <Metric 
-          icon={<Radio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
+          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
           label="Connection State" 
           value={isConnected ? 'Active' : isConnecting ? 'Linking' : 'Offline'} 
           tone={isConnected ? 'neutral' : 'neutral'}
         />
         <Metric 
-          icon={<Wifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
           label="Service Health" 
           value={error ? 'Error' : isConnected ? 'Optimal' : 'Standby'} 
           tone={error ? 'danger' : 'neutral'}
@@ -160,13 +160,13 @@ export default function TikTokPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8">
               <DiagnosticLine
-                icon={<Radio size={16} />}
+                icon={<IconRadio size={16} />}
                 label="Inbound Data Stream"
                 value={isConnected ? 'Healthy / Receiving' : status.toUpperCase()}
                 tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine
-                icon={<Send size={16} />}
+                icon={<IconSend size={16} />}
                 label="Outbound Engine"
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
@@ -178,7 +178,7 @@ export default function TikTokPage() {
         <section className="app-section-card glass flex flex-col">
           <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <MessageSquareMore size={18} className="text-accent" />
+              <IconMessage2 size={18} className="text-accent" />
               <h2 className="!text-lg">Event Feed</h2>
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Live Stream</span>
@@ -187,7 +187,7 @@ export default function TikTokPage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
             {platformEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-                <Wifi size={48} className="mb-6 opacity-10" />
+                <IconWifi size={48} className="mb-6 opacity-10" />
                 <p className="text-sm font-medium">Waiting for TikTok heartbeat...</p>
               </div>
             ) : (

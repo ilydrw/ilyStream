@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCcw } from 'lucide-react'
+import {IconRefresh} from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
 
@@ -67,7 +67,7 @@ export function WidgetEditorModal({
         onClick={onClose}
         className="absolute inset-0 bg-black/85 backdrop-blur-md"
       />
-      <div className="relative app-section-card glass !p-0 w-full max-w-5xl border-white/10 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative app-section-card glass !p-0 w-full max-w-5xl border-white/10 overflow-hidden flex flex-col max-h-[95vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-white/[0.05] flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -84,13 +84,7 @@ export function WidgetEditorModal({
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setPreviewKey((k) => k + 1)} className="app-button !h-9 !px-3 text-xs" title="Reload preview">
-              <RefreshCcw size={13} />
-            </button>
-            <button onClick={onClose} className="app-button !h-9 !px-3 text-xs">
-              Close
-            </button>
-            <button onClick={handleSave} disabled={saving} className="app-button-primary !h-9 !px-4 text-xs font-bold">
-              {saving ? 'Saving…' : 'Save'}
+              <IconRefresh size={13} />
             </button>
           </div>
         </div>
@@ -141,6 +135,20 @@ export function WidgetEditorModal({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/[0.05] flex items-center justify-end gap-3 shrink-0 bg-white/[0.01]">
+          <button onClick={onClose} className="app-button !h-10 !px-6 text-xs font-bold">
+            Cancel
+          </button>
+          <button 
+            onClick={handleSave} 
+            disabled={saving} 
+            className="app-button-primary !h-10 !px-8 text-xs font-black uppercase tracking-widest shadow-lg shadow-accent/20"
+          >
+            {saving ? 'Saving Changes...' : 'Save Configuration'}
+          </button>
         </div>
       </div>
     </div>

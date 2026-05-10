@@ -1,5 +1,5 @@
 import React from 'react'
-import { Cpu, Radio, Activity, MousePointer2, RefreshCw } from 'lucide-react'
+import {IconCpu, IconRadio, IconActivity, IconMouse, IconRefresh} from '@tabler/icons-react'
 import { LogitechIcon } from '../../components/ui/LogitechIcon'
 
 export default function LogitechPage() {
@@ -11,10 +11,6 @@ export default function LogitechPage() {
             <LogitechIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>Logitech G-Series</h1>
             <p className="app-page-intro">
               Integrate your Logitech G peripherals. Synchronize LIGHTSYNC RGB with your stream highlights, 
@@ -26,7 +22,7 @@ export default function LogitechPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="G-Hub Service" 
           value="INACTIVE" 
           sub="Service Standby"
@@ -39,7 +35,7 @@ export default function LogitechPage() {
           sub="Hardware Units Found"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="LIGHTSYNC" 
           value="DISABLED" 
           sub="RGB Engine State"
@@ -56,13 +52,13 @@ export default function LogitechPage() {
                 <p>Establishing communication with Logitech G-Hub.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
-                <RefreshCw size={10} />
+                <IconRefresh size={10} />
                 Refresh
               </button>
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01] flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 m-8 rounded-3xl">
-              <MousePointer2 size={64} className="mb-4 opacity-10" />
+              <IconMouse size={64} className="mb-4 opacity-10" />
               <p className="text-sm font-medium">No Logitech G devices detected.</p>
               <p className="text-xs text-white/5 mt-2">Make sure Logitech G-Hub is running and 'Allow games to control illumination' is enabled.</p>
             </div>

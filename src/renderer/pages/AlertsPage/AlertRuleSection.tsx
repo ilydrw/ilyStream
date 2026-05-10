@@ -1,8 +1,8 @@
-import { Bell, Copy, Image, Play, Plus, Send, Trash2, Type, Upload, Volume2 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import {IconBell, IconCopy, IconPlayerPlay, IconPlus, IconSend, IconTrash, IconTypography, IconUpload, IconVolume} from '@tabler/icons-react'
+import type { Icon } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import type { AlertRule, AlertRuleEventType, AlertRulePlatform } from '../../../shared/alert-rules'
-import { ALERT_RULE_EVENT_TYPES, ALERT_RULE_PLATFORMS } from '../../../shared/alert-rules'
+import { ALERT_RULE_EVENT_TYPES, ALERT_RULE_PLATFORMS, DEFAULT_ALERT_RULES } from '../../../shared/alert-rules'
 import type { AssetFile } from '../../hooks/useAssets'
 import type { SoundFile } from '../../hooks/useSoundboard'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
@@ -62,10 +62,11 @@ export function AlertRuleSection({
   }
 
   const addRule = () => {
+    const template = rules[0] ?? DEFAULT_ALERT_RULES[0]
     onChange([
       ...rules,
       {
-        ...rules[0],
+        ...template,
         id: crypto.randomUUID(),
         name: 'New alert route',
         enabled: true,
@@ -92,7 +93,7 @@ export function AlertRuleSection({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Bell size={32} />
+            <IconBell size={32} />
           </div>
           <div>
             <h2>Platform Alert Routes</h2>
@@ -100,8 +101,8 @@ export function AlertRuleSection({
           </div>
         </div>
         <button onClick={addRule} className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest">
-          <Plus size={13} />
-          Add Route
+          <IconPlus size={13} />
+          Add route
         </button>
       </div>
 
@@ -127,11 +128,11 @@ export function AlertRuleSection({
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => simulateRule(rule)} className="app-button !h-10 !px-4 !text-[10px]">
-                  <Send size={13} />
+                  <IconSend size={13} />
                   Test
                 </button>
                 <button onClick={() => duplicateRule(rule)} className="app-button !h-10 !w-10 !p-0" title="Duplicate route">
-                  <Copy size={13} />
+                  <IconCopy size={13} />
                 </button>
                 <button
                   onClick={() => onChange(rules.filter(candidate => candidate.id !== rule.id))}
@@ -139,13 +140,13 @@ export function AlertRuleSection({
                   className="app-button !h-10 !w-10 !p-0 !text-red-300 disabled:opacity-25"
                   title="Delete route"
                 >
-                  <Trash2 size={13} />
+                  <IconTrash size={13} />
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.1fr_0.8fr]">
-              <RoutePanel icon={Bell} title="Match">
+              <RoutePanel icon={IconBell} title="Match">
                 <div className="grid grid-cols-2 gap-3">
                   <TokenPicker
                     label="Platforms"
@@ -179,7 +180,7 @@ export function AlertRuleSection({
                 </Field>
               </RoutePanel>
 
-              <RoutePanel icon={Volume2} title="Audio & Visual">
+              <RoutePanel icon={IconVolume} title="Audio & Visual">
                 <ToggleLine label="Play sound" value={rule.soundEnabled} onChange={(soundEnabled) => updateRule(rule.id, { soundEnabled })} />
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <select
@@ -192,7 +193,7 @@ export function AlertRuleSection({
                     {sounds.map(sound => <option key={sound.id} value={sound.id}>{(sound.emoji ? `${sound.emoji} ` : '') + sound.name.replace(/\.[^/.]+$/, '')}</option>)}
                   </select>
                   <button onClick={() => void window.api?.sound?.play?.(rule.soundId, rule.soundVolume)} disabled={!rule.soundId} className="app-button !h-10 !w-10 !p-0 disabled:opacity-30" title="Preview sound">
-                    <Play size={13} className="fill-current" />
+                    <IconPlayerPlay size={13} className="fill-current" />
                   </button>
                 </div>
                 <RangeField label="Volume" value={Math.round(rule.soundVolume * 100)} disabled={!rule.soundEnabled} onChange={(value) => updateRule(rule.id, { soundVolume: value / 100 })} />
@@ -208,12 +209,12 @@ export function AlertRuleSection({
                   {images.map(image => <option key={image.id} value={image.id}>{image.name}</option>)}
                 </select>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={onUploadSound} className="app-button !h-9 !text-[10px]"><Upload size={12} /> Audio</button>
-                  <button onClick={onUploadImage} className="app-button !h-9 !text-[10px]"><Upload size={12} /> Image</button>
+                  <button onClick={onUploadSound} className="app-button !h-9 !text-[10px]"><IconUpload size={12} /> Audio</button>
+                  <button onClick={onUploadImage} className="app-button !h-9 !text-[10px]"><IconUpload size={12} /> Image</button>
                 </div>
               </RoutePanel>
 
-              <RoutePanel icon={Type} title="Message">
+              <RoutePanel icon={IconTypography} title="Message">
                 <ToggleLine label="Show text" value={rule.textEnabled} onChange={(textEnabled) => updateRule(rule.id, { textEnabled })} />
                 <Field label="Template">
                   <textarea
@@ -253,11 +254,11 @@ function simulateRule(rule: AlertRule) {
   } as any)
 }
 
-function RoutePanel({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+function RoutePanel({ icon: IconComponent, title, children }: { icon: Icon; title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
       <div className="flex items-center gap-2 text-white/55">
-        <Icon size={15} className="text-accent" />
+        <IconComponent size={15} className="text-accent" />
         <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">{title}</h3>
       </div>
       {children}

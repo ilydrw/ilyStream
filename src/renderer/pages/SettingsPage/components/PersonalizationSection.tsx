@@ -1,4 +1,4 @@
-import { MonitorCog, Palette, Sparkles } from 'lucide-react'
+import {IconSettings, IconPalette, IconSparkles} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { AppSettings, AppTheme, InterfaceDensity } from '../../../../shared/app-settings'
 import { SettingRow } from './SettingsShared'
@@ -34,7 +34,7 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Palette size={32} />
+            <IconPalette size={32} />
           </div>
           <div>
             <h2>Personalization</h2>
@@ -121,20 +121,20 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
             </div>
           </SettingRow>
 
-          <SettingRow label="Reduced Motion" hint="Minimize animated transitions when you need the UI to stay quiet and predictable.">
+          <SettingRow label="Reduced Motion" hint="IconMinimize animated transitions when you need the UI to stay quiet and predictable.">
             <Toggle value={settings.reducedMotion} onChange={(value) => onUpdate('reducedMotion', value)} />
           </SettingRow>
 
           <div className="mt-8 grid grid-cols-2 gap-3">
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <MonitorCog size={18} className="text-accent" />
+              <IconSettings size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Density</p>
                 <p className="text-sm font-bold capitalize text-white">{settings.interfaceDensity}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <Sparkles size={18} className="text-accent" />
+              <IconSparkles size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Motion</p>
                 <p className="text-sm font-bold text-white">{settings.reducedMotion ? 'Reduced' : 'Fluid'}</p>

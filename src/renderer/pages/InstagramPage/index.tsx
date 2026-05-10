@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Instagram as Insta, Activity, Heart, Camera } from 'lucide-react'
+import {IconWorld, IconBrandInstagram as Insta, IconActivity, IconHeart, IconCamera} from '@tabler/icons-react'
 import { InstagramIcon } from '../../components/ui/InstagramIcon'
 
 export default function InstagramPage() {
@@ -7,10 +7,6 @@ export default function InstagramPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div>
-          <div className="app-header-eyebrow">
-            <Globe size={14} className="text-accent" />
-            <span>Platform Integration</span>
-          </div>
           <div className="flex items-center gap-4 mb-2">
             <InstagramIcon size={48} className="text-pink-500" />
             <h1>Instagram Live</h1>
@@ -28,12 +24,12 @@ export default function InstagramPage() {
           value="Disconnected" 
         />
         <Metric 
-          icon={<Heart size={20} className="text-pink-400" />} 
+          icon={<IconHeart size={20} className="text-pink-400" />} 
           label="Live Likes" 
           value="0" 
         />
         <Metric 
-          icon={<Activity size={20} className="text-orange-400" />} 
+          icon={<IconActivity size={20} className="text-orange-400" />} 
           label="Active Viewers" 
           value="0" 
         />
@@ -44,7 +40,7 @@ export default function InstagramPage() {
           <section className="app-section-card glass p-12 flex flex-col items-center justify-center text-center">
             <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 p-1 mb-8">
               <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
-                <Camera size={40} className="text-white" />
+                <IconCamera size={40} className="text-white" />
               </div>
             </div>
             <h2 className="text-2xl font-bold mb-4">Ready to go Live?</h2>

@@ -1,4 +1,4 @@
-import { Database, MessageSquareText, RadioTower } from 'lucide-react'
+import {IconDatabase, IconMessage2, IconRadio} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { RelayTagMode } from '../../../../shared/chat-relay'
 import type { AppSettings } from '../../../../shared/app-settings'
@@ -10,7 +10,7 @@ interface StudioRuntimeSectionProps {
 }
 
 const relayModes: Array<{ value: RelayTagMode; label: string }> = [
-  { value: 'platform-and-user', label: 'Platform + User' },
+  { value: 'platform-and-user', label: 'Platform + IconUser' },
   { value: 'platform', label: 'Platform Only' },
   { value: 'none', label: 'Clean Relay' }
 ]
@@ -21,7 +21,7 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Database size={32} />
+            <IconDatabase size={32} />
           </div>
           <div>
             <h2>Runtime & Data</h2>
@@ -59,14 +59,14 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
 
           <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <MessageSquareText size={18} className="text-accent" />
+              <IconMessage2 size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Buffer</p>
                 <p className="text-sm font-bold text-white">{settings.chatMaxMessages.toLocaleString()} events</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
-              <RadioTower size={18} className="text-accent" />
+              <IconRadio size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Relay</p>
                 <p className="text-sm font-bold text-white">{settings.chatAutoRelayEnabled ? 'Enabled' : 'Manual'}</p>

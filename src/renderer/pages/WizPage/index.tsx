@@ -1,5 +1,5 @@
 import React from 'react'
-import { Cpu, Radio, Activity, Zap, RefreshCw } from 'lucide-react'
+import {IconCpu, IconRadio, IconActivity, IconBolt, IconRefresh} from '@tabler/icons-react'
 import { WizIcon } from '../../components/ui/WizIcon'
 
 export default function WizPage() {
@@ -11,10 +11,6 @@ export default function WizPage() {
             <WizIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>WiZ Connected</h1>
             <p className="app-page-intro">
               Connect your WiZ Connected smart lights. Leverage the UDP local protocol for lightning-fast synchronization with your stream events.
@@ -25,7 +21,7 @@ export default function WizPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="UDP Protocol" 
           value="READY" 
           sub="Local Network Mode"
@@ -38,7 +34,7 @@ export default function WizPage() {
           sub="Discovered Hardware"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="Control Mode" 
           value="LOCAL" 
           sub="Low-Latency Sync"
@@ -55,13 +51,13 @@ export default function WizPage() {
                 <p>Broadcasting discovery packets on the local network.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
-                <RefreshCw size={10} />
+                <IconRefresh size={10} />
                 Scan Network
               </button>
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01] flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 m-8 rounded-3xl">
-              <Zap size={64} className="mb-4 opacity-10" />
+              <IconBolt size={64} className="mb-4 opacity-10" />
               <p className="text-sm font-medium">No WiZ devices found.</p>
               <p className="text-xs text-white/5 mt-2">Ensure your WiZ lights are on and 'Allow local communication' is enabled in your router settings if necessary.</p>
             </div>

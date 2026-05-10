@@ -3,33 +3,119 @@ import Layout from '../layouts/Layout.astro';
 import { Image } from 'astro:assets';
 import broadcastCanvasPreview from '../assets/broadcast-canvas-preview.png';
 import broadcastCanvasPreviewPortrait from '../assets/broadcast-canvas-preview-portrait.png';
+import alertsPreview from '../assets/alerts-preview.png';
 import deskThingIcon from '../assets/deskthing.svg';
 import deskThingPairTight from '../assets/deskthing-pair-tight.png';
 import logo from '../assets/logo.svg';
 import s3Icon from '../assets/s3.svg';
 import studioSettingsPreview from '../assets/studio-settings-preview.png';
 import ttsPreview from '../assets/tts-preview.png';
+import voiceFxPreview from '../assets/voice-fx-preview.png';
+import widgetsPreview from '../assets/widgets-preview.png';
 
-const latestVersion = '0.0.2';
+const latestVersion = '0.0.5';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
 const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
+const deskThingWebsiteUrl = 'https://deskthing.app/';
+const deskThingDocsUrl = 'https://carthing.wiki/thinglabs-apps/deskthing/introduction/';
+const hueDocsUrl = 'https://developers.meethue.com/develop/get-started-2/';
+const goveeDocsUrl = 'https://govee.readme.io/reference/applying-for-an-api-key';
+const obsBrowserSourceUrl = 'https://obsproject.com/kb/browser-source';
+const simpleIconsUrl = 'https://github.com/simple-icons/simple-icons';
 
 const highlights = [
-  ['Studio', 'Scenes, capture, source controls, and stream output in one Windows app.'],
-  ['Audio', 'TTS and alert audio route into the broadcast mix without display-capture tricks.'],
-  ['Automation', 'Chat events, overlays, soundboard actions, and selected smart lights react together.'],
-  ['Companion', 'DeskThing support keeps live controls close without crowding the main screen.'],
+  ['Studio', 'Scenes, capture, overlays, source controls, and stream output in one Windows app.'],
+  ['Audio', 'TTS, soundboard, Voice FX, and alert audio route into the broadcast mix.'],
+  ['Automation', 'Chat events, widgets, alerts, and selected smart lights can react together.'],
+  ['Companion', 'DeskThing keeps pairing, status, and live actions close without crowding the studio.'],
 ];
 
 const releaseNotes = [
-  'Windows installer and portable build',
-  'GitHub Release updater metadata',
-  'TTS broadcast routing fixes',
-  'Twitch follower detection hardening',
-  'Selected-device Govee and Hue strobe sync',
+  'Recovered protected lifetime TikTok stats from backup',
+  'Guarded stats rebuilds so pruned history cannot erase totals',
+  'Persistent ilyStream top bar with fixed window controls',
+  'Polished Voice FX, Widgets, and Alerts workspaces',
+  'Packaged logo and app icon resources restored',
+];
+
+const downloads = [
+  {
+    tag: 'Recommended',
+    title: 'Windows installer',
+    copy: 'Best for stream machines. Installs ilyStream and supports future app updates from GitHub Releases.',
+    href: setupUrl,
+    action: 'Download Setup EXE',
+    featured: true,
+  },
+  {
+    tag: 'Portable',
+    title: 'Portable build',
+    copy: 'Use this when you want to test the app without running the installer.',
+    href: portableUrl,
+    action: 'Download Portable EXE',
+  },
+  {
+    tag: 'macOS',
+    title: 'macOS builds',
+    copy: 'macOS packaging requires a macOS runner for signing. Watch the release page for signed DMG builds.',
+    href: releaseUrl,
+    action: 'Check Releases',
+  },
+  {
+    tag: 'ChromeOS',
+    title: 'ChromeOS option',
+    copy: 'ChromeOS users can follow the source path in Linux mode while native packages are evaluated.',
+    href: repoUrl,
+    action: 'Open Source',
+  },
+];
+
+const docs = [
+  {
+    title: 'Philips Hue',
+    kicker: 'Smart lights',
+    copy: 'Find your Bridge IP in the Hue app, press the bridge link button, create a Hue API username, then paste the bridge IP and username into ilyStream.',
+    link: hueDocsUrl,
+    linkLabel: 'Hue setup docs',
+  },
+  {
+    title: 'Govee',
+    kicker: 'Cloud and LAN lights',
+    copy: 'Request a Govee Developer API key from the Govee Home app, paste it into ilyStream, refresh devices, and select the fixtures allowed to react.',
+    link: goveeDocsUrl,
+    linkLabel: 'Govee API key',
+  },
+  {
+    title: 'OBS overlays',
+    kicker: 'Browser sources',
+    copy: 'Start the overlay server in ilyStream, copy the widget or alert URL, then add it as an OBS Browser Source with transparent background CSS.',
+    link: obsBrowserSourceUrl,
+    linkLabel: 'OBS browser source',
+  },
+  {
+    title: 'DeskThing',
+    kicker: 'Companion app',
+    copy: 'Install DeskThing, add the ilyStream companion app, then pair using the local address and code shown inside the ilyStream DeskThing page.',
+    link: deskThingWebsiteUrl,
+    linkLabel: 'DeskThing website',
+  },
+  {
+    title: 'Voice and alerts',
+    kicker: 'Production audio',
+    copy: 'Set your TTS voice, choose alert sounds or images, then route audio through the broadcast mixer so OBS receives the same mix you hear.',
+    link: repoUrl,
+    linkLabel: 'Project notes',
+  },
+  {
+    title: 'Icon set',
+    kicker: 'Visual polish',
+    copy: 'Brand and platform marks are sourced from open SVG libraries where possible, with local Tabler symbols used for app-native controls.',
+    link: simpleIconsUrl,
+    linkLabel: 'Simple Icons',
+  },
 ];
 
 const screenshots = [
@@ -44,6 +130,24 @@ const screenshots = [
     copy: 'Build TikTok-style portrait scenes without hiding the tools you need while live.',
     image: broadcastCanvasPreviewPortrait,
     alt: 'ilyStream broadcast studio showing a vertical scene layout with camera, overlays, and mixer controls',
+  },
+  {
+    title: 'Alerts Command Center',
+    copy: 'Tune alert routing, sounds, images, and preview behavior from a single production surface.',
+    image: alertsPreview,
+    alt: 'ilyStream alerts page with event rules, asset libraries, and alert configuration controls',
+  },
+  {
+    title: 'Widget Composer',
+    copy: 'Create browser-source widgets for chat, goals, socials, Spotify, and event overlays.',
+    image: widgetsPreview,
+    alt: 'ilyStream widgets page with overlay compositor controls and widget templates',
+  },
+  {
+    title: 'Voice FX Rack',
+    copy: 'Switch voice effects, monitor the processed mic, and tune output levels without leaving the studio.',
+    image: voiceFxPreview,
+    alt: 'ilyStream voice effects page showing voice presets, monitoring controls, and signal meters',
   },
   {
     title: 'Voice Engine',
@@ -84,6 +188,7 @@ const screenshots = [
         <a href="#download">Download</a>
         <a href="#features">Features</a>
         <a href="#screens">Screens</a>
+        <a href="#docs">Docs</a>
         <a href={repoUrl}>GitHub</a>
       </div>
     </nav>
@@ -111,15 +216,15 @@ const screenshots = [
       </div>
       <div class="status-strip__item">
         <span>Platform</span>
-        <strong>Windows x64</strong>
+        <strong>Windows x64 now</strong>
       </div>
       <div class="status-strip__item">
         <span>Install</span>
-        <strong>Setup EXE</strong>
+        <strong>Setup or portable</strong>
       </div>
       <div class="status-strip__item">
-        <span>Updates</span>
-        <strong>GitHub Releases</strong>
+        <span>Companion</span>
+        <strong>DeskThing v{latestVersion}</strong>
       </div>
     </section>
 
@@ -134,26 +239,16 @@ const screenshots = [
       </div>
 
       <div class="download-grid">
-        <article class="download-card download-card--primary">
-          <p class="tag">Recommended</p>
-          <h3>Windows installer</h3>
-          <p>Best for stream machines. Installs ilyStream and supports future app updates from GitHub Releases.</p>
-          <a class="button button--primary" href={setupUrl}>Download Setup EXE</a>
-        </article>
-
-        <article class="download-card">
-          <p class="tag">Portable</p>
-          <h3>Portable build</h3>
-          <p>Use this when you want to test the app without running the installer.</p>
-          <a class="button button--ghost" href={portableUrl}>Download Portable EXE</a>
-        </article>
-
-        <article class="download-card">
-          <p class="tag">Source</p>
-          <h3>GitHub project</h3>
-          <p>Follow releases, inspect the code, and track the preview build history.</p>
-          <a class="button button--ghost" href={repoUrl}>Open GitHub</a>
-        </article>
+        {downloads.map((download) => (
+          <article class:list={['download-card', { 'download-card--primary': download.featured }]}>
+            <p class="tag">{download.tag}</p>
+            <h3>{download.title}</h3>
+            <p>{download.copy}</p>
+            <a class:list={['button', download.featured ? 'button--primary' : 'button--ghost']} href={download.href}>
+              {download.action}
+            </a>
+          </article>
+        ))}
       </div>
     </section>
 
@@ -211,6 +306,28 @@ const screenshots = [
       </div>
     </section>
 
+    <section class="docs section" id="docs" aria-labelledby="docs-title">
+      <div class="section__heading section__heading--wide">
+        <p class="eyebrow">Documentation</p>
+        <h2 id="docs-title">Set up the pieces that make a stream feel alive.</h2>
+        <p>
+          These are the first paths new users usually need: lights, OBS overlays,
+          DeskThing pairing, and audio routing.
+        </p>
+      </div>
+
+      <div class="docs-grid">
+        {docs.map((doc) => (
+          <article class="doc-card">
+            <p class="tag">{doc.kicker}</p>
+            <h3>{doc.title}</h3>
+            <p>{doc.copy}</p>
+            <a href={doc.link}>{doc.linkLabel}</a>
+          </article>
+        ))}
+      </div>
+    </section>
+
     <section class="companion section" id="companion" aria-labelledby="companion-title">
       <div class="companion__copy">
         <p class="eyebrow">Companion</p>
@@ -219,10 +336,15 @@ const screenshots = [
           Pair over your local network and keep quick actions, refreshes, clocks,
           and live status checks on a small second screen.
         </p>
-        <a class="button button--ghost" href={deskThingReleaseUrl}>
-          DeskThing builds
-          <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
-        </a>
+        <div class="companion__actions">
+          <a class="button button--ghost" href={deskThingReleaseUrl}>
+            Companion builds
+            <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
+          </a>
+          <a class="button button--ghost" href={deskThingDocsUrl}>
+            Setup guide
+          </a>
+        </div>
       </div>
       <Image
         class="companion__image"
@@ -245,6 +367,7 @@ const screenshots = [
       <nav class="footer__links" aria-label="Footer navigation">
         <a href={setupUrl}>Download</a>
         <a href={releaseUrl}>Release</a>
+        <a href="#docs">Docs</a>
         <a href={repoUrl}>GitHub</a>
       </nav>
       <div class="footer__s3">
@@ -485,7 +608,7 @@ const screenshots = [
   .download-grid,
   .feature-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
   }
 
@@ -525,7 +648,8 @@ const screenshots = [
 
   .download-card p:not(.tag),
   .feature-card p,
-  .screen-card p {
+  .screen-card p,
+  .doc-card p:not(.tag) {
     margin-top: 12px;
     color: var(--muted);
   }
@@ -602,6 +726,39 @@ const screenshots = [
     padding: 22px;
   }
 
+  .docs-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .doc-card {
+    min-height: 260px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+      var(--bg-raised);
+  }
+
+  .doc-card h3 {
+    font-size: 1.28rem;
+  }
+
+  .doc-card a {
+    width: fit-content;
+    margin-top: auto;
+    color: var(--cyan);
+    font-weight: 850;
+  }
+
+  .doc-card a:hover {
+    color: var(--text);
+  }
+
   .companion {
     display: grid;
     grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1fr);
@@ -616,8 +773,11 @@ const screenshots = [
     font-size: 1.08rem;
   }
 
-  .companion__copy .button {
+  .companion__actions {
     margin-top: 26px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
   }
 
   .companion__image {
@@ -669,6 +829,7 @@ const screenshots = [
     .status-strip,
     .download-grid,
     .feature-grid,
+    .docs-grid,
     .screen-grid,
     .release-list,
     .companion {
@@ -717,6 +878,7 @@ const screenshots = [
     .status-strip,
     .download-grid,
     .feature-grid,
+    .docs-grid,
     .screen-grid,
     .release-list,
     .companion {

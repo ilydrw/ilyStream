@@ -1,19 +1,6 @@
 import React, { useState, useEffect, ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Search, 
-  RefreshCw, 
-  CheckCircle2, 
-  AlertCircle, 
-  Zap, 
-  Wifi, 
-  ExternalLink,
-  Cpu,
-  ArrowRight,
-  Radio,
-  Activity,
-  Check
-} from 'lucide-react'
+import {IconSearch, IconRefresh, IconCircleCheck, IconAlertCircle, IconBolt, IconWifi, IconExternalLink, IconCpu, IconArrowRight, IconRadio, IconActivity, IconCheck} from '@tabler/icons-react'
 import { useHueStore, HueBridge, HueLight } from '../../stores/hue-store'
 import { HueIcon } from '../../components/ui/HueIcon'
 import { HueBulbIcon } from '../../components/ui/HueBulbIcon'
@@ -112,7 +99,7 @@ export default function HuePage() {
     try {
       const success = await connect(targetIp, localUsername)
       if (!success) {
-        setError('Failed to connect to the bridge at ' + targetIp + '. Check the IP and ensure the Bridge is powered on.')
+        setError('Failed to connect to the bridge at ' + targetIp + '. IconCheck the IP and ensure the Bridge is powered on.')
       }
     } catch (err: any) {
       setError(`Technical error during connection: ${err.message || 'Unknown error'}`)
@@ -163,7 +150,7 @@ export default function HuePage() {
         </div>
         {isSelected && (
           <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white">
-            <Check size={12} strokeWidth={4} />
+            <IconCheck size={12} strokeWidth={4} />
           </div>
         )}
       </button>
@@ -178,10 +165,6 @@ export default function HuePage() {
             <HueIcon size={48} />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>Philips Hue</h1>
             <p className="app-page-intro">
               Connect and synchronize your smart lighting with live stream events. 
@@ -194,7 +177,7 @@ export default function HuePage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="Bridge Status" 
           value={isConnected ? 'CONNECTED' : 'OFFLINE'} 
           sub={isConnected ? 'Active Network Node' : 'Searching for Bridge...'}
@@ -208,7 +191,7 @@ export default function HuePage() {
           accent="text-amber-400"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="Event Sync" 
           value="ENABLED" 
           sub="Automated Triggers"
@@ -235,7 +218,7 @@ export default function HuePage() {
                 disabled={isDiscovering}
                 className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
               >
-                <RefreshCw size={12} className={isDiscovering ? 'animate-spin' : ''} />
+                <IconRefresh size={12} className={isDiscovering ? 'animate-spin' : ''} />
                 {isDiscovering ? 'Scanning...' : 'Scan Network'}
               </button>
             </div>
@@ -259,7 +242,7 @@ export default function HuePage() {
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-[10px] font-bold text-blue-400/60 hover:text-blue-400 uppercase tracking-wider mt-1 transition-colors"
                 >
-                  How to get a username? <ExternalLink size={10} />
+                  How to get a username? <IconExternalLink size={10} />
                 </a>
               </div>
 
@@ -318,7 +301,7 @@ export default function HuePage() {
           <section className="app-section-card glass">
             <div className="app-section-head border-b border-white/[0.03]">
               <div className="flex items-center gap-4">
-                <Zap size={20} className="text-blue-400" />
+                <IconBolt size={20} className="text-blue-400" />
                 <div>
                   <h2>Event Triggers</h2>
                   <p>Automated lighting effects for stream events.</p>
@@ -337,7 +320,7 @@ export default function HuePage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-white mb-1">Flash on Gift</div>
+                  <div className="text-sm font-bold text-white mb-1">Flash on IconGift</div>
                   <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on gifts</div>
                 </div>
                 <Toggle value={settings.hueFlashOnGift} onChange={(val) => updateSetting('hueFlashOnGift', val)} />
@@ -365,7 +348,7 @@ export default function HuePage() {
             </div>
           </section>
 
-          {/* Discovery List */}
+          {/* Discovery IconList */}
           {!isConnected && (
             <section className="app-section-card glass animate-in">
               <div className="app-section-head">
@@ -384,19 +367,19 @@ export default function HuePage() {
                       className="w-full group flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/5 transition-all text-left"
                     >
                       <div className="flex items-center gap-4">
-                        <Wifi size={18} className="text-blue-400/50" />
+                        <IconWifi size={18} className="text-blue-400/50" />
                         <div>
                           <div className="text-sm font-bold text-white">Hue Bridge {bridge.id.slice(-4)}</div>
                           <div className="text-[10px] font-mono text-white/20 tracking-widest">{bridge.internalipaddress}</div>
                         </div>
                       </div>
-                      <ArrowRight size={14} className="text-white/10 group-hover:text-blue-400 transition-colors" />
+                      <IconArrowRight size={14} className="text-white/10 group-hover:text-blue-400 transition-colors" />
                     </button>
                   ))
                 ) : (
                   <div className="py-12 flex flex-col items-center justify-center text-center">
                     <div className="w-12 h-12 rounded-2xl bg-white/[0.03] flex items-center justify-center mb-4 text-white/10">
-                      <Search size={24} />
+                      <IconSearch size={24} />
                     </div>
                     <p className="text-xs font-bold text-white/20 tracking-widest mb-4">No Bridges Found</p>
                     <button 
@@ -431,7 +414,7 @@ export default function HuePage() {
                   onClick={fetchLights}
                   className="text-[10px] font-bold text-blue-400/60 hover:text-blue-400 tracking-widest transition-colors flex items-center gap-2"
                 >
-                  <RefreshCw size={10} />
+                  <IconRefresh size={10} />
                   Refresh
                 </button>
               )}
@@ -501,7 +484,7 @@ export default function HuePage() {
 
             <div className="p-6 border-t border-white/5 bg-white/[0.02] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Zap size={14} className="text-blue-400" />
+                <IconBolt size={14} className="text-blue-400" />
                 <span className="text-[10px] font-bold text-white/30 tracking-widest">Auto-Flash Engine: Active</span>
               </div>
               <div className="text-[10px] font-mono text-white/10 tracking-widest">

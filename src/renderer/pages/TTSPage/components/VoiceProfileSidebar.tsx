@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import {IconPlus} from '@tabler/icons-react'
 import { VoiceProfile } from '../../../main/tts/voice-profiles'
 
 interface VoiceProfileSidebarProps {
@@ -19,7 +19,7 @@ export function VoiceProfileSidebar({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Plus size={32} />
+            <IconPlus size={32} />
           </div>
           <div>
             <h2>Voice Profiles</h2>
@@ -27,7 +27,7 @@ export function VoiceProfileSidebar({
           </div>
         </div>
         <button onClick={onCreateProfile} className="app-button !h-10 !w-10 !p-0 hover:border-accent/40" title="Add Profile">
-          <Plus size={18} />
+          <IconPlus size={18} />
         </button>
       </div>
       

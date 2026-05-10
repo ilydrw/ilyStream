@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight } from 'lucide-react'
+import {IconChevronRight} from '@tabler/icons-react'
 
 export interface ContextMenuItem {
   id: string
@@ -105,7 +105,7 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
                   {item.icon && <span className="text-white/40">{item.icon}</span>}
                   <span>{item.label}</span>
                 </div>
-                {item.submenu && <ChevronRight size={14} className="text-white/20" />}
+                {item.submenu && <IconChevronRight size={14} className="text-white/20" />}
               </button>
             )}
           </div>

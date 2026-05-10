@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Video, Layers, Globe, Type, Image as ImageIcon, X, ChevronLeft, Mic, Monitor, Volume2, Music } from 'lucide-react'
+import {IconVideo, IconStack2, IconWorld, IconTypography, IconPhoto as ImageIcon, IconX, IconChevronLeft, IconMicrophone, IconDeviceDesktop, IconVolume, IconMusic} from '@tabler/icons-react'
 import type { LayerType } from '../../../../shared/studio'
 
 interface Props {
@@ -10,15 +10,15 @@ interface Props {
   devices: MediaDeviceInfo[]
 }
 
-const SOURCE_TYPES: Array<{ type: LayerType; label: string; desc: string; icon: typeof Video; iconClass: string; bgClass: string }> = [
-  { type: 'camera', label: 'Video Capture', desc: 'Webcams & Capture Cards', icon: Video, iconClass: 'text-[rgb(var(--accent-rgb))]', bgClass: 'bg-[rgb(var(--accent-rgb))/0.1]' },
-  { type: 'display', label: 'Screen / Window', desc: 'Display capture with optional audio', icon: Monitor, iconClass: 'text-cyan-300', bgClass: 'bg-cyan-500/10' },
-  { type: 'audio', label: 'Audio Input', desc: 'Mics & External Inputs', icon: Mic, iconClass: 'text-amber-400', bgClass: 'bg-amber-500/10' },
-  { type: 'widget', label: 'Ily Widget', desc: 'Chat, Alerts, Goals', icon: Layers, iconClass: 'text-purple-400', bgClass: 'bg-purple-500/10' },
-  { type: 'browser', label: 'Browser Source', desc: 'External URLs & Overlays', icon: Globe, iconClass: 'text-emerald-400', bgClass: 'bg-emerald-500/10' },
-  { type: 'text', label: 'Text Label', desc: 'Custom Titles & Branding', icon: Type, iconClass: 'text-blue-400', bgClass: 'bg-blue-500/10' },
-  { type: 'image', label: 'Image / Logo', desc: 'PNG, JPG, SVG files', icon: ImageIcon, iconClass: 'text-sky-400', bgClass: 'bg-sky-500/10' },
-  { type: 'spotify' as any, label: 'Spotify / Music', desc: 'Capture Spotify or System audio', icon: Music, iconClass: 'text-green-400', bgClass: 'bg-green-500/10' },
+const SOURCE_TYPES: Array<{ type: LayerType; label: string; desc: string; icon: typeof IconVideo; iconClass: string; bgClass: string }> = [
+  { type: 'camera', label: 'Video Capture', desc: 'Webcams & Capture Cards', icon: IconVideo, iconClass: 'text-[rgb(var(--accent-rgb))]', bgClass: 'bg-[rgb(var(--accent-rgb))/0.1]' },
+  { type: 'display', label: 'Screen / Window', desc: 'Display capture with optional audio', icon: IconDeviceDesktop, iconClass: 'text-cyan-300', bgClass: 'bg-cyan-500/10' },
+  { type: 'audio', label: 'Audio Input', desc: 'Mics & External Inputs', icon: IconMicrophone, iconClass: 'text-amber-400', bgClass: 'bg-amber-500/10' },
+  { type: 'widget', label: 'Ily Widget', desc: 'Chat, Alerts, Goals', icon: IconStack2, iconClass: 'text-purple-400', bgClass: 'bg-purple-500/10' },
+  { type: 'browser', label: 'Browser Source', desc: 'External URLs & Overlays', icon: IconWorld, iconClass: 'text-emerald-400', bgClass: 'bg-emerald-500/10' },
+  { type: 'text', label: 'Text Label', desc: 'Custom Titles & Branding', icon: IconTypography, iconClass: 'text-blue-400', bgClass: 'bg-blue-500/10' },
+  { type: 'image', label: 'IconPhoto / Logo', desc: 'PNG, JPG, SVG files', icon: ImageIcon, iconClass: 'text-sky-400', bgClass: 'bg-sky-500/10' },
+  { type: 'spotify' as any, label: 'Spotify / IconMusic', desc: 'Capture Spotify or System audio', icon: IconMusic, iconClass: 'text-green-400', bgClass: 'bg-green-500/10' },
 ]
 
 interface DesktopSourceOption {
@@ -173,7 +173,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
           <div className="flex items-center gap-3">
             {step === 'configure' && (
               <button onClick={() => setStep('pick')} className="p-1.5 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition-all">
-                <ChevronLeft size={18} />
+                <IconChevronLeft size={18} />
               </button>
             )}
             <h2 className="text-lg font-black text-white">
@@ -181,7 +181,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
             </h2>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 text-white/20 hover:text-white transition-all">
-            <X size={18} />
+            <IconX size={18} />
           </button>
         </div>
 
@@ -219,7 +219,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                       className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/30 hover:bg-purple-500/10 transition-all group"
                     >
                       <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 transition-transform">
-                        <Layers size={20} />
+                        <IconStack2 size={20} />
                       </div>
                       <span className="text-[10px] font-bold text-white/60 group-hover:text-white transition-colors">{w.name}</span>
                     </button>
@@ -244,7 +244,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
             {selectedType === 'camera' && (
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-2 block">Camera Device</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-2 block">IconCamera Device</label>
                   <select
                     value={config.deviceId || ''}
                     onChange={e => {
@@ -322,7 +322,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                     onClick={() => setConfig({ ...config, captureMode: 'mic' })}
                     className={`h-10 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${config.captureMode !== 'desktop' ? 'bg-accent/15 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/[0.04]'}`}
                   >
-                    Mic/Input
+                    IconMicrophone/Input
                   </button>
                   <button
                     onClick={() => {
@@ -353,7 +353,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                     >
                       {devices.filter(d => d.kind === 'audioinput').length === 0 && <option value="">No audio devices detected</option>}
                       {devices.filter(d => d.kind === 'audioinput').map(d => (
-                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic ${d.deviceId.slice(0, 8)}`}</option>
+                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 8)}`}</option>
                       ))}
                     </select>
                   </div>
@@ -373,7 +373,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   onClick={() => setConfig({ ...config, captureAudio: config.captureAudio !== true })}
                   className={`w-full rounded-xl border px-4 py-3 text-sm font-bold transition-all flex items-center justify-center gap-2 ${config.captureAudio === true ? 'bg-accent/15 border-accent/30 text-accent' : 'bg-white/5 border-white/10 text-white/40'}`}
                 >
-                  <Volume2 size={16} />
+                  <IconVolume size={16} />
                   {config.captureAudio === true ? 'Capture desktop audio' : 'Video only'}
                 </button>
               </div>
@@ -456,7 +456,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   onClick={handlePickImage}
                   className="w-full bg-white/[0.03] border border-white/10 border-dashed rounded-xl px-4 py-8 text-sm text-white/30 hover:text-white/50 hover:border-white/20 transition-all text-center"
                 >
-                  {config.assetPath ? 'Image selected — click to change' : 'Click to select an image file'}
+                  {config.assetPath ? 'IconPhoto selected — click to change' : 'Click to select an image file'}
                 </button>
                 {config.assetPath && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/5">
@@ -532,12 +532,12 @@ function DesktopSourcePicker({
                 <img src={source.thumbnail} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center text-white/20">
-                  <Monitor size={22} />
+                  <IconDeviceDesktop size={22} />
                 </div>
               )}
             </div>
             <div className="flex items-center gap-2 p-3">
-              {source.appIcon ? <img src={source.appIcon} alt="" className="h-4 w-4 shrink-0" /> : <Monitor size={14} className="shrink-0 text-white/35" />}
+              {source.appIcon ? <img src={source.appIcon} alt="" className="h-4 w-4 shrink-0" /> : <IconDeviceDesktop size={14} className="shrink-0 text-white/35" />}
               <span className="truncate text-[11px] font-bold text-white/70">{source.name}</span>
             </div>
           </button>
@@ -555,7 +555,7 @@ function findLikelyAudioDevice(videoDevice: MediaDeviceInfo | undefined, devices
   // 1. Try exact or near-exact label matching first (best for capture cards)
   const exactMatch = audioInputs.find(d => {
     const al = d.label.toLowerCase()
-    // Match "USB Video" with "USB Audio" or "Digital Audio Interface (USB Video)"
+    // Match "USB IconVideo" with "USB Audio" or "Digital Audio Interface (USB IconVideo)"
     return al.includes(videoLabel) || videoLabel.includes(al.replace('audio', 'video')) || al.includes(videoLabel.replace('video', 'audio'))
   })
   if (exactMatch) return exactMatch

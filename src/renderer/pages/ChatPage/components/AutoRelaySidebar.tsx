@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react'
+import {IconBolt} from '@tabler/icons-react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { Toggle } from '../../../components/ui/Inputs'
 import { PLATFORM_LABELS, type RelayTagMode } from '../../../../shared/chat-relay'
@@ -23,7 +23,7 @@ export function AutoRelaySidebar({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Zap size={32} />
+            <IconBolt size={32} />
           </div>
           <div>
             <h2>Auto-Relay</h2>

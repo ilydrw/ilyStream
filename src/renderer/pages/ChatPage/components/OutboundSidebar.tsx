@@ -1,4 +1,4 @@
-import { Send, Trash2 } from 'lucide-react'
+import {IconSend, IconTrash} from '@tabler/icons-react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { PLATFORM_LABELS } from '../../../../shared/chat-relay'
 import type { Platform, PlatformChatCapability } from '../../../../main/platforms/types'
@@ -34,7 +34,7 @@ export function OutboundSidebar({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Send size={32} />
+            <IconSend size={32} />
           </div>
           <div>
             <h2>Outbound</h2>
@@ -50,7 +50,7 @@ export function OutboundSidebar({
               <p className="text-sm text-white/80 truncate">@{relaySource.displayName}: {relaySource.message}</p>
             </div>
             <button onClick={onClearRelaySource} className="text-accent hover:text-white transition-colors">
-              <Trash2 size={14} />
+              <IconTrash size={14} />
             </button>
           </div>
         )}
@@ -83,7 +83,7 @@ export function OutboundSidebar({
             value={composerText}
             onChange={(e) => onComposerTextChange(e.target.value)}
             rows={4}
-            placeholder="Type a message to send across platforms..."
+            placeholder="IconTypography a message to send across platforms..."
             className="app-textarea !text-sm !resize-none"
           />
         </div>
@@ -93,8 +93,8 @@ export function OutboundSidebar({
           disabled={isSending || !composerText.trim() || selectedTargets.length === 0}
           className="app-button-primary !h-12 w-full font-bold"
         >
-          {isSending ? 'Transmitting...' : 'Send Message'}
-          <Send size={16} className="ml-2" />
+          {isSending ? 'Transmitting...' : 'IconSend Message'}
+          <IconSend size={16} className="ml-2" />
         </button>
 
         {sendFeedback && (

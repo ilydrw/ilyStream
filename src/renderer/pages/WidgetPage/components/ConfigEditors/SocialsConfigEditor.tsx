@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Trash2, Plus } from 'lucide-react'
+import {IconTrash, IconPlus} from '@tabler/icons-react'
 import {
   DEFAULT_SOCIALS_CONFIG,
   type SocialsConfig,
@@ -48,7 +48,7 @@ export function SocialsConfigEditor({
                 onClick={() => removeAccount(acc.id)}
                 className="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center text-white/20 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100"
               >
-                <Trash2 size={13} />
+                <IconTrash size={13} />
               </button>
               
               <div className="grid grid-cols-2 gap-3">
@@ -84,7 +84,7 @@ export function SocialsConfigEditor({
             onClick={addAccount}
             className="flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-white/40 hover:border-white/20 hover:text-white transition-all text-xs font-bold"
           >
-            <Plus size={14} />
+            <IconPlus size={14} />
             Add Social Account
           </button>
         </div>

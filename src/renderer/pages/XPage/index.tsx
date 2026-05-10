@@ -1,4 +1,4 @@
-import { MessageSquareMore, Radio, Send, Twitter, Wifi, Zap } from 'lucide-react'
+import {IconMessage2, IconRadio, IconSend, IconBrandTwitter, IconWifi, IconBolt} from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { 
   PlatformPageHeader, 
@@ -25,22 +25,22 @@ export default function XPage() {
         platformId={PLATFORM_ID as any}
         title="X (Twitter) Integration"
         description="Connect your X account to monitor real-time mentions, sentiment, and trending topics. Feed your AI Co-Host with the pulse of the internet."
-        icon={<Twitter size={14} />}
+        icon={<IconBrandTwitter size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric 
-          icon={<Zap size={20} className="text-accent" />} 
+          icon={<IconBolt size={20} className="text-accent" />} 
           label="Sentiment Pulse" 
           value="Neutral" 
         />
         <Metric 
-          icon={<Twitter size={20} className="text-info" />} 
+          icon={<IconBrandTwitter size={20} className="text-info" />} 
           label="Active Mentions" 
           value="0" 
         />
         <Metric 
-          icon={<Wifi size={20} className="text-white/20" />} 
+          icon={<IconWifi size={20} className="text-white/20" />} 
           label="Stream Health" 
           value="Standby" 
         />
@@ -88,13 +88,13 @@ export default function XPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-12">
               <DiagnosticLine
-                icon={<Radio size={16} />}
+                icon={<IconRadio size={16} />}
                 label="Stream API"
                 value="Disconnected"
                 tone="muted"
               />
               <DiagnosticLine
-                icon={<Send size={16} />}
+                icon={<IconSend size={16} />}
                 label="Automated Replies"
                 value="Restricted"
                 tone="muted"
@@ -106,14 +106,14 @@ export default function XPage() {
         <section className="app-section-card glass flex flex-col">
           <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <MessageSquareMore size={18} className="text-info" />
+              <IconMessage2 size={18} className="text-info" />
               <h2 className="!text-lg">Mention Feed</h2>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
             <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-              <Twitter size={48} className="mb-6 opacity-10" />
+              <IconBrandTwitter size={48} className="mb-6 opacity-10" />
               <p className="text-sm font-medium">Waiting for X stream initialization...</p>
             </div>
           </div>

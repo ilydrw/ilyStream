@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import {IconSparkles} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { AppSettings } from '../../../../shared/app-settings'
 import { NumberInput, SettingRow, TextInput } from './SettingsShared'
@@ -44,7 +44,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Sparkles size={32} />
+            <IconSparkles size={32} />
           </div>
           <div>
             <h2>AI Co-Host</h2>

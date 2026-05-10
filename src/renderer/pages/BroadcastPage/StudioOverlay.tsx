@@ -136,14 +136,14 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId }: Props) {
       const layer = activeSceneRef.current?.layers.find(l => l.id === id)
       
       browserWorkerBusy.current[id] = true
-      worker.postMessage({
+      postWorkerFrame(worker, {
         id,
         source: bitmap,
         width,
         height,
         transparentBackground: layer?.config?.transparentBackground !== false,
         transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
-      })
+      }, bitmap)
     }
 
     return () => {
@@ -225,14 +225,14 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId }: Props) {
         const layer = activeSceneRef.current?.layers.find(l => l.id === id)
         
         browserWorkerBusy.current[id] = true
-        worker.postMessage({
+        postWorkerFrame(worker, {
           id,
           source: bitmap,
           width,
           height,
           transparentBackground: layer?.config?.transparentBackground !== false,
           transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
-        })
+        }, bitmap)
       }
     })
     return () => unsub?.()
@@ -495,6 +495,22 @@ function isLikelyScreenBorderLayer(layer?: { name?: string; config?: Record<stri
   if (!layer) return false
   const haystack = `${layer.name || ''} ${layer.config?.widgetType || ''} ${layer.config?.type || ''}`.toLowerCase()
   return haystack.includes('screen border') || haystack.includes('screen-border')
+}
+
+function postWorkerFrame(worker: Worker, message: unknown, source: unknown): void {
+  const transfer = getFrameTransferList(source)
+  try {
+    worker.postMessage(message, transfer)
+  } catch (err) {
+    if (transfer.length === 0) throw err
+    worker.postMessage(message)
+  }
+}
+
+function getFrameTransferList(source: unknown): Transferable[] {
+  if (source instanceof ArrayBuffer) return [source]
+  if (ArrayBuffer.isView(source) && source.buffer instanceof ArrayBuffer) return [source.buffer]
+  return []
 }
 
 function resolveImageSource(assetPath?: string): string {

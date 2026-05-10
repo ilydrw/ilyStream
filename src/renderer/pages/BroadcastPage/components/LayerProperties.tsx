@@ -1,8 +1,5 @@
 import { useState, useMemo } from 'react'
-import {
-  Trash2, Lock, Unlock, Eye, EyeOff, ChevronUp, ChevronDown,
-  Video, Layers, Globe, Type, Image as ImageIcon, Mic, Monitor, RefreshCw, Maximize, RotateCw
-} from 'lucide-react'
+import {IconTrash, IconLock, IconLockOpen, IconEye, IconEyeOff, IconChevronUp, IconChevronDown, IconVideo, IconStack2, IconWorld, IconTypography, IconPhoto as ImageIcon, IconMicrophone, IconDeviceDesktop, IconRefresh, IconMaximize, IconRotateClockwise2} from '@tabler/icons-react'
 import type { StudioLayer } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
 import { useStudioStore } from '../../../stores/studio-store'
@@ -14,8 +11,8 @@ interface Props {
   devices: MediaDeviceInfo[]
 }
 
-const TYPE_ICONS: Record<string, typeof Video> = {
-  camera: Video, display: Monitor, audio: Mic, widget: Layers, browser: Globe, text: Type, image: ImageIcon
+const TYPE_ICONS: Record<string, typeof IconVideo> = {
+  camera: IconVideo, display: IconDeviceDesktop, audio: IconMicrophone, widget: IconStack2, browser: IconWorld, text: IconTypography, image: ImageIcon
 }
 
 const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number; label: string }> = {
@@ -92,7 +89,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
     }
   }
 
-  const Icon = TYPE_ICONS[layer.type] || Layers
+  const Icon = TYPE_ICONS[layer.type] || IconStack2
 
   return (
     <div className="flex flex-col h-full">
@@ -129,20 +126,20 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
         {/* Quick Actions */}
         <div className="flex items-center gap-2">
           <button onClick={() => update({ visible: !l.visible })} className={`p-2.5 rounded-xl transition-all ${l.visible ? 'text-white/80 hover:text-white bg-white/5' : 'text-white/20 hover:text-white/40'}`} title="Visibility">
-            {l.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+            {l.visible ? <IconEye size={18} /> : <IconEyeOff size={18} />}
           </button>
           <button onClick={() => update({ locked: !l.locked })} className={`p-2.5 rounded-xl transition-all ${l.locked ? 'text-amber-400 bg-amber-500/10' : 'text-white/20 hover:text-white/40'}`} title="Lock">
-            {l.locked ? <Lock size={18} /> : <Unlock size={18} />}
+            {l.locked ? <IconLock size={18} /> : <IconLockOpen size={18} />}
           </button>
-          <button onClick={() => store.reorderLayer(sceneId, layer.id, Math.min(layer.zIndex + 1, 99))} className="p-2.5 rounded-xl text-white/20 hover:text-white/80 transition-all" title="Move Up">
-            <ChevronUp size={18} />
+          <button onClick={() => store.reorderLayer(sceneId, layer.id, Math.min(layer.zIndex + 1, 99))} className="p-2.5 rounded-xl text-white/20 hover:text-white/80 transition-all" title="IconArrowsMove Up">
+            <IconChevronUp size={18} />
           </button>
-          <button onClick={() => store.reorderLayer(sceneId, layer.id, Math.max(0, layer.zIndex - 1))} className="p-2.5 rounded-xl text-white/20 hover:text-white/80 transition-all" title="Move Down">
-            <ChevronDown size={18} />
+          <button onClick={() => store.reorderLayer(sceneId, layer.id, Math.max(0, layer.zIndex - 1))} className="p-2.5 rounded-xl text-white/20 hover:text-white/80 transition-all" title="IconArrowsMove Down">
+            <IconChevronDown size={18} />
           </button>
           <div className="flex-1" />
           <button onClick={() => store.removeLayer(sceneId, layer.id)} className="p-2.5 rounded-xl text-white/20 hover:text-red-400 transition-all" title="Delete">
-            <Trash2 size={18} />
+            <IconTrash size={18} />
           </button>
         </div>
 
@@ -162,14 +159,14 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
               className="h-[42px] px-3 rounded-lg border border-white/5 bg-white/5 text-white/35 hover:text-white hover:bg-white/10 transition-all"
               title="Reset Rotation"
             >
-              <RotateCw size={16} />
+              <IconRotateClockwise2 size={16} />
             </button>
             <button
               onClick={fitToCanvas}
               className="h-[42px] px-3 rounded-lg border border-accent/20 bg-accent/10 text-accent hover:bg-accent/20 transition-all"
               title="Fit to Canvas Bounds"
             >
-              <Maximize size={16} />
+              <IconMaximize size={16} />
             </button>
           </div>
         </div>
@@ -188,7 +185,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
           </div>
         </div>
 
-        {/* Type-Specific Config */}
+        {/* IconTypography-Specific Config */}
         {(layer.type === 'camera' || layer.type === 'audio') && (
           <div>
             <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-3">
@@ -210,7 +207,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
                 <>
                   {devices.filter(d => d.kind === 'audioinput').length === 0 && <option value="">No audio devices</option>}
                   {devices.filter(d => d.kind === 'audioinput').map(d => (
-                    <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic ${d.deviceId.slice(0, 8)}`}</option>
+                    <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 8)}`}</option>
                   ))}
                 </>
               )}
@@ -289,7 +286,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
                 className="h-[42px] px-3 rounded-lg border border-white/5 bg-white/5 text-white/25 hover:text-white hover:bg-white/10 transition-all"
                 title="Reload Source"
               >
-                <RefreshCw size={16} />
+                <IconRefresh size={16} />
               </button>
             </div>
           </div>
@@ -312,7 +309,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
                 className="h-[42px] px-3 rounded-lg border border-white/5 bg-white/5 text-white/25 hover:text-white hover:bg-white/10 transition-all"
                 title="Reload Source"
               >
-                <RefreshCw size={16} />
+                <IconRefresh size={16} />
               </button>
             </div>
           </div>
@@ -355,7 +352,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices }: Props) {
               }}
               className="w-full text-[10px] font-bold uppercase tracking-widest text-accent py-2 px-3 rounded-lg border border-accent/20 hover:bg-accent/10 transition-all"
             >
-              Change Image
+              Change IconPhoto
             </button>
           </div>
         )}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Cpu, Radio, Activity, Layout, RefreshCw } from 'lucide-react'
+import {IconCpu, IconRadio, IconActivity, IconLayout, IconRefresh} from '@tabler/icons-react'
 import { LoupedeckIcon } from '../../components/ui/LoupedeckIcon'
 
 export default function LoupedeckPage() {
@@ -11,10 +11,6 @@ export default function LoupedeckPage() {
             <LoupedeckIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>Loupedeck Console</h1>
             <p className="app-page-intro">
               Professional console integration. Map stream actions, volume dials, and scene transitions to your Loupedeck Live or CT.
@@ -25,7 +21,7 @@ export default function LoupedeckPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="Service Status" 
           value="STOPPED" 
           sub="Service Link Failed"
@@ -38,7 +34,7 @@ export default function LoupedeckPage() {
           sub="Configured Layouts"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="Plugin Version" 
           value="v1.0.0" 
           sub="Core Engine Version"
@@ -55,13 +51,13 @@ export default function LoupedeckPage() {
                 <p>Establishing connection with Loupedeck Service.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
-                <RefreshCw size={10} />
+                <IconRefresh size={10} />
                 Reconnect
               </button>
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01] flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 m-8 rounded-3xl">
-              <Layout size={64} className="mb-4 opacity-10" />
+              <IconLayout size={64} className="mb-4 opacity-10" />
               <p className="text-sm font-medium">Loupedeck hardware not detected.</p>
               <p className="text-xs text-white/5 mt-2">Ensure the Loupedeck software is running and the device is plugged in.</p>
             </div>

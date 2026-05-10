@@ -1,4 +1,4 @@
-import { Music, SkipForward, Trash2, User, ListMusic, Play } from 'lucide-react'
+import {IconMusic, IconPlayerSkipForward, IconTrash, IconUser, IconList, IconPlayerPlay} from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import type { SpotifySongRequest, SpotifyStatus } from '../../../shared/spotify-types'
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../../shared/app-settings'
@@ -116,10 +116,6 @@ export default function SpotifyPage() {
             <SpotifyIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Music size={14} className="text-accent" />
-              <span>Music Sync</span>
-            </div>
             <h1>Spotify Management</h1>
             <p className="app-page-intro">
               Synchronize your broadcast with Spotify. Viewers can request tracks directly via chat commands 
@@ -131,7 +127,7 @@ export default function SpotifyPage() {
         {status?.connected && (
           <div className="flex items-center gap-4 px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 glass">
             <div className="p-2 rounded-lg bg-white/5 text-white/60">
-              <User size={16} />
+              <IconUser size={16} />
             </div>
             <div className="text-left">
               <div className="text-[10px] font-black uppercase tracking-widest opacity-40">Connected as</div>
@@ -190,7 +186,7 @@ export default function SpotifyPage() {
                 <Toggle value={settings.spotifySongRequestsEnabled} onChange={(v) => updateSetting('spotifySongRequestsEnabled', v)} />
               </SpotifySetting>
 
-              <SpotifySetting label="Play Command" desc="Enable !play <song> syntax." disabled={!settings.spotifySongRequestsEnabled}>
+              <SpotifySetting label="PlayerPlay Command" desc="Enable !play <song> syntax." disabled={!settings.spotifySongRequestsEnabled}>
                 <Toggle value={settings.spotifyPlayEnabled} onChange={(v) => updateSetting('spotifyPlayEnabled', v)} disabled={!settings.spotifySongRequestsEnabled} />
               </SpotifySetting>
 
@@ -220,7 +216,7 @@ export default function SpotifyPage() {
 
               <div className="flex items-center justify-between py-3">
                 <div>
-                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Per-User Cap</h4>
+                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Per-IconUser Cap</h4>
                   <p className="text-[10px] text-white/20">Max requests one viewer can hold.</p>
                 </div>
                 <NumberInput
@@ -239,7 +235,7 @@ export default function SpotifyPage() {
           <div className="app-section-head">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-white/[0.03] text-white/40">
-                <ListMusic size={18} />
+                <IconList size={18} />
               </div>
               <div>
                 <h2>Backlog Queue</h2>
@@ -248,7 +244,7 @@ export default function SpotifyPage() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => window.api.spotify.skip()} className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest">
-                <SkipForward size={14} className="mr-2" />
+                <IconPlayerSkipForward size={14} className="mr-2" />
                 Skip
               </button>
               <button onClick={() => window.api.spotify.clearQueue()} className="app-button-danger !h-10 !px-4 text-[10px] font-black uppercase tracking-widest">
@@ -266,7 +262,7 @@ export default function SpotifyPage() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-40 opacity-10">
-                <Music size={64} className="mb-4" />
+                <IconMusic size={64} className="mb-4" />
                 <p className="text-sm font-bold uppercase tracking-widest">Backlog Clear</p>
               </div>
             )}
@@ -311,10 +307,10 @@ function QueueItem({ req, index, onRemove }: { req: SpotifySongRequest; index?: 
           {req.track.albumArtUrl ? (
             <img src={req.track.albumArtUrl} alt="" className="w-full h-full object-cover" />
           ) : (
-            <Music size={14} className="group-hover:hidden" />
+            <IconMusic size={14} className="group-hover:hidden" />
           )}
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <Play size={14} fill="currentColor" />
+            <IconPlayerPlay size={14} fill="currentColor" />
           </div>
         </div>
         <div className="min-w-0">
@@ -336,7 +332,7 @@ function QueueItem({ req, index, onRemove }: { req: SpotifySongRequest; index?: 
         </div>
         {onRemove && (
           <button onClick={onRemove} className="p-2 rounded-lg hover:bg-danger/10 hover:text-danger text-white/10 transition-all">
-            <Trash2 size={14} />
+            <IconTrash size={14} />
           </button>
         )}
       </div>

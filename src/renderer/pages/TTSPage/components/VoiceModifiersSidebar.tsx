@@ -1,4 +1,4 @@
-import { Mic } from 'lucide-react'
+import {IconMicrophone} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { VoiceModifiers } from '../../../../shared/app-settings'
 
@@ -16,7 +16,7 @@ export function VoiceModifiersSidebar({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Mic size={32} />
+            <IconMicrophone size={32} />
           </div>
           <div>
             <h2>Voice Modifiers</h2>
@@ -26,10 +26,10 @@ export function VoiceModifiersSidebar({
       </div>
       <div className="app-section-content">
         <div className="flex flex-col gap-6">
-          {/* Radio Filter */}
+          {/* IconRadio IconFilter */}
           <div className="flex items-center justify-between gap-6">
             <div className="min-w-0">
-              <h4 className="text-sm font-bold text-white mb-0.5">Radio Filter</h4>
+              <h4 className="text-sm font-bold text-white mb-0.5">IconRadio IconFilter</h4>
               <p className="text-xs text-white/40">High-pass + slight crunch for a broadcast feel.</p>
             </div>
             <Toggle 

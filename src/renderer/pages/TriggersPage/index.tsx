@@ -1,4 +1,4 @@
-import { Bot, Plus, Volume2 } from 'lucide-react'
+import {IconRobot, IconPlus, IconVolume} from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { VoiceProfile } from '../../../main/tts/voice-profiles'
@@ -118,18 +118,10 @@ export default function TriggersPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <Bot size={32} className="text-accent" />
+            <IconRobot size={32} className="text-accent" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Bot size={14} className="text-accent" />
-              <span>Core Configuration</span>
-            </div>
             <h1>Stream Triggers</h1>
-            <p className="app-page-intro">
-              Automate your stream reactions. Create complex logic that connects chat events, 
-              voice responses, and sound alerts into seamless automated workflows.
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -152,7 +144,7 @@ export default function TriggersPage() {
             </button>
           </div>
           <button onClick={openCreateTrigger} className="app-button-primary !h-12 !px-8">
-            <Plus size={18} className="mr-2" />
+            <IconPlus size={18} className="mr-2" />
             New Trigger
           </button>
         </div>
@@ -160,12 +152,12 @@ export default function TriggersPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric
-          icon={<Bot size={18} className="text-white" />}
+          icon={<IconRobot size={18} className="text-white" />}
           label="Total Rules"
           value={triggers.length.toString()}
         />
         <Metric
-          icon={<Volume2 size={18} className="text-white/60" />}
+          icon={<IconVolume size={18} className="text-white/60" />}
           label="Active Automations"
           value={enabledCount.toString()}
         />
@@ -187,11 +179,10 @@ export default function TriggersPage() {
           <div className="app-section-head">
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center text-accent">
-                <Bot size={32} />
+                <IconRobot size={32} />
               </div>
               <div>
                 <h2>Automation Rules</h2>
-                <p>Manage event-based triggers.</p>
               </div>
             </div>
             <div className="app-chip-accent">
@@ -204,7 +195,7 @@ export default function TriggersPage() {
             {triggers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="w-20 h-20 rounded-3xl bg-white/[0.02] border border-white/5 flex items-center justify-center mb-6">
-                  <Plus size={32} className="text-white/10" />
+                  <IconPlus size={32} className="text-white/10" />
                 </div>
                 <h3 className="text-xl font-black text-white mb-2 tracking-tight">No Triggers Configured</h3>
                 <p className="text-sm text-white/40 max-w-xs mb-8">

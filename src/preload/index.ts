@@ -239,9 +239,14 @@ const api = {
   stats: {
     getGlobal: () => ipcRenderer.invoke('stats:get-global'),
     getTopUsers: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-users', opts),
+    getTopIdentities: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-identities', opts),
     getUser: (platform: Platform, username: string) =>
       ipcRenderer.invoke('stats:get-user', { platform, username }),
-    reset: () => ipcRenderer.invoke('stats:reset')
+    reset: () => ipcRenderer.invoke('stats:reset'),
+    linkAccounts: (payload: { p1: Platform; u1: string; p2: Platform; u2: string }) =>
+      ipcRenderer.invoke('stats:link-accounts', payload),
+    unlinkAccount: (payload: { platform: Platform; username: string }) =>
+      ipcRenderer.invoke('stats:unlink-account', payload)
   },
 
   // --- Streaming ---

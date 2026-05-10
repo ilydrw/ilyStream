@@ -1,4 +1,4 @@
-import { ChevronDown, Check } from 'lucide-react'
+import {IconChevronDown, IconCheck} from '@tabler/icons-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface SelectOption {
@@ -130,7 +130,7 @@ export function Select({
             {selectedOption?.label ?? placeholder}
           </span>
         </span>
-        <ChevronDown
+        <IconChevronDown
           size={16}
           className={`shrink-0 text-white/40 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
@@ -182,7 +182,7 @@ export function Select({
                       {option.icon}
                       {option.label}
                     </span>
-                    {isActive && <Check size={14} className="shrink-0 text-white" />}
+                    {isActive && <IconCheck size={14} className="shrink-0 text-white" />}
                   </button>
                 )
               })}

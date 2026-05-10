@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Monitor, Plus } from 'lucide-react'
+import {IconDeviceDesktop, IconExternalLink, IconLayersLinked, IconPlus, IconStack2} from '@tabler/icons-react'
 import { type Widget } from '../../../shared/widgets'
 import { WIDGET_TEMPLATES, type WidgetTemplate } from './constants'
 import { WidgetCard } from './components/WidgetCard'
 import { NewWidgetModal } from './components/NewWidgetModal'
 import { WidgetEditorModal } from './components/WidgetEditorModal'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function WidgetPage() {
   const [widgets, setWidgets] = useState<Widget[]>([])
@@ -16,7 +17,10 @@ export default function WidgetPage() {
   const [overlayRunning, setOverlayRunning] = useState(false)
 
   useEffect(() => {
-    if (!window.api?.widgets) return
+    if (!window.api?.widgets) {
+      setLoading(false)
+      return
+    }
 
     void loadWidgets()
     void loadOverlayStatus()
@@ -124,27 +128,52 @@ export default function WidgetPage() {
   }
 
   return (
-    <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="app-header-eyebrow">
-            <Monitor size={14} className="text-accent" />
-            <span>Browser Sources</span>
-          </div>
-          <h1>Widgets &amp; Overlays</h1>
-          <p className="app-page-intro">
-            Configure on-stream graphics. Each widget produces a URL you can drop into OBS / Streamlabs as
-            a browser source. Edit a widget and the live preview here matches exactly what your viewers see.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="app-page widgets-page">
+      <PageHeader
+        kicker="Overlay compositor"
+        title="Widgets & Overlays"
+        icon={IconStack2}
+        description="Create browser-source graphics that stay wired to live events, chat, Spotify, stats, and the overlay server."
+        actions={
+          <>
           <OverlayStatusPill running={overlayRunning} port={overlayPort} />
           <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-bold">
-            <Plus size={16} className="mr-2" />
+            <IconPlus size={16} className="mr-2" />
             New Widget
           </button>
+          </>
+        }
+      />
+
+      <section className="widget-command-strip">
+        <div className="widget-command-strip__stat">
+          <IconLayersLinked size={18} />
+          <span>Saved widgets</span>
+          <strong>{widgets.length}</strong>
         </div>
-      </header>
+        <div className="widget-command-strip__stat">
+          <IconExternalLink size={18} />
+          <span>OBS route</span>
+          <strong>{overlayRunning && overlayPort ? `:${overlayPort}` : 'Offline'}</strong>
+        </div>
+        <div className="widget-template-shelf" aria-label="Available widget templates">
+          {WIDGET_TEMPLATES.slice(0, 7).map((template) => {
+            const TemplateIcon = template.icon
+            return (
+              <button
+                key={template.type}
+                type="button"
+                className="widget-template-chip"
+                onClick={() => void createWidget(template)}
+                title={`Create ${template.label}`}
+              >
+                <TemplateIcon size={15} />
+                <span>{template.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-40 opacity-30">
@@ -153,7 +182,7 @@ export default function WidgetPage() {
       ) : widgets.length === 0 ? (
         <EmptyState onCreate={() => setShowNewModal(true)} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="widget-card-grid">
           {widgets.map((widget) => (
             <WidgetCard
               key={widget.id}
@@ -194,7 +223,7 @@ export default function WidgetPage() {
 function OverlayStatusPill({ running, port }: { running: boolean; port: number | null }) {
   return (
     <div
-      className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-xs font-bold ${
+      className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-bold ${
         running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40'
       }`}
     >
@@ -206,15 +235,18 @@ function OverlayStatusPill({ running, port }: { running: boolean; port: number |
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-32 rounded-2xl border border-dashed border-white/10 bg-white/[0.01]">
-      <Monitor size={40} className="text-white/10 mb-4" />
-      <h3 className="text-lg font-bold text-white/60">No widgets yet</h3>
-      <p className="text-sm text-white/30 mt-1 mb-6 text-center max-w-sm">
-        Create a widget to generate a browser-source URL for OBS.
-      </p>
+    <div className="widget-empty-state">
+      <div className="widget-empty-state__screen">
+        <IconDeviceDesktop size={42} />
+        <span />
+      </div>
+      <div>
+        <h3>No overlay routes yet</h3>
+        <p>Create the first widget and ilyStream will generate the browser-source URL for OBS.</p>
+      </div>
       <button onClick={onCreate} className="app-button-primary !h-11 !px-6">
-        <Plus size={15} className="mr-2" />
-        Create your first widget
+        <IconPlus size={15} className="mr-2" />
+        Create widget
       </button>
     </div>
   )

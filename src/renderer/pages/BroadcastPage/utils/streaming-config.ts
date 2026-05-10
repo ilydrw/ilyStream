@@ -1,4 +1,4 @@
-export type BroadcastLayoutMode = 'horizontal' | 'vertical' | 'dual'
+export type BroadcastLayoutMode = 'horizontal' | 'vertical' | 'dual' | 'dual-portrait' | 'dual-horizontal'
 export type BroadcastLayoutId = 'horizontal' | 'vertical'
 export type CaptureInputFormat = 'h264' | 'mjpeg'
 

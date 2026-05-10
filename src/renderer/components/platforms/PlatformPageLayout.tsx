@@ -102,10 +102,6 @@ export function PlatformPageHeader({
           <PlatformLogo platform={platformId} size={48} />
         </div>
         <div>
-          <div className="app-header-eyebrow">
-            {icon}
-            <span>Service Integration</span>
-          </div>
           <h1>{title}</h1>
           <p className="app-page-intro">
             {description}

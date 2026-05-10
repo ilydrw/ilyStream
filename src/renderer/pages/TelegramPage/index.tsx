@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Send, Activity, Lock, ExternalLink } from 'lucide-react'
+import {IconWorld, IconSend, IconActivity, IconLock, IconExternalLink} from '@tabler/icons-react'
 import { TelegramIcon } from '../../components/ui/TelegramIcon'
 
 export default function TelegramPage() {
@@ -7,10 +7,6 @@ export default function TelegramPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div>
-          <div className="app-header-eyebrow">
-            <Globe size={14} className="text-accent" />
-            <span>Platform Integration</span>
-          </div>
           <div className="flex items-center gap-4 mb-2">
             <TelegramIcon size={48} className="text-[#24A1DE]" />
             <h1>Telegram Live</h1>
@@ -23,7 +19,7 @@ export default function TelegramPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 
-          icon={<Send size={20} className="text-white/20" />} 
+          icon={<IconSend size={20} className="text-white/20" />} 
           label="RTMP Status" 
           value="Ready" 
         />
@@ -33,7 +29,7 @@ export default function TelegramPage() {
           value="0" 
         />
         <Metric 
-          icon={<Lock size={20} className="text-green-400" />} 
+          icon={<IconLock size={20} className="text-green-400" />} 
           label="Encryption" 
           value="Active" 
         />
@@ -53,7 +49,7 @@ export default function TelegramPage() {
                 <input type="password" placeholder="Paste your Telegram Stream Key..." className="app-input" />
               </div>
               <button className="app-button-primary w-full !h-14 text-xs font-black uppercase tracking-widest">
-                Save Stream Details
+                IconDeviceFloppy Stream Details
               </button>
             </div>
           </section>
@@ -65,7 +61,7 @@ export default function TelegramPage() {
             <ol className="text-xs text-white/40 space-y-4 list-decimal list-inside leading-relaxed">
               <li>Open your Channel or Group on Telegram.</li>
               <li>Tap the three dots and select 'Stream With...'.</li>
-              <li>Copy the Server URL and Stream Key into the fields on the left.</li>
+              <li>IconCopy the Server URL and Stream Key into the fields on the left.</li>
               <li>Press 'Start Streaming' in IlyStream.</li>
             </ol>
           </section>

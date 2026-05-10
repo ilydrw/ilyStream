@@ -1,5 +1,5 @@
 import React from 'react'
-import { Cpu, Radio, Activity, Zap, RefreshCw } from 'lucide-react'
+import {IconCpu, IconRadio, IconActivity, IconBolt, IconRefresh} from '@tabler/icons-react'
 import { RazerIcon } from '../../components/ui/RazerIcon'
 
 export default function RazerPage() {
@@ -11,10 +11,6 @@ export default function RazerPage() {
             <RazerIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>Razer Chroma</h1>
             <p className="app-page-intro">
               Unify your battlestation. Synchronize your Razer peripherals with stream events using the Chroma SDK. 
@@ -26,7 +22,7 @@ export default function RazerPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="Chroma SDK" 
           value="DISCONNECTED" 
           sub="Service Link Failed"
@@ -39,7 +35,7 @@ export default function RazerPage() {
           sub="Detected Hardware"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="Visualizer" 
           value="OFF" 
           sub="Audio Sync Engine"
@@ -56,13 +52,13 @@ export default function RazerPage() {
                 <p>Initializing Chroma broadcast session.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
-                <RefreshCw size={10} />
+                <IconRefresh size={10} />
                 Restart SDK
               </button>
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01] flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 m-8 rounded-3xl">
-              <Zap size={64} className="mb-4 opacity-10" />
+              <IconBolt size={64} className="mb-4 opacity-10" />
               <p className="text-sm font-medium">Razer Synapse not detected.</p>
               <p className="text-xs text-white/5 mt-2">Please ensure Razer Synapse is installed and Chroma Connect is enabled.</p>
             </div>

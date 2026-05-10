@@ -1,4 +1,4 @@
-import { Music, Play, Smile, Trash2 } from 'lucide-react'
+import {IconMusic, IconPlayerPlay, IconMoodSmile, IconTrash} from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { SoundFile } from '../../../hooks/useSoundboard'
 
@@ -47,7 +47,7 @@ export function SoundRow({ sound, onPlay, onDelete, onEditEmoji }: SoundRowProps
               {sound.emoji}
             </span>
           ) : (
-            <Music
+            <IconMusic
               size={16}
               className={isPreviewing ? 'text-accent animate-pulse' : 'text-white/20'}
             />
@@ -69,23 +69,23 @@ export function SoundRow({ sound, onPlay, onDelete, onEditEmoji }: SoundRowProps
               ? '!text-accent !bg-accent/10'
               : '!bg-white/[0.03] !text-white/40 hover:!text-white'
           }`}
-          title="Play sound"
+          title="Preview sound"
         >
-          <Play size={14} className="fill-current" />
+          <IconPlayerPlay size={14} className="fill-current" />
         </button>
         <button
           onClick={onEditEmoji}
           className="app-button !h-10 !w-10 !p-0 !bg-white/[0.03] !text-white/40 hover:!text-white"
           title="Edit properties"
         >
-          <Smile size={14} />
+          <IconMoodSmile size={14} />
         </button>
         <button
           onClick={onDelete}
           className="app-button !h-10 !w-10 !p-0 !bg-white/[0.03] !text-white/40 hover:!text-danger"
           title="Delete"
         >
-          <Trash2 size={14} />
+          <IconTrash size={14} />
         </button>
       </div>
     </div>

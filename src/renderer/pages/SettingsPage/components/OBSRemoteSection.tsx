@@ -1,5 +1,5 @@
 import React from 'react'
-import { Video } from 'lucide-react'
+import {IconVideo} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { AppSettings } from '../../../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../../../shared/obs'
@@ -18,7 +18,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Video size={32} />
+            <IconVideo size={32} />
           </div>
           <div>
             <h2>OBS Remote</h2>
@@ -74,7 +74,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
               disabled={!settings.obsEnabled}
               className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-accent/5 hover:bg-accent/10 text-accent border-accent/20"
             >
-              {obsStatus?.connecting ? 'Linking...' : 'Save & Connect'}
+              {obsStatus?.connecting ? 'Linking...' : 'DeviceFloppy & Connect'}
             </button>
           </div>
         </div>

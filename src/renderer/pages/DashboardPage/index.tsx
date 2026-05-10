@@ -1,4 +1,4 @@
-import { MessageSquareMore, Radio, Users, Volume2, WandSparkles } from 'lucide-react'
+import {IconMessage2, IconRadio, IconUsers, IconVolume, IconSparkles} from '@tabler/icons-react'
 import { Link } from 'react-router-dom'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useChatStore } from '../../stores/chat-store'
@@ -57,23 +57,10 @@ export default function DashboardPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <Radio size={32} className="text-accent" />
+            <IconRadio size={32} className="text-accent" />
           </div>
           <div>
-            <div className="flex items-center gap-3">
-              <div className="app-header-eyebrow">
-                <Radio size={14} className="text-accent" />
-                <span>Operational Center</span>
-              </div>
-              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black tracking-widest text-white/40">
-                v0.0.6
-              </span>
-            </div>
             <h1>Broadcast Dashboard</h1>
-            <p className="app-page-intro">
-              Real-time telemetry and control interface for your unified stream environment. 
-              Monitor audience engagement and system health across all connected platforms.
-            </p>
           </div>
         </div>
       </header>
@@ -81,21 +68,21 @@ export default function DashboardPage() {
       {/* Hero Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-6 mb-12">
         <MetricCard 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="Service Nodes" 
           value={`${connectedCount}/4`} 
           subValue={issueCount > 0 ? `${issueCount} Node Issues` : "All Nodes Healthy"}
           trend={issueCount > 0 ? 'down' : 'neutral'}
         />
         <MetricCard 
-          icon={<Users size={20} />} 
+          icon={<IconUsers size={20} />} 
           label="Combined Audience" 
           value={totalViewers.toLocaleString()} 
           subValue="Active Concurrents"
           trend="neutral"
         />
         <MetricCard 
-          icon={<MessageSquareMore size={20} />} 
+          icon={<IconMessage2 size={20} />} 
           label="Data Throughput" 
           value={messages.length.toLocaleString()} 
           subValue="Messages Captured"
@@ -110,7 +97,6 @@ export default function DashboardPage() {
             <div className="app-section-head">
               <div>
                 <h2 className="text-sm font-black tracking-tight">Service Nodes</h2>
-                <p className="text-[10px] opacity-40">Real-time status of connected platform ingest servers.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 pt-0">
@@ -118,7 +104,7 @@ export default function DashboardPage() {
                 <Link 
                   key={row.platform} 
                   to={`/connections/${row.platform}`}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group"
+                  className="flex items-center justify-between pl-4 py-4 pr-0 rounded-2xl bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center transition-transform">
@@ -134,9 +120,9 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-black text-white tabular-nums leading-none">{row.viewers.toLocaleString()}</div>
-                    <div className="text-[9px] font-black tracking-widest text-white/20 mt-1">Viewers</div>
+                  <div className="text-right flex flex-col items-end">
+                    <div className="text-lg font-black text-white tabular-nums leading-none translate-x-1 pr-0">{row.viewers.toLocaleString()}</div>
+                    <div className="text-[9px] font-black tracking-widest text-white/20 mt-1 pr-0">Viewers</div>
                   </div>
                 </Link>
               ))}
@@ -147,7 +133,6 @@ export default function DashboardPage() {
             <div className="app-section-head">
               <div>
                 <h2 className="text-sm font-black tracking-tight">Event Pulse</h2>
-                <p className="text-[10px] opacity-40">Consolidated real-time stream interaction telemetry.</p>
               </div>
               <div className="flex items-center gap-2">
                 <Link to="/stats" className="app-button !bg-white/[0.03] !border-white/10 !h-10 !px-5 text-[10px] font-black tracking-widest hover:!bg-white/[0.05]">
@@ -161,7 +146,7 @@ export default function DashboardPage() {
             <div className="flex-1 overflow-y-auto custom-scrollbar p-8 pt-0">
               {liveMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-white/10">
-                  <MessageSquareMore size={48} className="mb-4 opacity-10" />
+                  <IconMessage2 size={48} className="mb-4 opacity-10" />
                   <p className="text-[10px] font-black tracking-widest opacity-20">Monitoring - Waiting for Interaction</p>
                 </div>
               ) : (
@@ -196,7 +181,6 @@ export default function DashboardPage() {
             <div className="app-section-head">
               <div>
                 <h2 className="text-sm font-black tracking-tight">Speech Engine</h2>
-                <p className="text-[10px] opacity-40">Active Text-to-Speech queue status.</p>
               </div>
               <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black tracking-widest ${ttsEnabled ? 'bg-success/10 text-success' : 'bg-white/5 text-white/20'}`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${ttsEnabled ? 'bg-success' : 'bg-white/10'}`} />
@@ -206,7 +190,7 @@ export default function DashboardPage() {
             <div className="p-8 pt-0 flex flex-col gap-4">
               {queuePreview.length === 0 ? (
                 <div className="py-12 text-center text-white/10">
-                  <Volume2 size={32} className="mx-auto mb-3 opacity-10" />
+                  <IconVolume size={32} className="mx-auto mb-3 opacity-10" />
                   <p className="text-[10px] font-black tracking-widest opacity-20">Queue Neutral</p>
                 </div>
               ) : (
@@ -231,14 +215,13 @@ export default function DashboardPage() {
             <div className="app-section-head">
               <div>
                 <h2 className="text-sm font-black tracking-tight">Quick Routes</h2>
-                <p className="text-[10px] opacity-40">Primary navigation entry points.</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 p-8 pt-0">
-              <QuickLink to="/chat" icon={<MessageSquareMore size={18} />} label="Chat Hub" />
-              <QuickLink to="/tts" icon={<Volume2 size={18} />} label="Voice Engine" />
+              <QuickLink to="/chat" icon={<IconMessage2 size={18} />} label="Chat Hub" />
+              <QuickLink to="/tts" icon={<IconVolume size={18} />} label="Voice Engine" />
               <QuickLink to="/spotify" icon={<SpotifyIcon size={18} />} label="Spotify Hub" />
-              <QuickLink to="/triggers" icon={<WandSparkles size={18} />} label="Automations" />
+              <QuickLink to="/triggers" icon={<IconSparkles size={18} />} label="Automations" />
             </div>
           </section>
 
@@ -246,7 +229,6 @@ export default function DashboardPage() {
             <div className="app-section-head">
               <div>
                 <h2 className="text-sm font-black tracking-tight">System Health</h2>
-                <p className="text-[10px] opacity-40">Diagnostic telemetry summary.</p>
               </div>
             </div>
             <div className="p-8 pt-0 space-y-6">

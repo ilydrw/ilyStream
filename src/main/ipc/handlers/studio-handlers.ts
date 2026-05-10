@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage } from 'electron'
 import { join } from 'path'
 import { execFileSync } from 'child_process'
+import { existsSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { Database } from '../../db/database'
 import { OverlayServer } from '../overlay/overlay-server'
@@ -12,6 +13,17 @@ let pendingDisplayMediaRequest: {
   audioOnly: boolean
   forceLoopback?: boolean
 } | null = null
+
+function resolveBundledResource(...segments: string[]): string | null {
+  const candidates = [
+    join(__dirname, '../../resources', ...segments),
+    join(process.resourcesPath, ...segments),
+    join(process.resourcesPath, 'resources', ...segments),
+    join(process.cwd(), 'resources', ...segments)
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
 
 export function registerStudioHandlers(db: Database, overlayServer: OverlayServer, browserSourceService: BrowserSourceService) {
   // Deck Actions
@@ -54,37 +66,27 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     }))
   })
 
-  ipcMain.handle('studio:prepare-display-capture', (_event, request: { sourceId?: string; withAudio?: boolean; audioOnly?: boolean; forceLoopback?: boolean }) => {
+  ipcMain.handle('studio:prepare-display-capture', async (_event, request: { sourceId?: string; withAudio?: boolean; audioOnly?: boolean; forceLoopback?: boolean }) => {
     const sourceId = typeof request?.sourceId === 'string' ? request.sourceId : ''
     if (!sourceId) return { success: false, error: 'No desktop source selected' }
+    const source = await findDesktopSource(sourceId)
+    if (!source) return { success: false, error: `Desktop source is no longer available: ${sourceId}` }
+
     pendingDisplayMediaRequest = {
       sourceId,
       withAudio: request?.withAudio === true,
       audioOnly: request?.audioOnly === true,
       forceLoopback: request?.forceLoopback === true
     }
-    return { success: true }
+    return { success: true, source: { id: source.id, name: source.name } }
   })
 
   ipcMain.handle('studio:find-spotify-source', async () => {
     try {
-      const output = execFileSync('powershell.exe', [
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command',
-        'Get-Process Spotify -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -ExpandProperty MainWindowHandle'
-      ], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim()
-
-      if (!output) {
-        console.log('[SpotifySource] No Spotify process found with MainWindowHandle.')
-        return null
-      }
-      const handles = output.split(/\r?\n/).map(h => h.trim()).filter(Boolean)
-      if (handles.length === 0) return null
-
       const sources = await desktopCapturer.getSources({ types: ['window'] })
+      const handles = getSpotifyWindowHandles()
       for (const handle of handles) {
-        const match = sources.find(s => s.id === `window:${handle}` || s.id.endsWith(`:${handle}`))
+        const match = sources.find(s => sourceMatchesWindowHandle(s.id, handle))
         if (match) {
           console.log(`[SpotifySource] Found window via handle: ${match.name} (${match.id})`)
           return { id: match.id, name: match.name }
@@ -95,7 +97,11 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
         console.log(`[SpotifySource] Found window via name match: ${nameMatch.name} (${nameMatch.id})`)
         return { id: nameMatch.id, name: nameMatch.name }
       }
-      console.warn('[SpotifySource] Spotify handle found but no matching window in desktopCapturer.')
+      if (handles.length > 0) {
+        console.warn('[SpotifySource] Spotify handle found but no matching window in desktopCapturer.')
+      } else {
+        console.log('[SpotifySource] No Spotify window found in desktopCapturer.')
+      }
       return null
     } catch (err) {
       console.error('[SpotifySource] Error finding Spotify source:', err)
@@ -167,8 +173,8 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     const displays = screen.getAllDisplays()
     const targetDisplay = displays.find(d => d.id === monitorId) || screen.getPrimaryDisplay()
 
-    const iconPath = join(__dirname, '../../resources/ilyStream-AppIcon.ico')
-    const icon = nativeImage.createFromPath(iconPath)
+    const iconPath = resolveBundledResource('ilyStream-AppIcon.ico')
+    const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
     
     const projectorWindow = new BrowserWindow({
       x: targetDisplay.bounds.x,
@@ -176,7 +182,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       width: targetDisplay.bounds.width,
       height: targetDisplay.bounds.height,
       title: 'ilyStream Program Projector',
-      icon: icon,
+      icon: icon.isEmpty() ? undefined : icon,
       fullscreen: true,
       autoHideMenuBar: true,
       frame: false,
@@ -253,4 +259,34 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     console.log('[StudioHandlers] Loading state from DB...')
     return db.getSetting('studio_state_v1')
   })
+}
+
+async function findDesktopSource(sourceId: string) {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    fetchWindowIcons: false,
+    thumbnailSize: { width: 0, height: 0 }
+  })
+  return sources.find(source => source.id === sourceId) || null
+}
+
+function getSpotifyWindowHandles(): string[] {
+  try {
+    const output = execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-Command',
+      'Get-Process -Name Spotify -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.MainWindowHandle }; exit 0'
+    ], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim()
+
+    return output.split(/\r?\n/).map(handle => handle.trim()).filter(Boolean)
+  } catch (err) {
+    console.warn('[SpotifySource] Unable to query Spotify process handles:', err instanceof Error ? err.message : err)
+    return []
+  }
+}
+
+function sourceMatchesWindowHandle(sourceId: string, handle: string): boolean {
+  const parts = sourceId.split(':')
+  return sourceId === `window:${handle}` || (parts[0] === 'window' && parts[1] === handle)
 }

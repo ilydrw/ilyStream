@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Bot, Cpu, Zap, Key, Globe, MessageSquare, Power, Activity, Terminal } from 'lucide-react'
+import {IconRobot, IconCpu, IconBolt, IconKey, IconWorld, IconMessage, IconPower, IconActivity, IconTerminal2} from '@tabler/icons-react'
 import { Toggle } from '../../components/ui/Inputs'
 import { toast } from '../../components/ui/Toast'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
+import AICoHostIcon from '../../assets/ai-co-host.svg'
 
 export default function AICoHostPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -59,18 +60,10 @@ export default function AICoHostPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <Bot size={32} className="text-accent" />
+            <img src={AICoHostIcon} className="w-12 h-12 object-contain" alt="AI Co-Host" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Neural Integration</span>
-            </div>
             <h1>AI Co-Host</h1>
-            <p className="app-page-intro">
-              Deploy a sentiment-aware AI agent to engage with your audience.
-              The co-host analyzes chat dynamics and responds automatically to maintain stream energy.
-            </p>
           </div>
         </div>
 
@@ -84,7 +77,7 @@ export default function AICoHostPage() {
               settings.aiEnabled ? 'bg-accent text-white' : 'bg-white/5 text-white/40 border-white/10'
             }`}
           >
-            <Power size={16} />
+            <IconPower size={16} />
             {settings.aiEnabled ? 'AGENT ACTIVE' : 'AGENT BYPASSED'}
           </button>
         </div>
@@ -97,11 +90,10 @@ export default function AICoHostPage() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Globe size={32} />
+                  <IconWorld size={32} />
                 </div>
                 <div>
                   <h2>Brain Provider</h2>
-                  <p>LLM connection settings.</p>
                 </div>
               </div>
             </div>
@@ -134,7 +126,7 @@ export default function AICoHostPage() {
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Access Key</label>
                     <div className="relative">
-                      <Key size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20" />
+                      <IconKey size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20" />
                       <input 
                         type="password" 
                         value={settings.aiApiKey || ''}
@@ -150,10 +142,9 @@ export default function AICoHostPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-white mb-1">Neural Persona</h3>
-                      <p className="text-xs text-white/20">The system instructions that define the personality of your co-host.</p>
                     </div>
                     <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-                      <MessageSquare size={14} className="text-accent" />
+                      <IconMessage size={14} className="text-accent" />
                       <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Active Template: Custom</span>
                     </div>
                   </div>
@@ -176,11 +167,10 @@ export default function AICoHostPage() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Cpu size={32} />
+                  <IconCpu size={32} />
                 </div>
                 <div>
                   <h2>Parameters</h2>
-                  <p>Inference control.</p>
                 </div>
               </div>
             </div>
@@ -214,7 +204,7 @@ export default function AICoHostPage() {
 
               <div className="mt-12 pt-8 border-t border-white/5">
                 <div className="flex items-center gap-3 mb-6">
-                  <Activity size={14} className="text-white/20" />
+                  <IconActivity size={14} className="text-white/20" />
                   <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Neural Status</span>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5">
@@ -232,11 +222,10 @@ export default function AICoHostPage() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Zap size={32} />
+                  <IconBolt size={32} />
                 </div>
                 <div>
                   <h2>Engagement</h2>
-                  <p>Auto-pilot behavior.</p>
                 </div>
               </div>
             </div>

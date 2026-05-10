@@ -1,13 +1,13 @@
-import { Image, Play, Send, Type, Upload, Volume2, Zap } from 'lucide-react'
+import {IconPhoto, IconPlayerPlay, IconSend, IconTypography, IconUpload, IconVolume, IconBolt} from '@tabler/icons-react'
 import type { ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import type { Icon } from '@tabler/icons-react'
 import { AssetFile } from '../../hooks/useAssets'
 import { SoundFile } from '../../hooks/useSoundboard'
 import { AlertKind, EventSoundSettingKey, EventSoundSettings } from './types'
 
 interface AlertConfigSectionProps {
   title: string
-  icon: LucideIcon
+  icon: Icon
   type: AlertKind
   settings: EventSoundSettings
   sounds: SoundFile[]
@@ -92,14 +92,14 @@ export function AlertConfigSection({
           </div>
         </div>
         <button onClick={simulate} className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest">
-          <Send size={13} />
+          <IconSend size={13} />
           Test
         </button>
       </div>
 
       <div className="app-section-content !p-0">
         <div className="grid grid-cols-1 divide-y divide-white/[0.04] xl:grid-cols-3 xl:divide-x xl:divide-y-0">
-          <Panel icon={Volume2} title="Audio" active={audioEnabled}>
+          <Panel icon={IconVolume} title="Audio" active={audioEnabled}>
             <ToggleLine
               label="Play sound"
               value={audioEnabled}
@@ -122,12 +122,12 @@ export function AlertConfigSection({
                   ))}
                 </select>
                 <button
-                  onClick={playCurrentSound}
+                  onClick={() => playCurrentSound()}
                   disabled={!audioEnabled || !soundId}
                   className="app-button !h-11 !w-11 !p-0 disabled:opacity-30"
                   title="Preview sound"
                 >
-                  <Play size={14} className="fill-current" />
+                  <IconPlayerPlay size={14} className="fill-current" />
                 </button>
               </div>
               {selectedSound && <p className="mt-2 truncate text-[10px] font-bold text-white/25">{selectedSound.name}</p>}
@@ -144,12 +144,12 @@ export function AlertConfigSection({
             />
 
             <button onClick={onUploadSound} className="app-button w-full !h-10 !text-[10px]">
-              <Upload size={13} />
+              <IconUpload size={13} />
               Add Audio Asset
             </button>
           </Panel>
 
-          <Panel icon={Image} title="Visual" active={visualEnabled}>
+          <Panel icon={IconPhoto} title="Visual" active={visualEnabled}>
             <ToggleLine
               label="Show image"
               value={visualEnabled}
@@ -213,12 +213,12 @@ export function AlertConfigSection({
             </div>
 
             <button onClick={onUploadImage} className="app-button w-full !h-10 !text-[10px]">
-              <Upload size={13} />
+              <IconUpload size={13} />
               Add Visual Asset
             </button>
           </Panel>
 
-          <Panel icon={Type} title="Text" active={textEnabled}>
+          <Panel icon={IconTypography} title="Text" active={textEnabled}>
             <ToggleLine
               label="Show message"
               value={textEnabled}
@@ -257,7 +257,7 @@ export function AlertConfigSection({
                   }`}
                   title="Toggle gradient border"
                 >
-                  <Zap size={15} />
+                  <IconBolt size={15} />
                 </button>
               </Field>
             </div>
@@ -284,7 +284,7 @@ function Panel({
   active,
   children
 }: {
-  icon: LucideIcon
+  icon: Icon
   title: string
   active: boolean
   children: ReactNode

@@ -1,4 +1,4 @@
-import { MessagesSquare, Trash2 } from 'lucide-react'
+import {IconMessages, IconTrash} from '@tabler/icons-react'
 import { useMemo, useRef } from 'react'
 import type { Platform } from '../../../main/platforms/types'
 import { useChatStore } from '../../stores/chat-store'
@@ -43,18 +43,10 @@ export default function ChatPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <MessagesSquare size={32} className="text-accent" />
+            <IconMessages size={32} className="text-accent" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <MessagesSquare size={14} className="text-accent" />
-              <span>Conversation Bus</span>
-            </div>
             <h1>Unified Chat</h1>
-            <p className="app-page-intro">
-              Merge live chat, relay responses across services, and keep moderators aligned.
-              Search, filter, and moderate across all connected platforms in a single interface.
-            </p>
           </div>
         </div>
       </header>

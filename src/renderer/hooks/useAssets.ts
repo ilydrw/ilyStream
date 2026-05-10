@@ -20,8 +20,10 @@ export function useAssets() {
     refreshImages()
   }, [refreshImages])
 
-  const uploadImage = async (path: string) => {
-    await window.api.assets.images.upload(path)
+  const uploadImage = async (path?: string) => {
+    const resolvedPath = path ?? await window.api.assets.images.pickFile()
+    if (!resolvedPath) return
+    await window.api.assets.images.upload(resolvedPath)
     await refreshImages()
   }
 

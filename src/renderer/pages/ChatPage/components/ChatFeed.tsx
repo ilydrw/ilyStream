@@ -1,4 +1,4 @@
-import { ArrowDown, MessageSquareMore, Search } from 'lucide-react'
+import {IconArrowDown, IconMessage2, IconSearch} from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { type ChatMessage } from '../../../stores/chat-store'
@@ -77,7 +77,7 @@ export function ChatFeed({
             })}
           </div>
           <div className="relative w-full sm:w-56 shrink-0">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" />
+            <IconSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" />
             <input
               type="text"
               placeholder="Search messages..."
@@ -92,7 +92,7 @@ export function ChatFeed({
       <div ref={chatScrollRef} className="flex-1 relative overflow-y-auto custom-scrollbar">
         {filteredMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-white/10">
-            <MessageSquareMore size={48} className="mb-4 opacity-20" />
+            <IconMessage2 size={48} className="mb-4 opacity-20" />
             <p className="text-sm font-medium">No messages found in this view.</p>
           </div>
         ) : (
@@ -118,7 +118,7 @@ export function ChatFeed({
             className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-2xl hover:scale-105 transition-all"
           >
             <span className="flex items-center gap-2">
-              <ArrowDown size={14} />
+              <IconArrowDown size={14} />
               New Messages
             </span>
           </button>

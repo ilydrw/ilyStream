@@ -1,5 +1,153 @@
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(circle at 28% -18%, rgba(25, 200, 255, 0.12), transparent 32rem), var(--color-background);
+  color: var(--color-foreground);
+}
+
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 220px),
+    var(--color-background);
+}
+
+.app-topbar {
+  height: 54px;
+  flex: 0 0 54px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(12, 14, 19, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  z-index: 50;
+}
+
+.app-topbar-brand {
+  height: 54px;
+  width: 300px;
+  flex: 0 0 300px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.app-topbar-logo {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-topbar-wordmark {
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+  color: #fff;
+}
+
+.app-topbar-version {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.app-topbar-route {
+  min-width: 0;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.app-topbar-route-icon {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--color-accent);
+}
+
+.app-topbar-spacer {
+  flex: 1 1 auto;
+  min-width: 24px;
+}
+
+.app-window-controls {
+  height: 54px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  margin-left: auto;
+}
+
+.app-window-button {
+  width: 46px;
+  height: 54px;
+  flex: 0 0 46px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.app-window-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.app-window-button.is-danger:hover {
+  background: #e5484d;
+  color: #fff;
+}
+
 .app-page {
-  padding: 32px 40px;
+  padding: 30px 34px 56px;
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
@@ -7,24 +155,24 @@
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
-  row-gap: 32px;
+  row-gap: 28px;
+  min-height: 100%;
 }
 
 .app-page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 48px;
+  gap: 28px;
 }
 
 .app-page-header h1 {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 900;
   color: white;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   margin: 0;
-  line-height: 1;
+  line-height: 1.08;
   text-transform: none;
 }
 
@@ -38,21 +186,57 @@
   opacity: 0.7;
 }
 
-/* Global Eyebrow Style */
-.app-header-eyebrow {
+.app-page-title-cluster {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.app-page-title-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(25, 200, 255, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(25, 200, 255, 0.16), rgba(208, 53, 241, 0.1)),
+    rgba(255, 255, 255, 0.025);
+  color: var(--color-accent);
+}
+
+.app-page-title-copy {
+  min-width: 0;
+}
+
+.app-page-title-kicker {
+  margin-bottom: 7px;
+  color: rgba(255, 255, 255, 0.34);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.app-page-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: none;
-  letter-spacing: 0.15em;
-  color: var(--color-muted);
-  margin-bottom: 2px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Global Eyebrow Style (Disabled per User Request) */
+.app-header-eyebrow {
+  display: none !important;
 }
 
 .app-sidebar {
   display: flex;
+  flex: 0 0 auto;
   background: var(--color-background);
   border-right: 1px solid var(--color-border);
   transition: border-color 0.25s ease;
@@ -64,10 +248,17 @@
 
 .app-sidebar-rail {
   width: 72px;
+  flex: 0 0 72px;
   border-right: 1px solid rgba(255, 255, 255, 0.03);
   display: flex;
   flex-direction: column;
-  padding: 24px 0;
+  padding: 16px 0;
+}
+
+.app-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .app-rail-item {
@@ -114,12 +305,12 @@
 }
 
 .app-sidebar-drawer {
-  width: 240px;
-  flex: 0 0 240px;
+  width: 228px;
+  flex: 0 0 228px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  max-width: 240px;
+  max-width: 228px;
 }
 
 .app-drawer-item {
@@ -238,7 +429,7 @@
 
 @media (max-width: 1380px) {
   .app-page {
-    padding: 28px 30px 60px;
+    padding: 26px 28px 52px;
   }
   .alerts-page {
     padding: 30px 30px 60px;
@@ -252,8 +443,26 @@
 }
 
 @media (max-width: 980px) {
+  .app-topbar-brand {
+    width: 230px;
+    flex-basis: 230px;
+  }
+
+  .app-topbar-route {
+    display: none;
+  }
+
   .app-page {
-    padding: 24px 20px 52px;
+    padding: 22px 18px 48px;
+  }
+
+  .app-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-page-actions {
+    justify-content: flex-start;
   }
 
   .alerts-header,
@@ -282,6 +491,23 @@
 
   .alerts-sound-actions .app-button {
     flex: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-topbar-brand {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-topbar-version {
+    display: none;
+  }
+
+  .app-window-button {
+    width: 44px;
+    flex-basis: 44px;
   }
 }
 

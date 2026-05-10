@@ -1,4 +1,4 @@
-import { Clock, Search, Sparkles, X } from 'lucide-react'
+import {IconClock, IconSearch, IconSparkles, IconX} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   EMOJI_CATEGORIES,
@@ -130,7 +130,7 @@ export function EmojiPickerModal({
             <div className="space-y-6">
               <label className="text-[10px] font-bold uppercase tracking-widest text-white/20 px-1">Associated Icon</label>
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/10" size={16} />
+                <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-white/10" size={16} />
                 <input
                   type="text"
                   value={searchQuery}
@@ -145,7 +145,7 @@ export function EmojiPickerModal({
                     title="Clear search"
                     type="button"
                   >
-                    <X size={14} />
+                    <IconX size={14} />
                   </button>
                 )}
               </div>
@@ -165,7 +165,7 @@ export function EmojiPickerModal({
                     : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                <Clock size={14} />
+                <IconClock size={14} />
               </button>
               {EMOJI_CATEGORIES.map((category) => (
                 <button
@@ -241,7 +241,7 @@ export function EmojiPickerModal({
                 <div className="col-span-full flex flex-col items-center justify-center h-full text-white/30 space-y-2 py-8">
                   {isSearching ? (
                     <>
-                      <Search size={28} />
+                      <IconSearch size={28} />
                       <p className="text-xs font-semibold">No matches for "{searchQuery}"</p>
                       <p className="text-[10px] text-white/20">
                         Try a shorter word, an alias ("hype", "lol", "sad"), or paste an emoji directly.
@@ -249,7 +249,7 @@ export function EmojiPickerModal({
                     </>
                   ) : (
                     <>
-                      <Sparkles size={28} />
+                      <IconSparkles size={28} />
                       <p className="text-xs font-semibold">No recents yet</p>
                       <p className="text-[10px] text-white/20">
                         Pick an emoji and it'll show up here next time.
@@ -285,7 +285,7 @@ export function EmojiPickerModal({
               disabled={!emojiInput && mode !== 'edit'}
               className="app-button-primary flex-1 disabled:opacity-30 disabled:pointer-events-none"
             >
-              {mode === 'edit' ? (emojiInput ? 'Save Emoji' : 'Clear Emoji') : 'Add Sound'}
+              {mode === 'edit' ? (emojiInput ? 'DeviceFloppy Emoji' : 'Clear Emoji') : 'Add Sound'}
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { Cpu } from 'lucide-react'
+import {IconCpu} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { TTSAudiencePermission } from '../../../../shared/app-settings'
 import { commandPrefixOptions, audiencePermissionOptions } from '../constants'
@@ -31,7 +31,7 @@ export function EngineLogicSidebar({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Cpu size={32} />
+            <IconCpu size={32} />
           </div>
           <div>
             <h2>Engine Logic</h2>

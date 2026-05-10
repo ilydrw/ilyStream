@@ -1,4 +1,4 @@
-import { Clapperboard, Database, MonitorSmartphone, Palette, Save, Wifi } from 'lucide-react'
+import {IconMovie, IconDatabase, IconDevices, IconPalette, IconDeviceFloppy, IconWifi} from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../../shared/obs'
@@ -109,18 +109,9 @@ export default function SettingsPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <MonitorSmartphone size={32} className="text-accent" />
+            <IconDevices size={32} className="text-accent" />
           </div>
           <div>
-            <div className="flex items-center gap-3">
-              <div className="app-header-eyebrow">
-                <MonitorSmartphone size={14} className="text-accent" />
-                <span>Core Configuration</span>
-              </div>
-              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black tracking-widest text-white/40">
-                v0.0.2
-              </span>
-            </div>
             <h1>Studio Settings</h1>
             <p className="app-page-intro">
               Premium controls for the app shell, stream runtime, local overlay delivery,
@@ -133,17 +124,17 @@ export default function SettingsPage() {
           <StatusBadge status={overlayStatus} />
           <OBSStatusBadge status={obsStatus} />
           <button onClick={handleSave} className="app-button-primary !h-12 !px-8">
-            <Save size={18} className="mr-2" />
-            {saved ? 'Settings Synced' : 'Save Changes'}
+            <IconDeviceFloppy size={18} className="mr-2" />
+            {saved ? 'Settings Synced' : 'DeviceFloppy Changes'}
           </button>
         </div>
       </header>
 
       <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 mb-20">
-        <Metric icon={<Palette size={24} className="text-accent" />} label="Theme" value={settings.theme} />
-        <Metric icon={<Database size={24} className="text-success" />} label="Message Buffer" value={`${settings.chatMaxMessages}`} />
-        <Metric icon={<Wifi size={24} className="text-warning" />} label="OBS Remote" value={`${settings.obsHost}`} />
-        <Metric icon={<Clapperboard size={24} className="text-accent" />} label="Broadcast" value={`${settings.streamingWidth}x${settings.streamingHeight}`} />
+        <Metric icon={<IconPalette size={24} className="text-accent" />} label="Theme" value={settings.theme} />
+        <Metric icon={<IconDatabase size={24} className="text-success" />} label="Message Buffer" value={`${settings.chatMaxMessages}`} />
+        <Metric icon={<IconWifi size={24} className="text-warning" />} label="OBS Remote" value={`${settings.obsHost}`} />
+        <Metric icon={<IconMovie size={24} className="text-accent" />} label="Broadcast" value={`${settings.streamingWidth}x${settings.streamingHeight}`} />
       </div>
 
       <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">

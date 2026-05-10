@@ -1,4 +1,4 @@
-import { Bell, Volume2 } from 'lucide-react'
+import {IconBell, IconVolume} from '@tabler/icons-react'
 import { NavLink } from 'react-router-dom'
 import { SpotifyIcon } from '../ui/SpotifyIcon'
 
@@ -16,7 +16,7 @@ export function SoundSubNav() {
         }
         title="Voice Engine (TTS)"
       >
-        <Volume2 size={36} strokeWidth={1.5} />
+        <IconVolume size={36} strokeWidth={1.5} />
       </NavLink>
 
       <NavLink
@@ -30,7 +30,7 @@ export function SoundSubNav() {
         }
         title="Alerts & Sounds"
       >
-        <Bell size={36} strokeWidth={1.5} />
+        <IconBell size={36} strokeWidth={1.5} />
       </NavLink>
 
       <NavLink

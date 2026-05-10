@@ -1,4 +1,4 @@
-import { Sliders, X } from 'lucide-react'
+import {IconAdjustments, IconX} from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import type { AssetFile } from '../../../hooks/useAssets'
 
@@ -50,7 +50,7 @@ export function ImagePreviewModal({ image, onClose, onAdjust }: ImagePreviewModa
                 className="flex items-center gap-2 h-9 px-3 rounded-lg bg-white/5 border border-white/10 hover:bg-accent/10 hover:border-accent/30 hover:text-accent text-xs font-bold text-white/80 transition-all"
                 title="Adjust positioning"
               >
-                <Sliders size={13} />
+                <IconAdjustments size={13} />
                 Adjust
               </button>
             )}
@@ -59,12 +59,12 @@ export function ImagePreviewModal({ image, onClose, onAdjust }: ImagePreviewModa
               className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 text-white/70 hover:text-white transition-all"
               title="Close (Esc)"
             >
-              <X size={16} />
+              <IconX size={16} />
             </button>
           </div>
         </div>
 
-        {/* Image */}
+        {/* IconPhoto */}
         <div className="rounded-xl border border-white/10 bg-[#0a0b0d] overflow-hidden flex items-center justify-center min-h-[200px]">
           <img
             src={`asset:///app/${encodeURIComponent(image.id)}`}

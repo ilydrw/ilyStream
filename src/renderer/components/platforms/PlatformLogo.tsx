@@ -1,4 +1,4 @@
-import { ShieldAlert } from 'lucide-react'
+import {IconAlertCircle} from '@tabler/icons-react'
 import kickLogo from '../../assets/platforms/kick.svg'
 import tiktokLogo from '../../assets/platforms/tiktok.svg'
 import twitchLogo from '../../assets/platforms/twitch.svg'
@@ -39,5 +39,5 @@ export function PlatformLogo({ platform, size = 16, className = '' }: PlatformLo
   }
 
   // Fallback to error icon if platform not found
-  return <ShieldAlert size={size} className={`text-white/20 ${className}`} />
+  return <IconAlertCircle size={size} className={`text-white/20 ${className}`} />
 }

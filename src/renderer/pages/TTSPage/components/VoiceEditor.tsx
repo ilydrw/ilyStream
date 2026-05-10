@@ -1,4 +1,4 @@
-import { Save, Trash2, Volume2, Play, X, Plus } from 'lucide-react'
+import {IconDeviceFloppy, IconTrash, IconVolume, IconPlayerPlay, IconX, IconPlus} from '@tabler/icons-react'
 import { VoiceProfile } from '../../../../main/tts/voice-profiles'
 import { Select, SelectOption } from '../../../components/ui/Select'
 import {
@@ -52,7 +52,7 @@ export function VoiceEditor({
   if (!draft) {
     return (
       <div className="app-section-card glass flex flex-col items-center justify-center py-40 text-center opacity-40">
-        <Volume2 size={48} className="mb-6 text-white/10" />
+        <IconVolume size={48} className="mb-6 text-white/10" />
         <h3 className="text-sm font-bold uppercase tracking-widest">Select Persona</h3>
         <p className="text-xs mt-2">Initialize a voice profile to begin configuration.</p>
       </div>
@@ -83,7 +83,7 @@ export function VoiceEditor({
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Volume2 size={32} />
+            <IconVolume size={32} />
           </div>
           <div>
             <h2>{draft.name}</h2>
@@ -96,11 +96,11 @@ export function VoiceEditor({
             disabled={isSaving}
             className="app-button !h-12 !px-6 text-xs font-black uppercase tracking-widest"
           >
-            <Save size={16} className="mr-2 opacity-40" />
-            {isSaving ? 'Synching...' : 'Save Profile'}
+            <IconDeviceFloppy size={16} className="mr-2 opacity-40" />
+            {isSaving ? 'Synching...' : 'DeviceFloppy Profile'}
           </button>
           <button onClick={onDelete} className="p-3 text-white/10 hover:text-danger hover:bg-danger/10 rounded-xl transition-all">
-            <Trash2 size={18} />
+            <IconTrash size={18} />
           </button>
         </div>
       </div>
@@ -176,7 +176,7 @@ export function VoiceEditor({
                             </>
                           ) : (
                             <>
-                              <Plus size={10} />
+                              <IconPlus size={10} />
                               Sync All Account Voices
                             </>
                           )}
@@ -184,7 +184,7 @@ export function VoiceEditor({
                       </div>
                       {syncError && (
                         <p className="text-[10px] text-white/30 italic">
-                          Check the provider key in Voice Engine or verify connection.
+                          IconCheck the provider key in Voice Engine or verify connection.
                         </p>
                       )}
                     </div>
@@ -254,7 +254,7 @@ export function VoiceEditor({
                   onClick={isPreviewing ? onStopPreview : onPreview}
                   className={`app-button !h-10 !w-10 !p-0 ${isPreviewing ? '!text-danger' : 'text-accent'}`}
                 >
-                  {isPreviewing ? <X size={18} /> : <Play size={18} />}
+                  {isPreviewing ? <IconX size={18} /> : <IconPlayerPlay size={18} />}
                 </button>
               </div>
             </div>

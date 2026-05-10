@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Save, RotateCcw, Zap } from 'lucide-react'
+import {IconDeviceFloppy, IconRotate2, IconBolt} from '@tabler/icons-react'
 
 interface DirtyBarProps {
   isDirty: boolean
@@ -21,7 +21,7 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
           <div className="bg-[#0f1115]/80 border border-white/10 rounded-[28px] p-2 pr-4 shadow-[0_30px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl flex items-center gap-6 min-w-[460px]">
             <div className="flex items-center gap-4 pl-4">
               <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent shadow-[0_0_20px_rgba(124,58,237,0.2)]">
-                <Zap size={22} className="glow-text" />
+                <IconBolt size={22} className="glow-text" />
               </div>
               <div>
                 <p className="text-[14px] font-black text-white uppercase tracking-tighter">Unsaved Changes</p>
@@ -37,7 +37,7 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
                 disabled={isSaving}
                 className="h-12 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white/30 hover:text-white/60 hover:bg-white/5 transition-all flex items-center gap-2"
               >
-                <RotateCcw size={14} />
+                <IconRotate2 size={14} />
                 Discard
               </button>
               <button
@@ -50,7 +50,7 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
                 {isSaving ? (
                   <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <Save size={16} />
+                  <IconDeviceFloppy size={16} />
                 )}
                 <span>Apply Changes</span>
               </button>

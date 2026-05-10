@@ -1,5 +1,5 @@
 import React from 'react'
-import { AtSign, Gauge, Headphones, KeyRound, ShieldCheck, Volume2, Activity } from 'lucide-react'
+import {IconAt, IconGauge, IconHeadphones, IconKey, IconShieldCheck, IconVolume, IconActivity} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { AppSettings } from '../../../../shared/app-settings'
 import { useStudioStore } from '../../../stores/studio-store'
@@ -167,7 +167,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
-            <Volume2 size={32} />
+            <IconVolume size={32} />
           </div>
           <div>
             <h2>Voice Engine</h2>
@@ -239,7 +239,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
                   className={`app-button !h-10 !px-4 ${settings.ttsReadAtSymbol ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
                   title="Read @ symbols aloud"
                 >
-                  <AtSign size={15} />
+                  <IconAt size={15} />
                   Read
                 </button>
                 <button
@@ -247,7 +247,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
                   className={`app-button !h-10 !px-4 ${settings.ttsSkipMessagesStartingWithAt ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
                   title="Skip messages starting with @"
                 >
-                  <ShieldCheck size={15} />
+                  <IconShieldCheck size={15} />
                   Skip
                 </button>
               </div>
@@ -257,10 +257,10 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
           <aside className="border-t border-white/[0.04] bg-black/10 p-8 xl:border-l xl:border-t-0">
             <div className="mb-8 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Headphones size={18} className="text-accent" />
+                <IconHeadphones size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor Route</h3>
-                  <p className="text-[11px] text-white/25">Send speech to a device or virtual cable.</p>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor IconRoute</h3>
+                  <p className="text-[11px] text-white/25">IconSend speech to a device or virtual cable.</p>
                 </div>
               </div>
               <Toggle value={ttsMonitoring} onChange={toggleMonitoring} />
@@ -287,7 +287,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             </select>
 
             <div className="mb-4 flex items-center gap-3">
-              <KeyRound size={18} className="text-accent" />
+              <IconKey size={18} className="text-accent" />
               <div>
                 <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">ElevenLabs</h3>
                 <p className="text-[11px] text-white/25">Stored locally with OS encryption when available.</p>
@@ -306,8 +306,8 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
                 disabled={apiKeyDraft === settings.elevenlabsApiKey}
                 className="app-button w-full !h-11 !text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-30"
               >
-                <Gauge size={15} />
-                {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'Save Provider Key'}
+                <IconGauge size={15} />
+                {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'DeviceFloppy Provider Key'}
               </button>
             </div>
           </aside>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Activity, Zap, Mic, Ghost, MessageSquare, Send, Play, Terminal } from 'lucide-react'
+import {IconActivity, IconBolt, IconMicrophone, IconGhost, IconMessage, IconSend, IconPlayerPlay, IconTerminal2} from '@tabler/icons-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -21,19 +21,19 @@ interface LogEntry {
 
 function deriveServices(settings: AppSettings): ServiceStatus[] {
   return [
-    { id: 'voicemod', name: 'Voicemod', status: settings.voicemodEnabled ? 'connected' : 'disconnected', icon: <Mic size={16} /> },
-    { id: 'vtube', name: 'VTube Studio', status: settings.vtubeEnabled ? 'connected' : 'disconnected', icon: <Ghost size={16} /> },
-    { id: 'discord', name: 'Discord Webhook', status: settings.discordEnabled ? 'connected' : 'disconnected', icon: <MessageSquare size={16} /> },
-    { id: 'physics', name: 'Physics Engine', status: settings.physicsOverlayEnabled ? 'connected' : 'disconnected', icon: <Zap size={16} /> },
+    { id: 'voicemod', name: 'Voicemod', status: settings.voicemodEnabled ? 'connected' : 'disconnected', icon: <IconMicrophone size={16} /> },
+    { id: 'vtube', name: 'VTube Studio', status: settings.vtubeEnabled ? 'connected' : 'disconnected', icon: <IconGhost size={16} /> },
+    { id: 'discord', name: 'Discord Webhook', status: settings.discordEnabled ? 'connected' : 'disconnected', icon: <IconMessage size={16} /> },
+    { id: 'physics', name: 'Physics Engine', status: settings.physicsOverlayEnabled ? 'connected' : 'disconnected', icon: <IconBolt size={16} /> },
   ]
 }
 
 export function CommanderView() {
   const [services, setServices] = useState<ServiceStatus[]>([
-    { id: 'voicemod', name: 'Voicemod', status: 'disconnected', icon: <Mic size={16} /> },
-    { id: 'vtube', name: 'VTube Studio', status: 'disconnected', icon: <Ghost size={16} /> },
-    { id: 'discord', name: 'Discord Webhook', status: 'disconnected', icon: <MessageSquare size={16} /> },
-    { id: 'physics', name: 'Physics Engine', status: 'disconnected', icon: <Zap size={16} /> },
+    { id: 'voicemod', name: 'Voicemod', status: 'disconnected', icon: <IconMicrophone size={16} /> },
+    { id: 'vtube', name: 'VTube Studio', status: 'disconnected', icon: <IconGhost size={16} /> },
+    { id: 'discord', name: 'Discord Webhook', status: 'disconnected', icon: <IconMessage size={16} /> },
+    { id: 'physics', name: 'Physics Engine', status: 'disconnected', icon: <IconBolt size={16} /> },
   ])
 
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -83,7 +83,7 @@ export function CommanderView() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Top Grid: Service Status */}
+      {/* Top IconGridDots: Service Status */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         {services.map((service) => (
           <div key={service.id} className="app-section-card glass flex flex-col items-start gap-4 hover:bg-white/[0.02] transition-all group !p-8">
@@ -108,7 +108,7 @@ export function CommanderView() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Terminal size={32} />
+                  <IconTerminal2 size={32} />
                 </div>
                 <div>
                   <h2 className="text-sm font-black tracking-tight">Automation Monitor</h2>
@@ -165,7 +165,7 @@ export function CommanderView() {
              <div className="app-section-head">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center justify-center text-accent">
-                    <Zap size={32} />
+                    <IconBolt size={32} />
                   </div>
                   <div>
                     <h2 className="text-sm font-black tracking-tight">Service Testing</h2>
@@ -176,25 +176,25 @@ export function CommanderView() {
              <div className="app-section-content">
                <div className="grid grid-cols-1 gap-3">
                   <QuickActionButton 
-                    icon={<Mic size={14} />} 
+                    icon={<IconMicrophone size={14} />} 
                     label="Test Voicemod" 
                     description="Apply 'Demon' Voice for 5s"
                     onClick={() => {}}
                   />
                   <QuickActionButton 
-                    icon={<Ghost size={14} />} 
+                    icon={<IconGhost size={14} />} 
                     label="VTube Wave" 
                     description="Trigger Animation Hotkey"
                     onClick={() => {}}
                   />
                   <QuickActionButton 
-                    icon={<MessageSquare size={14} />} 
+                    icon={<IconMessage size={14} />} 
                     label="Discord Ping" 
-                    description="Send Test Webhook"
+                    description="IconSend Test Webhook"
                     onClick={() => {}}
                   />
                    <QuickActionButton 
-                    icon={<Send size={14} />} 
+                    icon={<IconSend size={14} />} 
                     label="Spawn Physics" 
                     description="Drop Test Item in Overlay"
                     onClick={() => {}}
@@ -207,7 +207,7 @@ export function CommanderView() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Activity size={32} />
+                  <IconActivity size={32} />
                 </div>
                 <div>
                   <h2 className="text-sm font-black tracking-tight">Traffic Analyzer</h2>

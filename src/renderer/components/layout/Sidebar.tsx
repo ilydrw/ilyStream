@@ -1,18 +1,9 @@
-import {
-  ChevronRight,
-  Settings2,
-  Zap,
-  Activity,
-  Music2,
-  ChevronLeft,
-  ChevronDown
-} from 'lucide-react'
+import {IconChevronRight, IconSettings, IconBolt, IconActivity, IconMusic, IconChevronLeft, IconChevronDown} from '@tabler/icons-react'
 import { useState, useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { NavigationItem } from './navigation'
 import { navigationItems } from './navigation'
 import { useUIStore } from '../../stores/ui-store'
-import { Logo } from '../ui/Logo'
 
 type DrawerItem = NavigationItem & {
   drawerLabel?: string
@@ -47,28 +38,28 @@ const navigationGroups: NavigationGroup[] = [
     id: 'live',
     label: 'Live',
     drawerTitle: 'Live Operations',
-    icon: Activity,
+    icon: IconActivity,
     items: [itemByPath('/'), itemByPath('/broadcast'), itemByPath('/stats'), itemByPath('/chat')]
   },
   {
     id: 'studio',
     label: 'Studio',
     drawerTitle: 'Studio Assets',
-    icon: Music2,
+    icon: IconMusic,
     items: [itemByPath('/alerts'), itemByPath('/soundboard'), itemByPath('/voice-effects'), itemByPath('/widgets')]
   },
   {
     id: 'automation',
     label: 'Rules',
     drawerTitle: 'Automation & Logic',
-    icon: Zap,
+    icon: IconBolt,
     items: [itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/tts')]
   },
   {
     id: 'system',
     label: 'System',
     drawerTitle: 'Studio Systems',
-    icon: Settings2,
+    icon: IconSettings,
     items: [
       { isHeader: true, label: 'Platform' },
       itemByPath('/connections/discord'),
@@ -148,12 +139,6 @@ export function Sidebar() {
     <aside className={`app-sidebar titlebar-drag hidden md:flex h-full overflow-hidden ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
       {/* Primary Rail */}
       <div className="app-sidebar-rail titlebar-no-drag shrink-0">
-        <div className="app-rail-brand mb-8 flex justify-center">
-          <div className="app-brand-mark w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center">
-            <Logo className="w-full h-full object-cover" />
-          </div>
-        </div>
-
         <nav className="app-rail-nav" aria-label="Primary modules">
           {navigationGroups.map((group) => {
             const Icon = group.icon
@@ -187,7 +172,7 @@ export function Sidebar() {
             className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-accent/20 hover:border-accent/30 transition-all active:scale-95 shadow-lg"
             title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
-            {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
           </button>
         </div>
       </div>
@@ -199,17 +184,21 @@ export function Sidebar() {
           sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
         style={{
-          width: sidebarCollapsed ? 0 : 240,
-          flexBasis: sidebarCollapsed ? 0 : 240,
+          width: sidebarCollapsed ? 0 : 228,
+          flexBasis: sidebarCollapsed ? 0 : 228,
           borderRightWidth: sidebarCollapsed ? 0 : 1,
         }}
       >
         <div className="glass absolute inset-0 pointer-events-none opacity-40" />
 
-        <div className="app-sidebar-brand pt-9 px-6 pb-6 border-b border-white/[0.03] shrink-0">
+        <div className="app-sidebar-brand px-6 py-5 border-b border-white/[0.03] shrink-0">
           <div className="min-w-0">
-            <h1 className="text-2xl font-black tracking-tight text-white leading-none mb-1">ilyStream</h1>
-            <p className="text-[10px] font-black tracking-[0.2em] text-white/20 uppercase">Control Center</p>
+            <h1 className="text-sm font-black tracking-[0.16em] text-white/65 uppercase leading-none mb-1">
+              {activeGroup.label}
+            </h1>
+            <p className="text-[10px] font-black tracking-[0.2em] text-white/20 uppercase">
+              {activeGroup.drawerTitle}
+            </p>
           </div>
         </div>
 
@@ -238,7 +227,7 @@ export function Sidebar() {
                           onClick={() => toggleSection(headerLabel)}
                           className="ml-3 p-1 rounded-md hover:bg-white/5 text-white/20 hover:text-white/60 transition-all active:scale-90"
                         >
-                          <ChevronDown
+                          <IconChevronDown
                             size={14}
                             className={`transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
                           />
@@ -268,7 +257,7 @@ export function Sidebar() {
                             <Icon size={20} />
                           </div>
                           <span className="truncate">{item.drawerLabel ?? item.label}</span>
-                          <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-20 transition-opacity" />
+                          <IconChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-20 transition-opacity" />
                         </NavLink>
                       )
                     })}

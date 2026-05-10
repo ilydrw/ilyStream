@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Music2, Play, Copy, ExternalLink, Zap, Trash2, Plus, Volume2, Settings, Check, Edit3, X } from 'lucide-react'
+import {IconMusic, IconPlayerPlay, IconCopy, IconExternalLink, IconBolt, IconTrash, IconPlus, IconVolume, IconSettings, IconCheck, IconPencil, IconX} from '@tabler/icons-react'
 import { useSoundboard, SoundFile } from '../../hooks/useSoundboard'
 import { useDeckActions, DeckAction } from '../../hooks/useDeckActions'
 import { EmojiPickerModal } from '../../components/ui/EmojiPickerModal'
@@ -30,7 +30,7 @@ export default function SoundboardPage() {
     const port = 8899
     const url = `http://localhost:${port}/overlay/deck/action`
     const body = JSON.stringify({ type: 'PLAY_SOUND', payload: { soundId } })
-    const command = `curl -X POST "${url}" -H "Content-Type: application/json" -d '${body}'`
+    const command = `curl -X POST "${url}" -H "Content-IconTypography: application/json" -d '${body}'`
     navigator.clipboard.writeText(command)
   }
 
@@ -116,13 +116,9 @@ export default function SoundboardPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <Music2 size={32} className="text-accent" />
+            <IconMusic size={32} className="text-accent" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Music2 size={14} className="text-accent" />
-              <span>Studio Control</span>
-            </div>
             <h1>Audio Deck</h1>
             <p className="app-page-intro">
               Manage and trigger instant audio effects and system actions. 
@@ -157,14 +153,14 @@ export default function SoundboardPage() {
               isEditMode ? 'bg-accent/20 text-accent border-accent/40' : ''
             }`}
           >
-            {isEditMode ? <Check size={14} /> : <Settings size={14} />}
+            {isEditMode ? <IconCheck size={14} /> : <IconSettings size={14} />}
             {isEditMode ? 'SAVE DECK' : 'CONFIGURE DECK'}
           </button>
         </div>
       </header>
 
       <div className="grid grid-cols-12 gap-8 mt-12">
-        {/* Main Grid Area */}
+        {/* Main IconGridDots Area */}
         <div className="col-span-8">
           <div className="app-section-card glass min-h-[400px] relative overflow-hidden">
             {isEditMode && (
@@ -174,7 +170,7 @@ export default function SoundboardPage() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Music2 size={32} />
+                  <IconMusic size={32} />
                 </div>
                 <div>
                   <h2>{activeTab === 'sounds' ? 'Audio Library' : 'System Actions'}</h2>
@@ -186,7 +182,7 @@ export default function SoundboardPage() {
                   onClick={handleUploadClick}
                   className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest"
                 >
-                  <Plus size={14} />
+                  <IconPlus size={14} />
                   UPLOAD NEW
                 </button>
               )}
@@ -195,7 +191,7 @@ export default function SoundboardPage() {
                   onClick={addNewAction}
                   className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest"
                 >
-                  <Plus size={14} />
+                  <IconPlus size={14} />
                   ADD ACTION
                 </button>
               )}
@@ -240,13 +236,13 @@ export default function SoundboardPage() {
           </div>
         </div>
 
-        {/* Info & External Control */}
+        {/* IconInfoCircle & External Control */}
         <div className="col-span-4 flex flex-col gap-8">
           <div className="app-section-card glass !bg-accent/5 !border-accent/10">
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <Zap size={32} />
+                  <IconBolt size={32} />
                 </div>
                 <div>
                   <h2>Stream Deck</h2>
@@ -258,7 +254,7 @@ export default function SoundboardPage() {
             <div className="app-section-content">
               <p className="text-xs text-white/40 leading-relaxed font-medium">
               Every button in your soundboard can be triggered externally via HTTP requests. 
-              Use the <span className="text-white/80">Copy Trigger</span> button on any tile to get a 
+              Use the <span className="text-white/80">IconCopy Trigger</span> button on any tile to get a 
               ready-to-use curl command for your Elgato or Touch Portal.
             </p>
             <div className="mt-8 p-4 rounded-2xl bg-black/40 border border-white/5">
@@ -275,7 +271,7 @@ export default function SoundboardPage() {
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
-                  <ExternalLink size={32} />
+                  <IconExternalLink size={32} />
                 </div>
                 <div>
                   <h2>Deck Overlay</h2>
@@ -367,7 +363,7 @@ function DeckButton({
                 }}
                 className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all"
               >
-                <Edit3 size={16} />
+                <IconPencil size={16} />
               </button>
               <button
                 onClick={(e) => {
@@ -376,7 +372,7 @@ function DeckButton({
                 }}
                 className="w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center text-red-400 transition-all"
               >
-                <Trash2 size={16} />
+                <IconTrash size={16} />
               </button>
             </div>
           </motion.div>
@@ -391,7 +387,7 @@ function DeckButton({
           }}
           className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-accent/20 hover:border-accent/30"
         >
-          <Copy size={12} className="text-white/60" />
+          <IconCopy size={12} className="text-white/60" />
         </button>
       )}
     </motion.button>

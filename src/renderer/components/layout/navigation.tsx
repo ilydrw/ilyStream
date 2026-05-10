@@ -1,27 +1,11 @@
-import type { LucideIcon } from 'lucide-react'
-import {
-  LayoutDashboard,
-  Layers,
-  MessagesSquare,
-  MessageSquareQuote,
-  Bell,
-  Music2,
-  PlugZap,
-  Settings2,
-  Volume2,
-  Mic2,
-  Zap,
-  Radio,
-  Activity,
-  Bot,
-  Twitter,
-  MessageSquare
-} from 'lucide-react'
+import type { Icon } from '@tabler/icons-react'
+import AICoHostIconFile from '../../assets/ai-co-host.svg'
+
+import {IconLayoutDashboard, IconStack2, IconMessages, IconMessage2, IconBell, IconMusic, IconPlugConnected, IconSettings, IconVolume, IconMicrophone, IconBolt, IconRadio, IconActivity, IconRobot, IconBrandTwitter, IconMessage} from '@tabler/icons-react'
 
 export interface NavigationItem {
   path: string
   label: string
-  eyebrow: string
   description: string
   section: 'operate' | 'configure'
   icon: React.ComponentType<{ size?: number; className?: string }>
@@ -94,92 +78,84 @@ const LinkedinPageIcon = ({ size, className }: { size?: number; className?: stri
 const TelegramPageIcon = ({ size, className }: { size?: number; className?: string }) => (
   <TelegramIcon size={size} className={className} />
 )
+const AICoHostNavIcon = ({ size, className }: { size?: number; className?: string }) => (
+  <img src={AICoHostIconFile} width={size} height={size} className={`object-contain ${className}`} alt="" />
+)
 
 export const navigationItems: NavigationItem[] = [
   {
     path: '/',
     label: 'Dashboard',
-    eyebrow: 'Stream Center',
     description: 'Monitor platform health, audience activity, and automation readiness from one place.',
     section: 'operate',
-    icon: LayoutDashboard
+    icon: IconLayoutDashboard
   },
   {
     path: '/stats',
     label: 'Stats',
-    eyebrow: 'Lifetime Telemetry',
     description: 'Lifetime totals across every platform — likes, gifts, follows, song requests, and per-user breakdowns.',
     section: 'operate',
-    icon: Activity
+    icon: IconActivity
   },
   {
     path: '/broadcast',
     label: 'Broadcast',
-    eyebrow: 'Direct Stream',
     description: 'Go live directly from ilyStream. Composite your camera and overlays into a professional broadcast.',
     section: 'operate',
-    icon: Radio
+    icon: IconRadio
   },
   {
     path: '/chat',
     label: 'Unified Chat',
-    eyebrow: 'Conversation Bus',
     description: 'Merge live chat, relay responses across services, and keep moderators aligned.',
     section: 'operate',
-    icon: MessagesSquare
+    icon: IconMessages
   },
   {
     path: '/tts',
     label: 'TTS',
-    eyebrow: 'Voice Engine',
     description: 'Tune text-to-speech behavior, queue flow, and voice delivery while you are live.',
     section: 'operate',
-    icon: MessageSquareQuote
+    icon: IconMessage2
   },
   {
     path: '/triggers',
     label: 'Triggers',
-    eyebrow: 'Automation Rules',
     description: 'Control reactions, alerts, webhooks, and spoken moments with event-driven rules.',
     section: 'operate',
-    icon: Zap
+    icon: IconBolt
   },
   {
     path: '/ai-cohost',
     label: 'AI Co-Host',
-    eyebrow: 'Neural Agent',
     description: 'Configure your automated AI assistant, its personality, connection, and neural depth.',
     section: 'operate',
-    icon: Bot
+    icon: AICoHostNavIcon
   },
   {
     path: '/alerts',
     label: 'Alerts',
-    eyebrow: 'Alert Sounds',
     description: 'Upload MP3/WAV files and route gifts, follows, and trigger events to local alert sounds.',
     section: 'operate',
-    icon: Bell
+    icon: IconBell
   },
   {
     path: '/soundboard',
     label: 'Soundboard',
-    eyebrow: 'Studio Deck',
     description: 'A Stream Deck styled layout for triggering sound effects and studio actions instantly.',
     section: 'operate',
-    icon: Music2
+    icon: IconMusic
   },
   {
     path: '/voice-effects',
     label: 'Voice FX',
-    eyebrow: 'Vocal Filters',
     description: 'Transform your voice with studio-grade real-time filters. Alien, Robot, and custom pitch shifting.',
     section: 'operate',
-    icon: Mic2
+    icon: IconMicrophone
   },
   {
     path: '/spotify',
     label: 'Spotify',
-    eyebrow: 'Song Requests',
     description: 'Let viewers request songs via chat commands that queue directly into your Spotify playback.',
     section: 'operate',
     icon: SpotifyIcon
@@ -187,7 +163,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/tiktok',
     label: 'TikTok',
-    eyebrow: 'Platform Wiring',
     description: 'Manage TikTok Live credentials, session IDs, and real-time diagnostic feeds.',
     section: 'configure',
     icon: TikTokIcon
@@ -195,7 +170,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/twitch',
     label: 'Twitch',
-    eyebrow: 'Platform Wiring',
     description: 'Configure Twitch IRC and Helix API settings for chat and alert processing.',
     section: 'configure',
     icon: TwitchIcon
@@ -203,7 +177,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/youtube',
     label: 'YouTube',
-    eyebrow: 'Platform Wiring',
     description: 'Connect your YouTube Data API keys and monitor live chat polling cycles.',
     section: 'configure',
     icon: YouTubeIcon
@@ -211,7 +184,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/kick',
     label: 'Kick',
-    eyebrow: 'Platform Wiring',
     description: 'Link your Kick.com channel via WebSocket for real-time stream event capture.',
     section: 'configure',
     icon: KickIcon
@@ -219,7 +191,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/x',
     label: 'X (Twitter)',
-    eyebrow: 'Platform Wiring',
     description: 'Connect to the X Developer API to monitor real-time sentiment and mentions.',
     section: 'configure',
     icon: XIcon
@@ -227,7 +198,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/discord',
     label: 'Discord',
-    eyebrow: 'Community Bridge',
     description: 'Sync your stream with Discord via webhooks and bot integration.',
     section: 'configure',
     icon: DiscordIcon
@@ -235,7 +205,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/hue',
     label: 'Philips Hue',
-    eyebrow: 'Hardware Integration',
     description: 'Control smart lights and trigger visual alerts based on stream events.',
     section: 'configure',
     icon: HueIcon
@@ -243,7 +212,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/elgato',
     label: 'Elgato',
-    eyebrow: 'Hardware Integration',
     description: 'Control your Stream Deck, Key Lights, and Prompter setup.',
     section: 'configure',
     icon: ElgatoIcon
@@ -251,7 +219,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/govee',
     label: 'Govee',
-    eyebrow: 'Hardware Integration',
     description: 'Sync your Govee Glide, Lyra, and Immersion lights with stream alerts.',
     section: 'configure',
     icon: GoveeIcon
@@ -259,7 +226,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/deskthing',
     label: 'DeskThing',
-    eyebrow: 'Hardware Integration',
     description: 'Pair a Spotify Car Thing as a tactile soundboard and stream-deck remote.',
     section: 'configure',
     icon: DeskThingIcon
@@ -267,7 +233,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/nanoleaf',
     label: 'Nanoleaf',
-    eyebrow: 'Hardware Integration',
     description: 'Synchronize your Nanoleaf Shapes, Lines, and Canvas with your stream.',
     section: 'configure',
     icon: NanoleafIcon
@@ -275,7 +240,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/lifx',
     label: 'LIFX',
-    eyebrow: 'Hardware Integration',
     description: 'Connect and control your high-performance LIFX bulbs and strips.',
     section: 'configure',
     icon: LifxIcon
@@ -283,7 +247,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/loupedeck',
     label: 'Loupedeck',
-    eyebrow: 'Hardware Integration',
     description: 'Map stream actions and volume dials to your Loupedeck Live or CT.',
     section: 'configure',
     icon: LoupedeckIcon
@@ -291,7 +254,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/razer',
     label: 'Razer Chroma',
-    eyebrow: 'Hardware Integration',
     description: 'Synchronize your Razer peripherals with stream events via Chroma SDK.',
     section: 'configure',
     icon: RazerIcon
@@ -299,7 +261,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/logitech',
     label: 'Logitech G',
-    eyebrow: 'Hardware Integration',
     description: 'Sync your Logitech G peripherals with stream highlights and interactions.',
     section: 'configure',
     icon: LogitechIcon
@@ -307,7 +268,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/yeelight',
     label: 'Yeelight',
-    eyebrow: 'Hardware Integration',
     description: 'Connect and control your Yeelight bulbs via LAN protocol.',
     section: 'configure',
     icon: YeelightIcon
@@ -315,7 +275,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/wiz',
     label: 'WiZ',
-    eyebrow: 'Hardware Integration',
     description: 'Connect and control your WiZ smart lights via UDP protocol.',
     section: 'configure',
     icon: WizIcon
@@ -323,7 +282,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/facebook',
     label: 'Facebook',
-    eyebrow: 'Platform Wiring',
     description: 'Connect your Facebook Page or Gaming Creator profile.',
     section: 'configure',
     icon: FacebookPageIcon
@@ -331,7 +289,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/instagram',
     label: 'Instagram',
-    eyebrow: 'Platform Wiring',
     description: 'Broadcast vertically and interact with your Instagram followers.',
     section: 'configure',
     icon: InstagramPageIcon
@@ -339,7 +296,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/restream',
     label: 'ReStream',
-    eyebrow: 'Platform Wiring',
     description: 'Broadcast to multiple platforms simultaneously via ReStream hub.',
     section: 'configure',
     icon: RestreamPageIcon
@@ -347,7 +303,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/linkedin',
     label: 'LinkedIn',
-    eyebrow: 'Platform Wiring',
     description: 'Stream your professional workshops and coding sessions to LinkedIn.',
     section: 'configure',
     icon: LinkedinPageIcon
@@ -355,7 +310,6 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/connections/telegram',
     label: 'Telegram',
-    eyebrow: 'Platform Wiring',
     description: 'Stream to your Telegram Channels and Groups securely.',
     section: 'configure',
     icon: TelegramPageIcon
@@ -363,18 +317,16 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/settings',
     label: 'Settings',
-    eyebrow: 'Studio Config',
     description: 'Tune themes, runtime limits, broadcast defaults, OBS remote control, and overlay delivery.',
     section: 'configure',
-    icon: Settings2
+    icon: IconSettings
   },
   {
     path: '/widgets',
     label: 'Widgets',
-    eyebrow: 'Overlay Assets',
     description: 'Configure interactive overlays, goals, and visual alerts for your stream.',
     section: 'configure',
-    icon: Layers
+    icon: IconStack2
   }
 ]
 

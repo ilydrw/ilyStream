@@ -85,9 +85,25 @@ async function isReadableFile(filePath: string): Promise<boolean> {
   }
 }
 
+function resolveBundledResource(...segments: string[]): string | null {
+  const candidates = [
+    join(__dirname, '../../resources', ...segments),
+    join(app.getAppPath(), 'resources', ...segments),
+    join(process.resourcesPath, ...segments),
+    join(process.resourcesPath, 'resources', ...segments),
+    join(process.cwd(), 'resources', ...segments)
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function createAppIcon() {
+  const iconPath = resolveBundledResource('ilyStream-AppIcon.ico')
+  return iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+}
+
 function createWindow(): void {
-  const iconPath = join(__dirname, '../../resources/ilyStream-AppIcon.ico')
-  const icon = nativeImage.createFromPath(iconPath)
+  const icon = createAppIcon()
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -98,7 +114,7 @@ function createWindow(): void {
     autoHideMenuBar: true,
     frame: false,
     backgroundColor: '#0f1115',
-    icon: icon,
+    icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -213,8 +229,8 @@ function isProductionAppFileUrl(value: string, loadUrl: string): boolean {
 }
 
 function createTray(): void {
-  const iconPath = join(__dirname, '../../resources/ilyStream-AppIcon.ico')
-  const icon = nativeImage.createFromPath(iconPath)
+  const icon = createAppIcon()
+  if (icon.isEmpty()) return
   tray = new Tray(icon)
   tray.setToolTip('ilyStream')
   tray.setContextMenu(
@@ -262,6 +278,7 @@ function registerAssetProtocol(): void {
           join(__dirname, '../../resources'),
           join(app.getAppPath(), 'resources'),
           process.resourcesPath,
+          join(process.resourcesPath, 'resources'),
           join(process.cwd(), 'resources')
         ]
         for (const root of resourceRoots) {

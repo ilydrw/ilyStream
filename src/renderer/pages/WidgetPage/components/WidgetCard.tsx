@@ -1,4 +1,4 @@
-import { Trash2, Check, Copy, ExternalLink, Layout, Settings2 } from 'lucide-react'
+import {IconTrash, IconCheck, IconCopy, IconExternalLink, IconLayout, IconSettings} from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
 import { WIDGET_TEMPLATES } from '../constants'
 
@@ -18,13 +18,13 @@ export function WidgetCard({
   onDelete: () => void
 }) {
   const template = WIDGET_TEMPLATES.find((t) => t.type === widget.type)
-  const Icon = template?.icon ?? Layout
+  const Icon = template?.icon ?? IconLayout
 
   return (
     <section className="app-section-card glass overflow-hidden flex flex-col">
       <div className="p-5 border-b border-white/[0.05] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-accent shrink-0">
+          <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-accent shrink-0">
             <Icon size={18} />
           </div>
           <div className="min-w-0">
@@ -39,7 +39,7 @@ export function WidgetCard({
           className="w-9 h-9 rounded-lg flex items-center justify-center text-white/30 hover:text-danger hover:bg-danger/10 transition-all"
           title="Delete widget"
         >
-          <Trash2 size={15} />
+          <IconTrash size={15} />
         </button>
       </div>
 
@@ -60,12 +60,12 @@ export function WidgetCard({
               className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
               title="Copy URL"
             >
-              {copyState ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+              {copyState ? <IconCheck size={13} className="text-success" /> : <IconCopy size={13} />}
             </button>
           </div>
 
           {/* Small Inline Preview */}
-          <div className="mt-2 relative w-full aspect-[21/9] rounded-xl overflow-hidden border border-white/5 bg-black/60 group/preview transition-all">
+          <div className="mt-2 relative w-full aspect-[21/9] rounded-lg overflow-hidden border border-white/5 bg-black/60 group/preview transition-all">
             {url ? (
               <div className="absolute inset-0 pointer-events-none opacity-80 group-hover/preview:opacity-100 transition-opacity">
                 <iframe
@@ -84,9 +84,9 @@ export function WidgetCard({
                 <span>Preview Offline</span>
               </div>
             )}
-            <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black text-accent uppercase tracking-widest">
-               <div className="w-1 h-1 rounded-full bg-accent animate-pulse" />
-               Live
+            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest ${url ? 'text-accent' : 'text-white/25'}`}>
+               <div className={`w-1 h-1 rounded-full ${url ? 'bg-accent animate-pulse' : 'bg-white/20'}`} />
+               {url ? 'Preview' : 'Offline'}
             </div>
             {/* Click to configure overlay */}
             <div className="absolute inset-0 z-10 cursor-pointer" onClick={onConfigure} />
@@ -95,7 +95,7 @@ export function WidgetCard({
 
         <div className="flex gap-2">
           <button onClick={onConfigure} className="flex-1 app-button !h-10 text-xs font-bold">
-            <Settings2 size={14} className="mr-2 opacity-60" />
+            <IconSettings size={14} className="mr-2 opacity-60" />
             Configure
           </button>
           <button
@@ -104,11 +104,10 @@ export function WidgetCard({
             className="app-button !w-10 !h-10 flex items-center justify-center disabled:opacity-30"
             title="Open in browser"
           >
-            <ExternalLink size={14} />
+            <IconExternalLink size={14} />
           </button>
         </div>
       </div>
     </section>
   )
 }
-

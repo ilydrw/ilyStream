@@ -7,6 +7,7 @@ import {
   type GlobalStats,
   type PlatformStats,
   type UserStat,
+  type UserIdentity,
   type UserStatSortKey
 } from '../../shared/stats'
 
@@ -53,9 +54,9 @@ export class StatsService {
           likes: amount,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalLikes', amount)
+        this.db.stats.incrementGlobalStat('totalLikes', amount)
         if (typeof event.totalLikes === 'number') {
-          this.db.setGlobalStatIfGreater(`peakReportedLikes:${platform}`, event.totalLikes)
+          this.db.stats.setGlobalStatIfGreater(`peakReportedLikes:${platform}`, event.totalLikes)
         }
         break
       }
@@ -71,8 +72,8 @@ export class StatsService {
           giftValueCents: valueCents,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalGifts', count)
-        this.db.incrementGlobalStat('totalGiftValueCents', valueCents)
+        this.db.stats.incrementGlobalStat('totalGifts', count)
+        this.db.stats.incrementGlobalStat('totalGiftValueCents', valueCents)
         break
       }
       case 'subscription': {
@@ -82,8 +83,8 @@ export class StatsService {
           giftValueCents: valueCents,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalSubscriptions', 1)
-        this.db.incrementGlobalStat('totalGiftValueCents', valueCents)
+        this.db.stats.incrementGlobalStat('totalSubscriptions', 1)
+        this.db.stats.incrementGlobalStat('totalGiftValueCents', valueCents)
         break
       }
       case 'follow': {
@@ -99,7 +100,7 @@ export class StatsService {
           shares: 1,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalShares', 1)
+        this.db.stats.incrementGlobalStat('totalShares', 1)
         break
       }
       case 'raid': {
@@ -107,7 +108,7 @@ export class StatsService {
           raids: 1,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalRaids', 1)
+        this.db.stats.incrementGlobalStat('totalRaids', 1)
         break
       }
       case 'chat': {
@@ -115,12 +116,12 @@ export class StatsService {
           chats: 1,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalChats', 1)
+        this.db.stats.incrementGlobalStat('totalChats', 1)
         break
       }
       case 'viewer-count': {
-        this.db.setGlobalStatIfGreater(`peakViewerCount:${platform}`, event.count)
-        this.db.setGlobalStatIfGreater('peakViewerCount', event.count)
+        this.db.stats.setGlobalStatIfGreater(`peakViewerCount:${platform}`, event.count)
+        this.db.stats.setGlobalStatIfGreater('peakViewerCount', event.count)
         return // viewer-count has no user, so skip the lastUpdatedAt write below
       }
       default:
@@ -144,19 +145,19 @@ export class StatsService {
     // Skip simulated users
     if (input.username === 'local_alert_test') return
 
-    this.db.incrementUserStats({
+    this.db.stats.incrementUserStats({
       platform: input.platform,
       username: input.username,
       displayName: input.displayName,
       profilePictureUrl: input.profilePictureUrl ?? null,
       songRequests: 1
     })
-    this.db.incrementGlobalStat('totalSongRequests', 1)
+    this.db.stats.incrementGlobalStat('totalSongRequests', 1)
     this.db.setSetting('stats:lastUpdatedAt', new Date().toISOString())
   }
 
   getGlobalStats(): GlobalStats {
-    const counters = this.db.getAllGlobalStats()
+    const counters = this.db.stats.getAllGlobalStats()
     const byPlatform: Record<Platform, PlatformStats> = {
       tiktok: { ...EMPTY_PLATFORM_STATS },
       twitch: { ...EMPTY_PLATFORM_STATS },
@@ -164,24 +165,24 @@ export class StatsService {
       kick: { ...EMPTY_PLATFORM_STATS }
     }
     for (const platform of PLATFORMS) {
-      byPlatform[platform] = this.db.getPlatformTotals(platform)
+      byPlatform[platform] = this.db.stats.getPlatformTotals(platform)
     }
 
     const lastUpdatedAt = this.db.getSetting('stats:lastUpdatedAt')
 
     return {
       ...EMPTY_GLOBAL_STATS,
-      totalLikes: counters.totalLikes ?? 0,
-      totalGifts: counters.totalGifts ?? 0,
-      totalGiftValueCents: counters.totalGiftValueCents ?? 0,
-      totalSubscriptions: counters.totalSubscriptions ?? 0,
-      totalFollows: this.db.getUniqueFollowerCount(),
-      totalShares: counters.totalShares ?? 0,
-      totalRaids: counters.totalRaids ?? 0,
-      totalChats: counters.totalChats ?? 0,
-      totalSongRequests: counters.totalSongRequests ?? 0,
-      peakViewerCount: counters.peakViewerCount ?? 0,
-      uniqueUserCount: this.db.getUniqueUserCount(),
+      totalLikes: counters?.total_likes ?? counters?.totalLikes ?? 0,
+      totalGifts: counters?.total_gifts ?? counters?.totalGifts ?? 0,
+      totalGiftValueCents: counters?.total_gift_value_cents ?? counters?.totalGiftValueCents ?? 0,
+      totalSubscriptions: counters?.total_subscriptions ?? counters?.totalSubscriptions ?? 0,
+      totalFollows: this.db.stats.getUniqueFollowerCount() || 0,
+      totalShares: counters?.total_shares ?? counters?.totalShares ?? 0,
+      totalRaids: counters?.total_raids ?? counters?.totalRaids ?? 0,
+      totalChats: counters?.total_chats ?? counters?.totalChats ?? 0,
+      totalSongRequests: counters?.total_song_requests ?? counters?.totalSongRequests ?? 0,
+      peakViewerCount: counters?.peak_viewer_count ?? counters?.peakViewerCount ?? 0,
+      uniqueUserCount: this.db.stats.getUniqueUserCount() || 0,
       lastUpdatedAt: typeof lastUpdatedAt === 'string' ? lastUpdatedAt : null,
       byPlatform
     }
@@ -191,7 +192,7 @@ export class StatsService {
     const sortColumn = SORT_COLUMN_BY_KEY[opts.sortBy] ?? 'total_likes'
     const platform = opts.platform && opts.platform !== 'all' ? opts.platform : undefined
 
-    const rows = this.db.getTopUsers({
+    const rows = this.db.stats.getTopStats({
       sortColumn,
       platform,
       query: opts.query,
@@ -203,7 +204,7 @@ export class StatsService {
   }
 
   getUserStat(platform: Platform, username: string): UserStat | null {
-    const row = this.db.getUserStat(platform, username)
+    const row = this.db.stats.getUserStat(platform, username)
     return row ? rowToUserStat(row) : null
   }
 
@@ -211,7 +212,7 @@ export class StatsService {
     const sortColumn = SORT_COLUMN_BY_KEY[opts.sortBy] ?? 'total_likes'
     const platform = opts.platform && opts.platform !== 'all' ? opts.platform : undefined
 
-    return this.db.getTopIdentities({
+    return this.db.stats.getTopIdentities({
       sortColumn,
       platform,
       query: opts.query,
@@ -229,7 +230,7 @@ export class StatsService {
   }
 
   reset(): void {
-    this.db.resetAllStats()
+    this.db.stats.resetAllStats()
     this.db.setSetting('stats:lastUpdatedAt', null)
   }
 
@@ -238,7 +239,7 @@ export class StatsService {
     try {
       const testUsernames = ['local_alert_test']
       for (const username of testUsernames) {
-        this.db.purgeUserStats(username)
+        this.db.stats.purgeUserStats(username)
       }
     } catch (err) {
       console.error('[StatsService] Cleanup failed:', err)
@@ -264,7 +265,7 @@ export class StatsService {
     const username = (user?.username || '').trim()
     if (!username) return
 
-    this.db.incrementUserStats({
+    this.db.stats.incrementUserStats({
       username,
       platform,
       displayName: user.displayName,
@@ -291,6 +292,7 @@ function rowToUserStat(row: UserStatRow): UserStat {
     totalChats: row.total_chats,
     totalSongRequests: row.total_song_requests,
     isFanClubMember: row.is_fan_club_member === 1,
+    profileId: row.profile_id,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at
   }

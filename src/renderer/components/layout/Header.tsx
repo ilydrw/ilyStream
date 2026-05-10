@@ -1,7 +1,8 @@
-import { Minus, Square, X } from 'lucide-react'
+import { IconMaximize, IconMinus, IconX } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getNavigationItem } from './navigation'
+import { Logo } from '../ui/Logo'
 
 export function Header() {
   const location = useLocation()
@@ -9,15 +10,34 @@ export function Header() {
   const Icon = activeRoute.icon
 
   return (
-    <header className="titlebar-drag shrink-0 bg-transparent z-50 flex items-start" style={{ height: '64px' }}>
-      <div className="flex min-w-0 flex-1 items-center gap-3 px-6 h-full">
-        {/* Route icon removed - moved to centered sub-nav or standardized header */}
+    <header className="app-topbar titlebar-drag">
+      <div className="app-topbar-brand titlebar-no-drag" aria-label="ilyStream">
+        <span className="app-topbar-logo">
+          <Logo size={28} />
+        </span>
+        <span className="app-topbar-wordmark">ilyStream</span>
+        <span className="app-topbar-version">v0.0.5</span>
       </div>
 
-      <div className="titlebar-no-drag flex items-center gap-2.5" style={{ paddingRight: '40px', paddingTop: '24px' }}>
-        <WindowButton color="#ffbd2e" onClick={() => window.api?.window?.minimize()} />
-        <WindowButton color="#27c93f" onClick={() => window.api?.window?.maximize()} />
-        <WindowButton color="#ff5f56" onClick={() => window.api?.window?.close()} />
+      <div className="app-topbar-route" aria-live="polite">
+        <span className="app-topbar-route-icon">
+          <Icon size={16} />
+        </span>
+        <span>{activeRoute.label}</span>
+      </div>
+
+      <div className="app-topbar-spacer" />
+
+      <div className="app-window-controls titlebar-no-drag">
+        <WindowButton label="Minimize" onClick={() => window.api?.window?.minimize()}>
+          <IconMinus size={15} />
+        </WindowButton>
+        <WindowButton label="Maximize" onClick={() => window.api?.window?.maximize()}>
+          <IconMaximize size={14} />
+        </WindowButton>
+        <WindowButton label="Close" danger onClick={() => window.api?.window?.close()}>
+          <IconX size={16} />
+        </WindowButton>
       </div>
     </header>
   )
@@ -25,16 +45,24 @@ export function Header() {
 
 function WindowButton({
   onClick,
-  color
+  children,
+  danger = false,
+  label
 }: {
   onClick: () => void
-  color: string
+  children: ReactNode
+  danger?: boolean
+  label: string
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="w-3 h-3 rounded-full transition-all duration-200 hover:opacity-70 active:scale-90"
-      style={{ backgroundColor: color }}
-    />
+      className={`app-window-button ${danger ? 'is-danger' : ''}`}
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
   )
 }

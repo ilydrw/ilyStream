@@ -1,4 +1,4 @@
-import { MessageSquareMore, Radio, Send, Users, Wifi } from 'lucide-react'
+import {IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { 
@@ -76,22 +76,22 @@ export default function YouTubePage() {
         platformId={PLATFORM_ID}
         title="YouTube Integration"
         description="Connect your YouTube stream. Process Super Chats, memberships, and live chat using the YouTube Data API."
-        icon={<Wifi size={14} />}
+        icon={<IconWifi size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric 
-          icon={<Users size={20} className="text-youtube" />} 
+          icon={<IconUsers size={20} className="text-youtube" />} 
           label="YouTube Audience" 
           value={viewers.toLocaleString()} 
         />
         <Metric 
-          icon={<Radio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
+          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
           label="Poller Status" 
           value={isConnected ? 'Active' : isConnecting ? 'Auth' : 'Offline'} 
         />
         <Metric 
-          icon={<Wifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
           label="Quota Health" 
           value={error ? 'Quota Error' : isConnected ? 'Healthy' : 'Standby'} 
           tone={error ? 'danger' : 'neutral'}
@@ -157,13 +157,13 @@ export default function YouTubePage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-12">
               <DiagnosticLine
-                icon={<Radio size={16} />}
+                icon={<IconRadio size={16} />}
                 label="Chat Poller"
                 value={isConnected ? 'Polling / 5s Interval' : status.toUpperCase()}
                 tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine
-                icon={<Send size={16} />}
+                icon={<IconSend size={16} />}
                 label="Message Write API"
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
@@ -175,7 +175,7 @@ export default function YouTubePage() {
         <section className="app-section-card glass flex flex-col">
           <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <MessageSquareMore size={18} className="text-youtube" />
+              <IconMessage2 size={18} className="text-youtube" />
               <h2 className="!text-lg">YouTube Feed</h2>
             </div>
           </div>
@@ -183,7 +183,7 @@ export default function YouTubePage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
             {platformEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-                <Wifi size={48} className="mb-6 opacity-10" />
+                <IconWifi size={48} className="mb-6 opacity-10" />
                 <p className="text-sm font-medium">Waiting for YouTube events...</p>
               </div>
             ) : (

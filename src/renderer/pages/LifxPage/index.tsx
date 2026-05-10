@@ -1,5 +1,5 @@
 import React from 'react'
-import { Cpu, Radio, Activity, Lightbulb, RefreshCw } from 'lucide-react'
+import {IconCpu, IconRadio, IconActivity, IconBulb, IconRefresh} from '@tabler/icons-react'
 import { LifxIcon } from '../../components/ui/LifxIcon'
 
 export default function LifxPage() {
@@ -11,10 +11,6 @@ export default function LifxPage() {
             <LifxIcon size={48} branded />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>LIFX Smart Lighting</h1>
             <p className="app-page-intro">
               Connect your high-performance LIFX bulbs and strips. 
@@ -26,7 +22,7 @@ export default function LifxPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 
-          icon={<Radio size={20} />} 
+          icon={<IconRadio size={20} />} 
           label="Cloud Connection" 
           value="OFFLINE" 
           sub="No active session"
@@ -39,7 +35,7 @@ export default function LifxPage() {
           sub="Discovered Hardware"
         />
         <Metric 
-          icon={<Activity size={20} />} 
+          icon={<IconActivity size={20} />} 
           label="Latency" 
           value="--" 
           sub="LAN Performance"
@@ -56,13 +52,13 @@ export default function LifxPage() {
                 <p>Scanning local network for LIFX devices.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
-                <RefreshCw size={10} />
+                <IconRefresh size={10} />
                 Rescan
               </button>
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01] flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 m-8 rounded-3xl">
-              <Lightbulb size={64} className="mb-4 opacity-10" />
+              <IconBulb size={64} className="mb-4 opacity-10" />
               <p className="text-sm font-medium">No LIFX devices found.</p>
               <p className="text-xs text-white/5 mt-2">Ensure your bulbs are powered on and on the same Wi-Fi network.</p>
             </div>

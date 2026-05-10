@@ -1,5 +1,5 @@
 import React, { ReactNode, useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import {IconCheck, IconCopy} from '@tabler/icons-react'
 import type { OBSRuntimeStatus } from '../../../../shared/obs'
 import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 
@@ -129,7 +129,7 @@ export function RuntimeLink({
         onClick={handleCopy}
         className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${copied ? 'bg-success/20 text-success' : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40'}`}
       >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
+        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
       </button>
     </div>
   )

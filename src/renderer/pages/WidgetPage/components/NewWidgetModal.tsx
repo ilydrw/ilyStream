@@ -1,4 +1,4 @@
-import { X, Plus } from 'lucide-react'
+import {IconX, IconPlus} from '@tabler/icons-react'
 import { type WidgetTemplate } from '../constants'
 
 export function NewWidgetModal({
@@ -25,7 +25,7 @@ export function NewWidgetModal({
             <p className="text-xs text-white/40 mt-0.5">Pick a template to start with.</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5 text-white/40">
-            <X size={16} />
+            <IconX size={16} />
           </button>
         </div>
 
@@ -45,7 +45,7 @@ export function NewWidgetModal({
                   <h4 className="text-sm font-bold text-white">{template.label}</h4>
                   <p className="text-xs text-white/40 mt-0.5">{template.description}</p>
                 </div>
-                <Plus size={16} className="text-white/20 group-hover:text-accent" />
+                <IconPlus size={16} className="text-white/20 group-hover:text-accent" />
               </button>
             )
           })}

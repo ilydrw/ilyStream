@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Shield, Activity, Share2, ExternalLink } from 'lucide-react'
+import {IconWorld, IconShield, IconActivity, IconShare, IconExternalLink} from '@tabler/icons-react'
 import { FacebookIcon } from '../../components/ui/FacebookIcon'
 
 export default function FacebookPage() {
@@ -7,10 +7,6 @@ export default function FacebookPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div>
-          <div className="app-header-eyebrow">
-            <Globe size={14} className="text-accent" />
-            <span>Platform Integration</span>
-          </div>
           <div className="flex items-center gap-4 mb-2">
             <FacebookIcon size={48} className="text-[#1877F2]" />
             <h1>Facebook Gaming</h1>
@@ -24,17 +20,17 @@ export default function FacebookPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 
-          icon={<Shield size={20} className="text-white/20" />} 
+          icon={<IconShield size={20} className="text-white/20" />} 
           label="Account Status" 
           value="Not Linked" 
         />
         <Metric 
-          icon={<Share2 size={20} className="text-white/20" />} 
+          icon={<IconShare size={20} className="text-white/20" />} 
           label="Live Stream" 
           value="Offline" 
         />
         <Metric 
-          icon={<Activity size={20} className="text-blue-400" />} 
+          icon={<IconActivity size={20} className="text-blue-400" />} 
           label="Audience Reach" 
           value="0" 
         />
@@ -70,7 +66,7 @@ export default function FacebookPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Stream Destination</label>
-                <div className="app-input">Gaming Video Creator Page</div>
+                <div className="app-input">Gaming IconVideo Creator Page</div>
               </div>
             </div>
           </section>

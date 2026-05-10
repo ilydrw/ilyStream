@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Smartphone, Plus, Trash2, Copy, Check, Clock, Cpu, Music2, LayoutGrid } from 'lucide-react'
+import {IconDeviceMobile, IconPlus, IconTrash, IconCopy, IconCheck, IconClock, IconCpu, IconMusic, IconLayoutGrid} from '@tabler/icons-react'
 import type { PairCode, PairedDevice } from '../../../shared/device-api'
 import { DeskThingIcon } from '../../components/ui/DeskThingIcon'
 import { CarThingIcon } from '../../components/ui/CarThingIcon'
@@ -19,7 +19,7 @@ export default function DeskThingPage() {
       const list = await window.api.device.listPaired()
       setDevices(list as PairedDevice[])
     } catch (err) {
-      console.error('[DeskThing] List failed', err)
+      console.error('[DeskThing] IconList failed', err)
     }
   }
 
@@ -105,10 +105,6 @@ export default function DeskThingPage() {
             <DeskThingIcon size={48} />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Cpu size={14} className="text-accent" />
-              <span>Service Integration</span>
-            </div>
             <h1>ilyStream Service</h1>
             <p className="app-page-intro">
               Turn a Spotify Car Thing (or any LAN device running the DeskThing client) into a
@@ -127,12 +123,12 @@ export default function DeskThingPage() {
       {/* What this enables */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <FeatureCard
-          icon={<Music2 size={18} />}
+          icon={<IconMusic size={18} />}
           label="Sounds"
           description="Trigger any sound from your soundboard with a tap on the device."
         />
         <FeatureCard
-          icon={<LayoutGrid size={18} />}
+          icon={<IconLayoutGrid size={18} />}
           label="Deck actions"
           description="Skip tracks, fire alerts, and run mid-stream actions without touching your PC."
         />
@@ -160,7 +156,7 @@ export default function DeskThingPage() {
             disabled={!!pair}
             className="app-button-primary !h-10 !px-6 text-xs font-bold flex items-center gap-2"
           >
-            <Plus size={14} />
+            <IconPlus size={14} />
             Pair new device
           </button>
         </div>
@@ -181,11 +177,11 @@ export default function DeskThingPage() {
                     className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70 transition"
                     title="Copy code"
                   >
-                    {copied === 'code' ? <Check size={14} /> : <Copy size={14} />}
+                    {copied === 'code' ? <IconCheck size={14} /> : <IconCopy size={14} />}
                   </button>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-white/40">
-                  <Clock size={11} />
+                  <IconClock size={11} />
                   Expires in {pairExpiresIn}s
                 </div>
               </div>
@@ -203,7 +199,7 @@ export default function DeskThingPage() {
                       onClick={() => handleCopy(pairUrl, 'url')}
                       className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70 transition shrink-0"
                     >
-                      {copied === 'url' ? <Check size={14} /> : <Copy size={14} />}
+                      {copied === 'url' ? <IconCheck size={14} /> : <IconCopy size={14} />}
                     </button>
                   </div>
                 ) : (
@@ -262,7 +258,7 @@ export default function DeskThingPage() {
                     className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white/5 text-white/30 hover:bg-danger/20 hover:text-danger transition-all opacity-0 group-hover:opacity-100"
                     title="Revoke device"
                   >
-                    <Trash2 size={18} />
+                    <IconTrash size={18} />
                   </button>
                 </li>
               ))}

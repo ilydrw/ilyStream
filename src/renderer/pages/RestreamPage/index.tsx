@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Rocket, Activity, Zap, ExternalLink } from 'lucide-react'
+import {IconWorld, IconRocket, IconActivity, IconBolt, IconExternalLink} from '@tabler/icons-react'
 import { RestreamIcon } from '../../components/ui/RestreamIcon'
 
 export default function RestreamPage() {
@@ -7,10 +7,6 @@ export default function RestreamPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div>
-          <div className="app-header-eyebrow">
-            <Globe size={14} className="text-accent" />
-            <span>Platform Integration</span>
-          </div>
           <div className="flex items-center gap-4 mb-2">
             <RestreamIcon size={48} className="text-[#FF4C2F]" />
             <h1>ReStream</h1>
@@ -23,7 +19,7 @@ export default function RestreamPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 
-          icon={<Rocket size={20} className="text-white/20" />} 
+          icon={<IconRocket size={20} className="text-white/20" />} 
           label="Multi-Stream" 
           value="Disconnected" 
         />
@@ -33,7 +29,7 @@ export default function RestreamPage() {
           value="0" 
         />
         <Metric 
-          icon={<Activity size={20} className="text-orange-500" />} 
+          icon={<IconActivity size={20} className="text-orange-500" />} 
           label="Relay Status" 
           value="Idle" 
         />
@@ -54,7 +50,7 @@ export default function RestreamPage() {
               <div className="pt-4 border-t border-white/5 flex items-center justify-between">
                 <span className="text-xs text-white/20">Don't have a token?</span>
                 <a href="#" className="text-xs font-bold text-accent flex items-center gap-2">
-                  Get Token <ExternalLink size={12} />
+                  Get Token <IconExternalLink size={12} />
                 </a>
               </div>
             </div>
@@ -63,7 +59,7 @@ export default function RestreamPage() {
 
         <div className="lg:col-span-5">
           <section className="app-section-card glass p-10 bg-accent/5 border-accent/20">
-            <Zap size={32} className="text-accent mb-4" />
+            <IconBolt size={32} className="text-accent mb-4" />
             <h3 className="text-lg font-bold mb-2">Unified Analytics</h3>
             <p className="text-xs text-white/40 leading-relaxed">
               Once linked, IlyStream will pull combined viewer counts and chat metrics from all your ReStream destinations automatically.
