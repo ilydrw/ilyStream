@@ -22,7 +22,11 @@ interface StudioStore extends StudioState {
   duplicateScene: (id: string) => void
   setActiveScene: (id: string) => void
   
-  addLayer: (sceneId: string, layer: Omit<StudioLayer, 'id' | 'zIndex' | 'portraitX' | 'portraitY' | 'portraitWidth' | 'portraitHeight' | 'portraitVisible' | 'portraitLocked'>) => void
+  addLayer: (
+    sceneId: string,
+    layer: Omit<StudioLayer, 'id' | 'zIndex' | 'portraitX' | 'portraitY' | 'portraitWidth' | 'portraitHeight' | 'portraitVisible' | 'portraitLocked'> &
+      Partial<Pick<StudioLayer, 'id' | 'portraitX' | 'portraitY' | 'portraitWidth' | 'portraitHeight' | 'portraitRotation' | 'portraitVisible' | 'portraitLocked' | 'portraitCrop'>>
+  ) => void
   updateLayer: (sceneId: string, layerId: string, updates: Partial<StudioLayer>) => void
   removeLayer: (sceneId: string, layerId: string) => void
   reorderLayer: (sceneId: string, layerId: string, newIndex: number) => void
@@ -101,7 +105,7 @@ export const useStudioStore = create<StudioStore>()(
       ...DEFAULT_STUDIO_STATE,
       selectedLayerId: null,
       selectedAudioSourceId: 'master',
-      audioSources: [],
+      // audioSources initialized via DEFAULT_STUDIO_STATE spread above
       masterBus: {
         id: 'master',
         name: 'Master',
@@ -250,18 +254,26 @@ export const useStudioStore = create<StudioStore>()(
         const scene = scenes.find(s => s.id === sceneId)
         if (!scene) return
         
-        // Initialize portrait values as slightly modified versions of landscape
+        const portraitX = (layerData as any).portraitX
+        const portraitY = (layerData as any).portraitY
+        const portraitWidth = (layerData as any).portraitWidth
+        const portraitHeight = (layerData as any).portraitHeight
+        const portraitVisible = (layerData as any).portraitVisible
+        const portraitLocked = (layerData as any).portraitLocked
+
+        // Initialize portrait values from explicit presets when provided; otherwise
+        // derive a conservative vertical layout from the landscape transform.
         const newLayer: StudioLayer = { 
           ...layerData, 
           id: (layerData as any).id || crypto.randomUUID(), 
           zIndex: scene.layers.length,
-          portraitX: Math.round(layerData.x * 0.5), // Rough center for vertical
-          portraitY: layerData.y,
-          portraitWidth: Math.round(layerData.width * 0.6),
-          portraitHeight: Math.round(layerData.height * 0.6),
-          portraitRotation: (layerData as any).rotation ?? 0,
-          portraitVisible: layerData.visible,
-          portraitLocked: layerData.locked
+          portraitX: Number.isFinite(portraitX) ? portraitX : Math.round(layerData.x * 0.5),
+          portraitY: Number.isFinite(portraitY) ? portraitY : layerData.y,
+          portraitWidth: Number.isFinite(portraitWidth) ? portraitWidth : Math.round(layerData.width * 0.6),
+          portraitHeight: Number.isFinite(portraitHeight) ? portraitHeight : Math.round(layerData.height * 0.6),
+          portraitRotation: (layerData as any).portraitRotation ?? (layerData as any).rotation ?? 0,
+          portraitVisible: typeof portraitVisible === 'boolean' ? portraitVisible : layerData.visible,
+          portraitLocked: typeof portraitLocked === 'boolean' ? portraitLocked : layerData.locked
         }
         
         set({
@@ -282,6 +294,13 @@ export const useStudioStore = create<StudioStore>()(
                   
                   // Map incoming generic updates to layout-specific fields
                   const mappedUpdates: any = { ...updates }
+                  const updateAllLayouts = mappedUpdates.__allLayouts === true
+                  delete mappedUpdates.__allLayouts
+
+                  if (updateAllLayouts) {
+                    return { ...l, ...mappedUpdates }
+                  }
+
                   if (isPortrait) {
                     if ('x' in updates) { mappedUpdates.portraitX = updates.x; delete mappedUpdates.x }
                     if ('y' in updates) { mappedUpdates.portraitY = updates.y; delete mappedUpdates.y }
@@ -423,6 +442,15 @@ export const useStudioStore = create<StudioStore>()(
         }
 
         state.audioSources = (state.audioSources || []).map(normalizeAudioSource)
+        
+        // Ensure default locked sources (Soundboard, TTS) are always present
+        const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+        for (const def of defaultSources) {
+          if (!state.audioSources.find(s => s.id === def.id)) {
+            state.audioSources.push(normalizeAudioSource(def))
+          }
+        }
+
         state.masterBus = normalizeAudioSource({
           id: 'master',
           name: 'Master',

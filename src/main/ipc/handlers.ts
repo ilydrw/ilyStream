@@ -64,6 +64,8 @@ export function registerIpcHandlers(
     await obsService.applySettings(settings)
     aiService.applySettings(settings)
     services.coHostService.applySettings(settings)
+    services.hueService.applySettings(settings)
+    services.goveeService.applySettings(settings)
   }
 
   const updateSetting = async <K extends AppSettingKey>(key: K, value: unknown) => {

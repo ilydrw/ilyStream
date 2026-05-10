@@ -198,6 +198,11 @@ export function useTTS(isMounted: boolean) {
       clearTimeout(prepTimer)
       settingsCleanup()
       cleanups.forEach((fn) => fn())
+      window.speechSynthesis.cancel()
+      stopKokoroSpeech()
+      stopElevenLabsSpeech()
+      utteranceRef.current = null
+      setCurrentlySpeaking(null)
     }
   }, [setQueue, setCurrentlySpeaking, isMounted])
 }

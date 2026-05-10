@@ -7,6 +7,7 @@ import { Maximize, Minimize, Monitor, Grid3x3, RotateCcw, RotateCw } from 'lucid
 import { 
   type CanvasEditorProps, 
   type CanvasEditorHandle, 
+  type CanvasStreamOutput,
   type DragState, 
   type ResizeState, 
   type BrowserFrameSurface, 
@@ -39,12 +40,14 @@ const SNAP_THRESHOLD = 15
 export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((props, ref) => {
   const { 
     activeScene, isStreaming, isRecording, captureInputFormat, 
-    outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec
+    outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
+    streamOutputs = [], previewMode = 'single'
   } = props
   const canvasWidth = useStudioStore(s => s.canvasWidth)
   const canvasHeight = useStudioStore(s => s.canvasHeight)
   const aspectRatio = useStudioStore(s => s.aspectRatio)
   const setSelectedLayer = useStudioStore(s => s.setSelectedLayer)
+  const setAspectRatio = useStudioStore(s => s.setAspectRatio)
   const updateLayer = useStudioStore(s => s.updateLayer)
   const saveHistory = useStudioStore(s => s.saveHistory)
   const duplicateLayer = useStudioStore(s => s.duplicateLayer)
@@ -58,6 +61,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const secondaryPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageCache = useRef<Record<string, HTMLImageElement>>({})
   const mediaFrameCache = useRef<Record<string, CachedMediaFrame>>({})
   const browserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
@@ -68,8 +72,14 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const capturedBrowserSourceIds = useRef<Set<string>>(new Set())
   const activeMediaStreams = useRef<Record<string, { video: HTMLVideoElement }>>({})
   const audioClockRef = useRef({ totalSamples: 0, receivedAt: 0 })
-  const outputActive = isStreaming || isRecording
+  const hasRoutedStreamOutputs = streamOutputs.some(output => output.active)
+  const outputActive = isRecording || (isStreaming && !hasRoutedStreamOutputs)
   const browserBlankHoldFrames = useRef(Math.max(18, Math.round(outputFps * 1.5)))
+  const horizontalCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const verticalCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const horizontalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
+  const verticalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
+  const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
 
   useEffect(() => {
     browserBlankHoldFrames.current = Math.max(18, Math.round(outputFps * 1.5))
@@ -77,6 +87,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   // 2. Video Encoder
   const { workerRef: encoderWorkerRef, firstVideoChunkReceivedRef } = useVideoEncoder(outputActive, {
+    outputId: 'program',
     format: captureInputFormat,
     fps: outputFps,
     bitrate: outputBitrateKbps,
@@ -84,8 +95,35 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     height: canvasHeight,
     codec: outputCodec
   }, () => {
-    if (isStreaming) void window.api.streaming.stop()
-    if (isRecording) void window.api.streaming.stopRecording()
+    if (isStreaming) void window.api?.streaming?.stop?.()
+    if (isRecording) void window.api?.streaming?.stopRecording?.()
+  })
+
+  const horizontalOutput = streamOutputs.find(output => output.id === 'horizontal')
+  const verticalOutput = streamOutputs.find(output => output.id === 'vertical')
+
+  const { workerRef: horizontalEncoderWorkerRef } = useVideoEncoder(Boolean(horizontalOutput?.active), {
+    outputId: 'horizontal',
+    format: horizontalOutput?.inputFormat ?? captureInputFormat,
+    fps: horizontalOutput?.fps ?? outputFps,
+    bitrate: horizontalOutput?.bitrateKbps ?? outputBitrateKbps,
+    width: horizontalOutput?.width ?? 1920,
+    height: horizontalOutput?.height ?? 1080,
+    codec: horizontalOutput?.codec
+  }, () => {
+    if (isStreaming) void window.api?.streaming?.stop?.()
+  })
+
+  const { workerRef: verticalEncoderWorkerRef } = useVideoEncoder(Boolean(verticalOutput?.active), {
+    outputId: 'vertical',
+    format: verticalOutput?.inputFormat ?? captureInputFormat,
+    fps: verticalOutput?.fps ?? outputFps,
+    bitrate: verticalOutput?.bitrateKbps ?? outputBitrateKbps,
+    width: verticalOutput?.width ?? 1080,
+    height: verticalOutput?.height ?? 1920,
+    codec: verticalOutput?.codec
+  }, () => {
+    if (isStreaming) void window.api?.streaming?.stop?.()
   })
 
   // 2.1 Audio Clock Sync
@@ -94,6 +132,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       audioClockRef.current = { totalSamples: 0, receivedAt: 0 }
       return
     }
+    if (!window.api?.on) return
     return window.api.on('streaming:native-audio-clock', (data: any) => {
       audioClockRef.current = {
         totalSamples: data.totalSamples,
@@ -168,7 +207,9 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   useEffect(() => {
     compositedCaptureRef.current = { lastAt: 0, frameCount: 0 }
-  }, [outputActive, outputFps])
+    horizontalCaptureRef.current = { lastAt: 0, frameCount: 0 }
+    verticalCaptureRef.current = { lastAt: 0, frameCount: 0 }
+  }, [outputActive, outputFps, horizontalOutput?.active, verticalOutput?.active])
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -182,8 +223,13 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       const r = entries[0]?.contentRect
       if (!r) return
       
-      const sx = (r.width - 48) / canvasWidth
-      const sy = (r.height - 48) / canvasHeight
+      const secondaryWidth = secondaryAspectRatio === '16:9' ? 1920 : 1080
+      const secondaryHeight = secondaryAspectRatio === '16:9' ? 1080 : 1920
+      const previewGap = previewMode === 'dual' ? 32 : 0
+      const previewWidth = previewMode === 'dual' ? canvasWidth + secondaryWidth + previewGap : canvasWidth
+      const previewHeight = previewMode === 'dual' ? Math.max(canvasHeight, secondaryHeight) : canvasHeight
+      const sx = (r.width - 64) / previewWidth
+      const sy = (r.height - 64) / previewHeight
       const s = Math.min(sx, sy)
       
       setFitScale(s)
@@ -191,7 +237,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     
     obs.observe(el)
     return () => obs.disconnect()
-  }, [canvasWidth, canvasHeight])
+  }, [canvasWidth, canvasHeight, previewMode, secondaryAspectRatio])
 
   useEffect(() => {
     const effectiveScale = fitScale * zoom
@@ -206,7 +252,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     }
   }, [fitScale, zoom, canvasWidth, canvasHeight])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       const delta = -e.deltaY
@@ -214,30 +263,46 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       const newZoom = Math.max(0.05, Math.min(zoom * factor, 10))
       
       if (newZoom !== zoom) {
-        const viewport = viewportRef.current
-        if (viewport) {
-          const rect = viewport.getBoundingClientRect()
-          const mouseX = e.clientX - rect.left
-          const mouseY = e.clientY - rect.top
-          
-          const scrollX = viewport.scrollLeft
-          const scrollY = viewport.scrollTop
-          
-          setZoom(newZoom)
-          
-          // Sync scroll after zoom update
-          requestAnimationFrame(() => {
-            if (viewportRef.current) {
-              viewportRef.current.scrollLeft = scrollX * factor + (factor - 1) * mouseX
-              viewportRef.current.scrollTop = scrollY * factor + (factor - 1) * mouseY
-            }
-          })
-        } else {
-          setZoom(newZoom)
-        }
+        const rect = viewport.getBoundingClientRect()
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+        const scrollX = viewport.scrollLeft
+        const scrollY = viewport.scrollTop
+
+        setZoom(newZoom)
+
+        requestAnimationFrame(() => {
+          if (viewportRef.current) {
+            viewportRef.current.scrollLeft = scrollX * factor + (factor - 1) * mouseX
+            viewportRef.current.scrollTop = scrollY * factor + (factor - 1) * mouseY
+          }
+        })
       }
+      return
     }
-  }, [zoom, fitScale])
+
+    const scrollScale = e.deltaMode === 1 ? 18 : 1
+    if (e.shiftKey) {
+      e.preventDefault()
+      setPan(current => ({
+        x: current.x - (e.deltaY * scrollScale),
+        y: current.y - (e.deltaX * scrollScale)
+      }))
+      return
+    }
+    e.preventDefault()
+    setPan(current => ({
+      x: current.x - (e.deltaX * scrollScale),
+      y: current.y - (e.deltaY * scrollScale)
+    }))
+  }, [zoom])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.addEventListener('wheel', handleWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
 
   // Clamp pan when zoom changes or window resizes to keep canvas visible
   useEffect(() => {
@@ -292,6 +357,131 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     let perfWindowStart = performance.now()
     let perfFrameCount = 0
     let perfRenderTime = 0
+
+    const drawScene = (
+      targetCtx: CanvasRenderingContext2D,
+      targetCanvas: HTMLCanvasElement,
+      targetAspectRatio: '16:9' | '9:16'
+    ) => {
+      targetCtx.fillStyle = '#000'
+      targetCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height)
+
+      const currentLayers = [...activeScene.layers]
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map(l => ({ layer: l, layout: resolveLayerLayout(l, targetAspectRatio) }))
+
+      for (let i = 0; i < currentLayers.length; i++) {
+        const { layer: l, layout } = currentLayers[i]
+        if (!layout.visible) continue
+        targetCtx.save()
+        targetCtx.globalAlpha = l.opacity ?? 1
+        const rotation = Number(layout.rotation || 0)
+        const drawLayout = rotation
+          ? { ...layout, x: -layout.width / 2, y: -layout.height / 2 }
+          : layout
+        if (rotation) {
+          targetCtx.translate(layout.x + layout.width / 2, layout.y + layout.height / 2)
+          targetCtx.rotate(rotation * Math.PI / 180)
+        }
+
+        if (l.type === 'camera' || l.type === 'display') {
+          const video = videoRefs.current[l.id]
+          const stream = video?.srcObject as MediaStream | null
+          const track = stream?.getVideoTracks()[0]
+
+          const isReady =
+            video &&
+            video.readyState >= 2 &&
+            video.videoWidth > 0 &&
+            video.videoHeight > 0 &&
+            track?.readyState !== 'ended'
+
+          if (!isReady) {
+            const cached = mediaFrameCache.current[l.id]
+            if (cached) {
+              targetCtx.drawImage(cached.canvas, Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
+            } else {
+              drawMediaFallback(targetCtx, mediaFrameCache.current, l.id, drawLayout, track?.muted ? 'HIDDEN' : 'WAITING', l.name)
+            }
+          } else {
+            try {
+              const coversProgram = layout.width >= targetCanvas.width * 0.85 && layout.height >= targetCanvas.height * 0.85
+              drawAndCacheMediaFrame(targetCtx, mediaFrameCache.current, l.id, video, drawLayout, fpsRef.current.globalCount, layout.crop, coversProgram ? 1 : 2)
+            } catch (err) {
+              drawMediaFallback(targetCtx, mediaFrameCache.current, l.id, drawLayout, 'STALLED', l.name, { showBadge: false })
+            }
+          }
+        } else if (l.type === 'image' && imageCache.current[l.id]) {
+          targetCtx.drawImage(imageCache.current[l.id], Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
+        } else if (l.type === 'widget' || l.type === 'browser') {
+          const frame = browserFrameCache.current[l.id]
+          if (frame) {
+            const crop = layout.crop
+            if (crop) {
+              targetCtx.drawImage(
+                frame.canvas,
+                crop.left, crop.top, frame.width - crop.left - crop.right, frame.height - crop.top - crop.bottom,
+                Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height)
+              )
+            } else {
+              targetCtx.drawImage(frame.canvas, Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
+            }
+          }
+        } else if (l.type === 'text') {
+          const fontSize = Number(l.config?.fontSize) || 48
+          targetCtx.fillStyle = l.config?.color || '#fff'
+          targetCtx.font = `700 ${fontSize}px Inter, sans-serif`
+          targetCtx.textBaseline = 'top'
+          wrapCanvasText(targetCtx, l.config?.text || '', drawLayout.x, drawLayout.y, drawLayout.width, fontSize * 1.2, drawLayout.height)
+        }
+        targetCtx.restore()
+      }
+    }
+
+    const getOutputCanvas = (output: CanvasStreamOutput): HTMLCanvasElement => {
+      const ref = output.id === 'horizontal' ? horizontalCanvasRef : verticalCanvasRef
+      if (!ref.current) ref.current = document.createElement('canvas')
+      if (ref.current.width !== output.width) ref.current.width = output.width
+      if (ref.current.height !== output.height) ref.current.height = output.height
+      return ref.current
+    }
+
+    const captureOutput = (
+      output: CanvasStreamOutput | undefined,
+      worker: Worker | null,
+      capture: { current: { lastAt: number; frameCount: number } },
+      targetAspectRatio: '16:9' | '9:16',
+      now: number
+    ) => {
+      if (!output?.active || !worker) return
+      const outputCanvas = getOutputCanvas(output)
+      const outputCtx = outputCanvas.getContext('2d', { alpha: false })
+      if (!outputCtx) return
+      outputCtx.imageSmoothingEnabled = true
+      outputCtx.imageSmoothingQuality = 'high'
+      drawScene(outputCtx, outputCanvas, targetAspectRatio)
+
+      const intervalMs = 1000 / Math.max(1, Math.min(60, Math.round(output.fps || 30)))
+      if (now - capture.current.lastAt < intervalMs - 2) return
+      capture.current.lastAt = now
+      capture.current.frameCount++
+      try {
+        const audioSamples = audioClockRef.current.totalSamples
+        const audioRate = 48000
+        const audioBaseUs = (audioSamples / audioRate) * 1_000_000
+        const msSinceClock = performance.now() - audioClockRef.current.receivedAt
+        const smoothedOffsetUs = Math.min(msSinceClock * 1000, 100_000)
+        const timestamp = Math.round(audioBaseUs + smoothedOffsetUs)
+        const frame = new VideoFrame(outputCanvas, { timestamp })
+        worker.postMessage(
+          { type: 'composited_frame', payload: { frame } },
+          [frame]
+        )
+      } catch (err) {
+        console.error(`[CanvasEditor] Failed to capture ${output.id} stream frame:`, err)
+      }
+    }
+
     const render = () => {
       const renderStartedAt = performance.now()
       const now = renderStartedAt
@@ -314,75 +504,21 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         fpsRef.current.lastTime = now
       }
 
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      drawScene(ctx, canvas, aspectRatio)
 
-      const currentLayers = layersRef.current
-      for (let i = 0; i < currentLayers.length; i++) {
-        const { layer: l, layout } = currentLayers[i]
-        if (!layout.visible) continue
-        ctx.save()
-        ctx.globalAlpha = l.opacity ?? 1
-        const rotation = Number(layout.rotation || 0)
-        const drawLayout = rotation
-          ? { ...layout, x: -layout.width / 2, y: -layout.height / 2 }
-          : layout
-        if (rotation) {
-          ctx.translate(layout.x + layout.width / 2, layout.y + layout.height / 2)
-          ctx.rotate(rotation * Math.PI / 180)
+      const secondaryCanvas = secondaryPreviewCanvasRef.current
+      if (previewMode === 'dual' && secondaryCanvas) {
+        const secondaryCtx = secondaryCanvas.getContext('2d', { alpha: false })
+        if (secondaryCtx) {
+          secondaryCtx.imageSmoothingEnabled = true
+          secondaryCtx.imageSmoothingQuality = 'high'
+          drawScene(secondaryCtx, secondaryCanvas, secondaryAspectRatio)
         }
-        
-        if (l.type === 'camera' || l.type === 'display') {
-          const video = videoRefs.current[l.id]
-          const stream = video?.srcObject as MediaStream | null
-          const track = stream?.getVideoTracks()[0]
-          
-          const isReady =
-            video &&
-            video.readyState >= 2 &&
-            video.videoWidth > 0 &&
-            video.videoHeight > 0 &&
-            track?.readyState !== 'ended'
+      }
 
-          if (!isReady) {
-            const cached = mediaFrameCache.current[l.id]
-            if (cached) {
-              ctx.drawImage(cached.canvas, Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
-            } else {
-              drawMediaFallback(ctx, mediaFrameCache.current, l.id, drawLayout, track?.muted ? 'HIDDEN' : 'WAITING', l.name)
-            }
-          } else {
-            try {
-              const coversProgram = layout.width >= canvas.width * 0.85 && layout.height >= canvas.height * 0.85
-              drawAndCacheMediaFrame(ctx, mediaFrameCache.current, l.id, video, drawLayout, fpsRef.current.globalCount, layout.crop, coversProgram ? 1 : 2)
-            } catch (err) {
-              drawMediaFallback(ctx, mediaFrameCache.current, l.id, drawLayout, 'STALLED', l.name, { showBadge: false })
-            }
-          }
-        } else if (l.type === 'image' && imageCache.current[l.id]) {
-          ctx.drawImage(imageCache.current[l.id], Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
-        } else if (l.type === 'widget' || l.type === 'browser') {
-          const frame = browserFrameCache.current[l.id]
-          if (frame) {
-            const crop = layout.crop
-            if (crop) {
-              ctx.drawImage(
-                frame.canvas,
-                crop.left, crop.top, frame.width - crop.left - crop.right, frame.height - crop.top - crop.bottom,
-                Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height)
-              )
-            } else {
-              ctx.drawImage(frame.canvas, Math.round(drawLayout.x), Math.round(drawLayout.y), Math.round(drawLayout.width), Math.round(drawLayout.height))
-            }
-          }
-        } else if (l.type === 'text') {
-          const fontSize = Number(l.config?.fontSize) || 48
-          ctx.fillStyle = l.config?.color || '#fff'
-          ctx.font = `700 ${fontSize}px Inter, sans-serif`
-          ctx.textBaseline = 'top'
-          wrapCanvasText(ctx, l.config?.text || '', drawLayout.x, drawLayout.y, drawLayout.width, fontSize * 1.2, drawLayout.height)
-        }
-        ctx.restore()
+      if (hasRoutedStreamOutputs) {
+        captureOutput(horizontalOutput, horizontalEncoderWorkerRef.current, horizontalCaptureRef, '16:9', now)
+        captureOutput(verticalOutput, verticalEncoderWorkerRef.current, verticalCaptureRef, '9:16', now)
       }
 
       if (outputActive && encoderWorkerRef.current) {
@@ -450,7 +586,19 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
     render()
     return () => cancelAnimationFrame(frameId)
-  }, [outputActive, outputFps])
+  }, [
+    activeScene.layers,
+    aspectRatio,
+    outputActive,
+    outputFps,
+    hasRoutedStreamOutputs,
+    horizontalOutput,
+    verticalOutput,
+    horizontalEncoderWorkerRef,
+    verticalEncoderWorkerRef,
+    previewMode,
+    secondaryAspectRatio
+  ])
 
   // 3. Browser Source Frame Worker
   useEffect(() => {
@@ -515,15 +663,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       const { id } = payload
       if (browserWorkerBusy.current[id]) {
         // Worker is busy, buffer the latest frame and discard old ones
+        try { latestBrowserBitmaps.current[id]?.bitmap?.close?.() } catch {}
         latestBrowserBitmaps.current[id] = payload
       } else {
         sendToWorker(payload)
       }
     }
 
-    const unsub = window.api.on('browser-source:frame', onIpcFrame)
+    const unsub = window.api?.on?.('browser-source:frame', onIpcFrame)
     return () => {
-      unsub()
+      unsub?.()
       worker.terminate()
       for (const payload of Object.values(latestBrowserBitmaps.current)) {
         try { payload?.bitmap?.close?.() } catch {}
@@ -604,9 +753,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       return
     }
     if (e.button !== 0) return
-    e.stopPropagation()
-    saveHistory()
     const layout = resolve(layer)
+    if (layout.locked) {
+      dragRef.current = null
+      resizeRef.current = null
+      rotateRef.current = null
+      return
+    }
+    e.stopPropagation()
+    setSelectedLayer(layer.id)
+    saveHistory()
     dragRef.current = {
       id: layer.id,
       startX: e.clientX,
@@ -616,13 +772,13 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       width: layout.width,
       height: layout.height
     }
-    setSelectedLayer(layer.id)
   }
 
   const handleResizeStart = (e: React.MouseEvent, layer: StudioLayer, handle: HandleDir) => {
     e.stopPropagation()
-    saveHistory()
     const layout = resolve(layer)
+    if (layout.locked) return
+    saveHistory()
     resizeRef.current = {
       id: layer.id,
       handle,
@@ -643,8 +799,9 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   const handleRotateStart = (e: React.MouseEvent, layer: StudioLayer) => {
     e.stopPropagation()
-    saveHistory()
     const layout = resolve(layer)
+    if (layout.locked) return
+    saveHistory()
     const centerX = layout.x + layout.width / 2
     const centerY = layout.y + layout.height / 2
     const canvasPoint = screenToCanvas(e.clientX, e.clientY)
@@ -753,11 +910,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
     const handleMouseMove = (e: MouseEvent) => {
       if (isPanning || (window as any).__spacePressed) {
-        const viewport = viewportRef.current
-        if (viewport) {
-          viewport.scrollLeft -= e.movementX
-          viewport.scrollTop -= e.movementY
-        }
+        setPan(current => ({
+          x: current.x + e.movementX,
+          y: current.y + e.movementY
+        }))
         return
       }
 
@@ -1039,9 +1195,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       {/* Main Canvas Area */}
       <div 
         ref={viewportRef}
-        onWheel={handleWheel}
         onMouseDown={(e) => {
-          if (e.button !== 0 || (window as any).__spacePressed) return
+          if (e.button !== 0) return
           if (e.button === 0 && (window as any).__spacePressed) {
             setIsPanning(true)
             return
@@ -1053,8 +1208,12 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         className={`flex-1 relative overflow-auto custom-scrollbar bg-[#0a0a0a] ${isPanning ? 'cursor-grabbing' : ((window as any).__spacePressed ? 'cursor-grab' : '')}`}
       >
         <div 
-          className="min-w-full min-h-full p-[50vh_50vw] flex"
-          style={{ width: 'max-content', height: 'max-content' }}
+          className={`min-w-full min-h-full flex items-center justify-center gap-8 ${previewMode === 'dual' ? 'p-8' : 'p-[50vh_50vw]'}`}
+          style={{
+            width: 'max-content',
+            height: 'max-content',
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`
+          }}
         >
           <div 
             ref={containerRef}
@@ -1089,15 +1248,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
             const layout = resolve(layer)
             if (!layout.visible) return null
             const isSelected = selectedLayerId === layer.id
+            const isLocked = Boolean(layout.locked)
             const isCropping = resizeRef.current?.id === layer.id && resizeRef.current?.isCropping
             
             return (
               <div
                 key={layer.id}
                 onMouseDown={(e) => handleMouseDown(e, layer)}
-                className={`absolute pointer-events-auto cursor-move transition-shadow duration-300 ${
+                className={`absolute pointer-events-auto transition-shadow duration-300 ${isLocked ? 'cursor-default' : 'cursor-move'} ${
                   isSelected 
-                    ? `${isCropping ? 'ring-2 ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)]' : 'ring-2 ring-accent shadow-[0_0_30px_rgba(var(--accent-rgb),0.3)]'} z-10` 
+                    ? `${isLocked ? 'ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(251,191,36,0.22)]' : isCropping ? 'ring-2 ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)]' : 'ring-2 ring-accent shadow-[0_0_30px_rgba(var(--accent-rgb),0.3)]'} z-10` 
                     : 'hover:ring-1 hover:ring-white/20'
                 }`}
                 style={{
@@ -1112,30 +1272,34 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 {isSelected && (
                   <>
                     <div
-                      className="absolute left-1/2 top-0 h-9 w-px -translate-x-1/2 -translate-y-full bg-accent/70 pointer-events-none"
+                      className={`absolute left-1/2 top-0 h-9 w-px -translate-x-1/2 -translate-y-full pointer-events-none ${isLocked ? 'bg-amber-400/70' : 'bg-accent/70'}`}
                     />
-                    <button
-                      onMouseDown={(e) => handleRotateStart(e, layer)}
-                      className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-accent bg-[#050505] text-accent shadow-lg hover:scale-110 hover:bg-accent hover:text-white transition-all pointer-events-auto z-40"
-                      title="Rotate layer. Hold Shift for 15-degree steps."
-                    >
-                      <RotateCw size={14} />
-                    </button>
-                    {(['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'] as HandleDir[]).map(dir => (
-                      <div
-                        key={dir}
-                        onMouseDown={(e) => handleResizeStart(e, layer, dir)}
-                        className={`absolute ${dir.length === 1 ? 'w-5 h-2' : 'w-3.5 h-3.5'} bg-white border-2 ${isCropping ? 'border-emerald-500 bg-emerald-50' : 'border-accent'} rounded-full -translate-x-1/2 -translate-y-1/2 shadow-lg hover:scale-125 transition-transform cursor-pointer pointer-events-auto z-30`}
-                        style={{
-                          left: dir.includes('e') ? '100%' : (dir.includes('w') ? '0%' : '50%'),
-                          top: dir.includes('s') ? '100%' : (dir.includes('n') ? '0%' : '50%'),
-                          cursor: HANDLE_CURSORS[dir],
-                          width: dir.length === 1 ? (['n', 's'].includes(dir) ? '16px' : '6px') : '14px',
-                          height: dir.length === 1 ? (['n', 's'].includes(dir) ? '6px' : '16px') : '14px',
-                          borderRadius: dir.length === 1 ? '2px' : '50%'
-                        }}
-                      />
-                    ))}
+                    {!isLocked && (
+                      <>
+                        <button
+                          onMouseDown={(e) => handleRotateStart(e, layer)}
+                          className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-accent bg-[#050505] text-accent shadow-lg hover:scale-110 hover:bg-accent hover:text-white transition-all pointer-events-auto z-40"
+                          title="Rotate layer. Hold Shift for 15-degree steps."
+                        >
+                          <RotateCw size={14} />
+                        </button>
+                        {(['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'] as HandleDir[]).map(dir => (
+                          <div
+                            key={dir}
+                            onMouseDown={(e) => handleResizeStart(e, layer, dir)}
+                            className={`absolute ${dir.length === 1 ? 'w-5 h-2' : 'w-3.5 h-3.5'} bg-white border-2 ${isCropping ? 'border-emerald-500 bg-emerald-50' : 'border-accent'} rounded-full -translate-x-1/2 -translate-y-1/2 shadow-lg hover:scale-125 transition-transform cursor-pointer pointer-events-auto z-30`}
+                            style={{
+                              left: dir.includes('e') ? '100%' : (dir.includes('w') ? '0%' : '50%'),
+                              top: dir.includes('s') ? '100%' : (dir.includes('n') ? '0%' : '50%'),
+                              cursor: HANDLE_CURSORS[dir],
+                              width: dir.length === 1 ? (['n', 's'].includes(dir) ? '16px' : '6px') : '14px',
+                              height: dir.length === 1 ? (['n', 's'].includes(dir) ? '6px' : '16px') : '14px',
+                              borderRadius: dir.length === 1 ? '2px' : '50%'
+                            }}
+                          />
+                        ))}
+                      </>
+                    )}
                     <div 
                       className="absolute flex items-center gap-1 z-20"
                       style={{
@@ -1149,9 +1313,9 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                       }}
                     >
                       <div className={`px-2 py-1 ${isCropping ? 'bg-emerald-500' : 'bg-accent'} text-white text-[9px] font-black rounded uppercase tracking-widest shadow-lg whitespace-nowrap`}>
-                        {isCropping ? `Cropping: ${layer.name}` : layer.name}
+                        {isLocked ? `Locked: ${layer.name}` : isCropping ? `Cropping: ${layer.name}` : layer.name}
                       </div>
-                      {(layer.type === 'widget' || layer.type === 'browser' || layer.type === 'image') && (
+                      {!isLocked && (layer.type === 'widget' || layer.type === 'browser' || layer.type === 'image') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleAutoCrop(layer) }}
                           className="px-2 py-1 bg-white text-accent hover:bg-accent hover:text-white transition-colors text-[9px] font-black rounded uppercase tracking-widest shadow-lg pointer-events-auto"
@@ -1167,6 +1331,33 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
             )
           })}
           </div>
+
+          {previewMode === 'dual' && (
+            <button
+              type="button"
+              onClick={() => setAspectRatio(secondaryAspectRatio)}
+              className="relative flex-none border border-white/10 bg-[#050505] shadow-[2xl] transition-all hover:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/50"
+              style={{
+                width: `calc(${secondaryAspectRatio === '16:9' ? 1920 : 1080}px * var(--preview-scale))`,
+                height: `calc(${secondaryAspectRatio === '16:9' ? 1080 : 1920}px * var(--preview-scale))`
+              }}
+              title={`Switch editor to ${secondaryAspectRatio === '16:9' ? 'landscape' : 'portrait'} layout`}
+            >
+              <canvas
+                ref={secondaryPreviewCanvasRef}
+                width={secondaryAspectRatio === '16:9' ? 1920 : 1080}
+                height={secondaryAspectRatio === '16:9' ? 1080 : 1920}
+                className="block h-full w-full [image-rendering:auto] [backface-visibility:hidden] [transform:translateZ(0)]"
+                style={{
+                  imageRendering: zoom > 1 ? 'pixelated' : 'auto',
+                  willChange: 'transform'
+                }}
+              />
+              <div className="absolute left-3 top-3 rounded border border-white/10 bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white/70 backdrop-blur-md">
+                {secondaryAspectRatio === '16:9' ? 'Landscape' : 'Portrait'}
+              </div>
+            </button>
+          )}
         </div>
       </div>
 

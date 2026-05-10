@@ -19,7 +19,6 @@ import type { WindowsSettingsTarget } from '../system/windows-settings'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { OBSRuntimeStatus } from '../../shared/obs'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
-import type { StreamingEncoderDiagnostics, StreamingEncoderPreference } from '../../shared/streaming'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -76,10 +75,6 @@ export interface IpcInvokeChannels {
   'window:maximize': () => void
   'window:close': () => void
   'system:open-windows-settings': (target: WindowsSettingsTarget) => Promise<void>
-
-  // Streaming
-  'streaming:get-encoder-diagnostics': (preference?: StreamingEncoderPreference) => StreamingEncoderDiagnostics
-  'streaming:test-encoder': (preference?: StreamingEncoderPreference) => StreamingEncoderDiagnostics
 
   // Spotify
   'spotify:connect': (clientId: string) => Promise<SpotifyStatus>
@@ -140,10 +135,4 @@ export interface IpcEventChannels {
   }
   'spotify:status-changed': SpotifyStatus
   'spotify:queue-update': SpotifySongRequest[]
-  'system:update-status': {
-    state: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error'
-    version?: string
-    percent?: number
-    message?: string
-  }
 }

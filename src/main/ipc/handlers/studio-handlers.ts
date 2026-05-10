@@ -2,7 +2,6 @@ import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage }
 import { join } from 'path'
 import { execFileSync } from 'child_process'
 import { is } from '@electron-toolkit/utils'
-import { pathToFileURL } from 'url'
 import { Database } from '../../db/database'
 import { OverlayServer } from '../overlay/overlay-server'
 import { BrowserSourceService, type BrowserSourceCaptureConfig } from '../../services/browser-source-service'
@@ -107,12 +106,18 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
     const pending = pendingDisplayMediaRequest
     pendingDisplayMediaRequest = null
+    let callbackCalled = false
+
+    const safeCallback = (result: any) => {
+      if (callbackCalled) return
+      callbackCalled = true
+      callback(result)
+    }
 
     // Fallback: If no pending request, maybe it's a direct getDisplayMedia call without preparation
-    // We try to find a default source or just callback empty.
     if (!pending) {
       console.warn('[StudioHandlers] getDisplayMedia called without preparation. Returning empty.')
-      callback({})
+      safeCallback({})
       return
     }
 
@@ -125,39 +130,35 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       
       const source = sources.find(s => s.id === pending.sourceId)
       
-      let audioSource: 'loopback' | undefined
+      let audioSource: 'loopback' | 'loopbackWithMute' | undefined
       if (pending.withAudio) {
-        if (pending.forceLoopback) {
-          audioSource = 'loopback'
-          console.log('[StudioHandlers] Forcing system loopback audio fallback.')
-        } else if (source && source.id.startsWith('window:')) {
-          // Electron's display-media handler only accepts system loopback audio
-          // (or a WebFrameMain), not DesktopCapturerSource window audio. Avoid
-          // silently returning whole-computer audio when the user chose a window.
-          audioSource = undefined
-          console.warn(`[StudioHandlers] Window-specific audio is not available through Electron display media for: ${source.name}`)
-        } else {
-          // Screens usually need loopback for audio on Windows
-          audioSource = 'loopback'
+        // We use loopbackWithMute to prevent the IlyStream application's own
+        // audio output (like TTS or mixer monitoring) from being captured
+        // back into the desktop/app audio stream, which causes doubling and
+        // feedback loops.
+        audioSource = 'loopbackWithMute'
+        
+        if (source && source.id.startsWith('window:')) {
+          console.log(`[StudioHandlers] Using loopbackWithMute for isolated window capture: ${source.name}`)
         }
       }
 
       if (!source) {
         console.warn(`[StudioHandlers] Requested source ${pending.sourceId} not found. Available: ${sources.length}`)
-        callback({})
+        safeCallback({})
         return
       }
 
       console.log(`[StudioHandlers] Serving display media request: video=${source.name}, audio=${audioSource || 'none'}`)
 
-      callback({
+      safeCallback({
         video: source,
         audio: audioSource,
-        enableLocalEcho: true // Help with some routing issues
+        enableLocalEcho: false // Setting to false reduces processing overhead and prevents jitter
       })
     } catch (err) {
       console.error('[StudioHandlers] Display media request failed:', err)
-      callback({})
+      safeCallback({})
     }
   }, { useSystemPicker: false })
 
@@ -186,17 +187,16 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        webSecurity: false, // Required for cross-origin local iframes (widgets)
+        webSecurity: true,
+        allowRunningInsecureContent: false,
         backgroundThrottling: false
       }
     })
 
     const encodedSceneId = encodeURIComponent(String(sceneId || ''))
-    const route = `#/overlay/studio/${encodedSceneId}`
-    const baseUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
-      ? (process.env['ELECTRON_RENDERER_URL'].endsWith('/') ? process.env['ELECTRON_RENDERER_URL'] : `${process.env['ELECTRON_RENDERER_URL']}/`)
-      : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
-    const loadUrl = `${baseUrl}${route}`
+    const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
+      ? `${process.env['ELECTRON_RENDERER_URL']}?projectorSceneId=${encodedSceneId}`
+      : `file://${join(__dirname, '../renderer/index.html')}?projectorSceneId=${encodedSceneId}`
 
     await projectorWindow.loadURL(loadUrl)
 

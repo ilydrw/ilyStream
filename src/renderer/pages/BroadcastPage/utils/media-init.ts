@@ -190,14 +190,6 @@ export function formatMediaError(error: unknown): string {
   return String(error)
 }
 
-export function isDisplayAudioCaptureFailure(error: unknown): boolean {
-  const name = (error as any)?.name
-  const message = error instanceof Error ? error.message : String(error)
-  return message.includes('No audio tracks') ||
-    message.includes('Invalid capture constraints') ||
-    ['AbortError', 'NotReadableError', 'TrackStartError'].includes(name)
-}
-
 export function isTransientMediaError(error: unknown): boolean {
   const name = (error as any)?.name
   return ['AbortError', 'NotReadableError', 'TrackStartError', 'TransientNotFoundError', 'NotFoundError'].includes(name)

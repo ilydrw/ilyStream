@@ -6,6 +6,8 @@ import { TriggerRule } from '../triggers/trigger-types'
 import { VoiceProfile } from '../tts/voice-profiles'
 import { DEFAULT_KOKORO_VOICE, DEFAULT_TTS_PROVIDER } from '../../shared/tts-providers'
 import { estimateTikTokCreatorGiftCents } from '../../shared/tiktok-revenue'
+import { UserIdentity, UserStat } from '../../shared/stats'
+import crypto from 'crypto'
 
 // Fields containing secrets that should be encrypted at rest.
 // This list intentionally excludes public identifiers (username, channel, clientId, etc.)
@@ -241,6 +243,7 @@ export class Database {
     this.ensureColumn('user_stats', 'total_chats', `INTEGER DEFAULT 0`)
     this.ensureColumn('user_stats', 'total_song_requests', `INTEGER DEFAULT 0`)
     this.ensureColumn('user_stats', 'is_fan_club_member', `INTEGER DEFAULT 0`)
+    this.ensureColumn('user_stats', 'profile_id', `TEXT`)
     this.ensureColumn('user_stats', 'first_seen_at', `TEXT`)
     this.ensureColumn('user_stats', 'last_seen_at', `TEXT`)
     this.ensureColumn('tiktok_gifts', 'name_key', `TEXT`)
@@ -248,6 +251,8 @@ export class Database {
     this.ensureColumn('tiktok_gifts', 'raw_json', `TEXT DEFAULT '{}'`)
     this.ensureColumn('tiktok_gifts', 'seen_count', `INTEGER DEFAULT 0`)
     this.ensureColumn('tiktok_gifts', 'first_seen_at', `TEXT`)
+
+    this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_stats_profile_id ON user_stats(profile_id)`).run()
 
     this.seedTikTokGifts()
     this.seedTriggers()
@@ -745,7 +750,7 @@ export class Database {
         total_gifts = user_stats.total_gifts + excluded.total_gifts,
         total_gift_value_cents = user_stats.total_gift_value_cents + excluded.total_gift_value_cents,
         total_subscriptions = user_stats.total_subscriptions + excluded.total_subscriptions,
-        total_follows = user_stats.total_follows + excluded.total_follows,
+        total_follows = MAX(user_stats.total_follows, excluded.total_follows),
         total_shares = user_stats.total_shares + excluded.total_shares,
         total_raids = user_stats.total_raids + excluded.total_raids,
         total_chats = user_stats.total_chats + excluded.total_chats,
@@ -812,6 +817,14 @@ export class Database {
     return row?.n ?? 0
   }
 
+  /** Number of users with total_follows > 0, optionally scoped to one platform. */
+  getUniqueFollowerCount(platform?: string): number {
+    const row = platform
+      ? (this.db.prepare('SELECT COUNT(*) as n FROM user_stats WHERE platform = ? AND total_follows > 0').get(platform) as { n: number })
+      : (this.db.prepare('SELECT COUNT(*) as n FROM user_stats WHERE total_follows > 0').get() as { n: number })
+    return row?.n ?? 0
+  }
+
   /** Aggregated platform totals, used to build the per-platform breakdown. */
   getPlatformTotals(platform: string): {
     totalLikes: number
@@ -831,7 +844,7 @@ export class Database {
         COALESCE(SUM(total_gifts), 0) as totalGifts,
         COALESCE(SUM(total_gift_value_cents), 0) as totalGiftValueCents,
         COALESCE(SUM(total_subscriptions), 0) as totalSubscriptions,
-        COALESCE(SUM(total_follows), 0) as totalFollows,
+        (SELECT COUNT(*) FROM user_stats WHERE platform = ? AND total_follows > 0) as totalFollows,
         COALESCE(SUM(total_shares), 0) as totalShares,
         COALESCE(SUM(total_raids), 0) as totalRaids,
         COALESCE(SUM(total_chats), 0) as totalChats,
@@ -901,6 +914,159 @@ export class Database {
       ORDER BY ${sortColumn} DESC, last_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset) as UserStatRow[]
+  }
+
+  getTopIdentities(opts: {
+    sortColumn: string
+    platform?: string
+    query?: string
+    limit: number
+    offset: number
+  }): UserIdentity[] {
+    const ALLOWED_SORT = new Set([
+      'total_likes',
+      'total_gifts',
+      'total_gift_value_cents',
+      'total_subscriptions',
+      'total_follows',
+      'total_shares',
+      'total_raids',
+      'total_chats',
+      'total_song_requests',
+      'last_seen_at'
+    ])
+    const sortColumn = ALLOWED_SORT.has(opts.sortColumn) ? opts.sortColumn : 'total_likes'
+
+    const where: string[] = []
+    const params: unknown[] = []
+    if (opts.platform) {
+      where.push('platform = ?')
+      params.push(opts.platform)
+    }
+    if (opts.query && opts.query.trim().length > 0) {
+      where.push('(LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?)')
+      const like = `%${opts.query.trim().toLowerCase()}%`
+      params.push(like, like)
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
+    const limit = Math.min(500, Math.max(1, Math.floor(opts.limit)))
+    const offset = Math.max(0, Math.floor(opts.offset))
+
+    // Step 1: Query all matching accounts
+    // We group them in JS because cross-platform aggregation with complex sorting
+    // is easier to manage outside the restricted SQLite version in Electron.
+    const accounts = this.db.prepare(`
+      SELECT * FROM user_stats
+      ${whereSql}
+      ORDER BY ${sortColumn} DESC
+    `).all(...params) as UserStatRow[]
+
+    // Step 2: Group by profile_id or fallback identity
+    const identitiesMap = new Map<string, UserIdentity>()
+
+    for (const row of accounts) {
+      const id = row.profile_id || `${row.username}:${row.platform}`
+      let identity = identitiesMap.get(id)
+
+      const account: UserStat = {
+        username: row.username,
+        platform: row.platform as Platform,
+        displayName: row.display_name,
+        profilePictureUrl: row.profile_picture_url,
+        totalLikes: row.total_likes,
+        totalGifts: row.total_gifts,
+        totalGiftValueCents: row.total_gift_value_cents,
+        totalSubscriptions: row.total_subscriptions,
+        totalFollows: row.total_follows,
+        totalShares: row.total_shares,
+        totalRaids: row.total_raids,
+        totalChats: row.total_chats,
+        totalSongRequests: row.total_song_requests,
+        isFanClubMember: row.is_fan_club_member === 1,
+        profileId: row.profile_id,
+        firstSeenAt: row.first_seen_at,
+        lastSeenAt: row.last_seen_at
+      }
+
+      if (!identity) {
+        identity = {
+          id,
+          displayName: row.display_name,
+          profilePictureUrl: row.profile_picture_url,
+          primaryPlatform: row.platform as Platform,
+          allPlatforms: [row.platform as Platform],
+          totalLikes: row.total_likes,
+          totalGifts: row.total_gifts,
+          totalGiftValueCents: row.total_gift_value_cents,
+          totalSubscriptions: row.total_subscriptions,
+          totalFollows: row.total_follows,
+          totalShares: row.total_shares,
+          totalRaids: row.total_raids,
+          totalChats: row.total_chats,
+          totalSongRequests: row.total_song_requests,
+          isFanClubMember: row.is_fan_club_member === 1,
+          lastSeenAt: row.last_seen_at,
+          accounts: [account]
+        }
+        identitiesMap.set(id, identity)
+      } else {
+        // Merge stats
+        identity.totalLikes += row.total_likes
+        identity.totalGifts += row.total_gifts
+        identity.totalGiftValueCents += row.total_gift_value_cents
+        identity.totalSubscriptions += row.total_subscriptions
+        identity.totalFollows += row.total_follows
+        identity.totalShares += row.total_shares
+        identity.totalRaids += row.total_raids
+        identity.totalChats += row.total_chats
+        identity.totalSongRequests += row.total_song_requests
+        identity.isFanClubMember = identity.isFanClubMember || row.is_fan_club_member === 1
+        
+        if (!identity.allPlatforms.includes(row.platform as Platform)) {
+          identity.allPlatforms.push(row.platform as Platform)
+        }
+
+        // Keep most recent info
+        if (row.last_seen_at > identity.lastSeenAt) {
+          identity.displayName = row.display_name
+          identity.profilePictureUrl = row.profile_picture_url
+          identity.primaryPlatform = row.platform as Platform
+          identity.lastSeenAt = row.last_seen_at
+        }
+
+        identity.accounts.push(account)
+      }
+    }
+
+    // Step 3: Sort the aggregated identities
+    const sorted = Array.from(identitiesMap.values()).sort((a, b) => {
+      const valA = (a as any)[opts.sortColumn.replace(/_([a-z])/g, (_, l) => l.toUpperCase())] || 0
+      const valB = (b as any)[opts.sortColumn.replace(/_([a-z])/g, (_, l) => l.toUpperCase())] || 0
+      if (valB !== valA) return valB - valA
+      return b.lastSeenAt.localeCompare(a.lastSeenAt)
+    })
+
+    return sorted.slice(offset, offset + limit)
+  }
+
+  linkAccounts(p1: string, u1: string, p2: string, u2: string): void {
+    const s1 = this.getUserStat(p1, u1)
+    const s2 = this.getUserStat(p2, u2)
+    if (!s1 || !s2) return
+
+    const profileId = s1.profile_id || s2.profile_id || crypto.randomUUID()
+    
+    this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE username = ? AND platform = ?').run(profileId, u1, p1)
+    this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE username = ? AND platform = ?').run(profileId, u2, p2)
+    
+    if (s1.profile_id && s2.profile_id && s1.profile_id !== s2.profile_id) {
+       this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE profile_id = ?').run(profileId, s2.profile_id)
+    }
+  }
+
+  unlinkAccount(platform: string, username: string): void {
+    this.db.prepare('UPDATE user_stats SET profile_id = NULL WHERE username = ? AND platform = ?').run(username, platform)
   }
 
   getUserStat(platform: string, username: string): UserStatRow | null {
@@ -1230,6 +1396,7 @@ export interface UserStatRow {
   total_chats: number
   total_song_requests: number
   is_fan_club_member: number
+  profile_id: string | null
   first_seen_at: string
   last_seen_at: string
 }

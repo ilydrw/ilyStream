@@ -47,15 +47,13 @@ export class StatsService {
 
     switch (event.type) {
       case 'like': {
+        if (platform === 'twitch') break
         const amount = Math.max(1, Math.floor(event.likeCount || 1))
         this.upsertUser(event.user, platform, { 
           likes: amount,
           isFanClubMember: event.user.isFanClubMember
         })
         this.db.incrementGlobalStat('totalLikes', amount)
-        // event.totalLikes is the platform-reported running total; keep the
-        // peak so the dashboard can show "platform reported X across stream"
-        // separately from our locally-summed counter.
         if (typeof event.totalLikes === 'number') {
           this.db.setGlobalStatIfGreater(`peakReportedLikes:${platform}`, event.totalLikes)
         }
@@ -93,10 +91,10 @@ export class StatsService {
           follows: 1,
           isFanClubMember: event.user.isFanClubMember
         })
-        this.db.incrementGlobalStat('totalFollows', 1)
         break
       }
       case 'share': {
+        if (platform === 'twitch') break
         this.upsertUser(event.user, platform, { 
           shares: 1,
           isFanClubMember: event.user.isFanClubMember
@@ -177,7 +175,7 @@ export class StatsService {
       totalGifts: counters.totalGifts ?? 0,
       totalGiftValueCents: counters.totalGiftValueCents ?? 0,
       totalSubscriptions: counters.totalSubscriptions ?? 0,
-      totalFollows: counters.totalFollows ?? 0,
+      totalFollows: this.db.getUniqueFollowerCount(),
       totalShares: counters.totalShares ?? 0,
       totalRaids: counters.totalRaids ?? 0,
       totalChats: counters.totalChats ?? 0,
@@ -207,6 +205,27 @@ export class StatsService {
   getUserStat(platform: Platform, username: string): UserStat | null {
     const row = this.db.getUserStat(platform, username)
     return row ? rowToUserStat(row) : null
+  }
+
+  getTopIdentities(opts: GetTopUsersOptions): UserIdentity[] {
+    const sortColumn = SORT_COLUMN_BY_KEY[opts.sortBy] ?? 'total_likes'
+    const platform = opts.platform && opts.platform !== 'all' ? opts.platform : undefined
+
+    return this.db.getTopIdentities({
+      sortColumn,
+      platform,
+      query: opts.query,
+      limit: opts.limit ?? 100,
+      offset: opts.offset ?? 0
+    })
+  }
+
+  linkAccounts(p1: Platform, u1: string, p2: Platform, u2: string): void {
+    this.db.linkAccounts(p1, u1, p2, u2)
+  }
+
+  unlinkAccount(platform: Platform, username: string): void {
+    this.db.unlinkAccount(platform, username)
   }
 
   reset(): void {

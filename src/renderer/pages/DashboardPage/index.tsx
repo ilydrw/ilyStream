@@ -60,9 +60,14 @@ export default function DashboardPage() {
             <Radio size={32} className="text-accent" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <Radio size={14} className="text-accent" />
-              <span>Operational Center</span>
+            <div className="flex items-center gap-3">
+              <div className="app-header-eyebrow">
+                <Radio size={14} className="text-accent" />
+                <span>Operational Center</span>
+              </div>
+              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black tracking-widest text-white/40">
+                v0.0.6
+              </span>
             </div>
             <h1>Broadcast Dashboard</h1>
             <p className="app-page-intro">

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { net } from 'electron'
 import { BaseConnector } from '../base-connector'
 import { loadOptionalModule } from '../load-optional-module'
 import {
@@ -28,6 +29,16 @@ export class KickConnector extends BaseConnector {
 
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const kickConfig = config as KickConfig
+    let channelName = (kickConfig.channelName || '').trim()
+
+    // Sanitize: strip URL if they pasted it
+    if (channelName.includes('kick.com/')) {
+      channelName = channelName.split('kick.com/').pop()?.split(/[?#/]/)[0] || channelName
+    }
+    
+    if (channelName.startsWith('@')) {
+      channelName = channelName.slice(1)
+    }
 
     // Clean up previous connection
     await this.cleanup()
@@ -36,9 +47,9 @@ export class KickConnector extends BaseConnector {
     const KickJS = await loadOptionalModule('@retconned/kick-js')
 
     if (KickJS) {
-      await this.connectViaKickJS(KickJS, kickConfig.channelName)
+      await this.connectViaKickJS(KickJS, channelName)
     } else {
-      await this.connectViaPusher(kickConfig.channelName)
+      await this.connectViaPusher(channelName)
     }
   }
 
@@ -93,12 +104,43 @@ export class KickConnector extends BaseConnector {
     const WebSocket = (await import('ws')).default
 
     // First, resolve channel ID from Kick's public API
-    const channelResponse = await fetch(`https://kick.com/api/v2/channels/${channelName}`)
-    if (!channelResponse.ok) {
-      throw new Error(`Kick channel "${channelName}" not found (${channelResponse.status})`)
+    // We try v2 first, then v1, then fallback to a browser-like fetch
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://kick.com/',
+        'Origin': 'https://kick.com',
+        'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
     }
-    const channelData = await channelResponse.json()
-    this.channelId = channelData.chatroom?.id || channelData.id
+
+    let channelResponse = await fetch(`https://kick.com/api/v2/channels/${channelName}`, fetchOptions)
+    
+    // Fallback to v1 if v2 fails
+    if (!channelResponse.ok) {
+      console.warn(`[kick] v2 API failed (${channelResponse.status}), trying v1...`)
+      channelResponse = await fetch(`https://kick.com/api/v1/channels/${channelName}`, fetchOptions)
+    }
+
+    if (!channelResponse.ok) {
+      const errorMsg = channelResponse.status === 403 
+        ? `Kick blocked the connection (403). Cloudflare protection is active. Please try again in a few minutes or verify your channel name.`
+        : `Kick channel "${channelName}" not found (${channelResponse.status})`
+      throw new Error(errorMsg)
+    }
+
+    const channelData = await (channelResponse as any).json()
+    this.channelId = channelData.chatroom?.id || channelData.id || channelData.chatroom_id
 
     if (!this.channelId) {
       throw new Error(`Could not resolve chat room ID for channel "${channelName}"`)

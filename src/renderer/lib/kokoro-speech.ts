@@ -271,16 +271,21 @@ async function playKokoroAudio(
   const ttsBus = audioEngine.getTtsBus()
   const broadcastBus = audioEngine.getBroadcastBus()
   
-  if (ttsBus) {
-    gain.connect(ttsBus)
-  } else if (broadcastBus) {
-    gain.connect(broadcastBus)
-  }
+  console.log(`[kokoro] Routing playback. ttsBus: ${!!ttsBus}, broadcastBus (mixer active): ${!!broadcastBus}`)
 
-  // If the studio mixer is available, monitoring is handled by the mixer.
-  // Otherwise play directly so previews and non-studio TTS still make sound.
-  if (!ttsBus && !broadcastBus) {
+  if (ttsBus) {
+    console.log('[kokoro] Connecting to internal ttsBus')
+    gain.connect(ttsBus)
+  }
+  
+  // If the studio broadcast mixer is NOT active, we must connect directly to 
+  // destination so that previews/tests are audible. If the mixer IS active,
+  // it handles monitoring via the tts-audio channel.
+  if (!broadcastBus) {
+    console.log('[kokoro] Mixer inactive, connecting directly to context.destination')
     gain.connect(context.destination)
+  } else {
+    console.log('[kokoro] Mixer active, relying on tts-audio track monitoring')
   }
 
   activeSource = source

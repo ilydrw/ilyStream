@@ -3,6 +3,7 @@ import { resolveAppSettings } from '../../shared/app-settings'
 import { applyAppAppearance } from '../lib/app-appearance'
 import { useChatStore } from '../stores/chat-store'
 import { useTTSStore } from '../stores/tts-store'
+import { audioEngine } from '../utils/audio-engine'
 
 function applyRendererSettings(settings: ReturnType<typeof resolveAppSettings>): void {
   const chatStore = useChatStore.getState()
@@ -11,6 +12,9 @@ function applyRendererSettings(settings: ReturnType<typeof resolveAppSettings>):
   chatStore.setMaxMessages(settings.chatMaxMessages)
   ttsStore.setEnabled(settings.ttsEnabled)
   applyAppAppearance(settings)
+  
+  // Sync hardware audio routing
+  void audioEngine.setSinkId(settings.audioOutputDeviceId)
 }
 
 export function useSettingsSync() {

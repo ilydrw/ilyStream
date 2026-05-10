@@ -6,6 +6,7 @@ import { restoreEnabledPlatformConnections } from '../../platforms/platform-pers
 import { AnyPlatformConfig, Platform } from '../../platforms/types'
 import { randomUUID } from 'crypto'
 import { AnyStreamEvent, UserInfo } from '../../platforms/types'
+import type { AlertRuleEventType } from '../../../shared/alert-rules'
 
 let hasRestoredPlatformConnections = false
 
@@ -42,7 +43,7 @@ export function registerPlatformHandlers(
 
   ipcMain.handle(
     'event:simulate',
-    (_event, payload: { platform?: Platform; type: 'gift' | 'follow' | 'superfan'; suppressSound?: boolean }) => {
+    (_event, payload: { platform?: Platform; type: AlertRuleEventType | 'superfan'; suppressSound?: boolean }) => {
       const simulatedEvent = createSimulatedEvent(payload)
       platformManager.emitTestEvent(simulatedEvent)
       return simulatedEvent
@@ -86,7 +87,7 @@ export function registerPlatformHandlers(
 
 function createSimulatedEvent(payload: {
   platform?: Platform
-  type: 'gift' | 'follow' | 'superfan'
+  type: AlertRuleEventType | 'superfan'
   suppressSound?: boolean
 }): AnyStreamEvent {
   const platform = resolveSimulationPlatform(payload.platform)
@@ -126,6 +127,81 @@ function createSimulatedEvent(payload: {
       tier: 'Superfan',
       months: 1,
       isGift: false
+    }
+  }
+
+  if (payload.type === 'subscription') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'subscription',
+      raw,
+      user: { ...user, isSubscriber: true },
+      tier: platform === 'youtube' ? 'Member' : platform === 'twitch' ? 'Tier 1' : 'Subscriber',
+      months: 3,
+      isGift: false,
+      monetaryValue: 499
+    }
+  }
+
+  if (payload.type === 'raid') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'raid',
+      raw,
+      user,
+      viewerCount: 24
+    }
+  }
+
+  if (payload.type === 'like') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'like',
+      raw,
+      user,
+      likeCount: 25,
+      totalLikes: 2500
+    }
+  }
+
+  if (payload.type === 'share') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'share',
+      raw,
+      user
+    }
+  }
+
+  if (payload.type === 'join') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'join',
+      raw,
+      user: { ...user, isFanClubMember: true }
+    }
+  }
+
+  if (payload.type === 'chat') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'chat',
+      raw,
+      user,
+      message: 'This is a local alert test message',
+      emotes: []
     }
   }
 

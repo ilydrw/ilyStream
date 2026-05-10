@@ -4,9 +4,10 @@ import {
   Trash2, Play, Square, Circle, Camera, Wifi, Settings, Menu,
   ChevronLeft, ChevronRight, Lock, EyeOff, Maximize, Crosshair, Move, RefreshCw,
   Copy, Copy as Duplicate, Volume2, Video, Globe, Type, Image as ImageIcon,
-  Check, MoreVertical, Pencil, Grid, Scissors, Clipboard, Download, Eye, Unlock
+  MoreVertical, Pencil, Grid, Scissors, Clipboard, Download, Eye, Unlock
 } from 'lucide-react'
 import { useStudioStore } from '../../stores/studio-store'
+import { audioEngine } from '../../utils/audio-engine'
 import type { LayerType, StudioLayer } from '../../../shared/studio'
 import { CanvasEditor } from './components/CanvasEditor'
 import type { CanvasEditorHandle } from './components/CanvasEditor.types'
@@ -17,7 +18,6 @@ import {
   resolveCameraAudioDeviceId,
   buildRawAudioConstraints,
   disposeMediaElement,
-  isDisplayAudioCaptureFailure,
   isTransientMediaError,
   drawVideoCover,
   clampNumber
@@ -28,9 +28,16 @@ import { ContextMenu, type ContextMenuItem } from '../../components/ui/ContextMe
 import { AudioMixer } from './components/AudioMixer'
 import { Select, type SelectOption } from '../../components/ui/Select'
 import { TwitchIcon } from '../../components/ui/TwitchIcon'
-import { PlatformLogo } from '../../components/platforms/PlatformLogo'
-import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
-import { isHardwareStreamingEncoder, type StreamingInputFormat, type StreamingVideoEncoder } from '../../../shared/streaming'
+import { LayoutPlatformPicker } from './components/LayoutPlatformPicker'
+import { resolveWidgetStudioPreset } from './utils/widget-placement'
+import {
+  buildStreamPlatforms,
+  CAMERA_PRESETS,
+  getOptimizedCaptureInputFormat,
+  pickAvcCodecString,
+  type BroadcastLayoutId,
+  type BroadcastLayoutMode
+} from './utils/streaming-config'
 
 const LAYER_TYPE_ICONS: Record<string, typeof Video> = {
   camera: Video, display: Monitor, widget: Layers, browser: Globe, text: Type, image: ImageIcon
@@ -42,46 +49,15 @@ type ManagedMediaElement = (HTMLVideoElement | HTMLAudioElement) & {
   __ilyRawStream?: MediaStream
 }
 
-function buildStreamPlatforms(configs: any): any[] {
-  const available: any[] = []
-  const twitchKey = String(configs.twitch?.streamKey || '').trim()
-  const youtubeKey = String(configs.youtube?.streamKey || '').trim()
-  const tiktokKey = String(configs.tiktok?.streamKey || '').trim()
-  const kickKey = String(configs.kick?.streamKey || '').trim()
-  if (twitchKey) available.push({ id: 'twitch', name: 'Twitch', url: 'rtmp://ingest.global-contribute.live-video.net/app', key: twitchKey })
-  if (youtubeKey) available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: youtubeKey })
-  if (tiktokKey) available.push({ id: 'tiktok', name: 'TikTok', url: 'rtmp://open-rtmp.tiktok.com/stage', key: tiktokKey })
-  if (kickKey) available.push({ id: 'kick', name: 'Kick', url: 'rtmp://fa7d171e3f81.global-contribute.live-video.net/app', key: kickKey })
-  return available
-}
-
-const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number }> = {
-  '1080p60': { width: 1920, height: 1080, fps: 60 },
-  '1080p30': { width: 1920, height: 1080, fps: 30 },
-  '720p60': { width: 1280, height: 720, fps: 60 },
-  '720p30': { width: 1280, height: 720, fps: 30 }
-}
-
 const RAW_BROADCAST_AUDIO: MediaTrackConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
   autoGainControl: false,
   channelCount: { ideal: 2 },
-  sampleRate: { ideal: 48000 },
+  sampleRate: { ideal: audioEngine.getContext().sampleRate },
   sampleSize: { ideal: 16 },
   latency: { ideal: 0.01 }
 } as any
-
-const AVC_LEVELS: { level: string; maxMbps: number }[] = [
-  { level: '1E', maxMbps: 40_500 },
-  { level: '1F', maxMbps: 108_000 },
-  { level: '20', maxMbps: 216_000 },
-  { level: '28', maxMbps: 245_760 },
-  { level: '29', maxMbps: 245_760 },
-  { level: '2A', maxMbps: 522_240 },
-  { level: '32', maxMbps: 589_824 },
-  { level: '33', maxMbps: 983_040 }
-]
 
 export default function BroadcastPage() {
   const store = useStudioStore()
@@ -96,14 +72,21 @@ export default function BroadcastPage() {
   const [monitors, setMonitors] = useState<any[]>([])
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null)
   const [obsStatus, setObsStatus] = useState<any>(null)
-  const [selectedPlatform, setSelectedPlatform] = useState('custom')
+  const [broadcastLayoutMode, setBroadcastLayoutMode] = useState<BroadcastLayoutMode>('horizontal')
+  const [layoutAssignments, setLayoutAssignments] = useState<Record<BroadcastLayoutId, string[]>>({
+    horizontal: [],
+    vertical: []
+  })
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [customStreamKey, setCustomStreamKey] = useState('')
   const [showSourceModal, setShowSourceModal] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<{ x: number, y: number, layer: StudioLayer } | null>(null)
-  const [captureInputFormat, setCaptureInputFormat] = useState<StreamingInputFormat>('h264')
+  const [captureInputFormat, setCaptureInputFormat] = useState<'h264' | 'mjpeg'>('h264')
   const [outputConfig, setOutputConfig] = useState({ fps: 30, bitrateKbps: 6000 })
-  const [broadcastSettings, setBroadcastSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
+  const [layoutInputFormats, setLayoutInputFormats] = useState<Record<BroadcastLayoutId, 'h264' | 'mjpeg'>>({
+    horizontal: 'h264',
+    vertical: 'h264'
+  })
   
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
@@ -128,6 +111,99 @@ export default function BroadcastPage() {
   const selectedLayer = useMemo(() =>
     activeScene?.layers.find(l => l.id === store.selectedLayerId) || null
   , [activeScene, store.selectedLayerId])
+
+  const widgetsById = useMemo(() =>
+    new Map(widgets.map(widget => [widget.id, widget]))
+  , [widgets])
+
+  useEffect(() => {
+    if (!activeScene) return
+    activeScene.layers.forEach(layer => {
+      if (layer.type !== 'widget') return
+      const widgetType = layer.config?.widgetType || widgetsById.get(layer.config?.widgetId)?.type
+      if (widgetType !== 'screen-border') return
+      const hasGenericWidgetSize = Math.abs(layer.width - 600) <= 1 && Math.abs(layer.height - 400) <= 1
+      if (!hasGenericWidgetSize) return
+      const preset = resolveWidgetStudioPreset({ type: 'screen-border' }, layer.config, store.canvasWidth, store.canvasHeight)
+      store.updateLayer(activeScene.id, layer.id, {
+        __allLayouts: true,
+        ...preset,
+        portraitVisible: layer.portraitVisible,
+        config: {
+          ...layer.config,
+          ...(preset.config || {}),
+          widgetType: 'screen-border',
+          premiumAutoWrapped: true,
+          audioMixerHidden: layer.config?.audioMixerHidden ?? false
+        }
+      } as any)
+    })
+  }, [activeScene, store, widgetsById])
+
+  const activeLayoutAssignments = useMemo(() => {
+    if (broadcastLayoutMode === 'horizontal') return { horizontal: layoutAssignments.horizontal, vertical: [] }
+    if (broadcastLayoutMode === 'vertical') return { horizontal: [], vertical: layoutAssignments.vertical }
+    return layoutAssignments
+  }, [broadcastLayoutMode, layoutAssignments])
+
+  const assignedStreamCount = activeLayoutAssignments.horizontal.length + activeLayoutAssignments.vertical.length
+
+  const activeCanvasStreamOutputs = useMemo(() => {
+    const streamFps = outputConfig.fps
+    const horizontalBitrateKbps = Math.max(3500, ...activeLayoutAssignments.horizontal.map(id => id === 'twitch' ? 3500 : 6000))
+    const verticalBitrateKbps = Math.max(3500, ...activeLayoutAssignments.vertical.map(id => id === 'twitch' ? 3500 : 6000))
+    return [
+      {
+        id: 'horizontal' as const,
+        active: isStreaming && activeLayoutAssignments.horizontal.length > 0,
+        width: 1920,
+        height: 1080,
+        fps: streamFps,
+        bitrateKbps: horizontalBitrateKbps,
+        inputFormat: layoutInputFormats.horizontal,
+        codec: pickAvcCodecString(1920, 1080, streamFps)
+      },
+      {
+        id: 'vertical' as const,
+        active: isStreaming && activeLayoutAssignments.vertical.length > 0,
+        width: 1080,
+        height: 1920,
+        fps: streamFps,
+        bitrateKbps: verticalBitrateKbps,
+        inputFormat: layoutInputFormats.vertical,
+        codec: pickAvcCodecString(1080, 1920, streamFps)
+      }
+    ]
+  }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps])
+
+  const toggleLayoutAssignment = useCallback((layout: BroadcastLayoutId, platformId: string) => {
+    setLayoutAssignments(current => {
+      const otherLayout: BroadcastLayoutId = layout === 'horizontal' ? 'vertical' : 'horizontal'
+      const isSelected = current[layout].includes(platformId)
+      return {
+        horizontal: layout === 'horizontal'
+          ? (isSelected ? current.horizontal.filter(id => id !== platformId) : [...current.horizontal, platformId])
+          : current.horizontal.filter(id => id !== platformId),
+        vertical: layout === 'vertical'
+          ? (isSelected ? current.vertical.filter(id => id !== platformId) : [...current.vertical, platformId])
+          : current.vertical.filter(id => id !== platformId),
+        [otherLayout]: current[otherLayout].filter(id => id !== platformId)
+      } as Record<BroadcastLayoutId, string[]>
+    })
+  }, [])
+
+  const removeLayoutAssignment = useCallback((layout: BroadcastLayoutId, platformId: string) => {
+    setLayoutAssignments(current => ({
+      ...current,
+      [layout]: current[layout].filter(id => id !== platformId)
+    }))
+  }, [])
+
+  const handleLayoutModeChange = useCallback((mode: string) => {
+    const nextMode = mode as BroadcastLayoutMode
+    setBroadcastLayoutMode(nextMode)
+    store.setAspectRatio(nextMode === 'vertical' ? '9:16' : '16:9')
+  }, [store])
 
   useEffect(() => {
     void loadDevices(); void loadWidgets(); void loadPlatforms(); void loadMonitors(); void loadObsStatus(); void checkStatus()
@@ -164,17 +240,6 @@ export default function BroadcastPage() {
         setStreamError(streamingStatus.error)
       }
     })
-  }, [])
-
-  useEffect(() => {
-    if (!window.api?.settings) return
-    void window.api.settings.getAll().then((settings: AppSettings) => {
-      setBroadcastSettings(resolveAppSettings(settings))
-    })
-    const unsubscribe = window.api.on?.('settings:changed', (settings: unknown) => {
-      setBroadcastSettings(resolveAppSettings(settings as Partial<Record<keyof AppSettings, unknown>>))
-    })
-    return unsubscribe
   }, [])
 
   // Recording Timer
@@ -306,10 +371,19 @@ export default function BroadcastPage() {
     const configs = await window.api.platform.getConfigs()
     const available = buildStreamPlatforms(configs)
     setPlatforms(available)
-    if (available.length > 0) {
-      setSelectedPlatform((current) => available.some(platform => platform.id === current) ? current : available[0].id)
-    }
   }
+
+  useEffect(() => {
+    const availableIds = new Set(platforms.map(platform => platform.id))
+    setLayoutAssignments(current => {
+      const horizontal = current.horizontal.filter(id => availableIds.has(id))
+      const vertical = current.vertical.filter(id => availableIds.has(id))
+      if (horizontal.length === current.horizontal.length && vertical.length === current.vertical.length) {
+        return current
+      }
+      return { horizontal, vertical }
+    })
+  }, [platforms])
 
   const loadMonitors = async () => {
     if (!window.api?.studio) return
@@ -384,7 +458,12 @@ export default function BroadcastPage() {
           }
 
           if (!match && isSpotify) {
-            match = sources.find(s => s.name.toLowerCase().includes('spotify'))
+            // Last ditch: look for anything containing 'spotify' or 'music'
+            match = sources.find(s => 
+              s.name.toLowerCase().includes('spotify') || 
+              s.name.toLowerCase().includes('spotify free') ||
+              s.name.toLowerCase().includes('spotify premium')
+            )
           }
 
           if (match) {
@@ -448,16 +527,21 @@ export default function BroadcastPage() {
               height: { ideal: store.canvasHeight },
               frameRate: { ideal: 30 }
             },
-            audio: type === 'audio' || layer.config.captureAudio === true
+            audio: (type === 'audio' || layer.config.captureAudio === true) ? {
+              autoGainControl: false,
+              echoCancellation: false,
+              noiseSuppression: false,
+              channelCount: { ideal: 2 }
+            } : false
           } as MediaStreamConstraints)
           
           // Verify we actually got audio tracks if requested
           if ((type === 'audio' || layer.config.captureAudio === true) && stream.getAudioTracks().length === 0) {
-            console.warn(`[BroadcastPage] getDisplayMedia returned no audio tracks for ${layer.name}.`)
+            console.warn(`[BroadcastPage] getDisplayMedia returned no audio tracks for ${layer.name}. Isolation might be preventing capture of this specific window type.`)
             throw new Error('No audio tracks in stream')
           }
         } catch (err) {
-          const isNoAudio = isDisplayAudioCaptureFailure(err)
+          const isNoAudio = err instanceof Error && (err.message.includes('No audio tracks') || err.name === 'NotReadableError')
           const needsAudio = type === 'audio' || layer.config.captureAudio === true
           const isWindowSource = effectiveSourceId.startsWith('window:')
           const errorMessage = err instanceof Error ? err.message : String(err)
@@ -709,51 +793,74 @@ export default function BroadcastPage() {
   const startBroadcast = async () => {
     setStreamError(null)
     let livePlatforms = platforms
-    if (selectedPlatform !== 'custom' && window.api?.platform) {
+    if (window.api?.platform) {
       const configs = await window.api.platform.getConfigs()
       livePlatforms = buildStreamPlatforms(configs)
       setPlatforms(livePlatforms)
     }
-    const platform = selectedPlatform === 'custom'
-      ? { id: 'custom', name: 'Custom RTMP', url: customRtmpUrl.trim(), key: customStreamKey.trim() }
-      : livePlatforms.find(p => p.id === selectedPlatform)
     if (!window.api?.streaming) {
       setStreamError('Streaming bridge is not available. Restart ilyStream.')
       return
     }
-    if (!platform) {
-      setStreamError('No stream destination is selected.')
-      return
-    }
-    if (!platform.url || !platform.key) {
-      setStreamError(`${platform.name || 'Destination'} is missing an RTMP URL or stream key.`)
-      return
-    }
-    const streamBitrateKbps = broadcastSettings.streamingBitrate
-    const streamFps = Math.min(60, broadcastSettings.streamingFps)
-    setOutputConfig({ fps: streamFps, bitrateKbps: streamBitrateKbps })
-    const encoderPreference = broadcastSettings.streamingEncoder
-    const encoderDiagnostics = await window.api.streaming.getEncoderDiagnostics?.(encoderPreference).catch(() => null)
-    const inputFormat = await getCaptureInputFormatForEncoder(
-      store.canvasWidth,
-      store.canvasHeight,
-      streamFps,
-      streamBitrateKbps * 1000,
-      encoderPreference,
-      encoderDiagnostics?.selectedEncoder
+
+    const assignments = activeLayoutAssignments
+    const destinations = (['horizontal', 'vertical'] as BroadcastLayoutId[]).flatMap(layout =>
+      assignments[layout].map(platformId => ({
+        layout,
+        platform: livePlatforms.find(p => p.id === platformId)
+      }))
     )
-    setCaptureInputFormat(inputFormat)
-    const res = await window.api.streaming.start({
-      rtmpUrl: platform.url, streamKey: platform.key,
-      width: store.canvasWidth, height: store.canvasHeight,
-      fps: streamFps, bitrateKbps: streamBitrateKbps,
-      inputFormat,
-      audioFormat: 'f32le',
-      encoderPreference
-    })
-    if (res.success) { setIsStreaming(true); setStatus('Live') }
+
+    if (destinations.length === 0) {
+      const customReady = customRtmpUrl.trim() && customStreamKey.trim()
+      if (customReady) {
+        destinations.push({
+          layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal',
+          platform: { id: 'custom', name: 'Custom RTMP', url: customRtmpUrl.trim(), key: customStreamKey.trim() }
+        })
+      } else {
+        setStreamError('Assign at least one platform to Horizontal or Vertical before going live.')
+        return
+      }
+    }
+
+    const missing = destinations.find(destination => !destination.platform?.url || !destination.platform?.key)
+    if (missing) {
+      setStreamError(`${missing.platform?.name || 'Destination'} is missing an RTMP URL or stream key.`)
+      return
+    }
+    const streamFps = 30
+    const maxBitrateKbps = destinations.reduce((max, destination) => Math.max(max, destination.platform?.id === 'twitch' ? 3500 : 6000), 3500)
+    setOutputConfig({ fps: streamFps, bitrateKbps: maxBitrateKbps })
+    const horizontalInputFormat = await getOptimizedCaptureInputFormat(1920, 1080, streamFps, maxBitrateKbps * 1000)
+    const verticalInputFormat = await getOptimizedCaptureInputFormat(1080, 1920, streamFps, maxBitrateKbps * 1000)
+    setCaptureInputFormat(horizontalInputFormat)
+    setLayoutInputFormats({ horizontal: horizontalInputFormat, vertical: verticalInputFormat })
+
+    const results = await Promise.all(destinations.map(destination => {
+      const platform = destination.platform!
+      const bitrateKbps = platform.id === 'twitch' ? 3500 : 6000
+      const isVertical = destination.layout === 'vertical'
+      return window.api.streaming.start({
+        outputId: `${destination.layout}:${platform.id}`,
+        outputName: `${isVertical ? 'Vertical' : 'Horizontal'} ${platform.name}`,
+        rtmpUrl: platform.url,
+        streamKey: platform.key,
+        width: isVertical ? 1080 : 1920,
+        height: isVertical ? 1920 : 1080,
+        fps: streamFps,
+        bitrateKbps,
+        inputFormat: isVertical ? verticalInputFormat : horizontalInputFormat,
+        audioFormat: 'f32le',
+        audioSampleRate: audioEngine.getContext().sampleRate
+      })
+    }))
+
+    const failed = results.find((res: any) => !res.success)
+    if (!failed) { setIsStreaming(true); setStatus('Live') }
     else {
-      const message = res.error || 'Could not start RTMP output'
+      await window.api.streaming.stop()
+      const message = failed.error || 'Could not start RTMP output'
       setStreamError(message)
       setStatus('Offline')
     }
@@ -768,19 +875,10 @@ export default function BroadcastPage() {
   const startRecording = async () => {
     if (!window.api?.streaming) return
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const recordingFps = Math.min(60, broadcastSettings.streamingFps)
-    const recordingBitrateKbps = Math.max(broadcastSettings.streamingBitrate, 12000)
+    const recordingFps = 30
+    const recordingBitrateKbps = 12000
     setOutputConfig({ fps: recordingFps, bitrateKbps: recordingBitrateKbps })
-    const encoderPreference = broadcastSettings.streamingEncoder
-    const encoderDiagnostics = await window.api.streaming.getEncoderDiagnostics?.(encoderPreference).catch(() => null)
-    const inputFormat = await getCaptureInputFormatForEncoder(
-      store.canvasWidth,
-      store.canvasHeight,
-      recordingFps,
-      recordingBitrateKbps * 1000,
-      encoderPreference,
-      encoderDiagnostics?.selectedEncoder
-    )
+    const inputFormat = await getOptimizedCaptureInputFormat(store.canvasWidth, store.canvasHeight, recordingFps, recordingBitrateKbps * 1000)
     setCaptureInputFormat(inputFormat)
     const res = await window.api.streaming.startRecording({
       width: store.canvasWidth, height: store.canvasHeight,
@@ -788,7 +886,7 @@ export default function BroadcastPage() {
       outputPath: `${(process.env.USERPROFILE || process.env.HOME || '').replace(/\\/g, '/')}/Videos/ilyStream/Recordings/ilyStream_${timestamp}.mp4`,
       inputFormat,
       audioFormat: 'f32le',
-      encoderPreference
+      audioSampleRate: audioEngine.getContext().sampleRate
     })
     if (res.success) setIsRecording(true)
   }
@@ -830,13 +928,39 @@ export default function BroadcastPage() {
     if (type === 'display') {
       sessionDisplaySourceIds.current.add(layerId)
     }
+    const selectedWidget = type === 'widget' ? widgetsById.get(config.widgetId) : undefined
+    const widgetPreset = type === 'widget'
+      ? resolveWidgetStudioPreset(selectedWidget, config, store.canvasWidth, store.canvasHeight)
+      : null
+    const layout = widgetPreset || {
+      x: Math.round((store.canvasWidth - size.w) / 2),
+      y: Math.round((store.canvasHeight - size.h) / 2),
+      width: size.w,
+      height: size.h,
+      locked: false
+    }
+    const finalConfig = {
+      ...config,
+      ...(type === 'widget' ? { fps: config.fps ?? 8, widgetType: selectedWidget?.type } : {}),
+      ...(widgetPreset?.config || {}),
+      audioMixerHidden: false
+    }
     
     store.addLayer(activeScene.id, {
       id: layerId,
-      type, name: name || type, visible: true, locked: false,
-      x: Math.round((store.canvasWidth - size.w) / 2),
-      y: Math.round((store.canvasHeight - size.h) / 2),
-      width: size.w, height: size.h, opacity: 1, config: { ...config, audioMixerHidden: false }
+      type, name: name || type, visible: true, locked: layout.locked,
+      x: layout.x,
+      y: layout.y,
+      width: layout.width,
+      height: layout.height,
+      portraitX: (layout as any).portraitX,
+      portraitY: (layout as any).portraitY,
+      portraitWidth: (layout as any).portraitWidth,
+      portraitHeight: (layout as any).portraitHeight,
+      portraitLocked: (layout as any).portraitLocked,
+      portraitVisible: true,
+      opacity: 1,
+      config: finalConfig
     } as any)
 
     if (type === 'camera' || type === 'display' || type === 'audio') {
@@ -898,12 +1022,17 @@ export default function BroadcastPage() {
               <Menu size={20} />
             </button>
             <div className="w-px h-6 bg-white/10 mx-2" />
-            <button onClick={() => store.setAspectRatio('16:9')} className={`p-2.5 rounded-xl transition-all ${store.aspectRatio === '16:9' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-white/30 hover:text-white'}`} title="16:9 Landscape">
-              <Monitor size={20} />
-            </button>
-            <button onClick={() => store.setAspectRatio('9:16')} className={`p-2.5 rounded-xl transition-all ${store.aspectRatio === '9:16' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-white/30 hover:text-white'}`} title="9:16 Portrait">
-              <Smartphone size={20} />
-            </button>
+            <Select
+              value={broadcastLayoutMode}
+              onChange={handleLayoutModeChange}
+              options={[
+                { value: 'horizontal', label: 'Landscape', icon: <Monitor size={15} /> },
+                { value: 'vertical', label: 'Portrait', icon: <Smartphone size={15} /> },
+                { value: 'dual', label: 'Dual', icon: <Layers size={15} /> }
+              ]}
+              className="w-40"
+              buttonClassName="h-9 bg-black/30 border-white/5 rounded-xl px-3 hover:bg-black/50 transition-all ring-1 ring-white/5 text-[10px] font-black uppercase tracking-widest"
+            />
           </div>
         </div>
 
@@ -959,22 +1088,32 @@ export default function BroadcastPage() {
             <Video size={14} /> OBS Cam
           </button>
 
-          <Select
-            value={selectedPlatform}
-            onChange={(val) => setSelectedPlatform(val)}
-            options={[
-              ...platforms.map(p => ({ 
-                value: p.id, 
-                label: p.name,
-                icon: <PlatformLogo platform={p.id} size={16} />
-              })),
-              { value: 'custom', label: 'Custom RTMP', icon: <Wifi size={16} className="text-white/20" /> }
-            ]}
-            className="w-56"
-            buttonClassName="h-11 bg-black/40 border-white/5 rounded-xl px-4 hover:bg-black/60 transition-all ring-1 ring-white/5"
+          <LayoutPlatformPicker
+            layout="horizontal"
+            label="Horizontal"
+            icon={<Monitor size={14} />}
+            platforms={platforms}
+            selectedIds={layoutAssignments.horizontal}
+            blockedIds={layoutAssignments.vertical}
+            disabled={broadcastLayoutMode !== 'dual' && broadcastLayoutMode !== 'horizontal'}
+            isStreaming={isStreaming}
+            onToggle={toggleLayoutAssignment}
+            onRemove={removeLayoutAssignment}
+          />
+          <LayoutPlatformPicker
+            layout="vertical"
+            label="Vertical"
+            icon={<Smartphone size={14} />}
+            platforms={platforms}
+            selectedIds={layoutAssignments.vertical}
+            blockedIds={layoutAssignments.horizontal}
+            disabled={broadcastLayoutMode !== 'dual' && broadcastLayoutMode !== 'vertical'}
+            isStreaming={isStreaming}
+            onToggle={toggleLayoutAssignment}
+            onRemove={removeLayoutAssignment}
           />
 
-          {selectedPlatform === 'custom' && (
+          {assignedStreamCount === 0 && (
             <div className="flex items-center gap-2">
               <input
                 value={customRtmpUrl}
@@ -997,7 +1136,7 @@ export default function BroadcastPage() {
               <Square size={12} /> End
             </button>
           ) : (
-            <button onClick={startBroadcast} disabled={selectedPlatform === 'custom' ? (!customRtmpUrl.trim() || !customStreamKey.trim()) : platforms.length === 0} className="h-9 px-6 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 disabled:opacity-30 disabled:cursor-not-allowed">
+            <button onClick={startBroadcast} disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())} className="h-9 px-6 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 disabled:opacity-30 disabled:cursor-not-allowed">
               <Play size={12} /> Go Live
             </button>
           )}
@@ -1061,6 +1200,8 @@ export default function BroadcastPage() {
             outputCodec={pickAvcCodecString(store.canvasWidth, store.canvasHeight, outputConfig.fps)}
             videoRefs={videoRefs} 
             streamReady={streamReady} 
+            streamOutputs={activeCanvasStreamOutputs}
+            previewMode={broadcastLayoutMode === 'dual' ? 'dual' : 'single'}
             ref={canvasRef} 
           />
         </div>
@@ -1176,9 +1317,9 @@ export default function BroadcastPage() {
       >
         <div 
           onPointerDown={() => setIsResizingMixer(true)}
-          className={`absolute top-0 inset-x-0 h-2 cursor-ns-resize hover:bg-accent/60 transition-all flex items-center justify-center group z-[110] ${isMixerCollapsed ? 'pointer-events-none opacity-0' : ''}`}
+          className={`absolute top-0 inset-x-0 h-4 cursor-ns-resize hover:bg-accent/35 transition-all flex items-start justify-center group z-[110] ${isMixerCollapsed ? 'pointer-events-none opacity-0' : ''}`}
         >
-          <div className="w-32 h-1.5 bg-white/10 group-hover:bg-white/60 rounded-full transition-all" />
+          <div className="mt-1 w-32 h-1.5 bg-white/10 group-hover:bg-white/60 rounded-full transition-all" />
         </div>
 
         <div className="absolute top-0 right-6 h-12 flex items-center z-[120]">
@@ -1193,8 +1334,6 @@ export default function BroadcastPage() {
         
         <AudioMixer activeScene={activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
       </div>
-
-      <div style={{ height: 'var(--mixer-height)' }} className="shrink-0 pointer-events-none" />
 
       <AddSourceModal open={showSourceModal} onClose={() => setShowSourceModal(false)} onAdd={handleAddSource} widgets={widgets} devices={devices} />
 
@@ -1221,57 +1360,6 @@ export default function BroadcastPage() {
       )}
     </div>
   )
-}
-
-async function getOptimizedCaptureInputFormat(
-  width: number,
-  height: number,
-  fps: number,
-  bitrate: number
-): Promise<'h264' | 'mjpeg'> {
-  const videoEncoder = (window as any).VideoEncoder
-  const hasWebCodecs = typeof videoEncoder === 'function' &&
-                       typeof videoEncoder.isConfigSupported === 'function' &&
-                       typeof (window as any).MediaStreamTrackProcessor === 'function'
-  if (!hasWebCodecs) return 'mjpeg'
-
-  try {
-    const codec = pickAvcCodecString(width, height, fps)
-    const support = await videoEncoder.isConfigSupported({
-      codec,
-      width,
-      height,
-      bitrate,
-      framerate: fps,
-      latencyMode: 'realtime',
-      avc: { format: 'annexb' }
-    })
-    return support.supported ? 'h264' : 'mjpeg'
-  } catch (err) {
-    console.warn('[BroadcastPage] H.264 capture preflight failed; using MJPEG pipe:', err)
-    return 'mjpeg'
-  }
-}
-
-async function getCaptureInputFormatForEncoder(
-  width: number,
-  height: number,
-  fps: number,
-  bitrate: number,
-  preference: AppSettings['streamingEncoder'],
-  selectedEncoder?: StreamingVideoEncoder
-): Promise<StreamingInputFormat> {
-  if (preference !== 'auto') return 'raw'
-  if (selectedEncoder && isHardwareStreamingEncoder(selectedEncoder)) return 'raw'
-  return getOptimizedCaptureInputFormat(width, height, fps, bitrate)
-}
-
-function pickAvcCodecString(width: number, height: number, fps: number): string {
-  const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16)
-  const mbps = macroblocks * Math.max(1, fps)
-  const chosen =
-    AVC_LEVELS.find((entry) => entry.maxMbps >= mbps) ?? AVC_LEVELS[AVC_LEVELS.length - 1]
-  return `avc1.6400${chosen.level}`
 }
 
 function isLikelyScreenBorderLayer(layer: StudioLayer): boolean {

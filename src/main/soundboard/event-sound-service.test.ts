@@ -129,6 +129,75 @@ describe('EventSoundService', () => {
 
     expect(soundboard.playSound).toHaveBeenCalledTimes(1)
   })
+
+  it('routes alerts by platform and event type', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = { pushAlert: vi.fn() }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings({
+      ...DEFAULT_APP_SETTINGS,
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[0],
+          id: 'twitch-follows',
+          name: 'Twitch follows',
+          platforms: ['twitch'],
+          eventTypes: ['follow'],
+          soundEnabled: true,
+          soundId: 'twitch-follow.wav',
+          textTemplate: '{displayName} followed on {platform}'
+        }
+      ]
+    })
+
+    service.processEvent({ ...makeFollowEvent(), platform: 'tiktok' })
+    service.processEvent({ ...makeFollowEvent(), platform: 'twitch' })
+
+    expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+    expect(soundboard.playSound).toHaveBeenCalledWith('twitch-follow.wav', 1)
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'Alice followed on twitch' }),
+      'twitch'
+    )
+  })
+
+  it('supports non-TikTok event routes such as raids', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = { pushAlert: vi.fn() }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings({
+      ...DEFAULT_APP_SETTINGS,
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[0],
+          id: 'raid-route',
+          name: 'Raid route',
+          platforms: ['all'],
+          eventTypes: ['raid'],
+          soundEnabled: false,
+          textEnabled: true,
+          textTemplate: '{displayName} raided with {viewerCount} viewers'
+        }
+      ]
+    })
+
+    service.processEvent({
+      id: 'raid-1',
+      platform: 'kick',
+      timestamp: new Date(),
+      type: 'raid',
+      raw: {},
+      user: makeUser(),
+      viewerCount: 42
+    })
+
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'Alice raided with 42 viewers' }),
+      'kick'
+    )
+  })
 })
 
 function makeUser(): UserInfo {

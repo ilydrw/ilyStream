@@ -177,10 +177,3 @@ describe('resolveAppSettings event sounds', () => {
     expect(settings.eventTextSuperfanFontSize).toBe(120)
   })
 })
-
-describe('resolveAppSettings streaming encoder', () => {
-  it('normalizes encoder preference and falls back to auto for unknown values', () => {
-    expect(resolveAppSettings({ streamingEncoder: 'h264_nvenc' }).streamingEncoder).toBe('h264_nvenc')
-    expect(resolveAppSettings({ streamingEncoder: 'bogus' }).streamingEncoder).toBe('auto')
-  })
-})

@@ -12,7 +12,17 @@ import {
   isKokoroVoiceId,
   type TTSVoiceProvider
 } from './tts-providers'
-import { resolveStreamingEncoderPreference, type StreamingEncoderPreference } from './streaming'
+import {
+  ALERT_RULE_EVENT_TYPES,
+  ALERT_RULE_PLATFORMS,
+  DEFAULT_ALERT_RULES,
+  type AlertRule,
+  type AlertRuleAnimationIn,
+  type AlertRuleAnimationOut,
+  type AlertRuleEventType,
+  type AlertRuleLayout,
+  type AlertRulePlatform
+} from './alert-rules'
 
 export interface VoiceModifiers {
   radioFilter: boolean
@@ -34,6 +44,7 @@ export interface AppSettings {
   ttsChatVoiceProfileId: string
   ttsGiftVoiceProfileId: string
   ttsSubscriptionVoiceProfileId: string
+  alertRules: AlertRule[]
   eventSoundGiftEnabled: boolean
   eventSoundGiftSoundId: string
   eventSoundGiftVolume: number
@@ -142,16 +153,24 @@ export interface AppSettings {
   ttsReadAtSymbol: boolean
   ttsSkipMessagesStartingWithAt: boolean
   ttsIgnoreEmotes: boolean
-  ttsVolume: number
-  hueFlashOnFollow: boolean
-  hueFlashOnGift: boolean
-  hueFlashDurationMs: number
-  goveeFlashOnFollow: boolean
-  goveeFlashOnGift: boolean
-  voiceModifiers: VoiceModifiers
   audioOutputDeviceId: string
   automationEnabled: boolean
   automationKeystrokeMapping: AutomationKeystrokeMapping[]
+
+  // Govee Integration
+  goveeApiKey: string
+  goveeSelectedDeviceIds: string[]
+  goveeFlashOnFollow: boolean
+  goveeFlashOnGift: boolean
+  goveeFlashDurationMs: number
+
+  // Hue Integration
+  hueBridgeIp: string
+  hueUsername: string
+  hueSelectedLightIds: string[]
+  hueFlashOnFollow: boolean
+  hueFlashOnGift: boolean
+  hueFlashDurationMs: number
 
   // Voicemod Integration
   voicemodEnabled: boolean
@@ -181,7 +200,6 @@ export interface AppSettings {
   streamingFps: number
   streamingWidth: number
   streamingHeight: number
-  streamingEncoder: StreamingEncoderPreference
   
   // Alert Position
   alertTop: number
@@ -252,6 +270,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   ttsChatVoiceProfileId: '',
   ttsGiftVoiceProfileId: '',
   ttsSubscriptionVoiceProfileId: '',
+  alertRules: DEFAULT_ALERT_RULES,
   eventSoundGiftEnabled: true,
   eventSoundGiftSoundId: '',
   eventSoundGiftVolume: 1,
@@ -361,11 +380,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   ttsSkipMessagesStartingWithAt: false,
   ttsIgnoreEmotes: true,
   ttsVolume: 0.8,
-  hueFlashOnFollow: true,
-  hueFlashOnGift: true,
-  hueFlashDurationMs: 5000,
-  goveeFlashOnFollow: true,
-  goveeFlashOnGift: true,
   voiceModifiers: {
     radioFilter: false,
     speedRamping: true,
@@ -374,6 +388,21 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   audioOutputDeviceId: 'default',
   automationEnabled: false,
   automationKeystrokeMapping: [],
+
+  // Govee
+  goveeApiKey: '',
+  goveeSelectedDeviceIds: [],
+  goveeFlashOnFollow: true,
+  goveeFlashOnGift: true,
+  goveeFlashDurationMs: 5000,
+
+  // Hue
+  hueBridgeIp: '',
+  hueUsername: '',
+  hueSelectedLightIds: [],
+  hueFlashOnFollow: true,
+  hueFlashOnGift: true,
+  hueFlashDurationMs: 5000,
 
   // Voicemod
   voicemodEnabled: false,
@@ -403,7 +432,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   streamingFps: 60,
   streamingWidth: 1920,
   streamingHeight: 1080,
-  streamingEncoder: 'auto',
   alertTop: 10,
   alertLeft: 50
 }
@@ -593,6 +621,95 @@ function resolveAudiencePermissions(value: unknown): TTSAudiencePermission[] {
   return deduped.length > 0 ? deduped : ['everyone']
 }
 
+function resolveAlertRules(value: unknown): AlertRule[] {
+  if (!Array.isArray(value)) return DEFAULT_ALERT_RULES.map(rule => ({ ...rule }))
+
+  const rules: AlertRule[] = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    const id = typeof record.id === 'string' && record.id.trim()
+      ? record.id.trim()
+      : `alert-${rules.length + 1}`
+    if (seen.has(id)) continue
+    seen.add(id)
+
+    const platforms = resolveAlertPlatforms(record.platforms)
+    const eventTypes = resolveAlertEventTypes(record.eventTypes)
+    if (eventTypes.length === 0) continue
+
+    rules.push({
+      id,
+      name: typeof record.name === 'string' && record.name.trim() ? record.name.trim().slice(0, 80) : 'Alert route',
+      enabled: record.enabled !== false,
+      platforms,
+      eventTypes,
+      priority: resolveInteger(record.priority, 0, 0, 999),
+      cooldownMs: resolveInteger(record.cooldownMs, 0, 0, 3_600_000),
+      minGiftCount: resolveInteger(record.minGiftCount, 0, 0, 999_999),
+      minAmountCents: resolveInteger(record.minAmountCents, 0, 0, 100_000_000),
+      keyword: typeof record.keyword === 'string' ? record.keyword.trim().slice(0, 120) : '',
+      soundEnabled: Boolean(record.soundEnabled),
+      soundId: resolveSoundId(record.soundId),
+      soundVolume: resolveDecimal(record.soundVolume, 1, 0, 1),
+      imageEnabled: Boolean(record.imageEnabled),
+      imageAssetId: resolveAssetId(record.imageAssetId),
+      useEventImage: record.useEventImage !== false,
+      textEnabled: record.textEnabled !== false,
+      textTemplate: typeof record.textTemplate === 'string' ? record.textTemplate.slice(0, 500) : '',
+      textColor: resolveHexColor(record.textColor, '#ffffff') || '#ffffff',
+      backgroundColor: typeof record.backgroundColor === 'string' ? record.backgroundColor : 'rgba(0, 0, 0, 0.05)',
+      borderColor: typeof record.borderColor === 'string' ? record.borderColor : 'gradient',
+      fontSize: resolveInteger(record.fontSize, 44, 16, 128),
+      fontWeight: resolveInteger(record.fontWeight, 800, 100, 900),
+      textShadow: typeof record.textShadow === 'string' ? record.textShadow.slice(0, 160) : '0 4px 12px rgba(0,0,0,0.5)',
+      layout: resolveAlertLayout(record.layout),
+      animationIn: resolveAlertAnimationIn(record.animationIn),
+      animationOut: resolveAlertAnimationOut(record.animationOut),
+      durationMs: resolveInteger(record.durationMs, 5000, 500, 30000),
+      imageTop: resolveInteger(record.imageTop, 0, -1000, 1000),
+      imageLeft: resolveInteger(record.imageLeft, 0, -1000, 1000)
+    })
+  }
+
+  return rules.length > 0 ? rules : DEFAULT_ALERT_RULES.map(rule => ({ ...rule }))
+}
+
+function resolveAlertPlatforms(value: unknown): AlertRulePlatform[] {
+  if (!Array.isArray(value)) return ['all']
+  const platforms = value.filter((item): item is AlertRulePlatform =>
+    ALERT_RULE_PLATFORMS.includes(item as AlertRulePlatform)
+  )
+  const deduped = [...new Set(platforms)]
+  return deduped.length > 0 ? (deduped.includes('all') ? ['all'] : deduped) : ['all']
+}
+
+function resolveAlertEventTypes(value: unknown): AlertRuleEventType[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((item): item is AlertRuleEventType =>
+    ALERT_RULE_EVENT_TYPES.includes(item as AlertRuleEventType)
+  ))]
+}
+
+function resolveAlertLayout(value: unknown): AlertRuleLayout {
+  return value === 'side-by-side' || value === 'text-only' || value === 'image-only' ? value : 'stacked'
+}
+
+function resolveAlertAnimationIn(value: unknown): AlertRuleAnimationIn {
+  return value === 'slide' || value === 'bounce' || value === 'zoom' ? value : 'fade'
+}
+
+function resolveAlertAnimationOut(value: unknown): AlertRuleAnimationOut {
+  return value === 'slide' || value === 'tv-warp' ? value : 'fade'
+}
+
+function resolveInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numericValue) ? clamp(Math.round(numericValue), min, max) : fallback
+}
+
 function resolveOverrideMode(value: unknown, voiceProfileId: string): TTSUserVoiceOverrideMode {
   if (value === 'custom' || value === 'profile') return value
   return voiceProfileId ? 'profile' : 'custom'
@@ -684,13 +801,13 @@ export function resolveAppSetting<K extends AppSettingKey>(
   }
 
   if (key === 'ttsUserVoiceOverrides') return resolveUserVoiceOverrides(value) as AppSettings[K]
+  if (key === 'alertRules') return resolveAlertRules(value) as AppSettings[K]
   if (key === 'ttsCommandPrefixes') return resolveCommandPrefixes(value) as AppSettings[K]
   if (key === 'ttsAllowedRoles') return resolveAudiencePermissions(value) as AppSettings[K]
   if (key === 'chatAutoRelayPlatforms') return resolveRelayPlatformParticipation(value) as AppSettings[K]
   if (key === 'chatRelayTagMode') return resolveRelayTagMode(value) as AppSettings[K]
   if (key === 'theme') return resolveAppTheme(value) as AppSettings[K]
   if (key === 'interfaceDensity') return resolveInterfaceDensity(value) as AppSettings[K]
-  if (key === 'streamingEncoder') return resolveStreamingEncoderPreference(value) as AppSettings[K]
   if (key === 'accentColor') {
     const color = resolveHexColor(value, DEFAULT_APP_SETTINGS.accentColor)
     return (color.length === 9 ? color.slice(0, 7) : color) as AppSettings[K]

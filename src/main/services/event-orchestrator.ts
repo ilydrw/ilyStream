@@ -213,20 +213,20 @@ export class EventOrchestrator {
       this.hueService.triggerStrobe(settings.hueFlashDurationMs).catch(() => {})
     }
     if (event.type === 'follow' && settings.goveeFlashOnFollow) {
-      this.goveeService.triggerStrobe(settings.hueFlashDurationMs).catch(() => {})
+      this.goveeService.triggerStrobe(settings.goveeFlashDurationMs).catch(() => {})
     }
 
     if (event.type === 'gift' && settings.hueFlashOnGift && !event.isCombo) {
       this.hueService.triggerCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
     }
     if (event.type === 'gift' && settings.goveeFlashOnGift && !event.isCombo) {
-      this.goveeService.triggerCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
+      this.goveeService.triggerCyberGradientStrobe(settings.goveeFlashDurationMs).catch(() => {})
     }
 
     if (event.type === 'subscription') {
       this.hueService.triggerSuperfanCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
-      if (settings.goveeFlashOnGift) {
-        this.goveeService.triggerSuperfanCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
+      if (settings.goveeFlashOnFollow || settings.goveeFlashOnGift) {
+        this.goveeService.triggerSuperfanCyberGradientStrobe(settings.goveeFlashDurationMs).catch(() => {})
       }
     }
   }

@@ -5,6 +5,7 @@ export type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 export const ALERT_KINDS: AlertKind[] = ['Gift', 'Follow', 'Superfan']
 
 export type EventSoundSettingKey =
+  | 'alertRules'
   | `eventSound${AlertKind}Enabled`
   | `eventSound${AlertKind}SoundId`
   | `eventSound${AlertKind}Volume`
@@ -30,6 +31,7 @@ export type EventSoundSettingKey =
 export type EventSoundSettings = Pick<AppSettings, EventSoundSettingKey>
 
 export const EVENT_SOUND_SETTING_KEYS: EventSoundSettingKey[] = [
+  'alertRules',
   ...ALERT_KINDS.flatMap((kind) => [
     `eventSound${kind}Enabled`,
     `eventSound${kind}SoundId`,

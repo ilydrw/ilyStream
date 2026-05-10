@@ -2,6 +2,7 @@ import type { AppSettings } from '../../shared/app-settings'
 import type { AnyStreamEvent, JoinEvent } from '../platforms/types'
 import type { SoundboardService } from './soundboard-service'
 import type { OverlayServer } from '../overlay/overlay-server'
+import type { AlertRule } from '../../shared/alert-rules'
 
 type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
@@ -10,6 +11,7 @@ const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
 export class EventSoundService {
   private settings: AppSettings | null = null
   private recentSuperfanJoinUsers = new Map<string, number>()
+  private recentRuleHits = new Map<string, number>()
   private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: AnyStreamEvent }>()
 
   constructor(
@@ -18,7 +20,7 @@ export class EventSoundService {
   ) {}
 
   applySettings(settings: AppSettings): void {
-    this.settings = { ...settings }
+    this.settings = this.withLegacyAlertRouteValues(settings)
   }
 
   playSound(soundId: string, volume: number): void {
@@ -52,6 +54,8 @@ export class EventSoundService {
         }
         return
     }
+
+    this.handleRuleAlerts(event)
   }
 
   private aggregateGift(event: any): void {
@@ -89,6 +93,11 @@ export class EventSoundService {
 
   private handleAlert(kind: AlertKind, event: AnyStreamEvent): void {
     if (!this.settings) return
+
+    if (this.settings.alertRules?.length) {
+      this.handleRuleAlerts(event)
+      return
+    }
 
     const soundEnabled = this.settings[`eventSound${kind}Enabled`]
     const soundId = this.settings[`eventSound${kind}SoundId`]
@@ -146,6 +155,103 @@ export class EventSoundService {
     )
   }
 
+  private handleRuleAlerts(event: AnyStreamEvent): void {
+    if (!this.settings?.alertRules?.length) return
+
+    const rules = [...this.settings.alertRules]
+      .filter(rule => this.matchesRule(rule, event))
+      .sort((a, b) => b.priority - a.priority)
+
+    for (const rule of rules) {
+      this.handleRuleAlert(rule, event)
+    }
+  }
+
+  private matchesRule(rule: AlertRule, event: AnyStreamEvent): boolean {
+    if (!rule.enabled) return false
+    if (!rule.eventTypes.includes(event.type as any)) return false
+    if (!rule.platforms.includes('all') && !rule.platforms.includes(event.platform)) return false
+
+    if (event.type === 'gift') {
+      if (rule.minGiftCount > 0 && (event.giftCount || 0) < rule.minGiftCount) return false
+      if (rule.minAmountCents > 0 && (event.monetaryValue || 0) < rule.minAmountCents) return false
+    }
+
+    if (rule.keyword.trim()) {
+      const needle = rule.keyword.trim().toLowerCase()
+      const haystack = [
+        'message' in event ? event.message : '',
+        'giftName' in event ? event.giftName : '',
+        'tier' in event ? event.tier : '',
+        'user' in event ? event.user.username : '',
+        'user' in event ? event.user.displayName : ''
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(needle)) return false
+    }
+
+    if (rule.cooldownMs > 0) {
+      const cooldownKey = `${rule.id}:${event.platform}:${'user' in event ? event.user.id || event.user.username : 'global'}`
+      const now = Date.now()
+      const previous = this.recentRuleHits.get(cooldownKey)
+      if (previous && now - previous < rule.cooldownMs) return false
+      this.recentRuleHits.set(cooldownKey, now)
+    }
+
+    return true
+  }
+
+  private handleRuleAlert(rule: AlertRule, event: AnyStreamEvent): void {
+    if (!this.settings) return
+
+    const suppressSound = Boolean((event.raw as any)?.suppressEventSound)
+    const hasSound = !suppressSound && rule.soundEnabled && rule.soundId
+    if (hasSound) {
+      this.soundboardService.playSound(rule.soundId, rule.soundVolume)
+    }
+
+    const imageUrl = this.resolveRuleImageUrl(rule, event)
+    const hasImage = rule.imageEnabled && imageUrl
+    const hasText = rule.textEnabled && rule.textTemplate.trim().length > 0
+    if (!hasImage && !hasText && !hasSound) return
+
+    const text = hasText
+      ? this.replaceVariables(rule.textTemplate, event).replace(/\r?\n/g, '<br />')
+      : ''
+
+    this.overlayServer.pushAlert(
+      {
+        id: `${event.id}:${rule.id}`,
+        template: text,
+        imageUrl: hasImage ? imageUrl : '',
+        durationMs: rule.durationMs,
+        animationIn: rule.animationIn,
+        animationOut: rule.animationOut,
+        textColor: rule.textColor,
+        backgroundColor: rule.backgroundColor,
+        borderColor: rule.borderColor,
+        fontSize: rule.fontSize,
+        audioUrl: hasSound ? rule.soundId : undefined,
+        audioVolume: rule.soundVolume,
+        fontWeight: rule.fontWeight,
+        textShadow: rule.textShadow,
+        layout: rule.layout,
+        imageTop: rule.imageTop,
+        imageLeft: rule.imageLeft,
+        alertTop: this.settings.alertTop,
+        alertLeft: this.settings.alertLeft
+      },
+      event.platform
+    )
+  }
+
+  private resolveRuleImageUrl(rule: AlertRule, event: AnyStreamEvent): string {
+    if (rule.imageAssetId) return rule.imageAssetId
+    if (!rule.useEventImage) return ''
+    if (event.type === 'gift') return event.giftImageUrl || ''
+    if ('user' in event) return event.user.profilePictureUrl || ''
+    return ''
+  }
+
   private resolveImageUrl(kind: AlertKind, event: AnyStreamEvent): string {
     if (!this.settings) return ''
 
@@ -179,6 +285,13 @@ export class EventSoundService {
       text = text.replace(/{giftCount}/g, String(event.giftCount || 1))
       text = text.replace(/{amount}/g, String((event.monetaryValue || 0) / 100))
     }
+
+    text = text.replace(/{platform}/g, event.platform)
+    text = text.replace(/{eventType}/g, event.type)
+    text = text.replace(/{message}/g, 'message' in event ? event.message : '')
+    text = text.replace(/{viewerCount}/g, 'viewerCount' in event ? String(event.viewerCount) : '')
+    text = text.replace(/{likeCount}/g, 'likeCount' in event ? String(event.likeCount) : '')
+    text = text.replace(/{totalLikes}/g, 'totalLikes' in event ? String(event.totalLikes) : '')
 
     if (event.type === 'subscription') {
       text = text.replace(/{tier}/g, event.tier || 'Superfan')
@@ -216,6 +329,89 @@ export class EventSoundService {
 
     this.recentSuperfanJoinUsers.set(dedupeKey, now)
     return true
+  }
+
+  private withLegacyAlertRouteValues(settings: AppSettings): AppSettings {
+    const alertRules = (settings.alertRules || []).map(rule => {
+      if (rule.id === 'default-gifts') {
+        return {
+          ...rule,
+          soundEnabled: settings.eventSoundGiftEnabled,
+          soundId: settings.eventSoundGiftSoundId || rule.soundId,
+          soundVolume: settings.eventSoundGiftVolume,
+          imageEnabled: settings.eventImageGiftEnabled,
+          imageAssetId: settings.eventImageGiftAssetId || rule.imageAssetId,
+          textEnabled: settings.eventTextGiftEnabled,
+          textTemplate: settings.eventTextGiftTemplate || rule.textTemplate,
+          textColor: settings.eventTextGiftColor,
+          backgroundColor: settings.eventTextGiftBackgroundColor,
+          borderColor: settings.eventTextGiftBorderColor,
+          fontSize: settings.eventTextGiftFontSize,
+          layout: settings.eventAlertGiftLayout,
+          animationIn: settings.eventAlertGiftAnimationIn,
+          animationOut: settings.eventAlertGiftAnimationOut,
+          durationMs: settings.eventAlertGiftDurationMs,
+          fontWeight: settings.eventAlertGiftFontWeight,
+          textShadow: settings.eventAlertGiftTextShadow,
+          imageTop: settings.eventAlertGiftImageTop,
+          imageLeft: settings.eventAlertGiftImageLeft
+        }
+      }
+
+      if (rule.id === 'default-follows') {
+        return {
+          ...rule,
+          soundEnabled: settings.eventSoundFollowEnabled,
+          soundId: settings.eventSoundFollowSoundId || rule.soundId,
+          soundVolume: settings.eventSoundFollowVolume,
+          imageEnabled: settings.eventImageFollowEnabled,
+          imageAssetId: settings.eventImageFollowAssetId || rule.imageAssetId,
+          textEnabled: settings.eventTextFollowEnabled,
+          textTemplate: settings.eventTextFollowTemplate || rule.textTemplate,
+          textColor: settings.eventTextFollowColor,
+          backgroundColor: settings.eventTextFollowBackgroundColor,
+          borderColor: settings.eventTextFollowBorderColor,
+          fontSize: settings.eventTextFollowFontSize,
+          layout: settings.eventAlertFollowLayout,
+          animationIn: settings.eventAlertFollowAnimationIn,
+          animationOut: settings.eventAlertFollowAnimationOut,
+          durationMs: settings.eventAlertFollowDurationMs,
+          fontWeight: settings.eventAlertFollowFontWeight,
+          textShadow: settings.eventAlertFollowTextShadow,
+          imageTop: settings.eventAlertFollowImageTop,
+          imageLeft: settings.eventAlertFollowImageLeft
+        }
+      }
+
+      if (rule.id === 'default-subs') {
+        return {
+          ...rule,
+          soundEnabled: settings.eventSoundSuperfanEnabled,
+          soundId: settings.eventSoundSuperfanSoundId || rule.soundId,
+          soundVolume: settings.eventSoundSuperfanVolume,
+          imageEnabled: settings.eventImageSuperfanEnabled,
+          imageAssetId: settings.eventImageSuperfanAssetId || rule.imageAssetId,
+          textEnabled: settings.eventTextSuperfanEnabled,
+          textTemplate: settings.eventTextSuperfanTemplate || rule.textTemplate,
+          textColor: settings.eventTextSuperfanColor,
+          backgroundColor: settings.eventTextSuperfanBackgroundColor,
+          borderColor: settings.eventTextSuperfanBorderColor,
+          fontSize: settings.eventTextSuperfanFontSize,
+          layout: settings.eventAlertSuperfanLayout,
+          animationIn: settings.eventAlertSuperfanAnimationIn,
+          animationOut: settings.eventAlertSuperfanAnimationOut,
+          durationMs: settings.eventAlertSuperfanDurationMs,
+          fontWeight: settings.eventAlertSuperfanFontWeight,
+          textShadow: settings.eventAlertSuperfanTextShadow,
+          imageTop: settings.eventAlertSuperfanImageTop,
+          imageLeft: settings.eventAlertSuperfanImageLeft
+        }
+      }
+
+      return rule
+    })
+
+    return { ...settings, alertRules }
   }
 }
 

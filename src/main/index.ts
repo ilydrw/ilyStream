@@ -8,7 +8,6 @@ import { ServiceRegistry } from './services/service-registry'
 import { registerIpcHandlers } from './ipc/handlers'
 import { setupEventForwarding } from './ipc/events'
 import { setupLogger } from './lib/logger'
-import { disposeAutoUpdates, setupAutoUpdates } from './services/update-service'
 
 // Global logger setup
 setupLogger()
@@ -43,7 +42,9 @@ let isQuitting = false
 function isSafeExternalUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    return url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'mailto:'
+    if (url.protocol === 'https:' || url.protocol === 'mailto:') return true
+    if (url.protocol !== 'http:') return false
+    return ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
   } catch {
     return false
   }
@@ -260,6 +261,7 @@ function registerAssetProtocol(): void {
         const resourceRoots = [
           join(__dirname, '../../resources'),
           join(app.getAppPath(), 'resources'),
+          process.resourcesPath,
           join(process.cwd(), 'resources')
         ]
         for (const root of resourceRoots) {
@@ -303,7 +305,6 @@ app.whenReady().then(async () => {
   createTray()
   console.log('[main] Creating main window...')
   createWindow()
-  setupAutoUpdates(() => mainWindow)
   console.log('[main] Application ready.')
 
   app.on('activate', function () {
@@ -333,7 +334,6 @@ function startHealthWatchdog(): void {
 }
 
 function stopBackgroundTimers(): void {
-  disposeAutoUpdates()
   if (historyPruneTimer) {
     clearInterval(historyPruneTimer)
     historyPruneTimer = null

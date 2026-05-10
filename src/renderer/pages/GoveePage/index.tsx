@@ -24,6 +24,10 @@ export default function GoveePage() {
   const [devices, setDevices] = useState<any[]>([])
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
   const [isLoadingDevices, setIsLoadingDevices] = useState(false)
+  const [goveeSettings, setGoveeSettings] = useState({
+    flashOnFollow: false,
+    flashOnGift: false
+  })
 
   useEffect(() => {
     if (!window.api?.govee) {
@@ -38,8 +42,16 @@ export default function GoveePage() {
     })
     window.api.govee.getDevices().then(setDevices)
 
+    const updateSettings = () => {
+      setGoveeSettings({
+        flashOnFollow: window.api?.settings?.getSync?.('goveeFlashOnFollow') || false,
+        flashOnGift: window.api?.settings?.getSync?.('goveeFlashOnGift') || false
+      })
+    }
+    updateSettings()
+
     // Listen for status changes
-    const unsubscribe = window.api.on('govee:status-changed', (newStatus: any) => {
+    const unsubscribeStatus = window.api.on('govee:status-changed', (newStatus: any) => {
       setStatus(newStatus)
       setSelectedDeviceIds(newStatus.selectedDeviceIds || [])
       if (newStatus.isConnected) {
@@ -47,7 +59,12 @@ export default function GoveePage() {
       }
     })
 
-    return () => unsubscribe()
+    const unsubscribeSettings = window.api.on('settings:changed', updateSettings)
+
+    return () => {
+      unsubscribeStatus()
+      unsubscribeSettings()
+    }
   }, [])
 
   const handleLink = async () => {
@@ -79,7 +96,7 @@ export default function GoveePage() {
   const refreshDevices = async () => {
     setIsLoadingDevices(true)
     try {
-      const list = await window.api.govee?.getDevices()
+      const list = await window.api.govee?.getDevices(true)
       setDevices(list || [])
     } finally {
       setIsLoadingDevices(false)
@@ -249,6 +266,67 @@ export default function GoveePage() {
                </p>
              </div>
           </div>
+
+          {status.isConnected && (
+            <section className="app-section-card glass animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="app-section-head">
+                <div className="flex items-center gap-4">
+                  <Activity size={20} className="text-accent" />
+                  <div>
+                    <h2>Event Triggers</h2>
+                    <p>Flash lights on live stream events.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-8 space-y-6 bg-white/[0.01]">
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
+                  <div>
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider mb-0.5">Flash on Follow</h4>
+                    <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">Strobe teal on new followers</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={goveeSettings.flashOnFollow}
+                      onChange={(e) => window.api.settings.setMany({ goveeFlashOnFollow: e.target.checked })}
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/20 after:border-transparent after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent/40 peer-checked:after:bg-white"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
+                  <div>
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider mb-0.5">Flash on Gift</h4>
+                    <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">Cyber strobe on gift events</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={goveeSettings.flashOnGift}
+                      onChange={(e) => window.api.settings.setMany({ goveeFlashOnGift: e.target.checked })}
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/20 after:border-transparent after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent/40 peer-checked:after:bg-white"></div>
+                  </label>
+                </div>
+
+                <div className="pt-4">
+                  <button 
+                    onClick={() => {
+                      window.api.govee.testStrobe()
+                      toast.success('Govee test strobe triggered!')
+                    }}
+                    className="w-full h-12 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/40 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Activity size={14} />
+                    Test Trigger Effect
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Right Column: Device List */}

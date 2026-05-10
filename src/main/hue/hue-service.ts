@@ -38,6 +38,7 @@ export class HueService extends EventEmitter {
   private selectedLightIds: string[] = []
   private strobeInterval: NodeJS.Timeout | null = null
   private restoreTimeout: NodeJS.Timeout | null = null
+  private cooldownTimeout: NodeJS.Timeout | null = null
   private isTriggerActive = false
   private db: Database
 
@@ -154,6 +155,15 @@ export class HueService extends EventEmitter {
       clearTimeout(this.restoreTimeout)
       this.restoreTimeout = null
     }
+    if (this.cooldownTimeout) {
+      clearTimeout(this.cooldownTimeout)
+      this.cooldownTimeout = null
+    }
+  }
+
+  dispose(): void {
+    this.clearActiveEffect()
+    this.removeAllListeners()
   }
 
   private canTriggerEffect(): boolean {
@@ -345,8 +355,9 @@ export class HueService extends EventEmitter {
         log.info(`[Hue] Strobe finished, states restored for ${this.selectedLightIds.length} lights.`)
         
         // Cooldown period after restore to prevent rapid re-triggering
-        setTimeout(() => {
+        this.cooldownTimeout = setTimeout(() => {
           this.isTriggerActive = false
+          this.cooldownTimeout = null
         }, 5000)
       }, durationMs)
 
@@ -398,8 +409,9 @@ export class HueService extends EventEmitter {
         this.restoreSelectedLightStates(statesToRestore)
         log.info(`[Hue] Cyber gradient strobe finished, states restored for ${this.selectedLightIds.length} lights.`)
 
-        setTimeout(() => {
+        this.cooldownTimeout = setTimeout(() => {
           this.isTriggerActive = false
+          this.cooldownTimeout = null
         }, 5000)
       }, durationMs)
     } catch (error) {
@@ -437,8 +449,9 @@ export class HueService extends EventEmitter {
       }
 
       // Single flash 'select' lasts ~1 second. Reset busy state after a short cooldown.
-      setTimeout(() => {
+      this.cooldownTimeout = setTimeout(() => {
         this.isTriggerActive = false
+        this.cooldownTimeout = null
       }, 3000)
 
     } catch (error) {
@@ -451,6 +464,19 @@ export class HueService extends EventEmitter {
     this.selectedLightIds = ids
     this.db.setSetting('hueSelectedLightIds', ids)
     log.info(`[Hue] Updated selected lights: ${ids.join(', ')}`)
+  }
+
+  /** Apply new settings from the database at runtime. */
+  applySettings(settings: any): void {
+    if (settings.hueBridgeIp && settings.hueBridgeIp !== this.bridgeIp) {
+      log.info('[Hue] Bridge IP changed, reconnecting...')
+      void this.connect(settings.hueBridgeIp, settings.hueUsername || this.username || '')
+    }
+    
+    if (settings.hueSelectedLightIds) {
+      this.selectedLightIds = settings.hueSelectedLightIds
+      log.info(`[Hue] Runtime selected lights updated: ${this.selectedLightIds.length} lights`)
+    }
   }
 
   getStatus() {

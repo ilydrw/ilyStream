@@ -1,8 +1,73 @@
 import React from 'react'
-import { AtSign, Gauge, Headphones, KeyRound, ShieldCheck, Volume2 } from 'lucide-react'
+import { AtSign, Gauge, Headphones, KeyRound, ShieldCheck, Volume2, Activity } from 'lucide-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { AppSettings } from '../../../../shared/app-settings'
+import { useStudioStore } from '../../../stores/studio-store'
 import { toast } from '../../../components/ui/Toast'
+import { audioEngine } from '../../../utils/audio-engine'
+
+function TtsSignalMeter() {
+  const [level, setLevel] = React.useState(0)
+  const lastLevel = React.useRef(0)
+
+  React.useEffect(() => {
+    const ctx = audioEngine.getContext()
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 32
+    analyser.smoothingTimeConstant = 0.3
+    
+    const bus = audioEngine.getTtsBus()
+    bus.connect(analyser)
+
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    let rafId: number
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data)
+      let max = 0
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] > max) max = data[i]
+      }
+      
+      const target = max / 255
+      // Smooth the decay
+      if (target > lastLevel.current) {
+        lastLevel.current = target
+      } else {
+        lastLevel.current = lastLevel.current * 0.9
+      }
+      
+      setLevel(lastLevel.current)
+      rafId = requestAnimationFrame(tick)
+    }
+    tick()
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      try { bus.disconnect(analyser) } catch {}
+    }
+  }, [])
+
+  return (
+    <div className="flex flex-1 items-center gap-1 h-3 px-1.5 rounded-md bg-black/20 border border-white/5">
+      {[...Array(12)].map((_, i) => {
+        const threshold = i / 12
+        const isActive = level > threshold
+        return (
+          <div 
+            key={i}
+            className={`flex-1 h-full rounded-[1px] transition-all duration-75 ${
+              isActive 
+                ? i > 9 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.4)]' 
+                : 'bg-white/5'
+            }`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 
 interface VoiceEngineSettingsProps {
   settings: AppSettings
@@ -77,6 +142,16 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
       .then((nextDevices) => setDevices(nextDevices.filter((device) => device.kind === 'audiooutput')))
       .catch(() => setDevices([]))
   }, [])
+
+  const ttsSource = useStudioStore(s => s.audioSources.find(src => src.id === 'tts-audio'))
+  const updateAudioSource = useStudioStore(s => s.updateAudioSource)
+
+  const ttsMonitoring = ttsSource?.monitoring ?? false
+
+  const toggleMonitoring = (value: boolean) => {
+    updateAudioSource('tts-audio', { monitoring: value })
+    toast.info(value ? 'TTS Monitoring Enabled' : 'TTS Monitoring Disabled')
+  }
 
   const saveApiKey = () => {
     void onUpdate('elevenlabsApiKey', apiKeyDraft)
@@ -180,12 +255,22 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
           </div>
 
           <aside className="border-t border-white/[0.04] bg-black/10 p-8 xl:border-l xl:border-t-0">
-            <div className="mb-8 flex items-center gap-3">
-              <Headphones size={18} className="text-accent" />
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor Route</h3>
-                <p className="text-[11px] text-white/25">Send speech to a device or virtual cable.</p>
+            <div className="mb-8 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Headphones size={18} className="text-accent" />
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor Route</h3>
+                  <p className="text-[11px] text-white/25">Send speech to a device or virtual cable.</p>
+                </div>
               </div>
+              <Toggle value={ttsMonitoring} onChange={toggleMonitoring} />
+            </div>
+
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/20">Live Signal</span>
+              </div>
+              <TtsSignalMeter />
             </div>
 
             <select

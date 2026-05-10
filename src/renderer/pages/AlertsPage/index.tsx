@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, Star, Save, CheckCircle2, Zap, Copy, ExternalLink } from 'lucide-react'
-import { AlertConfigSection } from './AlertConfigSection'
+import { Bell, Save, CheckCircle2, Copy, ExternalLink } from 'lucide-react'
+import { AlertRuleSection } from './AlertRuleSection'
 
 import { defaultEventSoundSettings, pickEventSoundSettings } from './types'
 import type { EventSoundSettings, EventSoundSettingKey } from './types'
@@ -11,6 +11,7 @@ import { SoundLibrary } from './SoundLibrary'
 import { ImageLibrary } from './ImageLibrary'
 import { EmojiPickerModal } from '../../components/ui/EmojiPickerModal'
 import type { SoundFile } from '../../hooks/useSoundboard'
+import type { AlertRule } from '../../../shared/alert-rules'
 import './styles.css'
 
 export default function AlertsPage() {
@@ -114,6 +115,10 @@ export default function AlertsPage() {
     isDirtyRef.current = dirty;
   };
 
+  const handleRulesChange = (rules: AlertRule[]) => {
+    handleUpdate('alertRules', rules as EventSoundSettings['alertRules'])
+  }
+
   const handleSave = async () => {
     if (!draftSettings || isSaving) return;
     setIsSaving(true);
@@ -215,8 +220,8 @@ export default function AlertsPage() {
             </div>
             <h1>Live Alert System</h1>
             <p className="app-page-intro">
-              Configure real-time audio and visual reactions for viewer interactions. 
-              Customize gift thresholds, subscription effects, and follow alerts.
+              Build platform-aware alert routes for chat, follows, gifts, subs, raids, likes, shares, and joins.
+              Each route can target one platform, every platform, or a precise mix.
             </p>
           </div>
         </div>
@@ -257,38 +262,11 @@ export default function AlertsPage() {
 
         <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_460px]">
           <div className="flex flex-col gap-10">
-            <AlertConfigSection
-              title="Gift Recognition"
-              icon={Zap}
-              type="Gift"
-              settings={draftSettings}
+            <AlertRuleSection
+              rules={draftSettings.alertRules}
               sounds={sounds}
               images={images}
-              onUpdate={handleUpdate}
-              onUploadSound={handleSoundUpload}
-              onUploadImage={handleImageUpload}
-            />
-            
-            <AlertConfigSection
-              title="Subscriber Milestone"
-              icon={Star}
-              type="Superfan"
-              settings={draftSettings}
-              sounds={sounds}
-              images={images}
-              onUpdate={handleUpdate}
-              onUploadSound={handleSoundUpload}
-              onUploadImage={handleImageUpload}
-            />
-            
-            <AlertConfigSection
-              title="Audience Growth"
-              icon={UserPlus}
-              type="Follow"
-              settings={draftSettings}
-              sounds={sounds}
-              images={images}
-              onUpdate={handleUpdate}
+              onChange={handleRulesChange}
               onUploadSound={handleSoundUpload}
               onUploadImage={handleImageUpload}
             />

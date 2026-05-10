@@ -1,17 +1,32 @@
 import type { MutableRefObject } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
-import type { StreamingInputFormat } from '../../../../shared/streaming'
+
+export type CanvasOutputLayoutId = 'horizontal' | 'vertical'
+export type CanvasPreviewMode = 'single' | 'dual'
+
+export interface CanvasStreamOutput {
+  id: CanvasOutputLayoutId
+  active: boolean
+  width: number
+  height: number
+  fps: number
+  bitrateKbps: number
+  inputFormat: 'h264' | 'mjpeg'
+  codec?: string
+}
 
 export interface CanvasEditorProps {
   activeScene: StudioScene
   isStreaming: boolean
   isRecording: boolean
-  captureInputFormat: StreamingInputFormat
+  captureInputFormat: 'h264' | 'mjpeg'
   outputFps: number
   outputBitrateKbps: number
   videoRefs: MutableRefObject<Record<string, HTMLVideoElement>>
   streamReady: number
   outputCodec?: string
+  streamOutputs?: CanvasStreamOutput[]
+  previewMode?: CanvasPreviewMode
 }
 
 export type HandleDir = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'

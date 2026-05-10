@@ -20,43 +20,16 @@ import { RemoteAuthService } from '../services/remote-auth-service'
 import {
   type NowPlayingPayload,
   EMPTY_NOW_PLAYING,
-  DEFAULT_NOW_PLAYING_CONFIG,
-  DEFAULT_CHAT_CONFIG,
-  DEFAULT_FOLLOWER_GOAL_CONFIG,
-  DEFAULT_BORDER_CONFIG,
-  DEFAULT_SOCIALS_CONFIG,
-  DEFAULT_PARTICLE_CONFIG,
-  DEFAULT_ROSE_CONFIG,
-  DEFAULT_PARTICLES_CONFIG,
-  DEFAULT_DISCORD_PROMO_CONFIG,
-  DEFAULT_NODE_NETWORK_CONFIG,
-  DEFAULT_LATEST_GIFTER_CONFIG,
-  DEFAULT_PHYSICS_CONFIG,
-  DEFAULT_LEADERBOARD_CONFIG,
-  DEFAULT_CHAT_UNIFIED_CONFIG,
-  DEFAULT_LIKES_TRACKER_CONFIG,
-  Widget,
-  WidgetType
+  type Widget,
+  type WidgetType
 } from '../../shared/widgets'
-
-import { buildChatOverlayHtml } from './templates/chat'
-import { buildAlertsOverlayHtml } from './templates/alerts'
-import { buildGoalsOverlayHtml } from './templates/goals'
-import { buildFollowerGoalHtml } from './templates/follower-goal'
-import { buildSocialsOverlayHtml } from './templates/socials'
-import { buildNowPlayingOverlayHtml } from './templates/now-playing'
-import { buildScreenBorderHtml } from './templates/screen-border'
-import { buildParticleOverlayHtml } from './templates/event-particles'
-import { buildRoseOverlayHtml } from './templates/falling-roses'
-import { buildParticlesOverlayHtml } from './templates/particles'
-import { buildDiscordPromoHtml } from './templates/discord-promo'
-import { buildNodeNetworkHtml } from './templates/node-network'
-import { buildLatestGifterHtml } from './templates/latest-gifter'
-import { buildPhysicsOverlayHtml } from './templates/physics'
 import { buildDeckHtml } from './templates/deck'
-import { buildLeaderboardHtml } from './templates/leaderboard'
-import { buildChatWidgetHtml } from './templates/chat-widget'
-import { buildLikesTrackerHtml } from './templates/likes-tracker'
+import {
+  buildOverlayDirectoryHtml,
+  generateOverlayHtml,
+  getDefaultWidgetConfig,
+  WIDGET_ALIAS_MAP
+} from './widget-renderers'
 
 type OverlayChannel = 'chat' | 'alerts' | 'goals' | 'now-playing' | 'follower-goal' | 'socials' | 'screen-border' | 'event-particles' | 'falling-roses' | 'gift-overlays' | 'particles' | 'discord-promo' | 'node-network' | 'latest-gifter' | 'physics' | 'deck' | 'leaderboard' | 'timer' | 'likes'
 type LikesTrackerUser = {
@@ -755,44 +728,7 @@ export class OverlayServer extends EventEmitter {
           return { ...widget, config: { ...widget.config, ...configOverride } }
         }
 
-        // 1. Try semantic aliases
-        const aliasMap: Record<string, WidgetType> = {
-          'chat': 'chat',
-          'alerts': 'alerts',
-          'spotify': 'now-playing',
-          'unified-chat': 'chat-unified',
-          'likes-tracker': 'likes-tracker',
-          'likes': 'likes-tracker',
-          'goals': 'goal',
-          'now-playing': 'now-playing',
-          'follower-goal': 'follower-goal',
-          'followers': 'follower-goal',
-          'socials': 'socials',
-          'screen-border': 'screen-border',
-          'border': 'screen-border',
-          'event-particles': 'event-particles',
-          'hearts': 'event-particles',
-          'gift-overlays': 'event-particles',
-          'falling-roses': 'falling-roses',
-          'roses': 'falling-roses',
-          'tiktok-roses': 'falling-roses',
-          'particles': 'particles',
-          'discord-promo': 'discord-promo',
-          'discord': 'discord-promo',
-          'node-network': 'node-network',
-          'nodes': 'node-network',
-          'web': 'node-network',
-          'latest-gifter': 'latest-gifter',
-          'gifter': 'latest-gifter',
-          'deck': 'deck' as any,
-          'physics': 'physics',
-          'leaderboard': 'leaderboard',
-          'chat-unified': 'chat-unified',
-          'chat-v2': 'chat-unified',
-          'unified': 'chat-unified'
-        }
-
-        const typeFromAlias = aliasMap[widgetId]
+        const typeFromAlias = WIDGET_ALIAS_MAP[widgetId]
         let widget: Widget | undefined
 
         const getWidgetById = (id: string): Widget | undefined => {
@@ -805,8 +741,8 @@ export class OverlayServer extends EventEmitter {
           widget = applyOverride(base || {
             id: 'default',
             name: 'Default',
-            type: typeFromAlias,
-            config: this.getDefaultConfigFor(typeFromAlias)
+            type: typeFromAlias as WidgetType,
+            config: getDefaultWidgetConfig(typeFromAlias as WidgetType)
           })
         } else {
           // Fallback to ID lookup
@@ -815,130 +751,18 @@ export class OverlayServer extends EventEmitter {
 
         if (widget) {
           const isPreview = url.searchParams.get('preview') === '1' || url.searchParams.has('preview')
-          const html = this.generateOverlayHtml(widget, isPreview)
+          const html = generateOverlayHtml(widget, isPreview, {
+            settings: this.db?.getAllSettings() || {},
+            boardSounds: this.soundboardService?.getAllSounds('board') || [],
+            deckActions: this.db?.getAllDeckActions() || []
+          })
           if (html) {
             this.writeHtml(response, html)
             return
           }
         }
 
-        // Premium Overlay Directory (instead of a messy 404)
-        this.writeHtml(response, `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>IlyStream | Overlay Directory</title>
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
-              body {
-                margin: 0;
-                background: #050505;
-                color: white;
-                font-family: 'Outfit', sans-serif;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 100vh;
-                background-image: 
-                  radial-gradient(circle at 20% 30%, rgba(254, 44, 85, 0.1) 0%, transparent 40%),
-                  radial-gradient(circle at 80% 70%, rgba(37, 244, 238, 0.1) 0%, transparent 40%);
-              }
-              .container {
-                max-width: 800px;
-                width: 90%;
-                background: rgba(255, 255, 255, 0.03);
-                backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 24px;
-                padding: 40px;
-                box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-              }
-              h1 {
-                margin: 0 0 10px 0;
-                font-size: 32px;
-                font-weight: 800;
-                background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-              }
-              p.subtitle {
-                color: rgba(255,255,255,0.5);
-                margin: 0 0 40px 0;
-                font-size: 16px;
-              }
-              .grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                gap: 20px;
-              }
-              .card {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-                padding: 20px;
-                text-decoration: none;
-                color: white;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-              }
-              .card:hover {
-                background: rgba(255, 255, 255, 0.1);
-                border-color: #fe2c55;
-                transform: translateY(-5px);
-                box-shadow: 0 10px 20px rgba(254, 44, 85, 0.2);
-              }
-              .card .icon {
-                font-size: 24px;
-                margin-bottom: 12px;
-              }
-              .card .name {
-                font-weight: 700;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-              }
-              .error-box {
-                background: rgba(254, 44, 85, 0.1);
-                border-left: 4px solid #fe2c55;
-                padding: 15px 20px;
-                margin-bottom: 30px;
-                border-radius: 8px;
-              }
-              .error-box b { color: #fe2c55; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              ${widgetId !== 'overlay' && widgetId !== 'widget' ? `
-                <div class="error-box">
-                  <b>Unknown Path:</b> The widget ID "${widgetId}" was not found.
-                </div>
-              ` : ''}
-              <h1>Overlay Directory</h1>
-              <p class="subtitle">Select a widget to open it in a new tab for OBS.</p>
-              
-              <div class="grid">
-                ${Object.keys(aliasMap).sort().map(k => {
-                  const icons: Record<string, string> = {
-                    'likes': '❤️', 'chat': '💬', 'alerts': '🔔', 'spotify': '🎵', 
-                    'goals': '🎯', 'socials': '📱', 'border': '🖼️', 'roses': '🌹'
-                  };
-                  return `
-                    <a href="/overlay/${k}" class="card">
-                      <div class="icon">${icons[k] || '🔗'}</div>
-                      <div class="name">${k.replace(/-/g, ' ')}</div>
-                    </a>
-                  `;
-                }).join('')}
-              </div>
-            </div>
-          </body>
-          </html>
-        `, 404)
+        this.writeHtml(response, buildOverlayDirectoryHtml(widgetId), 404)
         return
       }
     }
@@ -947,65 +771,6 @@ export class OverlayServer extends EventEmitter {
     } catch (err) {
       console.error('[overlay] Critical Request Error:', err)
       this.writeJson(response, { error: 'Internal Server Error', message: err instanceof Error ? err.message : String(err) }, 500)
-    }
-  }
-
-  private generateOverlayHtml(widget: Widget, isPreview: boolean): string | null {
-    const type = widget.type === ('gift-overlays' as any) ? 'event-particles' : widget.type
-    const settings = this.db?.getAllSettings() || {}
-
-    // For alerts, we want to inject global position settings (alertTop, alertLeft)
-    // from the main app settings into the widget config.
-    const config = type === 'alerts' 
-      ? { ...widget.config, ...settings }
-      : widget.config
-
-    console.log('[overlay] Generating HTML for type:', type)
-    switch (type) {
-      case 'chat': return buildChatOverlayHtml(widget, isPreview)
-      case 'alerts': return buildAlertsOverlayHtml({ ...widget, config }, isPreview)
-      case 'goal': return buildGoalsOverlayHtml(widget, isPreview)
-      case 'follower-goal': return buildFollowerGoalHtml(widget, isPreview)
-      case 'socials': return buildSocialsOverlayHtml(widget, isPreview)
-      case 'now-playing': return buildNowPlayingOverlayHtml(widget)
-      case 'screen-border': return buildScreenBorderHtml(widget, isPreview)
-      case 'event-particles': return buildParticleOverlayHtml(widget, isPreview)
-      case 'falling-roses': return buildRoseOverlayHtml(widget, isPreview)
-      case 'particles': return buildParticlesOverlayHtml(widget, isPreview)
-      case 'discord-promo': return buildDiscordPromoHtml(widget, isPreview)
-      case 'node-network': return buildNodeNetworkHtml(widget, isPreview)
-      case 'latest-gifter': return buildLatestGifterHtml(widget, isPreview)
-      case 'physics': return buildPhysicsOverlayHtml(widget, isPreview)
-      case 'deck': {
-        const sounds = this.soundboardService?.getAllSounds('board') || []
-        const actions = this.db?.getAllDeckActions() || []
-        return buildDeckHtml(sounds, actions)
-      }
-      case 'leaderboard': return buildLeaderboardHtml()
-      case 'chat-unified': return buildChatWidgetHtml(widget, isPreview)
-      case 'likes-tracker': return buildLikesTrackerHtml(widget, isPreview)
-      default: return null
-    }
-  }
-
-  private getDefaultConfigFor(type: WidgetType): any {
-    switch (type) {
-      case 'chat': return DEFAULT_CHAT_CONFIG
-      case 'event-particles': return DEFAULT_PARTICLE_CONFIG
-      case 'falling-roses': return DEFAULT_ROSE_CONFIG
-      case 'particles': return DEFAULT_PARTICLES_CONFIG
-      case 'screen-border': return DEFAULT_BORDER_CONFIG
-      case 'follower-goal': return DEFAULT_FOLLOWER_GOAL_CONFIG
-      case 'socials': return DEFAULT_SOCIALS_CONFIG
-      case 'now-playing': return DEFAULT_NOW_PLAYING_CONFIG
-      case 'discord-promo': return DEFAULT_DISCORD_PROMO_CONFIG
-      case 'node-network': return DEFAULT_NODE_NETWORK_CONFIG
-      case 'latest-gifter': return DEFAULT_LATEST_GIFTER_CONFIG
-      case 'physics': return DEFAULT_PHYSICS_CONFIG
-      case 'leaderboard': return DEFAULT_LEADERBOARD_CONFIG
-      case 'chat-unified': return DEFAULT_CHAT_UNIFIED_CONFIG
-      case 'likes-tracker': return DEFAULT_LIKES_TRACKER_CONFIG
-      default: return {}
     }
   }
 

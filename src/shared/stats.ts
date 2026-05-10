@@ -24,8 +24,33 @@ export interface UserStat {
   totalChats: number
   totalSongRequests: number
   isFanClubMember?: boolean
+  profileId: string | null
   firstSeenAt: string
   lastSeenAt: string
+}
+
+/** 
+ * Aggregated view of a person who might have multiple linked accounts.
+ * If an account is not linked, it's treated as a single-account identity.
+ */
+export interface UserIdentity {
+  id: string // profileId or "username:platform"
+  displayName: string
+  profilePictureUrl: string | null
+  primaryPlatform: Platform
+  allPlatforms: Platform[]
+  totalLikes: number
+  totalGifts: number
+  totalGiftValueCents: number
+  totalSubscriptions: number
+  totalFollows: number
+  totalShares: number
+  totalRaids: number
+  totalChats: number
+  totalSongRequests: number
+  isFanClubMember: boolean
+  lastSeenAt: string
+  accounts: UserStat[]
 }
 
 /** Lifetime totals across all users and platforms. */

@@ -10,7 +10,7 @@ import type {
   PairedDevice
 } from '../../shared/device-api'
 
-const PAIR_CODE_TTL_MS = 60_000
+const PAIR_CODE_TTL_MS = 5 * 60_000 // 5 minutes (increased from 60s)
 const SERVER_VERSION = '1'
 const MAX_BODY_BYTES = 64 * 1024
 const SSE_PING_INTERVAL_MS = 25_000
@@ -227,9 +227,11 @@ export class DeviceApi {
     request: IncomingMessage,
     response: ServerResponse<IncomingMessage>
   ): Promise<void> {
-    const body = await readJsonBody<{ code?: string; label?: string }>(request)
-    const code = (body.code || '').trim()
+    const body = await readJsonBody<{ code?: string | number; label?: string }>(request)
+    const code = String(body.code ?? '').trim().padStart(6, '0')
     const label = (body.label || 'DeskThing').trim().slice(0, 64)
+
+    console.log(`[device-api] Attempting to pair with code: "${code}" (label: "${label}")`)
 
     if (!code) {
       writeJson(response, { error: 'Missing code' }, 400)
@@ -237,8 +239,13 @@ export class DeviceApi {
     }
 
     this.pruneCodes()
+    
+    // Debug: log active codes
+    console.log(`[device-api] Active codes: ${JSON.stringify(this.pendingCodes.map(c => c.code))}`)
+
     const idx = this.pendingCodes.findIndex((c) => c.code === code)
     if (idx === -1) {
+      console.warn(`[device-api] Pair failed: Code "${code}" not found or expired.`)
       writeJson(response, { error: 'Invalid or expired code' }, 401)
       return
     }

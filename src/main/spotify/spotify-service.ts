@@ -159,6 +159,20 @@ export class SpotifyService extends EventEmitter {
     this.emitNowPlaying()
   }
 
+  dispose(): void {
+    this.connected = false
+    this.requestQueue = []
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer)
+      this.refreshTimer = null
+    }
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer)
+      this.pollTimer = null
+    }
+    this.removeAllListeners()
+  }
+
   async restoreSession(): Promise<void> {
     const settings = resolveAppSettings(this.db.getAllSettings())
     const { spotifyClientId, spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiresAt } =

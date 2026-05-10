@@ -16,6 +16,16 @@ export function registerStatsHandlers(stats: StatsService): void {
     })
   })
 
+  ipcMain.handle('stats:get-top-identities', (_event, opts: GetTopUsersOptions) => {
+    return stats.getTopIdentities({
+      sortBy: opts?.sortBy ?? 'totalLikes',
+      platform: opts?.platform,
+      query: opts?.query,
+      limit: typeof opts?.limit === 'number' ? opts.limit : 100,
+      offset: typeof opts?.offset === 'number' ? opts.offset : 0
+    })
+  })
+
   ipcMain.handle('stats:get-user', (_event, payload: { platform: Platform; username: string }) => {
     if (!payload?.platform || !payload?.username) return null
     return stats.getUserStat(payload.platform, payload.username)
@@ -24,5 +34,15 @@ export function registerStatsHandlers(stats: StatsService): void {
   ipcMain.handle('stats:reset', () => {
     stats.reset()
     return stats.getGlobalStats()
+  })
+
+  ipcMain.handle('stats:link-accounts', (_event, payload: { p1: Platform; u1: string; p2: Platform; u2: string }) => {
+    stats.linkAccounts(payload.p1, payload.u1, payload.p2, payload.u2)
+    return { success: true }
+  })
+
+  ipcMain.handle('stats:unlink-account', (_event, payload: { platform: Platform; username: string }) => {
+    stats.unlinkAccount(payload.platform, payload.username)
+    return { success: true }
   })
 }

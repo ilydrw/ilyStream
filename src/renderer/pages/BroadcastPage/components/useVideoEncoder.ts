@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 import RendererWorker from '../../../workers/renderer.worker?worker'
-import type { StreamingInputFormat } from '../../../../shared/streaming'
 
 export function useVideoEncoder(
   outputActive: boolean,
   config: {
-    format: StreamingInputFormat
+    outputId?: string
+    format: 'h264' | 'mjpeg'
     fps: number
     bitrate: number
     width: number
@@ -33,6 +33,7 @@ export function useVideoEncoder(
       if (type === 'chunk' && buffer) {
         firstVideoChunkReceivedRef.current = true
         window.api.streaming.feedFrame({
+          outputId: config.outputId,
           data: new Uint8Array(buffer),
           isKeyFrame: isKey === true,
           timestamp: timestamp
@@ -61,7 +62,7 @@ export function useVideoEncoder(
       setTimeout(() => worker.terminate(), 250)
       workerRef.current = null
     }
-  }, [outputActive, config.format, config.width, config.height, config.fps, config.bitrate, config.codec])
+  }, [outputActive, config.outputId, config.format, config.width, config.height, config.fps, config.bitrate, config.codec])
 
   return { workerRef, firstVideoChunkReceivedRef }
 }

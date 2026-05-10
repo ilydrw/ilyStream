@@ -41,8 +41,10 @@ export class GoveeService extends EventEmitter {
   private lanDevices = new Map<string, GoveeDevice>()
   private lanScanInflight: Promise<GoveeDevice[]> | null = null
   private selectedDeviceIds: string[] = []
+  private refreshInterval: NodeJS.Timeout | null = null
   private strobeInterval: NodeJS.Timeout | null = null
   private restoreTimeout: NodeJS.Timeout | null = null
+  private cooldownTimeout: NodeJS.Timeout | null = null
   private isTriggerActive = false
   private db: Database
 
@@ -51,6 +53,13 @@ export class GoveeService extends EventEmitter {
     this.db = db
     this.apiKey = this.db.getSetting('goveeApiKey') as string || null
     this.selectedDeviceIds = normalizeGoveeDeviceIdList(this.db.getSetting('goveeSelectedDeviceIds'))
+    
+    // Start background refresh every 10 minutes
+    this.refreshInterval = setInterval(() => {
+      if (this.isConnected && this.apiKey) {
+        void this.refreshDevicesInBackground()
+      }
+    }, 10 * 60 * 1000)
   }
 
   async initialize(): Promise<void> {
@@ -61,6 +70,19 @@ export class GoveeService extends EventEmitter {
       } catch (err) {
         log.warn('[Govee] Auto-connect failed.')
       }
+    }
+  }
+
+  private async refreshDevicesInBackground(): Promise<void> {
+    try {
+      if (this.apiKey) {
+        this.cloudDevices = await this.fetchCloudDevices(this.apiKey)
+      }
+      await this.refreshLanDevices()
+      this.rebuildDeviceList()
+      this.emit('status-changed', this.getStatus())
+    } catch (err) {
+      log.debug('[Govee] Background refresh failed:', err)
     }
   }
 
@@ -89,7 +111,13 @@ export class GoveeService extends EventEmitter {
     }
   }
 
-  async getDevices(): Promise<GoveeDevice[]> {
+  async getDevices(forceRefresh = false): Promise<GoveeDevice[]> {
+    // If we have devices and NOT forcing refresh, return cache immediately
+    if (this.devices.length > 0 && !forceRefresh) {
+      void this.refreshDevicesInBackground()
+      return this.devices
+    }
+
     if (this.isConnected && this.apiKey) {
       try {
         this.cloudDevices = await this.fetchCloudDevices(this.apiKey)
@@ -103,7 +131,7 @@ export class GoveeService extends EventEmitter {
     return this.devices
   }
 
-  async triggerAlert(color: { r: number; g: number; b: number }): Promise<void> {
+  async triggerAlert(color: { r: number; g: number; b: number }, durationMs = 5000): Promise<void> {
     if (this.devices.length === 0) {
       await this.getDevices()
     }
@@ -139,19 +167,38 @@ export class GoveeService extends EventEmitter {
       }
     }
 
-    // Revert after 5 seconds to a neutral white
-    setTimeout(async () => {
+    // Revert after the specified duration to a neutral state (warm white)
+    this.restoreTimeout = setTimeout(async () => {
       for (const device of targets) {
         if (!device.controllable) continue
         try {
           if (device.ip) {
-            await this.controlLanDevice(device, { r: 255, g: 255, b: 255 })
+            await this.setLanColor(device, { r: 255, g: 255, b: 255 })
+            await this.setLanBrightness(device, 100)
           } else {
             await this.controlCloudDevice(device, 'color', { r: 255, g: 255, b: 255 })
+            await this.controlCloudDevice(device, 'brightness', 100)
           }
-        } catch (err) {}
+        } catch (err) {
+          log.error(`[Govee] Revert failed for ${device.device}:`, err)
+        }
       }
-    }, 5000)
+      this.isTriggerActive = false
+    }, sanitizeGoveeDuration(durationMs))
+  }
+  
+  /** Apply new settings from the database at runtime. */
+  applySettings(settings: any): void {
+    if (settings.goveeApiKey && settings.goveeApiKey !== this.apiKey) {
+      log.info('[Govee] API Key changed, reconnecting...')
+      void this.connect(settings.goveeApiKey)
+    }
+    
+    if (settings.goveeSelectedDeviceIds) {
+      this.selectedDeviceIds = normalizeGoveeDeviceIdList(settings.goveeSelectedDeviceIds)
+      this.rebuildDeviceList()
+      log.info(`[Govee] Runtime selected devices updated: ${this.selectedDeviceIds.length} devices`)
+    }
   }
 
   async triggerFlash(color: { r: number; g: number; b: number } = CYBER_BLUE): Promise<void> {
@@ -161,7 +208,7 @@ export class GoveeService extends EventEmitter {
   async triggerStrobe(durationMs: number): Promise<void> {
     const targets = await this.getLanEffectTargets()
     if (targets.length === 0) {
-      await this.triggerAlert({ r: 255, g: 255, b: 255 })
+      await this.triggerAlert({ r: 255, g: 255, b: 255 }, durationMs)
       return
     }
     if (!this.startEffect('white strobe')) return
@@ -197,7 +244,7 @@ export class GoveeService extends EventEmitter {
   ): Promise<void> {
     const targets = await this.getLanEffectTargets()
     if (targets.length === 0) {
-      await this.triggerAlert(CYBER_PURPLE)
+      await this.triggerAlert(CYBER_PURPLE, durationMs)
       return
     }
     if (!this.startEffect('cyber gradient strobe')) return
@@ -266,6 +313,15 @@ export class GoveeService extends EventEmitter {
     this.db.setSetting('goveeApiKey', null)
     this.emit('status-changed', this.getStatus())
     log.info('[Govee] Disconnected and API key removed.')
+  }
+
+  dispose(): void {
+    this.clearActiveEffect()
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval)
+      this.refreshInterval = null
+    }
+    this.removeAllListeners()
   }
 
   private async fetchCloudDevices(apiKey: string): Promise<GoveeDevice[]> {
@@ -348,6 +404,10 @@ export class GoveeService extends EventEmitter {
       clearTimeout(this.restoreTimeout)
       this.restoreTimeout = null
     }
+    if (this.cooldownTimeout) {
+      clearTimeout(this.cooldownTimeout)
+      this.cooldownTimeout = null
+    }
   }
 
   private finishLanEffect(targets: GoveeDevice[]): void {
@@ -355,8 +415,9 @@ export class GoveeService extends EventEmitter {
     for (const device of targets) {
       this.prepareLanDeviceForEffect(device, { r: 255, g: 255, b: 255 }, 100).catch(() => {})
     }
-    setTimeout(() => {
+    this.cooldownTimeout = setTimeout(() => {
       this.isTriggerActive = false
+      this.cooldownTimeout = null
     }, GOVEE_EFFECT_COOLDOWN_MS)
   }
 

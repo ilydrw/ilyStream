@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [overlayStatus, setOverlayStatus] = useState<OverlayRuntimeStatus | null>(null)
   const [obsStatus, setObsStatus] = useState<OBSRuntimeStatus | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
     if (!window.api?.settings) return
@@ -37,6 +38,7 @@ export default function SettingsPage() {
       const resolved = resolveAppSettings(all)
       setSettings(resolved)
       applyAppAppearance(resolved)
+      setIsInitialized(true)
     })
     loadOverlayStatus()
     loadOBSStatus()
@@ -65,9 +67,18 @@ export default function SettingsPage() {
   }, [])
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    if (!isInitialized) return
+    
     setSettings((prev) => {
       const next = resolveAppSettings({ ...prev, [key]: value })
       applyAppAppearance(next)
+      
+      // Auto-save
+      void window.api.settings.setMany({ [key]: value }).then(() => {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 1000)
+      })
+      
       return next
     })
   }
@@ -101,9 +112,14 @@ export default function SettingsPage() {
             <MonitorSmartphone size={32} className="text-accent" />
           </div>
           <div>
-            <div className="app-header-eyebrow">
-              <MonitorSmartphone size={14} className="text-accent" />
-              <span>Core Configuration</span>
+            <div className="flex items-center gap-3">
+              <div className="app-header-eyebrow">
+                <MonitorSmartphone size={14} className="text-accent" />
+                <span>Core Configuration</span>
+              </div>
+              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black tracking-widest text-white/40">
+                v0.0.2
+              </span>
             </div>
             <h1>Studio Settings</h1>
             <p className="app-page-intro">

@@ -15,12 +15,16 @@ export function registerGoveeHandlers(goveeService: GoveeService) {
     return goveeService.getStatus()
   })
 
-  ipcMain.handle('govee:get-devices', async () => {
-    return await goveeService.getDevices()
+  ipcMain.handle('govee:get-devices', async (_event, forceRefresh = false) => {
+    return await goveeService.getDevices(forceRefresh)
   })
 
   ipcMain.handle('govee:set-selected-devices', (_event, ids: string[]) => {
     goveeService.setSelectedDevices(ids)
     return goveeService.getStatus()
+  })
+
+  ipcMain.handle('govee:test-strobe', async () => {
+    return await goveeService.triggerStrobe(2000)
   })
 }

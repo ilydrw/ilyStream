@@ -32,6 +32,33 @@ interface MeterFrame {
   spectrum?: number[]
 }
 
+interface LiveMeterNode {
+  stream: MediaStream
+  context: AudioContext
+  source: MediaStreamAudioSourceNode
+  splitter: ChannelSplitterNode
+  analyserL: AnalyserNode
+  analyserR: AnalyserNode
+  channelMode: ChannelModeStage
+  fxInput: GainNode
+  fxOutput: GainNode
+  fxNodes: any[]
+  meterPan: StereoPannerNode | null
+  silentSink: GainNode
+  freqData: Uint8Array
+  dataL: Float32Array
+  dataR: Float32Array
+  lastMode?: string
+  lastFxHash?: any[]
+  elements?: {
+    peakL: HTMLElement[]
+    peakR: HTMLElement[]
+    clipL: HTMLElement[]
+    clipR: HTMLElement[]
+    spectrum: HTMLCanvasElement | null
+  }
+}
+
 interface AudioTrackStatus {
   hasStream: boolean
   hasAudio: boolean
@@ -109,7 +136,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
     }
   }, [isResizingSidebar, handleSidebarResize])
 
-  const meters = useLiveMeters(activeScene, videoRefs, audioSources, streamReady)
+  const meters = useLiveMeters(activeScene, videoRefs, audioSources, devices, streamReady)
   const trackStatuses = useMemo(
     () => getTrackStatuses(activeScene, videoRefs, audioSources),
     [activeScene, videoRefs, audioSources, meters]
@@ -228,7 +255,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
   }
 
   return (
-    <div className="flex h-full min-h-0 bg-[#030303] text-white overflow-hidden select-none">
+    <div className="relative flex h-full min-h-0 bg-[#030303] text-white overflow-hidden select-none">
       <section className="flex-1 min-w-0 flex flex-col">
         <div className="h-12 shrink-0 px-5 border-b border-white/[0.06] flex items-center justify-between bg-[#070707]">
           <div className="flex items-center gap-3">
@@ -467,6 +494,21 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
   )
 }
 
+function cleanupLiveMeterNode(node: LiveMeterNode): void {
+  try { node.source.disconnect() } catch {}
+  try { node.splitter.disconnect() } catch {}
+  try { node.analyserL.disconnect() } catch {}
+  try { node.analyserR.disconnect() } catch {}
+  node.channelMode.disconnect()
+  try { node.fxInput.disconnect() } catch {}
+  try { node.fxOutput.disconnect() } catch {}
+  try { node.meterPan?.disconnect() } catch {}
+  try { node.silentSink.disconnect() } catch {}
+  for (const fxNode of node.fxNodes) {
+    try { fxNode?.disconnect?.() } catch {}
+  }
+}
+
 function useLiveMeters(
   activeScene: StudioScene,
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
@@ -476,33 +518,7 @@ function useLiveMeters(
 ): Record<string, MeterFrame> {
   const [meters, setMeters] = useState<Record<string, MeterFrame>>({})
   const lastUpdateRef = useRef(0)
-  const nodesRef = useRef(new Map<string, {
-    stream: MediaStream
-    context: AudioContext
-    source: MediaStreamAudioSourceNode
-    splitter: ChannelSplitterNode
-    analyserL: AnalyserNode
-    analyserR: AnalyserNode
-    channelMode: ChannelModeStage
-    fxInput: GainNode
-    fxOutput: GainNode
-    fxNodes: any[]
-    monitorGain: GainNode
-    monitorPan: StereoPannerNode | null
-    meterPan: StereoPannerNode | null
-    freqData: Uint8Array
-    dataL: Float32Array
-    dataR: Float32Array
-    lastMode?: string
-    lastFxHash?: any[] // Store reference for shallow comparison
-    elements?: {
-      peakL: HTMLElement[]
-      peakR: HTMLElement[]
-      clipL: HTMLElement[]
-      clipR: HTMLElement[]
-      spectrum: HTMLCanvasElement | null
-    }
-  }>())
+  const nodesRef = useRef(new Map<string, LiveMeterNode>())
   const micStreams = useRef<Record<string, MediaStream>>({})
   const pendingMics = useRef<Set<string>>(new Set())
 
@@ -515,6 +531,8 @@ function useLiveMeters(
       
       if (source.id === 'soundboard') {
         stream = (window as any).__soundboardStream || null
+      } else if (source.id === 'tts-audio') {
+        stream = audioEngine.getTtsStream()
       } else if (source.type === 'mic' && source.deviceId) {
         const globalMic = (window as any).__ilyMicStreams?.[source.id]
         if (globalMic) {
@@ -555,7 +573,7 @@ function useLiveMeters(
                   noiseSuppression: false,
                   autoGainControl: false
                 }
-              })
+            })
               micStreams.current[source.id] = stream
             } catch (err) {
               console.error('[AudioMixer] Failed to get standalone mic stream:', err)
@@ -565,8 +583,8 @@ function useLiveMeters(
           }
         }
       } else {
-        const el = videoRefs.current[source.id] as any
-        stream = (el?.__ilyRawStream || el?.srcObject) as MediaStream | null
+        const video = videoRefs.current[source.id] as any
+        stream = (video?.__ilyRawStream || video?.srcObject) as MediaStream | null
       }
 
       if (stream) {
@@ -582,8 +600,7 @@ function useLiveMeters(
       
       // Clean up previous source if stream changed
       if (existing) {
-        try { existing.source.disconnect() } catch {}
-        existing.channelMode.disconnect()
+        cleanupLiveMeterNode(existing)
         nodesRef.current.delete(source.id)
       }
 
@@ -599,23 +616,16 @@ function useLiveMeters(
         )
         const fxInput = context.createGain()
         const fxOutput = context.createGain()
-        const monitorGain = context.createGain()
-        const monitorPan = context.createStereoPanner()
         
-        analyserL.fftSize = 1024
-        analyserL.smoothingTimeConstant = 0.5
-        analyserR.fftSize = 1024
-        analyserR.smoothingTimeConstant = 0.5
+        analyserL.fftSize = 512
+        analyserL.smoothingTimeConstant = 0.4
+        analyserR.fftSize = 512
+        analyserR.smoothingTimeConstant = 0.4
         
         mediaSource.connect(channelMode.input)
         channelMode.output.connect(fxInput)
         fxInput.connect(fxOutput)
         
-        // Monitoring path
-        fxOutput.connect(monitorGain)
-        monitorGain.connect(monitorPan)
-        monitorPan.connect(context.destination)
-
         // Metering path (post-fader/post-pan)
         const meterPan = context.createStereoPanner()
         fxOutput.connect(meterPan)
@@ -624,13 +634,14 @@ function useLiveMeters(
         splitter.connect(analyserL, 0)
         splitter.connect(analyserR, 1)
 
-        // Silent sink to keep graph alive and ensure analyzers aren't garbage collected/optimized out
+        // Silent sink to keep graph alive and ensure analyzers aren't garbage collected
         const silentSink = context.createGain()
         silentSink.gain.value = 0
         fxOutput.connect(silentSink)
         analyserL.connect(silentSink)
         analyserR.connect(silentSink)
         silentSink.connect(context.destination)
+        // DO NOT connect to destination here - useBroadcastAudio handles the final output
 
         void context.resume()
         nodesRef.current.set(source.id, {
@@ -644,9 +655,8 @@ function useLiveMeters(
           fxInput,
           fxOutput,
           fxNodes: [],
-          monitorGain,
-          monitorPan,
           meterPan,
+          silentSink,
           dataL: new Float32Array(analyserL.fftSize),
           dataR: new Float32Array(analyserR.fftSize),
           freqData: new Uint8Array(analyserL.frequencyBinCount)
@@ -662,9 +672,12 @@ function useLiveMeters(
         .map(layer => layer.id)
     )
     
-    // Always consider soundboard active if it exists
+    // Always consider soundboard and TTS active if they exist
     if (audioSources.some(s => s.id === 'soundboard')) {
       activeAudioIds.add('soundboard')
+    }
+    if (audioSources.some(s => s.id === 'tts-audio')) {
+      activeAudioIds.add('tts-audio')
     }
 
     audioSources.forEach(source => {
@@ -686,13 +699,26 @@ function useLiveMeters(
 
     for (const [id, node] of nodesRef.current) {
       if (activeAudioIds.has(id)) continue
-      try { node.source.disconnect() } catch {}
-      node.channelMode.disconnect()
+      cleanupLiveMeterNode(node)
       nodesRef.current.delete(id)
     }
 
-    const tick = () => {
+    const lastTickRef = { current: 0 }
+    const tick = (timestamp: number) => {
+      if (disposed) return
+
+      // Throttle metering logic to ~30fps to save CPU for the audio worklet and broadcast bus
+      const elapsed = timestamp - lastTickRef.current
+      if (elapsed < 32) {
+        frameId = requestAnimationFrame(tick)
+        return
+      }
+      lastTickRef.current = timestamp
+
       const next: Record<string, MeterFrame> = {}
+      let masterL = 0, masterR = 0, masterPeak = 0
+      let activeCount = 0
+
       for (const source of audioSources) {
         const node = nodesRef.current.get(source.id)
         if (!node) {
@@ -718,15 +744,6 @@ function useLiveMeters(
         // Apply volume and pan to processing nodes
         node.fxOutput.gain.setTargetAtTime(source.volume, node.context.currentTime, 0.01)
         
-        node.monitorGain.gain.setTargetAtTime(
-          source.monitoring && !source.muted ? 1 : 0, // Volume is now in fxOutput
-          node.context.currentTime,
-          0.01
-        )
-        
-        if (node.monitorPan) {
-          node.monitorPan.pan.setTargetAtTime(source.pan || 0, node.context.currentTime, 0.01)
-        }
         if (node.meterPan) {
           node.meterPan.pan.setTargetAtTime(source.pan || 0, node.context.currentTime, 0.01)
         }
@@ -737,8 +754,9 @@ function useLiveMeters(
         
         let sumL = 0, sumR = 0
         let peakL = 0, peakR = 0
+        const len = node.dataL.length
         
-        for (let i = 0; i < node.dataL.length; i++) {
+        for (let i = 0; i < len; i++) {
           const sL = node.dataL[i], sR = node.dataR[i]
           sumL += sL * sL
           sumR += sR * sR
@@ -746,65 +764,79 @@ function useLiveMeters(
           if (Math.abs(sR) > peakR) peakR = Math.abs(sR)
         }
         
-        // Meter Calibration: Normalized to feel responsive for broadcast levels
-        // RMS is sqrt(sum/n). Multiply by 2.2 to bring -18dBFS (nominal) to ~0.5 on the meter
-        const rmsL = Math.sqrt(sumL / node.dataL.length) * 2.2
-        const rmsR = Math.sqrt(sumR / node.dataR.length) * 2.2
+        const rmsL = Math.sqrt(sumL / len) * 2.2
+        const rmsR = Math.sqrt(sumR / len) * 2.2
         const peakTotal = Math.max(peakL, peakR) * 1.1
         
-        // Sample spectrum (downsample to 32 bars)
-        node.analyserL.getByteFrequencyData(node.freqData as any)
-        const spectrum: number[] = []
-        const binsPerBar = Math.floor(node.freqData.length / 32)
-        for (let i = 0; i < 32; i++) {
-          let sum = 0
-          for (let j = 0; j < binsPerBar; j++) {
-            sum += node.freqData[i * binsPerBar + j]
-          }
-          spectrum.push(sum / binsPerBar / 255)
-        }
-
-        next[source.id] = {
+        const meter = {
           left: Math.min(1, rmsL),
           right: Math.min(1, rmsR),
-          peak: Math.min(1, peakTotal),
-          spectrum
+          peak: Math.min(1, peakTotal)
         }
+        next[source.id] = meter
+        
+        masterL += meter.left
+        masterR += meter.right
+        masterPeak = Math.max(masterPeak, meter.peak)
+        activeCount++
       }
-      next.master = mixMeters(Object.values(next))
+
+      next.master = {
+        left: activeCount > 0 ? Math.min(1, masterL / Math.sqrt(activeCount)) : 0,
+        right: activeCount > 0 ? Math.min(1, masterR / Math.sqrt(activeCount)) : 0,
+        peak: masterPeak
+      }
       
       // Update DOM directly for performance (bypassing React for 60fps meters)
       Object.entries(next).forEach(([id, data]) => {
-        const node = nodesRef.current.get(id)
-        if (!node) return
+        let elements: any = null
 
-        // Lazy-load element references once to avoid querySelectorAll every frame
-        if (!node.elements) {
-          node.elements = {
-            peakL: Array.from(document.querySelectorAll(`.meter-peak-l-${id}`)) as HTMLElement[],
-            peakR: Array.from(document.querySelectorAll(`.meter-peak-r-${id}`)) as HTMLElement[],
-            clipL: Array.from(document.querySelectorAll(`.meter-clip-l-${id}`)) as HTMLElement[],
-            clipR: Array.from(document.querySelectorAll(`.meter-clip-r-${id}`)) as HTMLElement[],
-            spectrum: document.getElementById(`spectrum-canvas-${id}`) as HTMLCanvasElement | null
+        if (id === 'master') {
+          // Special case for master meter elements as it has no node
+          if (!(window as any).__ilyMasterElements) {
+            (window as any).__ilyMasterElements = {
+              peakL: Array.from(document.querySelectorAll(`.meter-peak-l-master`)),
+              peakR: Array.from(document.querySelectorAll(`.meter-peak-r-master`)),
+              clipL: Array.from(document.querySelectorAll(`.meter-clip-l-master`)),
+              clipR: Array.from(document.querySelectorAll(`.meter-clip-r-master`))
+            }
           }
+          elements = (window as any).__ilyMasterElements
+        } else {
+          const node = nodesRef.current.get(id)
+          if (!node) return
+
+          // Lazy-load element references once to avoid querySelectorAll every frame
+          if (!node.elements) {
+            node.elements = {
+              peakL: Array.from(document.querySelectorAll(`.meter-peak-l-${id}`)) as HTMLElement[],
+              peakR: Array.from(document.querySelectorAll(`.meter-peak-r-${id}`)) as HTMLElement[],
+              clipL: Array.from(document.querySelectorAll(`.meter-clip-l-${id}`)) as HTMLElement[],
+              clipR: Array.from(document.querySelectorAll(`.meter-clip-r-${id}`)) as HTMLElement[],
+              spectrum: document.getElementById(`spectrum-canvas-${id}`) as HTMLCanvasElement | null
+            }
+          }
+          elements = node.elements
         }
+
+        if (!elements) return
 
         const peakPercentL = `${Math.max(4, data.left * 100)}%`
         const peakPercentR = `${Math.max(4, data.right * 100)}%`
         
-        node.elements.peakL.forEach(el => { el.style.height = peakPercentL })
-        node.elements.peakR.forEach(el => { el.style.height = peakPercentR })
+        elements.peakL.forEach((el: HTMLElement) => { el.style.height = peakPercentL })
+        elements.peakR.forEach((el: HTMLElement) => { el.style.height = peakPercentR })
         
         const dbL = data.left <= 0.001 ? -60 : 20 * Math.log10(data.left)
         const dbR = data.right <= 0.001 ? -60 : 20 * Math.log10(data.right)
         const clipL = `${100 - Math.max(0, (dbL + 60) / 60) * 100}%`
         const clipR = `${100 - Math.max(0, (dbR + 60) / 60) * 100}%`
         
-        node.elements.clipL.forEach(el => { el.style.clipPath = `inset(${clipL} 0 0 0)` })
-        node.elements.clipR.forEach(el => { el.style.clipPath = `inset(${clipR} 0 0 0)` })
+        elements.clipL.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipL} 0 0 0)` })
+        elements.clipR.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipR} 0 0 0)` })
 
-        // Update spectrum canvas if it exists
-        const canvas = node.elements.spectrum
+        // Update spectrum canvas if it exists (only for tracks, not master)
+        const canvas = elements.spectrum
         if (canvas && data.spectrum) {
           const ctx = canvas.getContext('2d', { alpha: false })
           if (ctx) {
@@ -850,8 +882,7 @@ function useLiveMeters(
 
   useEffect(() => () => {
     for (const node of nodesRef.current.values()) {
-      try { node.source.disconnect() } catch {}
-      node.channelMode.disconnect()
+      cleanupLiveMeterNode(node)
     }
     nodesRef.current.clear()
     for (const stream of Object.values(micStreams.current)) {
@@ -1420,19 +1451,17 @@ function getTrackStatuses(
   const statuses: Record<string, AudioTrackStatus> = {}
 
   for (const source of audioSources) {
-    if (source.id === 'tts-audio') {
-      statuses[source.id] = { hasStream: true, hasAudio: true, live: true, label: 'Virtual bus' }
-      continue
-    }
 
-    if (source.id !== 'soundboard' && !activeLayerIds.has(source.id)) {
+    if (source.id !== 'soundboard' && source.id !== 'tts-audio' && !activeLayerIds.has(source.id)) {
       statuses[source.id] = { hasStream: false, hasAudio: false, live: false, label: 'Not in scene' }
       continue
     }
 
     const stream = source.id === 'soundboard'
       ? ((window as any).__soundboardStream as MediaStream | null) || null
-      : videoRefs.current[source.id]?.srcObject as MediaStream | null
+      : source.id === 'tts-audio'
+        ? audioEngine.getTtsStream()
+        : videoRefs.current[source.id]?.srcObject as MediaStream | null
     const audioTracks = stream?.getAudioTracks() || []
     const liveTrack = audioTracks.find(track => track.readyState === 'live')
 

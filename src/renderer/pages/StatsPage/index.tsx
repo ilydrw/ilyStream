@@ -13,9 +13,12 @@ import {
   Users,
   RefreshCw,
   Trash2,
-  Search
+  Search,
+  Link as LinkIcon,
+  Unlink,
+  ExternalLink
 } from 'lucide-react'
-import type { GlobalStats, UserStat, UserStatSortKey } from '../../../shared/stats'
+import type { GlobalStats, UserStat, UserStatSortKey, UserIdentity } from '../../../shared/stats'
 import { EMPTY_GLOBAL_STATS } from '../../../shared/stats'
 import type { Platform } from '../../../main/platforms/types'
 import { Avatar } from '../../components/ui/Avatar'
@@ -60,6 +63,18 @@ const SORT_COLUMNS: SortColumn[] = [
   }
 ]
 
+const RELEVANT_STATS: Record<Platform, UserStatSortKey[]> = {
+  tiktok: ['totalLikes', 'totalGifts', 'totalGiftValueCents', 'totalSubscriptions', 'totalFollows', 'totalShares', 'totalChats', 'totalSongRequests'],
+  twitch: ['totalGifts', 'totalGiftValueCents', 'totalSubscriptions', 'totalRaids', 'totalChats', 'totalSongRequests'],
+  youtube: ['totalSubscriptions', 'totalChats', 'totalSongRequests'],
+  kick: ['totalFollows', 'totalSubscriptions', 'totalChats', 'totalSongRequests']
+}
+
+function isRelevant(platform: Platform | 'all', key: UserStatSortKey): boolean {
+  if (platform === 'all') return true
+  return RELEVANT_STATS[platform]?.includes(key) || key === 'lastSeenAt'
+}
+
 function formatCurrency(cents: number): string {
   if (!cents) return '$0.00'
   return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -85,15 +100,24 @@ function formatRelativeTime(iso: string | null): string {
 
 export default function StatsPage() {
   const [global, setGlobal] = useState<GlobalStats>(EMPTY_GLOBAL_STATS)
-  const [users, setUsers] = useState<UserStat[]>([])
+  const [identities, setIdentities] = useState<UserIdentity[]>([])
   const [sortBy, setSortBy] = useState<UserStatSortKey>('totalLikes')
   const [platform, setPlatform] = useState<Platform | 'all'>('all')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [loading, setLoading] = useState(true)
-  const [selectedUser, setSelectedUser] = useState<UserStat | null>(null)
+  const [selectedIdentityId, setSelectedIdentityId] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
   const [activePlatformTab, setActivePlatformTab] = useState<Platform | 'all'>('all')
+  
+  // Linking state
+  const [linkSource, setLinkSource] = useState<UserStat | null>(null)
+  const [isLinking, setIsLinking] = useState(false)
+
+  const selectedIdentity = useMemo(
+    () => identities.find(i => i.id === selectedIdentityId) || null,
+    [identities, selectedIdentityId]
+  )
 
   // Debounce the search box so we don't spam IPC on every keystroke
   useEffect(() => {
@@ -107,10 +131,10 @@ export default function StatsPage() {
     try {
       const [g, u] = await Promise.all([
         window.api.stats.getGlobal(),
-        window.api.stats.getTopUsers({ sortBy, platform, query: debouncedQuery, limit: 200 })
+        window.api.stats.getTopIdentities({ sortBy, platform, query: debouncedQuery, limit: 200 })
       ])
       setGlobal(g as GlobalStats)
-      setUsers(u as UserStat[])
+      setIdentities(u as UserIdentity[])
     } catch (err) {
       console.error('[Stats] Load failed', err)
     } finally {
@@ -126,6 +150,11 @@ export default function StatsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortBy, platform, debouncedQuery])
 
+  const activeSortColumns = useMemo(
+    () => SORT_COLUMNS.filter(c => isRelevant(activePlatformTab, c.key)),
+    [activePlatformTab]
+  )
+
   const sortColumn = useMemo(
     () => SORT_COLUMNS.find((c) => c.key === sortBy) ?? SORT_COLUMNS[0],
     [sortBy]
@@ -140,8 +169,45 @@ export default function StatsPage() {
     setConfirmReset(false)
     if (!window.api?.stats) return
     await window.api.stats.reset()
-    setSelectedUser(null)
+    setSelectedIdentityId(null)
     await loadAll()
+  }
+
+  const handleLink = async (target: UserStat) => {
+    if (!linkSource || !window.api?.stats) return
+    if (linkSource.username === target.username && linkSource.platform === target.platform) {
+      alert("Can't link an account to itself!")
+      return
+    }
+    setLoading(true)
+    try {
+      await window.api.stats.linkAccounts({
+        p1: linkSource.platform,
+        u1: linkSource.username,
+        p2: target.platform,
+        u2: target.username
+      })
+      setLinkSource(null)
+      setIsLinking(false)
+      loadAll()
+    } catch (err) {
+      console.error('[Stats] Link failed', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUnlink = async (platform: Platform, username: string) => {
+    if (!window.api?.stats) return
+    setLoading(true)
+    try {
+      await window.api.stats.unlinkAccount({ platform, username })
+      loadAll()
+    } catch (err) {
+      console.error('[Stats] Unlink failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -196,13 +262,13 @@ export default function StatsPage() {
 
       {/* Lifetime metric grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-6 mb-16">
-        <StatCard icon={<Heart size={20} />} label="Likes" value={global.totalLikes.toLocaleString()} accent="text-pink-400" />
-        <StatCard icon={<Gift size={20} />} label="Gifts" value={global.totalGifts.toLocaleString()} accent="text-yellow-300" />
-        <StatCard icon={<Gift size={20} />} label="Est. Revenue" value={formatCurrency(global.totalGiftValueCents)} accent="text-emerald-400" />
-        <StatCard icon={<Star size={20} />} label="Subs" value={global.totalSubscriptions.toLocaleString()} accent="text-purple-400" />
-        <StatCard icon={<UserPlus size={20} />} label="Follows" value={global.totalFollows.toLocaleString()} accent="text-cyan-400" />
-        <StatCard icon={<Share2 size={20} />} label="Shares" value={global.totalShares.toLocaleString()} accent="text-blue-400" />
-        <StatCard icon={<Swords size={20} />} label="Raids" value={global.totalRaids.toLocaleString()} accent="text-orange-400" />
+        {isRelevant(activePlatformTab, 'totalLikes') && <StatCard icon={<Heart size={20} />} label="Likes" value={global.totalLikes.toLocaleString()} accent="text-pink-400" />}
+        {isRelevant(activePlatformTab, 'totalGifts') && <StatCard icon={<Gift size={20} />} label="Gifts" value={global.totalGifts.toLocaleString()} accent="text-yellow-300" />}
+        {isRelevant(activePlatformTab, 'totalGiftValueCents') && <StatCard icon={<Gift size={20} />} label="Est. Revenue" value={formatCurrency(global.totalGiftValueCents)} accent="text-emerald-400" />}
+        {isRelevant(activePlatformTab, 'totalSubscriptions') && <StatCard icon={<Star size={20} />} label="Subs" value={global.totalSubscriptions.toLocaleString()} accent="text-purple-400" />}
+        {isRelevant(activePlatformTab, 'totalFollows') && <StatCard icon={<UserPlus size={20} />} label="Follows" value={global.totalFollows.toLocaleString()} accent="text-cyan-400" />}
+        {isRelevant(activePlatformTab, 'totalShares') && <StatCard icon={<Share2 size={20} />} label="Shares" value={global.totalShares.toLocaleString()} accent="text-blue-400" />}
+        {isRelevant(activePlatformTab, 'totalRaids') && <StatCard icon={<Swords size={20} />} label="Raids" value={global.totalRaids.toLocaleString()} accent="text-orange-400" />}
         <StatCard icon={<MessageSquare size={20} />} label="Chats" value={global.totalChats.toLocaleString()} accent="text-white/80" />
         <StatCard icon={<Music2 size={20} />} label="Songs" value={global.totalSongRequests.toLocaleString()} accent="text-green-400" />
         <StatCard icon={<Eye size={20} />} label="Peak" value={global.peakViewerCount.toLocaleString()} accent="text-rose-400" />
@@ -259,7 +325,7 @@ export default function StatsPage() {
             {PLATFORMS.filter(p => activePlatformTab === 'all' || activePlatformTab === p).map((p) => {
               const ps = global.byPlatform[p]
               return (
-                <div key={p} className="app-section-card glass flex flex-col group">
+                <div key={p} className="app-section-card glass p-6 flex flex-col group">
                   <div className="flex items-center gap-4 mb-6">
                     <div className="w-10 h-10 flex items-center justify-center">
                       <PlatformLogo platform={p} size={32} />
@@ -270,12 +336,12 @@ export default function StatsPage() {
                     </div>
                   </div>
                   <div className="space-y-5 text-sm">
-                    <PlatformStatRow label="Likes" value={ps.totalLikes.toLocaleString()} />
-                    <PlatformStatRow label="Gifts" value={ps.totalGifts.toLocaleString()} sub={formatCurrency(ps.totalGiftValueCents)} />
-                    <PlatformStatRow label="Subs" value={ps.totalSubscriptions.toLocaleString()} />
-                    <PlatformStatRow label="Follows" value={ps.totalFollows.toLocaleString()} />
-                    <PlatformStatRow label="Shares" value={ps.totalShares.toLocaleString()} />
-                    <PlatformStatRow label="Raids" value={ps.totalRaids.toLocaleString()} />
+                    {isRelevant(p, 'totalLikes') && <PlatformStatRow label="Likes" value={ps.totalLikes.toLocaleString()} />}
+                    {isRelevant(p, 'totalGifts') && <PlatformStatRow label="Gifts" value={ps.totalGifts.toLocaleString()} sub={formatCurrency(ps.totalGiftValueCents)} />}
+                    {isRelevant(p, 'totalSubscriptions') && <PlatformStatRow label="Subs" value={ps.totalSubscriptions.toLocaleString()} />}
+                    {isRelevant(p, 'totalFollows') && <PlatformStatRow label="Follows" value={ps.totalFollows.toLocaleString()} />}
+                    {isRelevant(p, 'totalShares') && <PlatformStatRow label="Shares" value={ps.totalShares.toLocaleString()} />}
+                    {isRelevant(p, 'totalRaids') && <PlatformStatRow label="Raids" value={ps.totalRaids.toLocaleString()} />}
                     <PlatformStatRow label="Chats" value={ps.totalChats.toLocaleString()} />
                     <PlatformStatRow label="Songs" value={ps.totalSongRequests.toLocaleString()} />
                   </div>
@@ -301,7 +367,14 @@ export default function StatsPage() {
               </div>
               <div>
                 <h2>Top users</h2>
-                <p>Sorted by {sortColumn.label.toLowerCase()} · click for breakdown</p>
+                <p>Sorted by {sortColumn.label.toLowerCase()} · {isLinking ? 'select target to link' : 'click for breakdown'}</p>
+                {isLinking && (
+                  <div className="mt-2 px-3 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold rounded-xl flex items-center gap-2 border border-yellow-500/20">
+                    <LinkIcon size={12} />
+                    LINKING @{linkSource?.username} ({linkSource?.platform})
+                    <button onClick={() => { setIsLinking(false); setLinkSource(null); }} className="ml-auto hover:text-white uppercase">Cancel</button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="ml-auto flex flex-wrap gap-2">
@@ -331,7 +404,7 @@ export default function StatsPage() {
                 onChange={(e) => setSortBy(e.target.value as UserStatSortKey)}
                 className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-white/80 focus:outline-none focus:border-accent/40"
               >
-                {SORT_COLUMNS.map((c) => (
+                {SORT_COLUMNS.filter(c => isRelevant(platform, c.key)).map((c) => (
                   <option key={c.key} value={c.key}>
                     Sort by {c.label.toLowerCase()}
                   </option>
@@ -345,9 +418,9 @@ export default function StatsPage() {
               <thead>
                 <tr className="text-[10px] uppercase tracking-widest text-white/30 border-b border-white/[0.04]">
                   <th className="text-left font-black px-6 py-3">#</th>
-                  <th className="text-left font-black py-3">User</th>
-                  <th className="text-left font-black py-3">Platform</th>
-                  {SORT_COLUMNS.map((c) => (
+                  <th className="text-left font-black py-3">Identity</th>
+                  <th className="text-left font-black py-3">Platforms</th>
+                  {activeSortColumns.map((c) => (
                     <th
                       key={c.key}
                       className={`text-right font-black py-3 px-3 cursor-pointer hover:text-white/70 ${
@@ -362,55 +435,61 @@ export default function StatsPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.length === 0 && !loading && (
+                {identities.length === 0 && !loading && (
                   <tr>
                     <td colSpan={5 + SORT_COLUMNS.length} className="text-center text-white/30 py-12 text-sm">
                       No users tracked yet — fire up a stream and let the events roll in.
                     </td>
                   </tr>
                 )}
-                {users.map((user, idx) => (
+                {identities.map((identity, idx) => (
                   <tr
-                    key={`${user.platform}:${user.username}`}
-                    onClick={() => setSelectedUser(user)}
+                    key={identity.id}
+                    onClick={() => {
+                      if (isLinking) {
+                        handleLink(identity.accounts[0])
+                      } else {
+                        setSelectedIdentityId(identity.id)
+                      }
+                    }}
                     className={`border-b border-white/[0.02] cursor-pointer transition-colors ${
-                      selectedUser?.username === user.username && selectedUser?.platform === user.platform
+                      selectedIdentityId === identity.id
                         ? 'bg-accent/5'
                         : 'hover:bg-white/[0.02]'
-                    }`}
+                    } ${isLinking ? 'hover:bg-yellow-500/10' : ''}`}
                   >
                     <td className="px-6 py-3 text-white/30 font-mono">{idx + 1}</td>
                     <td className="py-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <Avatar url={user.profilePictureUrl} name={user.displayName} />
+                        <Avatar url={identity.profilePictureUrl} name={identity.displayName} />
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-white font-semibold truncate">{user.displayName}</span>
-                            {user.platform === 'tiktok' && user.isFanClubMember && (
+                            <span className="text-white font-semibold truncate">{identity.displayName}</span>
+                            {identity.isFanClubMember && (
                               <TikTokHeartIcon size={12} className="shrink-0" />
                             )}
                           </div>
-                          <div className="text-white/30 text-[10px] truncate">@{user.username}</div>
                         </div>
                       </div>
                     </td>
                     <td className="py-3">
-                      <div className="flex items-center gap-1.5">
-                        <PlatformLogo platform={user.platform} size={14} />
-                        <span className="text-white/50">{PLATFORM_LABELS[user.platform]}</span>
+                      <div className="flex items-center gap-1">
+                        {identity.allPlatforms.map(p => (
+                          <PlatformLogo key={p} platform={p} size={14} />
+                        ))}
                       </div>
                     </td>
-                    {SORT_COLUMNS.map((c) => (
+                    {activeSortColumns.map((c) => (
                       <td
                         key={c.key}
                         className={`text-right py-3 px-3 tabular-nums ${
                           sortBy === c.key ? 'text-white font-bold' : 'text-white/50'
                         }`}
                       >
-                        {c.format(user)}
+                        {(identity as any)[c.key]?.toLocaleString() || '0'}
                       </td>
                     ))}
-                    <td className="text-right py-3 pr-6 text-white/30 text-[10px]">{formatRelativeTime(user.lastSeenAt)}</td>
+                    <td className="text-right py-3 pr-6 text-white/30 text-[10px]">{formatRelativeTime(identity.lastSeenAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -418,7 +497,12 @@ export default function StatsPage() {
           </div>
         </div>
 
-        <UserDetail user={selectedUser} onClose={() => setSelectedUser(null)} currentPlatform={platform} />
+        <UserDetail 
+          identity={selectedIdentity} 
+          onClose={() => setSelectedIdentityId(null)} 
+          onStartLink={(u) => { setLinkSource(u); setIsLinking(true); }}
+          onUnlink={handleUnlink}
+        />
       </section>
     </div>
   )
@@ -436,83 +520,132 @@ function StatCard({ icon, label, value, accent }: { icon: any; label: string; va
 
 function PlatformStatRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="flex items-baseline justify-between py-0.5">
+    <div className="flex items-baseline justify-between py-0.5 pr-1">
       <span className="text-white/40 font-medium">{label}</span>
       <div className="flex items-baseline gap-2">
         {sub && <span className="text-[10px] text-white/20 font-mono">{sub}</span>}
-        <span className="text-white font-bold font-mono tabular-nums">{value}</span>
+        <span className="text-white font-bold font-mono tabular-nums pr-1">{value}</span>
       </div>
     </div>
   )
 }
 
-function UserDetail({ user, onClose, currentPlatform }: { user: UserStat | null; onClose: () => void, currentPlatform: Platform | 'all' }) {
-  if (!user) {
+function UserDetail({ 
+  identity, 
+  onClose,
+  onStartLink,
+  onUnlink
+}: { 
+  identity: UserIdentity | null; 
+  onClose: () => void;
+  onStartLink: (user: UserStat) => void;
+  onUnlink: (platform: Platform, username: string) => void;
+}) {
+  if (!identity) {
     return (
       <div className="app-section-card glass p-8 flex items-center justify-center text-white/30 text-sm text-center min-h-[400px]">
-        Select a user from the table to see their lifetime breakdown.
+        Select a user from the table to see their lifetime breakdown across all linked platforms.
       </div>
     )
   }
   return (
     <div className="app-section-card glass p-6 self-start">
-      <div className="flex items-start gap-3 mb-5">
-        <Avatar url={user.profilePictureUrl} name={user.displayName} />
+      <div className="flex items-start gap-3 mb-6">
+        <Avatar url={identity.profilePictureUrl} name={identity.displayName} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-white font-bold truncate">{user.displayName}</span>
-            {user.platform === 'tiktok' && user.isFanClubMember && (
-              <TikTokHeartIcon size={14} className="shrink-0" />
+            <span className="text-white font-bold truncate text-lg tracking-tight">{identity.displayName}</span>
+            {identity.isFanClubMember && (
+              <TikTokHeartIcon size={16} className="shrink-0" />
             )}
           </div>
-          <div className="text-white/40 text-xs flex items-center gap-1.5 mt-0.5">
-            <PlatformLogo platform={user.platform} size={12} />
-            <span>@{user.username}</span>
+          <div className="text-white/40 text-xs flex items-center gap-2 mt-1">
+            <div className="flex items-center -space-x-1">
+              {identity.allPlatforms.map(p => (
+                <div key={p} className="p-0.5 bg-black/40 rounded-full border border-white/10">
+                  <PlatformLogo platform={p} size={10} />
+                </div>
+              ))}
+            </div>
+            <span className="uppercase tracking-widest text-[9px] font-black text-white/20">Unified Identity</span>
           </div>
         </div>
-        <button onClick={onClose} className="text-white/30 hover:text-white text-xs">
-          Close
+        <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+          <Trash2 size={16} />
         </button>
       </div>
 
-      <div className="space-y-2 text-xs mb-5">
-        <DetailRow icon={<Heart size={12} className="text-pink-400" />} label="Likes" value={user.totalLikes.toLocaleString()} />
-        <DetailRow icon={<Gift size={12} className="text-yellow-300" />} label="Gifts" value={user.totalGifts.toLocaleString()} />
-        <DetailRow
-          icon={<Gift size={12} className="text-emerald-400" />}
-          label="Total Earnings"
-          value={formatCurrency(user.totalGiftValueCents)}
-        />
-        <DetailRow
-          icon={<Star size={12} className="text-purple-400" />}
-          label="Subscriptions"
-          value={user.totalSubscriptions.toLocaleString()}
-        />
-        <DetailRow icon={<UserPlus size={12} className="text-cyan-400" />} label="Follows" value={user.totalFollows.toLocaleString()} />
-        <DetailRow icon={<Share2 size={12} className="text-blue-400" />} label="Shares" value={user.totalShares.toLocaleString()} />
-        <DetailRow icon={<Swords size={12} className="text-orange-400" />} label="Raids" value={user.totalRaids.toLocaleString()} />
-        <DetailRow
-          icon={<MessageSquare size={12} className="text-white/60" />}
-          label="Chat messages"
-          value={user.totalChats.toLocaleString()}
-        />
-        <DetailRow
-          icon={<Music2 size={12} className="text-green-400" />}
-          label="Song requests"
-          value={user.totalSongRequests.toLocaleString()}
-        />
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        <MetricBox label="Likes" value={identity.totalLikes} color="text-pink-400" />
+        <MetricBox label="Gifts" value={identity.totalGifts} color="text-yellow-300" />
+        <MetricBox label="Subs" value={identity.totalSubscriptions} color="text-purple-400" />
+        <MetricBox label="Songs" value={identity.totalSongRequests} color="text-green-400" />
       </div>
 
-      <div className="border-t border-white/[0.04] pt-4 space-y-1.5 text-[10px] text-white/30 uppercase tracking-widest font-bold">
-        <div className="flex justify-between">
-          <span>First seen</span>
-          <span className="text-white/50 normal-case tracking-normal">{formatRelativeTime(user.firstSeenAt)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last seen</span>
-          <span className="text-white/50 normal-case tracking-normal">{formatRelativeTime(user.lastSeenAt)}</span>
-        </div>
+      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 mb-4 px-1">Linked Accounts</h3>
+      <div className="space-y-3 mb-8">
+        {identity.accounts.map(acc => (
+          <div key={`${acc.platform}-${acc.username}`} className="group relative bg-white/[0.03] border border-white/5 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <PlatformLogo platform={acc.platform} size={16} />
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-white truncate">@{acc.username}</div>
+                <div className="text-[10px] text-white/30 uppercase tracking-tighter">{PLATFORM_LABELS[acc.platform]}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button 
+                onClick={() => onStartLink(acc)}
+                className="p-1.5 hover:bg-accent/20 rounded-lg text-white/40 hover:text-accent transition-all"
+                title="Link with another account"
+              >
+                <LinkIcon size={14} />
+              </button>
+              {identity.accounts.length > 1 && (
+                <button 
+                  onClick={() => onUnlink(acc.platform, acc.username)}
+                  className="p-1.5 hover:bg-red-500/20 rounded-lg text-white/40 hover:text-red-400 transition-all"
+                  title="Unlink this account"
+                >
+                  <Unlink size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        
+        {identity.accounts.length < 5 && (
+          <button 
+            onClick={() => onStartLink(identity.accounts[0])}
+            className="w-full py-3 border border-dashed border-white/10 rounded-xl text-white/20 text-[10px] font-black uppercase tracking-widest hover:border-accent/40 hover:text-accent/60 transition-all flex items-center justify-center gap-2"
+          >
+            <LinkIcon size={12} />
+            Link New Account
+          </button>
+        )}
       </div>
+
+      <div className="space-y-2 text-xs">
+        <DetailRow 
+          icon={<MessageSquare size={12} className="text-white/60" />} 
+          label="Total Chats" 
+          value={identity.totalChats.toLocaleString()} 
+        />
+        <DetailRow 
+          icon={<Swords size={12} className="text-orange-400" />} 
+          label="Total Raids" 
+          value={identity.totalRaids.toLocaleString()} 
+        />
+      </div>
+    </div>
+  )
+}
+
+function MetricBox({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+      <div className="text-[9px] font-black uppercase tracking-widest text-white/20 mb-1">{label}</div>
+      <div className={`text-xl font-mono font-bold tracking-tighter ${color}`}>{value.toLocaleString()}</div>
     </div>
   )
 }
@@ -524,7 +657,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
         {icon}
         <span>{label}</span>
       </div>
-      <span className="text-white font-mono tabular-nums">{value}</span>
+      <span className="text-white font-mono tabular-nums pr-2">{value}</span>
     </div>
   )
 }

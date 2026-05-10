@@ -1,4 +1,6 @@
 import { Database } from '../db/database'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { PlatformManager } from '../platforms/platform-manager'
 import { SpotifyService } from '../spotify/spotify-service'
 import { TTSEngine } from '../tts/tts-engine'
@@ -126,12 +128,45 @@ export class ServiceRegistry {
     if (this.initialized) return
     if (this.initializationPromise) return this.initializationPromise
 
+    // Kill any existing instances on our primary port before starting
+    await this.killZombieProcesses()
+
     this.initializationPromise = this.initializeCoreServices()
     try {
       await this.initializationPromise
       this.initialized = true
     } finally {
       this.initializationPromise = null
+    }
+  }
+
+  private async killZombieProcesses(): Promise<void> {
+    if (process.platform !== 'win32') return
+
+    const settings = resolveAppSettings(this.db.getAllSettings())
+    const configuredPort = Number(settings.overlayPort || 8899)
+    const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
+      ? configuredPort
+      : 8899
+    const execFileAsync = promisify(execFile)
+
+    try {
+      // Find the PID of whatever is listening on our port without shell interpolation.
+      const { stdout } = await execFileAsync('netstat', ['-ano'])
+      const lines = stdout.split('\n')
+      
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/)
+        if (parts.length >= 5 && parts[1].includes(`:${port}`) && parts[3] === 'LISTENING') {
+          const pid = parts[4]
+          if (pid && pid !== '0' && parseInt(pid) !== process.pid) {
+            console.log(`[services] Killing zombie process ${pid} on port ${port}...`)
+            await execFileAsync('taskkill', ['/F', '/PID', pid])
+          }
+        }
+      }
+    } catch (err) {
+      // Netstat fails if no process is found, which is fine
     }
   }
 
@@ -195,6 +230,9 @@ export class ServiceRegistry {
   async dispose(): Promise<void> {
     this.chatRelayService.dispose()
     this.economyService.dispose()
+    this.spotifyService.dispose()
+    this.hueService.dispose()
+    this.goveeService.dispose()
     await Promise.allSettled([
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),

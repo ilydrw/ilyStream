@@ -10,7 +10,9 @@ interface TrackNodes {
   panner: StereoPannerNode
   fxInput: GainNode
   fxOutput: GainNode
+  monitorGain: GainNode
   fxNodes: any[]
+  _sourceNode?: { node: AudioNode; stream?: MediaStream; type: 'stream' | 'bus' }
 }
 
 export function useBroadcastAudio(
@@ -25,7 +27,8 @@ export function useBroadcastAudio(
   const masterInputRef = useRef<GainNode | null>(null)
   const broadcastLimiterRef = useRef<DynamicsCompressorNode | null>(null)
   const outputSilencerRef = useRef<GainNode | null>(null)
-  const masterMonitorGainRef = useRef<GainNode | null>(null)
+  const masterMonitorMixerRef = useRef<GainNode | null>(null)
+  const mainMixMonitorGainRef = useRef<GainNode | null>(null)
   const processorRef = useRef<AudioWorkletNode | null>(null)
   const sampleCountRef = useRef<number>(0)
   const tracksRef = useRef<Map<string, TrackNodes>>(new Map())
@@ -41,6 +44,7 @@ export function useBroadcastAudio(
     const masterInput = ctx.createGain()
     masterInputRef.current = masterInput
     audioEngine.setBroadcastBus(masterInput)
+    console.log('[useBroadcastAudio] Permanent mixer graph initialized. Broadcast bus set in AudioEngine.')
 
     const broadcastHeadroom = ctx.createGain()
     broadcastHeadroom.gain.value = 0.82
@@ -56,8 +60,11 @@ export function useBroadcastAudio(
     outputSilencer.gain.value = 0
     outputSilencer.connect(ctx.destination)
 
-    const masterMonitorGain = ctx.createGain()
-    masterMonitorGain.gain.value = 0
+    const masterMonitorMixer = ctx.createGain()
+    masterMonitorMixer.gain.value = 1.0 // Always open, controlled by individual track monitorGains
+
+    const mainMixMonitorGain = ctx.createGain()
+    mainMixMonitorGain.gain.value = 0 // Controls whether the ENTIRE MIX is in the headphones
 
     // Setup Master FX Chain
     const mFxInput = ctx.createGain()
@@ -65,13 +72,17 @@ export function useBroadcastAudio(
     masterInput.connect(mFxInput)
     mFxOutput.connect(broadcastHeadroom)
     broadcastHeadroom.connect(broadcastLimiter)
-    broadcastLimiter.connect(masterMonitorGain)
-    masterMonitorGain.connect(ctx.destination)
+    
+    // Routing to Headphones
+    broadcastLimiter.connect(mainMixMonitorGain)
+    mainMixMonitorGain.connect(masterMonitorMixer)
+    masterMonitorMixer.connect(ctx.destination)
     
     masterFxRef.current = { input: mFxInput, output: mFxOutput, nodes: [] }
     broadcastLimiterRef.current = broadcastLimiter
     outputSilencerRef.current = outputSilencer
-    masterMonitorGainRef.current = masterMonitorGain
+    masterMonitorMixerRef.current = masterMonitorMixer
+    mainMixMonitorGainRef.current = mainMixMonitorGain
 
     console.log('[useBroadcastAudio] Mixer graph ready.')
 
@@ -82,21 +93,22 @@ export function useBroadcastAudio(
         processorRef.current = null
       }
       for (const nodes of tracksRef.current.values()) {
-        try { (nodes as any)._sourceNode?.node?.disconnect() } catch {}
+        try { nodes._sourceNode?.node?.disconnect() } catch {}
         nodes.channelMode.disconnect()
         try { nodes.gain.disconnect() } catch {}
         try { nodes.panner.disconnect() } catch {}
         try { nodes.fxInput.disconnect() } catch {}
         try { nodes.fxOutput.disconnect() } catch {}
+        try { nodes.monitorGain.disconnect() } catch {}
       }
       tracksRef.current.clear()
       masterFxRef.current = null
       broadcastLimiterRef.current = null
       outputSilencerRef.current = null
-      masterMonitorGainRef.current = null
+      masterMonitorMixerRef.current = null
+      mainMixMonitorGainRef.current = null
       audioCtxRef.current = null
       audioEngine.setBroadcastBus(null)
-      audioEngine.setTtsBus(null)
     }
   }, [])
 
@@ -168,11 +180,14 @@ export function useBroadcastAudio(
     const ctx = audioCtxRef.current
     const masterInput = masterInputRef.current
     if (!ctx || !masterInput || ctx.state === 'closed') return
+    console.log(`[useBroadcastAudio] Reconciling ${audioSources.length} sources. Output active: ${outputActive}`)
 
     // Update Master Bus
     const mVol = masterBus.muted ? 0 : masterBus.volume
     masterInput.gain.setTargetAtTime(mVol, ctx.currentTime, 0.01)
-    masterMonitorGainRef.current?.gain.setTargetAtTime(masterBus.monitoring ? 1 : 0, ctx.currentTime, 0.01)
+    
+    // Main Mix monitoring toggle (do we want to hear the whole mix in our headphones?)
+    mainMixMonitorGainRef.current?.gain.setTargetAtTime(masterBus.monitoring ? 1 : 0, ctx.currentTime, 0.01)
     
     if (masterFxRef.current) {
       reconcileFxChain(ctx, masterFxRef.current, masterBus.fxChain || [])
@@ -184,15 +199,22 @@ export function useBroadcastAudio(
     // Cleanup removed tracks
     for (const [id, nodes] of tracksRef.current.entries()) {
       if (!currentIds.has(id)) {
-        ;(nodes as any)._sourceNode?.node?.disconnect()
-        if (audioEngine.getTtsBus() === nodes.channelMode.input) {
-          audioEngine.setTtsBus(null)
+        if (nodes._sourceNode?.node) {
+          try {
+            // For internal buses, only disconnect from THIS mixer stage to 
+            // avoid killing connections to meters or other destinations.
+            nodes._sourceNode.node.disconnect(nodes.channelMode.input)
+          } catch (e) {
+            // Fallback for nodes that don't support targeted disconnect or were never connected
+            try { nodes._sourceNode.node.disconnect() } catch {}
+          }
         }
         nodes.channelMode.disconnect()
         try { nodes.gain.disconnect() } catch {}
         try { nodes.panner.disconnect() } catch {}
         try { nodes.fxInput.disconnect() } catch {}
         try { nodes.fxOutput.disconnect() } catch {}
+        try { nodes.monitorGain.disconnect() } catch {}
         tracksRef.current.delete(id)
       }
     }
@@ -202,59 +224,80 @@ export function useBroadcastAudio(
       let nodes = tracksRef.current.get(s.id)
       if (!nodes) {
         const channelMode = createChannelModeStage(ctx, sanitizeChannelMode(s.channelMode, s.type === 'mic' ? 'mono' : 'stereo'))
-        const gain = ctx.createGain()
+        const gain = ctx.createGain() // Main Fader
+        const monitorGain = ctx.createGain() // Monitor Send
         const panner = ctx.createStereoPanner()
         const fxInput = ctx.createGain()
         const fxOutput = ctx.createGain()
 
-        channelMode.output.connect(gain)
-        gain.connect(panner)
+        channelMode.output.connect(panner)
         panner.connect(fxInput)
         fxInput.connect(fxOutput)
-        fxOutput.connect(masterInput)
+        
+        // Post-FX Branching
+        fxOutput.connect(gain)
+        fxOutput.connect(monitorGain)
+        
+        gain.connect(masterInput)
+        if (masterMonitorMixerRef.current) {
+          monitorGain.connect(masterMonitorMixerRef.current)
+        } else {
+          console.warn(`[useBroadcastAudio] masterMonitorMixer missing for track ${s.id}`)
+        }
 
-        nodes = { channelMode, gain, panner, fxInput, fxOutput, fxNodes: [] }
+        nodes = { channelMode, gain, panner, fxInput, fxOutput, monitorGain, fxNodes: [] }
         tracksRef.current.set(s.id, nodes)
+        console.log(`[useBroadcastAudio] Initialized mixer track for ${s.id}`)
       }
 
-      // Re-attach stream if it changed or wasn't attached
-      let stream: MediaStream | null = null
-      if (s.id === 'soundboard') {
-        stream = (window as any).__soundboardStream || null
-      } else if (s.id === 'tts-audio') {
-        // Map the virtual TTS mixer channel to the global engine bus
-        if (audioEngine.getTtsBus() !== nodes.channelMode.input) {
-          audioEngine.setTtsBus(nodes.channelMode.input)
-          console.log('[useBroadcastAudio] Linked TTS (Neural) mixer channel to AudioEngine bus.')
+      // Re-attach stream or connect internal bus
+      const existingSource = (nodes as any)._sourceNode
+      
+      if (s.id === 'soundboard' || s.id === 'tts-audio') {
+        const bus = s.id === 'soundboard' ? audioEngine.getSoundboardBus() : audioEngine.getTtsBus()
+        if (existingSource?.node !== bus) {
+          if (existingSource) existingSource.node.disconnect()
+          console.log(`[useBroadcastAudio] Wiring internal ${s.id} bus to mixer stage`)
+          bus.connect(nodes.channelMode.input)
+          ;(nodes as any)._sourceNode = { node: bus, type: 'bus' }
         }
       } else {
         const globalMic = (window as any).__ilyMicStreams?.[s.id]
         const video = videoRefs.current[s.id] as any
-        stream = (globalMic || video?.__ilyRawStream || video?.srcObject) as MediaStream | null
-      }
+        const stream = (globalMic || video?.__ilyRawStream || video?.srcObject) as MediaStream | null
 
-      if (stream && stream.getAudioTracks().length > 0) {
-        const existingSource = (nodes as any)._sourceNode
-        if (existingSource?.stream !== stream) {
-          if (existingSource) existingSource.node.disconnect()
-          try {
-            const sourceNode = ctx.createMediaStreamSource(stream)
-            sourceNode.connect(nodes.channelMode.input)
-            ;(nodes as any)._sourceNode = { node: sourceNode, stream }
-            console.log(`[useBroadcastAudio] Attached audio for ${s.id} (${s.type}). Tracks: ${stream.getAudioTracks().length}, SampleRate: ${ctx.sampleRate}Hz`)
-          } catch (err) {
-            console.error(`[useBroadcastAudio] Failed to connect stream for ${s.id}:`, err)
+        if (stream && stream.getAudioTracks().length > 0) {
+          if (existingSource?.stream !== stream) {
+            if (existingSource) existingSource.node.disconnect()
+            try {
+              const sourceNode = ctx.createMediaStreamSource(stream)
+              sourceNode.connect(nodes.channelMode.input)
+              ;(nodes as any)._sourceNode = { node: sourceNode, stream, type: 'stream' }
+              console.log(`[useBroadcastAudio] Attached stream for ${s.id} (${s.type}). Tracks: ${stream.getAudioTracks().length}`)
+            } catch (err) {
+              console.error(`[useBroadcastAudio] Failed to connect stream for ${s.id}:`, err)
+            }
           }
+        } else if (stream) {
+          console.warn(`[useBroadcastAudio] Stream found for ${s.id} but has no audio tracks.`)
         }
-      } else if (stream) {
-        console.warn(`[useBroadcastAudio] Stream found for ${s.id} but has no audio tracks.`)
       }
 
       nodes.channelMode.setMode(sanitizeChannelMode(s.channelMode, s.type === 'mic' ? 'mono' : 'stereo'))
+      
       const targetGain = s.muted ? 0 : s.volume
       if (Math.abs(nodes.gain.gain.value - targetGain) > 0.001) {
         nodes.gain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.01)
       }
+
+      // Monitoring Gain: If monitoring is ON, it follows the main volume (unless muted)
+      // This ensures you hear exactly what the stream hears, but only if you choose to monitor.
+      const targetMonitorGain = !s.monitoring ? 0 : 1
+      if (Math.abs(nodes.monitorGain.gain.value - targetMonitorGain) > 0.001) {
+        console.log(`[useBroadcastAudio] ${s.id} monitor gain: ${targetMonitorGain}`)
+        nodes.monitorGain.gain.setTargetAtTime(targetMonitorGain, ctx.currentTime, 0.01)
+      }
+
       nodes.panner.pan.setTargetAtTime(s.pan || 0, ctx.currentTime, 0.01)
       
       const fxState = { input: nodes.fxInput, output: nodes.fxOutput, nodes: nodes.fxNodes }

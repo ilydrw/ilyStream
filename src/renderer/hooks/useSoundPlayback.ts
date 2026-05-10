@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { audioEngine } from '../utils/audio-engine'
 
 interface SoundPlayAction {
   id?: string
@@ -10,19 +11,29 @@ interface SoundPlayAction {
 }
 
 const activeSounds = new Set<HTMLAudioElement>()
+const activeSoundCleanups = new Map<HTMLAudioElement, () => void>()
 
-let soundboardContext: AudioContext | null = null
-let soundboardDestination: MediaStreamAudioDestinationNode | null = null
+function getSoundboardBus(): AudioNode | null {
+  return audioEngine.getSoundboardBus()
+}
 
-function getSoundboardStream(): MediaStream | null {
-  if (typeof window === 'undefined') return null
-  if (!soundboardContext) {
-    soundboardContext = new AudioContext({ sampleRate: 48000 })
-    soundboardDestination = soundboardContext.createMediaStreamAudioDestination()
-    // Expose the stream globally so the CanvasEditor can find it
-    ;(window as any).__soundboardStream = soundboardDestination.stream
+function stopActiveSounds(): void {
+  for (const audio of [...activeSounds]) {
+    try {
+      audio.pause()
+      audio.currentTime = 0
+      const cleanup = activeSoundCleanups.get(audio)
+      if (cleanup) {
+        cleanup()
+      } else {
+        audio.removeAttribute('src')
+        audio.load()
+      }
+    } catch (err) {
+      console.warn('[sound] Failed to stop audio element:', err)
+    }
   }
-  return soundboardDestination?.stream || null
+  activeSounds.clear()
 }
 
 export function useSoundPlayback() {
@@ -71,15 +82,7 @@ export function useSoundPlayback() {
     // else that calls soundboardService.stopAll()). Halts every <audio> we
     // currently have spinning and clears the active set.
     const removeStopListener = window.api.on('action:stop-all-sounds', () => {
-      for (const audio of [...activeSounds]) {
-        try {
-          audio.pause()
-          audio.currentTime = 0
-        } catch (err) {
-          console.warn('[sound] Failed to stop audio element:', err)
-        }
-      }
-      activeSounds.clear()
+      stopActiveSounds()
       console.log('[sound] Stopped all active sounds')
     })
 
@@ -87,26 +90,44 @@ export function useSoundPlayback() {
       removeListener()
       removeStopListener()
       unsubscribeSettings()
+      stopActiveSounds()
     }
   }, [])
 }
 
 async function playAudioSource(source: string, volume: unknown, settings: any): Promise<void> {
   const audio = new Audio(source)
+  let sourceNode: MediaElementAudioSourceNode | null = null
   audio.crossOrigin = 'anonymous' // Prevent CORS issues when capturing stream
   audio.preload = 'auto'
   audio.volume = clampVolume(volume)
 
   // Ensure soundboard stream is initialized
-  getSoundboardStream()
+  const context = audioEngine.getContext()
+  const soundboardBus = getSoundboardBus()
+  const broadcastBus = audioEngine.getBroadcastBus()
 
-  if (soundboardContext && soundboardDestination) {
+  if (context && soundboardBus) {
     try {
-      const sourceNode = soundboardContext.createMediaElementSource(audio)
-      sourceNode.connect(soundboardDestination)
-      sourceNode.connect(soundboardContext.destination) // Still play to local default output
+      sourceNode = context.createMediaElementSource(audio)
+      sourceNode.connect(soundboardBus)
+      
+      // If the studio broadcast mixer is NOT active, we must connect directly to 
+      // destination so that previews/tests are audible. If the mixer IS active,
+      // it handles monitoring via the soundboard channel.
+      if (!broadcastBus) {
+        sourceNode.connect(context.destination)
+      }
     } catch (err) {
-      console.warn('[sound] Failed to route to soundboard stream (likely already connected):', err)
+      console.warn('[sound] Failed to route to soundboard bus (likely already connected):', err)
+      // Fallback: If routing fails, we should still allow the audio to play
+      // so the user hears something, though it might not reach the stream.
+      audio.onplay = () => {
+        if (!broadcastBus) {
+          // If we can't hijack it, it plays to default destination anyway in most browsers
+          // unless it's already connected to another node.
+        }
+      }
     }
   }
 
@@ -126,7 +147,16 @@ async function playAudioSource(source: string, volume: unknown, settings: any): 
 
     const releaseAudio = () => {
       activeSounds.delete(audio)
+      activeSoundCleanups.delete(audio)
+      try { sourceNode?.disconnect() } catch {}
+      sourceNode = null
+      audio.onplay = null
+      audio.onerror = null
+      audio.removeAttribute('src')
+      audio.load()
     }
+
+    activeSoundCleanups.set(audio, releaseAudio)
 
     const rejectOnce = (error: unknown) => {
       if (settled) return
@@ -160,8 +190,9 @@ async function playAudioSource(source: string, volume: unknown, settings: any): 
 
     audio.play()
       .then(() => {
-        if (soundboardContext?.state === 'suspended') {
-          void soundboardContext.resume()
+        const context = audioEngine.getContext()
+        if (context.state === 'suspended') {
+          void context.resume()
         }
         started = true
         settled = true

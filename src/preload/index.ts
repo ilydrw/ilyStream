@@ -33,7 +33,6 @@ const allowedEventChannels = new Set([
   'browser-source:error',
   'app:close-request',
   'system:ping',
-  'system:update-status',
   'action:stop-all-sounds',
   'spotify:now-playing',
   'govee:status-changed',
@@ -103,7 +102,7 @@ const api = {
 
   // --- Local event testing ---
   events: {
-    simulate: (payload: { platform?: string; type: 'gift' | 'follow' | 'superfan'; suppressSound?: boolean }) =>
+    simulate: (payload: { platform?: string; type: 'chat' | 'gift' | 'subscription' | 'follow' | 'raid' | 'like' | 'share' | 'join' | 'superfan'; suppressSound?: boolean }) =>
       ipcRenderer.invoke('event:simulate', payload),
     simulateChat: (payload: { platform: string; message: string; username: string }) =>
       ipcRenderer.invoke('event:simulate-chat', payload)
@@ -148,7 +147,8 @@ const api = {
     get: (key: AppSettingKey) => ipcRenderer.invoke('settings:get', key),
     set: (key: AppSettingKey, value: any) => ipcRenderer.invoke('settings:set', key, value),
     setMany: (settings: Record<string, any>) => ipcRenderer.invoke('settings:set-many', settings),
-    getAll: () => ipcRenderer.invoke('settings:get-all')
+    getAll: () => ipcRenderer.invoke('settings:get-all'),
+    getSync: (key: AppSettingKey) => ipcRenderer.sendSync('settings:get-sync', key)
   },
 
   // --- Overlay ---
@@ -249,8 +249,6 @@ const api = {
     start: (config: any) => ipcRenderer.invoke('streaming:start', config),
     stop: () => ipcRenderer.invoke('streaming:stop'),
     getStatus: () => ipcRenderer.invoke('streaming:get-status'),
-    getEncoderDiagnostics: (preference?: string) => ipcRenderer.invoke('streaming:get-encoder-diagnostics', preference),
-    testEncoder: (preference?: string) => ipcRenderer.invoke('streaming:test-encoder', preference),
     startRecording: (config: any) => ipcRenderer.invoke('streaming:start-recording', config),
     stopRecording: () => ipcRenderer.invoke('streaming:stop-recording'),
     getRecordingStatus: () => ipcRenderer.invoke('streaming:get-recording-status'),
@@ -264,7 +262,8 @@ const api = {
     disconnect: () => ipcRenderer.invoke('govee:disconnect'),
     getStatus: () => ipcRenderer.invoke('govee:get-status'),
     getDevices: () => ipcRenderer.invoke('govee:get-devices'),
-    setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids)
+    setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids),
+    testStrobe: () => ipcRenderer.invoke('govee:test-strobe')
   }
 }
 

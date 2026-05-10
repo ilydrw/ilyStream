@@ -71,6 +71,8 @@ function cacheKey(text: string, profile: VoiceProfile): string {
 
 let activeAudio: HTMLAudioElement | null = null
 let activeObjectUrl: string | null = null
+let activeSourceNode: MediaElementAudioSourceNode | null = null
+let activeGainNode: GainNode | null = null
 let activeRequestId = 0
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -278,20 +280,26 @@ async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, te
   
   if (ttsBus) {
     gain.connect(ttsBus)
-  } else if (broadcastBus) {
-    gain.connect(broadcastBus)
   }
-
-  // If the studio mixer is available, monitoring is handled by the mixer.
-  // Otherwise play directly so previews and non-studio TTS still make sound.
-  if (!ttsBus && !broadcastBus) {
+  
+  // If the studio broadcast mixer is NOT active, we must connect directly to 
+  // destination so that previews/tests are audible. If the mixer IS active,
+  // it handles monitoring via the tts-audio channel.
+  if (!broadcastBus) {
     gain.connect(context.destination)
   }
 
   activeAudio = audio
   activeObjectUrl = objectUrl
+  activeSourceNode = source
+  activeGainNode = gain
 
-  await audio.play()
+  try {
+    await audio.play()
+  } catch (error) {
+    if (requestId === activeRequestId) clearActive()
+    throw error
+  }
 
   return new Promise((resolve) => {
     audio.onended = () => {
@@ -307,8 +315,18 @@ async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, te
 
 function clearActive(): void {
   if (activeObjectUrl) URL.revokeObjectURL(activeObjectUrl)
+  try { activeSourceNode?.disconnect() } catch {}
+  try { activeGainNode?.disconnect() } catch {}
+  if (activeAudio) {
+    activeAudio.onended = null
+    activeAudio.onerror = null
+    activeAudio.removeAttribute('src')
+    activeAudio.load()
+  }
   activeAudio = null
   activeObjectUrl = null
+  activeSourceNode = null
+  activeGainNode = null
 }
 
 function normalizeElevenLabsText(text: string): string {

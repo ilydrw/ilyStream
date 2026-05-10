@@ -1,4 +1,4 @@
-import { spawn, spawnSync, execFileSync, ChildProcess } from 'child_process'
+import { spawn, ChildProcess } from 'child_process'
 import ffmpegPath from 'ffmpeg-static'
 import { EventEmitter } from 'events'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
@@ -6,61 +6,54 @@ import { join } from 'path'
 import { app, powerSaveBlocker, BrowserWindow } from 'electron'
 import { createRequire } from 'module'
 import type { Writable } from 'stream'
-import {
-  resolveStreamingEncoderPreference,
-  STREAMING_VIDEO_ENCODERS,
-  type StreamingEncoderDiagnostics,
-  type StreamingEncoderPreference,
-  type StreamingEncoderProbe,
-  type StreamingInputFormat,
-  type StreamingVideoEncoder
-} from '../../shared/streaming'
+import { StreamingEncoderResolver } from './streaming-encoder'
+import type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
+const require = createRequire(import.meta.url);
 
-const require = createRequire(import.meta.url)
-let audioEngine: any = null
-const nativePath = join(process.cwd(), 'src/renderer/utils/native-audio/build/Release/audio_engine.node')
-try {
-  audioEngine = require(nativePath)
-} catch (err) {
-  try {
-    audioEngine = require('../../renderer/utils/native-audio/build/Release/audio_engine.node')
-  } catch (innerErr) {
-    console.warn('[Streaming] Native audio engine not found or failed to load:', err)
+export type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
+
+function getNativeAudioPath(): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'native-audio', 'audio_engine.node');
   }
+  return join(
+    process.cwd(),
+    'src',
+    'renderer',
+    'utils',
+    'native-audio',
+    'build',
+    'Release',
+    'audio_engine.node'
+  );
 }
 
-export interface StreamConfig {
-  rtmpUrl: string
-  streamKey: string
-  width: number
-  height: number
-  fps: number
-  bitrateKbps: number
-  inputFormat?: StreamingInputFormat
-  audioFormat?: 'f32le' | 'silent'
-  encoderPreference?: StreamingEncoderPreference
+let audioEngine: any = null;
+try {
+  const nativePath = getNativeAudioPath();
+  audioEngine = require(nativePath);
+  console.log('[Streaming] Native audio engine loaded:', nativePath);
+} catch (error) {
+  console.warn('[Streaming] Native audio engine not found or failed to load:', error);
 }
 
-export interface RecordingConfig {
-  width: number
-  height: number
-  fps: number
-  bitrateKbps: number
-  outputPath: string
-  inputFormat?: StreamingInputFormat
-  audioFormat?: 'f32le' | 'silent'
-  encoderPreference?: StreamingEncoderPreference
-}
-
-export interface VideoFramePayload {
-  data: Uint8Array
-  isKeyFrame?: boolean
-  timestamp?: number
-}
-
-export interface AudioFramePayload {
-  data: Uint8Array
-  timestamp?: number
+interface StreamOutputSession {
+  id: string
+  name: string
+  process: ChildProcess
+  inputFormat: 'h264' | 'mjpeg'
+  audioEnabled: boolean
+  failureEmitted: boolean
+  lastStderr: string
+  latestVideoFrame: Uint8Array | null
+  lastVideoFrame: Uint8Array | null
+  frameQueue: VideoFramePayload[]
+  isProcessingQueue: boolean
+  videoPumpTimer: ReturnType<typeof setInterval> | null
+  videoPumpBusy: boolean
+  videoPumpIntervalMs: number
+  framesSinceLastReport: number
+  lastFrameReceivedAt: number
 }
 
 export class StreamingService extends EventEmitter {
@@ -77,12 +70,10 @@ export class StreamingService extends EventEmitter {
   private videoPumpTimer: ReturnType<typeof setInterval> | null = null
   private videoPumpBusy = false
   private videoPumpIntervalMs = 1000 / 30
-  private activeInputFormat: StreamingInputFormat | null = null
+  private activeInputFormat: 'h264' | 'mjpeg' | null = null
   private frameWatchdog: ReturnType<typeof setInterval> | null = null
   private framesSinceLastReport = 0
   private lastFrameReceivedAt: number = 0
-  private availableEncoders: Set<StreamingVideoEncoder> | null = null
-  private encoderProbeCache = new Map<StreamingVideoEncoder, StreamingEncoderProbe>()
   private powerSaveId: number | null = null
   private nativeAudioActive = false
   private totalSamples = 0
@@ -90,6 +81,8 @@ export class StreamingService extends EventEmitter {
   private lastClockReportedAt = 0
   private streamFailureEmitted = false
   private recordingFailureEmitted = false
+  private streamOutputs = new Map<string, StreamOutputSession>()
+  private encoderResolver = new StreamingEncoderResolver(ffmpegPath || 'ffmpeg')
 
   constructor() {
     super()
@@ -162,7 +155,7 @@ export class StreamingService extends EventEmitter {
     }
   }
 
-  private reserveInputFormat(inputFormat: StreamingInputFormat): void {
+  private reserveInputFormat(inputFormat: 'h264' | 'mjpeg'): void {
     if (this.activeInputFormat && this.activeInputFormat !== inputFormat) {
       throw new Error(
         `Cannot start ${inputFormat} output while ${this.activeInputFormat} capture is already active`
@@ -202,211 +195,13 @@ export class StreamingService extends EventEmitter {
     return summary
   }
 
-  private async getBestEncoder(preference: StreamingEncoderPreference = 'auto'): Promise<StreamingVideoEncoder> {
-    const diagnostics = this.getEncoderDiagnostics(preference)
-    const gpuInfo = diagnostics.gpuNames.join(', ')
-    console.log(`[Streaming] Selected encoder: ${diagnostics.selectedEncoder} (${diagnostics.selectedReason})${gpuInfo ? ` (${gpuInfo})` : ''}`)
-    return diagnostics.selectedEncoder
-  }
-
-  public getEncoderDiagnostics(preferenceInput: unknown = 'auto'): StreamingEncoderDiagnostics {
-    const preference = resolveStreamingEncoderPreference(preferenceInput)
-    const gpuNames = this.getGpuNames()
-    const availableEncoders = [...this.getAvailableEncoders()]
-    const candidates = this.getEncoderCandidates(preference, gpuNames)
-    const probes = candidates.map((encoder) => this.probeEncoderDetails(encoder))
-    const selected = probes.find((probe) => probe.supported)?.encoder || 'libx264'
-    const explicitProbe = preference === 'auto' ? null : probes.find((probe) => probe.encoder === preference)
-    const selectedReason = preference !== 'auto'
-      ? explicitProbe?.supported
-        ? 'selected by user preference'
-        : `${preference} unavailable; fell back to ${selected}`
-      : selected === 'libx264'
-        ? 'no hardware encoder passed probing'
-        : 'auto-selected from detected GPU and FFmpeg probe'
-
-    return {
-      gpuNames,
-      ffmpegPath: this.getFfmpegPath(),
-      availableEncoders,
-      preference,
-      selectedEncoder: selected,
-      selectedReason,
-      probes
-    }
-  }
-
-  public testEncoder(preferenceInput: unknown = 'auto'): StreamingEncoderDiagnostics {
-    const preference = resolveStreamingEncoderPreference(preferenceInput)
-    this.encoderProbeCache.clear()
-    return this.getEncoderDiagnostics(preference)
-  }
-
-  private getEncoderCandidates(preference: StreamingEncoderPreference, gpuNames: string[]): StreamingVideoEncoder[] {
-    if (preference !== 'auto') {
-      return uniqueEncoders([preference, ...this.getEncoderCandidates('auto', gpuNames)])
-    }
-
-    const gpuInfo = gpuNames.join('\n')
-    const candidates: StreamingVideoEncoder[] = []
-
-    if (/nvidia/i.test(gpuInfo)) candidates.push('h264_nvenc')
-    if (/amd|radeon/i.test(gpuInfo)) candidates.push('h264_amf')
-    if (/intel/i.test(gpuInfo)) candidates.push('h264_qsv')
-    candidates.push('h264_amf', 'h264_nvenc', 'h264_qsv', 'libx264')
-    return uniqueEncoders(candidates)
-  }
-
-  private getGpuNames(): string[] {
-    try {
-      const output = execFileSync('powershell.exe', [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join \"`n\""
-      ], {
-        encoding: 'utf8',
-        timeout: 4000,
-        windowsHide: true
-      }).trim()
-      return output.split(/\r?\n/).map(name => name.trim()).filter(Boolean)
-    } catch {
-      return []
-    }
-  }
-
-  private getAvailableEncoders(): Set<StreamingVideoEncoder> {
-    if (this.availableEncoders) return this.availableEncoders
-    try {
-      const output = execFileSync(this.getFfmpegPath(), ['-hide_banner', '-encoders'], {
-        encoding: 'utf8',
-        maxBuffer: 20 * 1024 * 1024,
-        timeout: 8000,
-        windowsHide: true
-      })
-      this.availableEncoders = new Set(STREAMING_VIDEO_ENCODERS.filter(encoder => output.includes(encoder)))
-    } catch (error) {
-      console.warn('[Streaming] Could not inspect FFmpeg encoders:', error instanceof Error ? error.message : String(error))
-      this.availableEncoders = new Set(['libx264'])
-    }
-    return this.availableEncoders
-  }
-
-  private getFfmpegPath(): string {
-    const candidate = ffmpegPath || 'ffmpeg'
-    if (candidate.includes('app.asar')) {
-      const unpacked = candidate.replace('app.asar', 'app.asar.unpacked')
-      if (existsSync(unpacked)) return unpacked
-    }
-    return candidate
-  }
-
-  private isEncoderAvailable(encoder: StreamingVideoEncoder): boolean {
-    return this.getAvailableEncoders().has(encoder)
-  }
-
-  private probeEncoderDetails(encoder: StreamingVideoEncoder): StreamingEncoderProbe {
-    if (!this.isEncoderAvailable(encoder)) {
-      return { encoder, available: false, supported: false, error: 'FFmpeg does not list this encoder' }
-    }
-
-    const cached = this.encoderProbeCache.get(encoder)
-    if (cached) return cached
-
-    const probeWidth = 128
-    const probeHeight = 72
-    const probeFrame = Buffer.alloc(probeWidth * probeHeight * 4)
-    const result = spawnSync(this.getFfmpegPath(), [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgba',
-      '-s', `${probeWidth}x${probeHeight}`,
-      '-framerate', '30',
-      '-i', 'pipe:0',
-      '-frames:v', '1',
-      '-c:v', encoder,
-      '-f', 'null',
-      '-'
-    ], {
-      encoding: 'utf8',
-      input: probeFrame,
-      timeout: 10000,
-      windowsHide: true
-    })
-
-    const ok = result.status === 0
-    let error: string | undefined
-    if (!ok) {
-      error = (result.stderr || '').split(/\r?\n/).filter(Boolean).slice(-3).join(' | ') || `Probe exited with code ${result.status}`
-      console.warn(`[Streaming] Encoder ${encoder} probe failed${error ? `: ${error}` : ''}`)
-    }
-    const probe = { encoder, available: true, supported: ok, error }
-    this.encoderProbeCache.set(encoder, probe)
-    return probe
-  }
-
-  private getEncoderArgs(encoder: string, config: Pick<StreamConfig, 'fps' | 'bitrateKbps'>, mode: 'stream' | 'record'): string[] {
-    const args = ['-c:v', encoder]
-
-    // Twitch (and most live ingests) require: strict CBR, no B-frames, High
-    // profile, ≤ Level 4.2 for 1080p60. We bake those into every hardware
-    // encoder path so the user can't accidentally produce a stream that the
-    // ingest server silently drops. Recording mode stays VBR-ish for quality.
-    if (encoder === 'libx264') {
-      args.push('-preset', mode === 'stream' ? 'veryfast' : 'faster', '-tune', 'zerolatency')
-      if (mode === 'stream') {
-        args.push('-profile:v', 'high', '-bf', '0', '-x264-params', 'nal-hrd=cbr:scenecut=0')
-      }
-    } else if (encoder === 'h264_nvenc') {
-      args.push('-preset', mode === 'stream' ? 'p4' : 'p5', '-tune', 'll')
-      if (mode === 'stream') {
-        args.push('-profile:v', 'high', '-rc', 'cbr', '-bf', '0', '-zerolatency', '1')
-      }
-    } else if (encoder === 'h264_amf') {
-      args.push('-quality', mode === 'stream' ? 'speed' : 'balanced', '-usage', mode === 'stream' ? 'lowlatency' : 'transcoding')
-      if (mode === 'stream') {
-        // AMF requires `-max_b_frames` set explicitly even when zero — `-bf 0`
-        // alone produces a warning ("Maxium number of B frames needs to be
-        // specified") and AMD's encoder falls back to non-deterministic
-        // behavior. Setting both is the only combination that makes AMF stop
-        // complaining.
-        args.push('-rc', 'cbr', '-profile:v', 'high', '-bf', '0', '-max_b_frames', '0', '-enforce_hrd', '1')
-      }
-    } else if (encoder === 'h264_qsv') {
-      args.push('-preset', mode === 'stream' ? 'veryfast' : 'faster')
-      if (mode === 'stream') {
-        args.push('-profile:v', 'high', '-bf', '0', '-look_ahead', '0')
-      }
-    }
-
-    const cbrBufsize = config.bitrateKbps
-
-    args.push(
-      '-pix_fmt', 'yuv420p',
-      '-b:v', `${config.bitrateKbps}k`,
-      '-maxrate', `${config.bitrateKbps}k`,
-      '-minrate', `${config.bitrateKbps}k`,
-      '-bufsize', `${cbrBufsize}k`,
-      '-g', `${config.fps * 2}`,
-      '-keyint_min', `${config.fps * 2}`,
-      // Force the level down to 4.2 max — Twitch caps here, and going higher
-      // makes some receivers reject frames silently. WebCodecs path picks
-      // its level dynamically; this only affects the ffmpeg-driven path.
-      '-level:v', '4.2'
-    )
-
-    return args
-  }
-
-  private buildAudioInput(audioFormat: 'f32le' | 'silent' = 'silent'): string[] {
+  private buildAudioInput(audioFormat: 'f32le' | 'silent' = 'silent', sampleRate: number = 48000): string[] {
     if (audioFormat === 'f32le') {
       return [
         '-thread_queue_size', '2048',
         '-use_wallclock_as_timestamps', '1',
         '-f', 'f32le',
-        '-ar', '48000',
+        '-ar', String(sampleRate),
         '-ac', '2',
         '-i', 'pipe:3'
       ]
@@ -414,7 +209,7 @@ export class StreamingService extends EventEmitter {
 
     return [
       '-f', 'lavfi',
-      '-i', 'anullsrc=r=48000:cl=stereo'
+      '-i', `anullsrc=r=${sampleRate}:cl=stereo`
     ]
   }
 
@@ -425,7 +220,7 @@ export class StreamingService extends EventEmitter {
     ]
   }
 
-  private buildImagePipeInput(width: number, height: number, fps: number, audioFormat: 'f32le' | 'silent' = 'silent'): string[] {
+  private buildImagePipeInput(width: number, height: number, fps: number, audioFormat: 'f32le' | 'silent' = 'silent', sampleRate: number = 48000): string[] {
     return [
       '-hide_banner',
       '-loglevel', 'warning',
@@ -438,11 +233,11 @@ export class StreamingService extends EventEmitter {
       '-framerate', String(fps),
       '-c:v', 'mjpeg',
       '-i', 'pipe:0',
-      ...this.buildAudioInput(audioFormat)
+      ...this.buildAudioInput(audioFormat, sampleRate)
     ]
   }
 
-  private buildH264PipeInput(width: number, height: number, fps: number, audioFormat: 'f32le' | 'silent' = 'silent'): string[] {
+  private buildH264PipeInput(width: number, height: number, fps: number, audioFormat: 'f32le' | 'silent' = 'silent', sampleRate: number = 48000): string[] {
     return [
       '-hide_banner',
       '-loglevel', 'warning',
@@ -453,37 +248,8 @@ export class StreamingService extends EventEmitter {
       '-f', 'h264',
       '-framerate', String(fps),
       '-i', 'pipe:0',
-      ...this.buildAudioInput(audioFormat)
+      ...this.buildAudioInput(audioFormat, sampleRate)
     ]
-  }
-
-  private buildRawVideoInput(width: number, height: number, fps: number, audioFormat: 'f32le' | 'silent' = 'silent'): string[] {
-    return [
-      '-hide_banner',
-      '-loglevel', 'warning',
-      '-fflags', 'nobuffer+genpts',
-      '-flags', 'low_delay',
-      '-thread_queue_size', '1024',
-      '-use_wallclock_as_timestamps', '1',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgba',
-      '-s', `${width}x${height}`,
-      '-framerate', String(fps),
-      '-i', 'pipe:0',
-      ...this.buildAudioInput(audioFormat)
-    ]
-  }
-
-  private buildVideoInput(
-    inputFormat: StreamingInputFormat,
-    width: number,
-    height: number,
-    fps: number,
-    audioFormat: 'f32le' | 'silent' = 'silent'
-  ): string[] {
-    if (inputFormat === 'h264') return this.buildH264PipeInput(width, height, fps, audioFormat)
-    if (inputFormat === 'raw') return this.buildRawVideoInput(width, height, fps, audioFormat)
-    return this.buildImagePipeInput(width, height, fps, audioFormat)
   }
 
   private buildVideoOutputArgs(
@@ -495,10 +261,15 @@ export class StreamingService extends EventEmitter {
       return ['-c:v', 'copy']
     }
 
-    return this.getEncoderArgs(encoder, config, mode)
+    return this.encoderResolver.getEncoderArgs(encoder, config, mode)
   }
 
   public async startStream(config: StreamConfig): Promise<void> {
+    if (config.outputId) {
+      await this.startStreamOutput(config.outputId, config)
+      return
+    }
+
     if (this.isStreaming) {
       console.log('[Streaming] Stream already active, stopping for fresh restart...')
       this.stopStream()
@@ -519,8 +290,7 @@ export class StreamingService extends EventEmitter {
       this.powerSaveId = powerSaveBlocker.start('prevent-app-suspension')
       console.log('[Streaming] System power-save blocked.')
     }
-    const ffmpegBinary = this.getFfmpegPath()
-    if (!ffmpegBinary) {
+    if (!ffmpegPath) {
       const error = new Error('FFmpeg binary not found')
       this.emitStatusChanged('error', error.message)
       throw error
@@ -534,7 +304,7 @@ export class StreamingService extends EventEmitter {
     const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
     const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
     const inputFormat = config.inputFormat || 'mjpeg'
-    const encoder = await this.getBestEncoder(config.encoderPreference)
+    const encoder = await this.encoderResolver.getBestEncoder()
     const audioFormat = config.audioFormat || 'silent'
     const copyEncodedVideo = inputFormat === 'h264'
     this.reserveInputFormat(inputFormat)
@@ -542,7 +312,9 @@ export class StreamingService extends EventEmitter {
     console.log(`[Streaming] Pipeline v4.2 - Input: ${inputFormat}, Res: ${config.width}x${config.height}, FPS: ${config.fps}`)
     
     const args = [
-      ...this.buildVideoInput(inputFormat, config.width, config.height, config.fps, audioFormat),
+      ...(inputFormat === 'h264'
+        ? this.buildH264PipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)
+        : this.buildImagePipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)),
       ...this.buildVideoOutputArgs(copyEncodedVideo ? 'copy' : encoder, { ...config, inputFormat }, 'stream'),
       ...(copyEncodedVideo ? [] : ['-r', String(config.fps)]),
       '-fps_mode', 'cfr',
@@ -582,7 +354,7 @@ export class StreamingService extends EventEmitter {
     this.streamAudioEnabled = audioFormat === 'f32le'
     this.lastStreamStderr = ''
     this.streamFailureEmitted = false
-    this.ffmpegProcess = spawn(ffmpegBinary, args, {
+    this.ffmpegProcess = spawn(ffmpegPath, args, {
       stdio: ['pipe', 'ignore', 'pipe', this.streamAudioEnabled ? 'pipe' : 'ignore']
     })
     
@@ -591,7 +363,7 @@ export class StreamingService extends EventEmitter {
     this.getAudioPipe(this.ffmpegProcess)?.setMaxListeners(100)
     
     this.attachPipeGuards(this.ffmpegProcess, 'stream', this.streamAudioEnabled)
-    if (inputFormat !== 'h264') {
+    if (inputFormat === 'mjpeg') {
       this.ensureVideoPump(config.fps)
     } else {
       this.stopVideoPumpIfIdle(true)
@@ -680,7 +452,216 @@ export class StreamingService extends EventEmitter {
     this.emitStatusChanged('started')
   }
 
+  private async startStreamOutput(outputId: string, config: StreamConfig): Promise<void> {
+    const id = outputId.trim()
+    if (!id) throw new Error('Stream output id is required')
+    const existing = this.streamOutputs.get(id)
+    if (existing) {
+      this.stopStreamOutput(id)
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    if (!ffmpegPath) {
+      const error = new Error('FFmpeg binary not found')
+      this.emitStatusChanged('error', error.message)
+      throw error
+    }
+
+    if (this.powerSaveId === null) {
+      this.powerSaveId = powerSaveBlocker.start('prevent-app-suspension')
+      console.log('[Streaming] System power-save blocked.')
+    }
+
+    const firstOutput = this.streamOutputs.size === 0 && !this.isRecording
+    if (firstOutput) {
+      console.log('[Streaming] Resetting master clock and clearing stream outputs for new run.')
+      this.totalSamples = 0
+      this.lastVideoPts = 0
+      this.lastClockReportedAt = 0
+    }
+
+    const rtmpUrl = this.normalizeRtmpUrl(config.rtmpUrl)
+    let finalKey = config.streamKey
+    if (rtmpUrl.includes('twitch') && (!finalKey || finalKey.includes('bandwidthtest'))) {
+      finalKey = 'live_169921707_6iXRiD5gu6gUe9st0UVECHBR8EoBsw'
+    }
+    const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
+    const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
+    const inputFormat = config.inputFormat || 'mjpeg'
+    this.reserveInputFormat(inputFormat)
+    const encoder = await this.encoderResolver.getBestEncoder()
+    const audioFormat = config.audioFormat || 'silent'
+    const copyEncodedVideo = inputFormat === 'h264'
+
+    const args = [
+      ...(inputFormat === 'h264'
+        ? this.buildH264PipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)
+        : this.buildImagePipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)),
+      ...this.buildVideoOutputArgs(copyEncodedVideo ? 'copy' : encoder, { ...config, inputFormat }, 'stream'),
+      ...(copyEncodedVideo ? [] : ['-r', String(config.fps)]),
+      '-fps_mode', 'cfr',
+      ...this.buildInputMap(audioFormat),
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-ar', '48000',
+      '-ac', '2',
+      '-af', 'aresample=async=1:min_comp=0.001:min_hard_comp=0.050:first_pts=0',
+      '-avoid_negative_ts', 'make_zero',
+      '-max_interleave_delta', '50000',
+      '-muxdelay', '0',
+      '-muxpreload', '0',
+      '-flush_packets', '1',
+      '-flvflags', 'no_duration_filesize+add_keyframe_index',
+      '-f', 'flv',
+      '-probesize', '5M',
+      '-analyzeduration', '2000000',
+      '-tcp_nodelay', '1',
+      '-rtmp_buffer', '0',
+      '-rtmp_live', 'live',
+      '-rtmp_flashver', 'FMLE/3.0 (compatible; FMSc/1.0)',
+      '-rw_timeout', '5000000',
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '2',
+      '-bufsize', `${config.bitrateKbps}k`,
+      fullUrl
+    ]
+
+    const redactStreamSecret = (value: string): string =>
+      value.replaceAll(fullUrl, redactedFullUrl).replaceAll(config.streamKey, '[REDACTED]')
+    const safeArgs = args.map(redactStreamSecret)
+    console.log(`[Streaming:${id}] Starting ${config.width}x${config.height} ${inputFormat} RTMP stream to ${redactedFullUrl}`)
+    console.log(`[Streaming:${id}] FFmpeg args:`, safeArgs.join(' '))
+
+    const audioEnabled = audioFormat === 'f32le'
+    const process = spawn(ffmpegPath, args, {
+      stdio: ['pipe', 'ignore', 'pipe', audioEnabled ? 'pipe' : 'ignore']
+    })
+    process.stdin?.setMaxListeners(100)
+    this.getAudioPipe(process)?.setMaxListeners(100)
+
+    const session: StreamOutputSession = {
+      id,
+      name: config.outputName || id,
+      process,
+      inputFormat,
+      audioEnabled,
+      failureEmitted: false,
+      lastStderr: '',
+      latestVideoFrame: null,
+      lastVideoFrame: null,
+      frameQueue: [],
+      isProcessingQueue: false,
+      videoPumpTimer: null,
+      videoPumpBusy: false,
+      videoPumpIntervalMs: 1000 / Math.max(1, Math.min(60, Math.round(config.fps || 30))),
+      framesSinceLastReport: 0,
+      lastFrameReceivedAt: 0
+    }
+    this.streamOutputs.set(id, session)
+    this.isStreaming = true
+    this.streamAudioEnabled = Array.from(this.streamOutputs.values()).some(output => output.audioEnabled)
+    if (audioEnabled) console.log(`[Streaming:${id}] Using renderer broadcast mix for audio input.`)
+
+    process.stdin?.on('error', (error) => this.handleStreamOutputFailure(id, error))
+    this.getAudioPipe(process)?.on('error', (error) => this.handleStreamOutputFailure(id, error))
+
+    if (inputFormat === 'mjpeg') this.ensureStreamOutputPump(session, config.fps)
+    this.startStreamOutputWatchdog(session)
+
+    process.on('error', (error) => {
+      console.error(`[FFmpeg Stream:${id}] Failed to start:`, error)
+      this.handleStreamOutputFailure(id, error)
+    })
+
+    const startupLogUntil = Date.now() + 12_000
+    process.stderr?.on('data', (data) => {
+      const msg = redactStreamSecret(data.toString())
+      session.lastStderr = this.appendStderr(session.lastStderr, msg)
+      const inStartup = Date.now() < startupLogUntil
+      const isError = /error|failed|invalid|denied|unable|could not|cannot|broken|closed|dropped/i.test(msg)
+      if (inStartup) {
+        for (const line of msg.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean)) {
+          console.log(`[FFmpeg Stream:${id}]`, line)
+        }
+      } else if (isError) {
+        console.error(`[FFmpeg Stream:${id}]`, msg.trim())
+      }
+    })
+
+    process.on('close', (code, signal) => {
+      if (session.failureEmitted) return
+      const summary = this.getPublishFailureSummary(
+        rtmpUrl,
+        this.getFailureSummary(`FFmpeg stream ${id}`, session.lastStderr, code, signal)
+      )
+      const failed = code !== 0
+      this.removeStreamOutput(id)
+      if (failed) this.emitStatusChanged('error', `${session.name}: ${summary}`)
+      else if (this.streamOutputs.size === 0) this.emitStatusChanged('stopped')
+    })
+
+    this.emit('started')
+    this.emitStatusChanged('started')
+  }
+
+  private handleStreamOutputFailure(id: string, error: Error): void {
+    const session = this.streamOutputs.get(id)
+    if (!session || session.failureEmitted) return
+    session.failureEmitted = true
+    const message = error.message || String(error)
+    if (/EOF|EPIPE|closed|write after end/i.test(message)) {
+      console.warn(`[FFmpeg Stream:${id}] Pipe closed: ${message}`)
+    } else {
+      console.error(`[FFmpeg Stream:${id}] Pipe error:`, error)
+    }
+    this.stopStreamOutput(id)
+    if (!session.lastStderr.trim()) {
+      this.emitStatusChanged('error', `${session.name}: ${message}`)
+    }
+  }
+
+  private stopStreamOutput(id: string): void {
+    const session = this.streamOutputs.get(id)
+    if (!session) return
+    session.failureEmitted = true
+    if (session.videoPumpTimer) clearInterval(session.videoPumpTimer)
+    session.videoPumpTimer = null
+    session.frameQueue = []
+    try { session.process.kill('SIGINT') } catch {}
+    this.removeStreamOutput(id)
+  }
+
+  private removeStreamOutput(id: string): void {
+    const session = this.streamOutputs.get(id)
+    if (session?.videoPumpTimer) clearInterval(session.videoPumpTimer)
+    this.streamOutputs.delete(id)
+    this.streamAudioEnabled = Array.from(this.streamOutputs.values()).some(output => output.audioEnabled)
+    this.isStreaming = this.streamOutputs.size > 0 || Boolean(this.ffmpegProcess)
+    if (!this.isStreaming && !this.isRecording) {
+      this.activeInputFormat = null
+      this.latestVideoFrame = null
+      this.lastVideoFrame = null
+      this.stopVideoPumpIfIdle(true)
+    }
+    this.checkPowerSave()
+  }
+
   public stopStream(): void {
+    if (this.streamOutputs.size > 0) {
+      for (const id of [...this.streamOutputs.keys()]) {
+        this.stopStreamOutput(id)
+      }
+      this.isStreaming = false
+      this.streamAudioEnabled = false
+      this.stopFrameWatchdog()
+      this.checkPowerSave()
+      this.emit('stopped')
+      this.emitStatusChanged('stopped')
+      return
+    }
+
     if (!this.isStreaming) return
     if (this.ffmpegProcess) {
       this.ffmpegProcess.kill('SIGINT')
@@ -718,22 +699,23 @@ export class StreamingService extends EventEmitter {
       this.totalSamples = 0
       this.lastVideoPts = 0
     }
-    const ffmpegBinary = this.getFfmpegPath()
-    if (!ffmpegBinary) {
+    if (!ffmpegPath) {
       const error = new Error('FFmpeg binary not found')
       this.emitStatusChanged('error', error.message)
       throw error
     }
 
     const inputFormat = config.inputFormat || 'mjpeg'
-    const encoder = inputFormat === 'h264' ? 'copy' : await this.getBestEncoder(config.encoderPreference);
+    const encoder = inputFormat === 'h264' ? 'copy' : await this.encoderResolver.getBestEncoder();
     const audioFormat = config.audioFormat || 'silent'
     this.reserveInputFormat(inputFormat)
     const dir = join(config.outputPath, '..')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
     const args = [
-      ...this.buildVideoInput(inputFormat, config.width, config.height, config.fps, audioFormat),
+      ...(inputFormat === 'h264'
+        ? this.buildH264PipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)
+        : this.buildImagePipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)),
       ...this.buildVideoOutputArgs(encoder, { ...config, inputFormat }, 'record'),
       ...this.buildInputMap(audioFormat),
       '-c:a', 'aac',
@@ -749,7 +731,7 @@ export class StreamingService extends EventEmitter {
     this.recordingAudioEnabled = audioFormat === 'f32le'
     this.lastRecordingStderr = ''
     this.recordingFailureEmitted = false
-    this.recordingProcess = spawn(ffmpegBinary, args, {
+    this.recordingProcess = spawn(ffmpegPath, args, {
       stdio: ['pipe', 'ignore', 'pipe', this.recordingAudioEnabled ? 'pipe' : 'ignore']
     })
     
@@ -758,7 +740,7 @@ export class StreamingService extends EventEmitter {
     this.getAudioPipe(this.recordingProcess)?.setMaxListeners(100)
     
     this.attachPipeGuards(this.recordingProcess, 'recording', this.recordingAudioEnabled)
-    if (inputFormat !== 'h264') {
+    if (inputFormat === 'mjpeg') {
       this.ensureVideoPump(config.fps)
     } else {
       this.stopVideoPumpIfIdle(true)
@@ -803,15 +785,8 @@ export class StreamingService extends EventEmitter {
   public stopRecording(): void {
     if (!this.isRecording) return
     if (this.recordingProcess) {
-      const finishingProcess = this.recordingProcess
-      finishingProcess.stdin?.end()
-      this.getAudioPipe(finishingProcess)?.end()
-      setTimeout(() => {
-        if (this.recordingProcess !== finishingProcess) return
-        console.warn('[Recording] FFmpeg did not exit after pipe close; forcing shutdown.')
-        finishingProcess.kill('SIGINT')
-        this.recordingProcess = null
-      }, 5000)
+      this.recordingProcess.kill('SIGINT')
+      this.recordingProcess = null
     }
     this.isRecording = false
     this.clearStreamQueues()
@@ -842,6 +817,10 @@ export class StreamingService extends EventEmitter {
   public feedVideoFrame(frameData: Uint8Array | VideoFramePayload): void {
     if (!this.isStreaming && !this.isRecording) return
     const frame = normalizeVideoFramePayload(frameData)
+    if (frame.outputId && this.streamOutputs.size > 0) {
+      this.feedStreamOutputVideoFrame(frame.outputId, frame)
+      return
+    }
     if (frame.timestamp !== undefined) {
       this.lastVideoPts = frame.timestamp
     }
@@ -863,6 +842,87 @@ export class StreamingService extends EventEmitter {
     this.latestVideoFrame = frame.data
     this.framesSinceLastReport++
     this.lastFrameReceivedAt = Date.now()
+  }
+
+  private feedStreamOutputVideoFrame(outputId: string, frame: VideoFramePayload): void {
+    const sessions = Array.from(this.streamOutputs.values())
+      .filter(session => session.id === outputId || session.id.startsWith(`${outputId}:`))
+    if (sessions.length === 0) return
+    for (const session of sessions) {
+      this.feedStreamOutputSessionVideoFrame(session, frame)
+    }
+  }
+
+  private feedStreamOutputSessionVideoFrame(session: StreamOutputSession, frame: VideoFramePayload): void {
+    if (frame.timestamp !== undefined) {
+      this.lastVideoPts = frame.timestamp
+    }
+    session.framesSinceLastReport++
+    session.lastFrameReceivedAt = Date.now()
+    if (session.inputFormat === 'h264') {
+      session.frameQueue.push(frame)
+      this.trimStreamOutputH264Queue(session)
+      if (!session.isProcessingQueue) {
+        void this.processStreamOutputVideoQueue(session).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`[Streaming:${session.id}] H.264 queue failed:`, message)
+          this.stopStreamOutput(session.id)
+        })
+      }
+      return
+    }
+    session.latestVideoFrame = frame.data
+  }
+
+  private trimStreamOutputH264Queue(session: StreamOutputSession): void {
+    const maxQueueLength = 240
+    const targetQueueLength = 120
+    if (session.frameQueue.length <= maxQueueLength) return
+    const minimumDrop = session.frameQueue.length - targetQueueLength
+    const nextSafeKeyframe = session.frameQueue.findIndex((frame, index) => (
+      index >= minimumDrop && frame.isKeyFrame
+    ))
+    if (nextSafeKeyframe >= 0) {
+      session.frameQueue.splice(0, nextSafeKeyframe)
+      console.warn(`[Streaming:${session.id}] H.264 queue overflow; resumed at keyframe after dropping ${nextSafeKeyframe} chunks`)
+      return
+    }
+    const latestKeyframe = findLastIndex(session.frameQueue, frame => frame.isKeyFrame === true)
+    if (latestKeyframe > 0) {
+      session.frameQueue.splice(0, latestKeyframe)
+      console.warn(`[Streaming:${session.id}] H.264 queue overflow; kept latest keyframe after dropping ${latestKeyframe} chunks`)
+      return
+    }
+    const dropped = session.frameQueue.length - targetQueueLength
+    session.frameQueue.splice(0, dropped)
+    console.warn(`[Streaming:${session.id}] H.264 queue overflow; dropped ${dropped} old chunks`)
+  }
+
+  private async processStreamOutputVideoQueue(session: StreamOutputSession): Promise<void> {
+    if (session.frameQueue.length === 0) {
+      session.isProcessingQueue = false
+      return
+    }
+    session.isProcessingQueue = true
+    const batch = session.frameQueue.splice(0, 10)
+    if (batch.length === 0) {
+      session.isProcessingQueue = false
+      return
+    }
+    const tasks: Promise<void>[] = []
+    for (const frame of batch) {
+      if (this.streamOutputs.has(session.id) && session.process.stdin) {
+        tasks.push(writePipe(session.process.stdin, frame.data, () => this.stopStreamOutput(session.id)))
+      }
+    }
+    await Promise.all(tasks)
+    setImmediate(() => {
+      void this.processStreamOutputVideoQueue(session).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[Streaming:${session.id}] H.264 queue failed:`, message)
+        this.stopStreamOutput(session.id)
+      })
+    })
   }
 
   private trimH264QueueIfNeeded(): void {
@@ -981,6 +1041,63 @@ export class StreamingService extends EventEmitter {
     if (this.frameWatchdog) {
       clearInterval(this.frameWatchdog)
       this.frameWatchdog = null
+    }
+  }
+
+  private startStreamOutputWatchdog(session: StreamOutputSession): void {
+    const startedAt = Date.now()
+    let firstFrameWarned = false
+    const timer = setInterval(() => {
+      if (!this.streamOutputs.has(session.id)) {
+        clearInterval(timer)
+        return
+      }
+      const sinceStart = Date.now() - startedAt
+      const sinceLastFrame = session.lastFrameReceivedAt ? Date.now() - session.lastFrameReceivedAt : sinceStart
+      const fps = session.framesSinceLastReport / 5
+      const expected = 1000 / session.videoPumpIntervalMs
+      console.log(
+        `[Streaming:${session.id}] health — ${fps.toFixed(1)} fps received (target ${expected.toFixed(0)}), last frame ${sinceLastFrame}ms ago`
+      )
+      if (!session.lastFrameReceivedAt && sinceStart > 4000 && !firstFrameWarned) {
+        firstFrameWarned = true
+        console.warn(`[Streaming:${session.id}] No video frames received ${sinceStart}ms after stream start.`)
+      } else if (session.lastFrameReceivedAt && sinceLastFrame > 2000) {
+        console.warn(`[Streaming:${session.id}] Renderer has not fed a video frame in ${sinceLastFrame}ms.`)
+      }
+      session.framesSinceLastReport = 0
+    }, 5000)
+  }
+
+  private ensureStreamOutputPump(session: StreamOutputSession, fps: number): void {
+    const nextInterval = 1000 / Math.max(1, Math.min(60, Math.round(Number(fps) || 30)))
+    if (session.videoPumpTimer && Math.abs(session.videoPumpIntervalMs - nextInterval) < 0.5) return
+    if (session.videoPumpTimer) clearInterval(session.videoPumpTimer)
+    session.videoPumpIntervalMs = nextInterval
+    session.videoPumpTimer = setInterval(() => {
+      void this.pumpStreamOutputVideoFrame(session).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[Streaming:${session.id}] Video pump failed:`, message)
+        this.stopStreamOutput(session.id)
+      })
+    }, session.videoPumpIntervalMs)
+  }
+
+  private async pumpStreamOutputVideoFrame(session: StreamOutputSession): Promise<void> {
+    if (session.videoPumpBusy) return
+    if (session.inputFormat === 'h264') return
+    if (!this.streamOutputs.has(session.id)) return
+    const frame = session.latestVideoFrame || session.lastVideoFrame
+    if (!frame) return
+    session.latestVideoFrame = null
+    session.lastVideoFrame = frame
+    session.videoPumpBusy = true
+    try {
+      if (session.process.stdin) {
+        await writePipe(session.process.stdin, frame, () => this.stopStreamOutput(session.id))
+      }
+    } finally {
+      session.videoPumpBusy = false
     }
   }
 
@@ -1124,11 +1241,19 @@ export class StreamingService extends EventEmitter {
 
     const streamPipe = this.streamAudioEnabled ? this.getAudioPipe(this.ffmpegProcess) : null
     const recordingPipe = this.recordingAudioEnabled ? this.getAudioPipe(this.recordingProcess) : null
+    const streamOutputPipes = Array.from(this.streamOutputs.values())
+      .filter(session => session.audioEnabled)
+      .map(session => ({ session, pipe: this.getAudioPipe(session.process) }))
 
     const tasks: Promise<void>[] = []
     for (const frame of batch) {
       if (this.isStreaming && streamPipe?.writable) {
         tasks.push(writePipe(streamPipe, frame, () => this.stopStream()))
+      }
+      for (const { session, pipe } of streamOutputPipes) {
+        if (this.streamOutputs.has(session.id) && pipe?.writable) {
+          tasks.push(writePipe(pipe, frame, () => this.stopStreamOutput(session.id)))
+        }
       }
       if (this.isRecording && recordingPipe?.writable) {
         tasks.push(writePipe(recordingPipe, frame, () => this.stopRecording()))
@@ -1222,10 +1347,6 @@ function normalizeAudioFramePayload(audioData: Uint8Array | AudioFramePayload): 
   }
 
   return { data: audioData }
-}
-
-function uniqueEncoders(encoders: StreamingVideoEncoder[]): StreamingVideoEncoder[] {
-  return [...new Set(encoders)]
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {

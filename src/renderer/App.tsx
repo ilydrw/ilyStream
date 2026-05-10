@@ -99,7 +99,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 export default function App() {
   const [isMounted, setIsMounted] = useState(false)
-  const [keepBroadcastMounted, setKeepBroadcastMounted] = useState(false)
+  const [keepBroadcastMounted, setKeepBroadcastMounted] = useState(() => window.location.pathname === '/broadcast')
 
   useEffect(() => {
     console.log('[Lifecycle] App starting mount sequence...')
@@ -150,7 +150,7 @@ export default function App() {
         )}
 
         {!isBroadcastRoute && (
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={location.pathname}
               initial={isOverlay ? false : { opacity: 0, y: 10 }}
@@ -159,6 +159,7 @@ export default function App() {
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="flex-1 flex flex-col min-h-0"
             >
+              {console.log('[nav] Rendering Routes for path:', location.pathname)}
               <Routes location={location}>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/stats" element={<StatsPage />} />

@@ -25,14 +25,6 @@ export function registerStreamingHandlers(streamingService: StreamingService): v
     return streamingService.getStreamStatus()
   })
 
-  ipcMain.handle('streaming:get-encoder-diagnostics', (_event, preference?: string) => {
-    return streamingService.getEncoderDiagnostics(preference)
-  })
-
-  ipcMain.handle('streaming:test-encoder', (_event, preference?: string) => {
-    return streamingService.testEncoder(preference)
-  })
-
   // Recording Handlers
   ipcMain.handle('streaming:start-recording', async (_event, config: RecordingConfig) => {
     try {

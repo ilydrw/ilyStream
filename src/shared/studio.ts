@@ -125,7 +125,7 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   audioSources: [
     { id: 'desktop-audio', name: 'Desktop Audio', volume: 0.8, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, fxChain: [] },
     { id: 'mic-audio', name: 'Mic/Aux', volume: 0.8, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, fxChain: [] },
-    { id: 'soundboard', name: 'Soundboard', volume: 0.8, muted: false, monitoring: false, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true },
-    { id: 'tts-audio', name: 'TTS (Neural)', volume: 0.8, muted: false, monitoring: false, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true }
+    { id: 'soundboard', name: 'Soundboard', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true },
+    { id: 'tts-audio', name: 'TTS (Neural)', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true }
   ]
 }

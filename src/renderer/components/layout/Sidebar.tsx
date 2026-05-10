@@ -12,6 +12,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { NavigationItem } from './navigation'
 import { navigationItems } from './navigation'
 import { useUIStore } from '../../stores/ui-store'
+import { Logo } from '../ui/Logo'
 
 type DrawerItem = NavigationItem & {
   drawerLabel?: string
@@ -114,7 +115,9 @@ export function Sidebar() {
     ) ?? navigationGroups[0]
 
   const handleNavClick = (e: React.MouseEvent) => {
+    console.log('[nav] Click detected. isPageDirty:', isPageDirty);
     if (isPageDirty) {
+      console.warn('[nav] Navigation blocked because page is dirty.');
       e.preventDefault()
     }
   }
@@ -142,12 +145,12 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="app-sidebar titlebar-drag hidden md:flex h-full overflow-hidden">
+    <aside className={`app-sidebar titlebar-drag hidden md:flex h-full overflow-hidden ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
       {/* Primary Rail */}
       <div className="app-sidebar-rail titlebar-no-drag shrink-0">
         <div className="app-rail-brand mb-8 flex justify-center">
           <div className="app-brand-mark w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center">
-            <img src="asset:///ilyStream-Logo.svg" className="w-full h-full object-cover" alt="ilyStream" />
+            <Logo className="w-full h-full object-cover" />
           </div>
         </div>
 
@@ -197,6 +200,8 @@ export function Sidebar() {
         }`}
         style={{
           width: sidebarCollapsed ? 0 : 240,
+          flexBasis: sidebarCollapsed ? 0 : 240,
+          borderRightWidth: sidebarCollapsed ? 0 : 1,
         }}
       >
         <div className="glass absolute inset-0 pointer-events-none opacity-40" />
