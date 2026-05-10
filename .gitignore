@@ -8,7 +8,6 @@ src/renderer/utils/native-audio/build/
 website/node_modules/
 website/dist/
 website/.astro/
-website/
 .playwright-mcp/
 .claude/
 scratch/

@@ -1,0 +1,166 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { Image } from 'astro:assets';
+import broadcastCanvasPreview from '../assets/broadcast-canvas-preview.png';
+import broadcastCanvasPreviewPortrait from '../assets/broadcast-canvas-preview-portrait.png';
+import alertsPreview from '../assets/alerts-preview.png';
+import widgetsPreview from '../assets/widgets-preview.png';
+import voiceFxPreview from '../assets/voice-fx-preview.png';
+import ttsPreview from '../assets/tts-preview.png';
+import studioSettingsPreview from '../assets/studio-settings-preview.png';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const screens = [
+  {
+    title: 'Broadcast Studio',
+    copy: 'Arrange scenes, sources, preview output, and mixer controls in a single production view.',
+    image: broadcastCanvasPreview,
+    alt: 'Horizontal scene canvas with source list, preview, and audio mixer.',
+    span: 'wide',
+  },
+  {
+    title: 'Vertical Layouts',
+    copy: 'Build TikTok-style portrait scenes without hiding the tools you need while live.',
+    image: broadcastCanvasPreviewPortrait,
+    alt: 'Vertical scene layout with camera, overlays, and mixer controls.',
+  },
+  {
+    title: 'Alerts Command Center',
+    copy: 'Tune alert routing, sounds, images, and preview behavior from a single production surface.',
+    image: alertsPreview,
+    alt: 'Alerts page with event rules, asset libraries, and preview controls.',
+  },
+  {
+    title: 'Widget Composer',
+    copy: 'Create browser-source widgets for chat, goals, socials, Spotify, and event overlays.',
+    image: widgetsPreview,
+    alt: 'Widgets page with overlay compositor controls and templates.',
+  },
+  {
+    title: 'Voice FX Rack',
+    copy: 'Switch voice effects, monitor the processed mic, and tune output levels without leaving the studio.',
+    image: voiceFxPreview,
+    alt: 'Voice effects page with presets, monitoring controls, and signal meters.',
+  },
+  {
+    title: 'Voice Engine',
+    copy: 'Manage chat TTS routing, queue behavior, voice profiles, cooldowns, and provider setup.',
+    image: ttsPreview,
+    alt: 'TTS configuration with voice engine and per-user profile controls.',
+  },
+  {
+    title: 'System Setup',
+    copy: 'Tune OBS, broadcast defaults, personalization, integrations, and runtime behavior.',
+    image: studioSettingsPreview,
+    alt: 'Settings screen with personalization, OBS, and broadcast controls.',
+    span: 'wide',
+  },
+];
+---
+
+<Layout
+  active="screens"
+  title="Screenshots - ilyStream"
+  description="Screenshots of every workspace inside ilyStream: studio canvas, alerts, widgets, Voice FX, TTS, and system settings."
+>
+  <section class="page-hero">
+    <div class="container">
+      <p class="eyebrow">Screens</p>
+      <h1>Every workspace, at a glance.</h1>
+      <p class="lede">
+        ilyStream is dense on purpose. These shots show how scenes, audio, alerts, and
+        integrations stay close together while you are live.
+      </p>
+      <div class="page-hero__actions">
+        <a class="button button--primary" href={withBase('download/')}>Download</a>
+        <a class="button button--ghost" href={withBase('features/')}>Feature breakdown</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="screens-grid">
+      {screens.map((s) => (
+        <figure class:list={['screen-card', { 'screen-card--wide': s.span === 'wide' }]}>
+          <div class="screen-card__media">
+            <Image src={s.image} alt={s.alt} loading="lazy" decoding="async" />
+          </div>
+          <figcaption>
+            <h3>{s.title}</h3>
+            <p>{s.copy}</p>
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .page-hero {
+    padding: 64px 0 16px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(700px 280px at 50% 0%, rgba(36, 209, 139, 0.10), transparent 60%),
+      linear-gradient(180deg, rgba(37, 199, 255, 0.06), transparent 80%);
+  }
+  .page-hero h1 {
+    margin-top: 12px;
+    font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+  }
+  .lede {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 1.12rem;
+    max-width: 64ch;
+  }
+  .page-hero__actions {
+    margin-top: 26px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section { padding-top: 56px; }
+
+  .screens-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .screen-card {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    transition: transform 220ms ease, border-color 220ms ease;
+  }
+  .screen-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+  }
+
+  .screen-card--wide { grid-column: span 2; }
+
+  .screen-card__media img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .screen-card figcaption {
+    padding: 22px 22px 24px;
+  }
+  .screen-card h3 { font-size: 1.2rem; }
+  .screen-card p { margin-top: 8px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .screens-grid { grid-template-columns: 1fr; }
+    .screen-card--wide { grid-column: auto; }
+  }
+</style>

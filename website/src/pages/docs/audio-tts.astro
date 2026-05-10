@@ -1,0 +1,139 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'devices', label: 'Pick your audio devices' },
+  { id: 'mixer', label: 'Build the broadcast mix' },
+  { id: 'tts', label: 'Configure chat TTS' },
+  { id: 'voice-fx', label: 'Voice FX rack' },
+  { id: 'alerts', label: 'Alert audio' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Audio routing & TTS"
+  description="Set up the broadcast mix in ilyStream, configure chat TTS voices, and route alerts so OBS receives the same audio you hear."
+  slug="audio-tts"
+  updated="May 2026"
+  readingTime="10 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    ilyStream owns the broadcast mix. Mic, TTS, soundboard, Voice FX, and alert
+    audio all route through one bus that OBS captures as a single virtual input.
+    The result: what you hear in your headphones is exactly what your stream
+    hears, with no last-minute "wait, why is the music not coming through" panic.
+  </p>
+
+  <h2 id="devices">Pick your audio devices</h2>
+  <ol>
+    <li><strong>Open Settings &rarr; Audio.</strong></li>
+    <li><strong>Set <em>Input</em>.</strong> Choose your microphone (XLR interface, USB mic, or system default).</li>
+    <li><strong>Set <em>Monitor</em>.</strong> Choose what you want to hear yourself &mdash; usually your headphones.</li>
+    <li><strong>Set <em>Broadcast</em>.</strong> Pick the virtual cable OBS will read from (the included <em>ilyStream Broadcast</em> device on Windows, or a third-party virtual audio cable).</li>
+  </ol>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>Single virtual cable.</strong> One virtual cable is enough. ilyStream mixes everything into the broadcast device, so OBS only needs a single audio input source.</p>
+  </div>
+
+  <h2 id="mixer">Build the broadcast mix</h2>
+  <p>
+    The <strong>Mixer</strong> in the Studio workspace shows every active source.
+    Each one has independent gain, monitor toggle, and broadcast toggle.
+  </p>
+  <ul>
+    <li><strong>Monitor on, broadcast on</strong> &mdash; you hear it, the stream hears it.</li>
+    <li><strong>Monitor on, broadcast off</strong> &mdash; cue audio for yourself only (e.g. a producer track).</li>
+    <li><strong>Monitor off, broadcast on</strong> &mdash; sends to stream silently. Rarely useful.</li>
+  </ul>
+
+  <h3>Set sensible defaults</h3>
+  <ol>
+    <li><strong>Mic</strong>: -3 dB headroom. Watch the meter peak under -6 dB during normal speech.</li>
+    <li><strong>TTS</strong>: -8 dB. Quieter than mic so it does not clobber your voice.</li>
+    <li><strong>Soundboard</strong>: -10 dB. Per-clip gain handles the rest.</li>
+    <li><strong>Alert audio</strong>: -10 dB.</li>
+  </ol>
+
+  <h2 id="tts">Configure chat TTS</h2>
+  <ol>
+    <li><strong>Open the TTS workspace.</strong></li>
+    <li><strong>Pick a provider.</strong> Choose between built-in system voices and any cloud providers you have credentials for.</li>
+    <li><strong>Enable <em>Per-user voices</em>.</strong> Each chatter gets a stable voice across sessions.</li>
+    <li>
+      <strong>Set queue behavior.</strong> Three modes:
+      <ul>
+        <li><strong>Queue</strong> &mdash; messages play in order. Default.</li>
+        <li><strong>Coalesce</strong> &mdash; same user's back-to-back messages collapse.</li>
+        <li><strong>Skip</strong> &mdash; busy moments drop the oldest message.</li>
+      </ul>
+    </li>
+    <li><strong>Cooldowns.</strong> Per-user cooldown stops one chatter from flooding the queue.</li>
+    <li><strong>Length limit.</strong> Cap message length (default 200 characters) to avoid wall-of-text reads.</li>
+  </ol>
+
+  <h3>Voice profiles</h3>
+  <p>
+    Profiles let you bind a specific voice to a user, role, or command. Useful for
+    moderators ("loud announcer") or recurring bits.
+  </p>
+  <pre><code>{`Profile: "Mod"
+  Match: role = mod
+  Voice: en-US-Studio-O
+  Speed: 1.05
+
+Profile: "Loud announcer"
+  Match: command = !announce
+  Voice: en-US-Studio-Q
+  Speed: 0.9
+  Volume: +6 dB`}</code></pre>
+
+  <h2 id="voice-fx">Voice FX rack</h2>
+  <p>
+    The Voice FX workspace lives between the mic input and the broadcast mix.
+    Switch effects, monitor the processed signal, and tune output level without
+    leaving the studio.
+  </p>
+  <ul>
+    <li><strong>Presets</strong> &mdash; helium, robot, cathedral, telephone, warm radio.</li>
+    <li><strong>Monitoring</strong> &mdash; toggle whether you hear the effect in your headphones.</li>
+    <li><strong>Bypass</strong> &mdash; quick disable while staying configured.</li>
+    <li><strong>Per-effect gain</strong> &mdash; effects can clip mic level differently; trim each preset.</li>
+  </ul>
+
+  <h2 id="alerts">Alert audio</h2>
+  <p>
+    Alert sounds route through the same broadcast mix as everything else. Configure
+    them in <em>Alerts</em>:
+  </p>
+  <ol>
+    <li><strong>Pick the asset.</strong> Drop a <code>.wav</code> or <code>.mp3</code> into the alert's asset slot.</li>
+    <li><strong>Set per-alert gain.</strong> Loud sting? Trim it here, not in your DAW.</li>
+    <li><strong>Choose the duck behavior.</strong> Ducking dips other channels (mic, TTS, soundboard) while the alert plays so it stays audible without you shouting over it.</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>OBS receives no audio.</strong> In OBS, set the audio source to the same virtual cable you picked as Broadcast in ilyStream. Match sample rate (44.1 or 48 kHz) on both ends.</p>
+  <p><strong>Echo on stream.</strong> You probably have OBS capturing both the broadcast bus and your mic separately. Drop the mic source in OBS &mdash; ilyStream already mixes it in.</p>
+  <p><strong>TTS sounds choppy.</strong> Increase the TTS buffer size in <em>Settings &rarr; Audio &rarr; Advanced</em>. Cloud providers occasionally hiccup on long messages.</p>
+  <p><strong>Latency on Voice FX.</strong> Some effects add a small buffer. Disable monitor on the FX channel if the delay is distracting; the broadcast still receives the processed signal.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/obs/')}>
+      <p>Previous</p>
+      <strong>&larr; OBS browser sources</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/deskthing/')}>
+      <p>Next</p>
+      <strong>DeskThing pairing &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

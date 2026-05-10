@@ -1,0 +1,120 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'find-bridge', label: 'Find the Bridge IP' },
+  { id: 'create-username', label: 'Create a Hue username' },
+  { id: 'configure', label: 'Configure ilyStream' },
+  { id: 'rules', label: 'Wire up reactions' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Philips Hue integration"
+  description="Pair a Philips Hue Bridge with ilyStream, generate a developer username, and assign fixtures to chat reactions."
+  slug="philips-hue"
+  updated="May 2026"
+  readingTime="8 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    The Philips Hue integration lets ilyStream control the lights paired with your
+    Hue Bridge. You authenticate once, pick which fixtures are allowed to react,
+    and then route chat events &mdash; follows, subs, raids, custom triggers &mdash;
+    to color and brightness changes during the show.
+  </p>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>A <strong>Philips Hue Bridge v2</strong> (square model) on the same LAN as your stream PC.</li>
+    <li>The <strong>Philips Hue mobile app</strong> installed and signed in.</li>
+    <li>At least one Hue-compatible bulb or fixture already paired with the Bridge.</li>
+  </ul>
+
+  <h2 id="find-bridge">Find the Bridge IP</h2>
+  <ol>
+    <li><strong>Open the Hue app.</strong> Go to <em>Settings &rarr; My Hue System</em>.</li>
+    <li><strong>Tap your Bridge.</strong> Scroll to the network section.</li>
+    <li><strong>Copy the IP address.</strong> It looks like <code>192.168.1.42</code>. You can also find it via <code>https://discovery.meethue.com</code> in a browser.</li>
+  </ol>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>Static lease recommended.</strong> Reserve the Bridge IP in your router's DHCP table so the address does not change. ilyStream stores the IP in config and will not auto-rediscover.</p>
+  </div>
+
+  <h2 id="create-username">Create a Hue username</h2>
+  <p>
+    Hue uses an authenticated username (an opaque token) for every API client.
+    You create one by pressing the physical link button on the Bridge and then
+    asking the Bridge for a token within 30 seconds.
+  </p>
+  <ol>
+    <li><strong>Press the link button.</strong> Walk to the Bridge and press the round button on the top.</li>
+    <li><strong>Open the developer endpoint.</strong> In a browser, go to <code>http://&lt;bridge-ip&gt;/debug/clip.html</code>. Hue ships this debug UI on the device.</li>
+    <li>
+      <strong>POST a username request.</strong> In the URL field enter <code>/api</code>, in the message body paste:
+      <pre><code>{`{"devicetype":"ilystream#desktop"}`}</code></pre>
+      Click <em>POST</em>.
+    </li>
+    <li><strong>Copy the username from the response.</strong> The Bridge returns a long string like <code>9zL...mP4</code>. Save it &mdash; this is your API token.</li>
+  </ol>
+
+  <div class="callout callout--warn">
+    <span class="callout__icon">!</span>
+    <p><strong>Treat the username like a password.</strong> Anyone with the username and Bridge IP can control the lights on your network.</p>
+  </div>
+
+  <h2 id="configure">Configure ilyStream</h2>
+  <ol>
+    <li><strong>Open settings.</strong> In ilyStream go to <em>Settings &rarr; Integrations &rarr; Philips Hue</em>.</li>
+    <li><strong>Paste the Bridge IP.</strong> Use the address you copied from the Hue app.</li>
+    <li><strong>Paste the username.</strong> Use the token returned by the Bridge.</li>
+    <li><strong>Click <em>Test connection</em>.</strong> ilyStream pings the Bridge and lists every fixture, group, and scene it discovers.</li>
+    <li><strong>Allow the fixtures you want.</strong> Toggle each light or room you are willing to let ilyStream drive. Anything left off stays untouched.</li>
+  </ol>
+
+  <h2 id="rules">Wire up reactions</h2>
+  <p>
+    Once the Bridge is connected, the rest happens in <strong>Alerts &amp; Automation</strong>.
+    Each rule maps a chat event to one or more actions, and Hue actions can change
+    color, brightness, or trigger a saved scene.
+  </p>
+  <ol>
+    <li><strong>Open Automation.</strong> Open the <em>Alerts</em> workspace and switch to <em>Automation</em>.</li>
+    <li><strong>Add a rule.</strong> Pick a trigger (follow, sub, raid, custom command).</li>
+    <li><strong>Add a Hue action.</strong> Choose <em>Hue</em>, select the fixture, and set color, brightness, and duration.</li>
+    <li><strong>Add a fallback.</strong> Set a <em>return-to-state</em> action so the lights snap back to your default scene after the reaction.</li>
+    <li><strong>Cooldown.</strong> Set a per-rule cooldown so back-to-back events do not strobe the room.</li>
+  </ol>
+
+  <h3>Example: red flash on raid</h3>
+  <pre><code>{`Trigger: Raid (>= 5 viewers)
+Action 1: Hue → Living Room → color #ff2244, brightness 100%, hold 3s
+Action 2: Hue → Living Room → recall scene "Stream Default"
+Cooldown: 30s`}</code></pre>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>Bridge does not respond.</strong> Confirm the IP is reachable from your stream PC: open <code>http://&lt;bridge-ip&gt;</code> in a browser. If the Bridge does not load, check your DHCP lease and firewall.</p>
+  <p><strong>Username request returns "link button not pressed".</strong> The press has a 30-second window. Press the button again and resubmit the POST quickly.</p>
+  <p><strong>Lights flicker out of sync.</strong> The Hue API rate-limits to about 10 commands per second per Bridge. Lower the action density or stagger fixtures across two rules.</p>
+  <p><strong>Fixture missing from the list.</strong> ilyStream uses what the Bridge reports. Re-pair the fixture in the Hue app, then click <em>Refresh</em> in the integration settings.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/getting-started/')}>
+      <p>Previous</p>
+      <strong>&larr; Getting started</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/govee/')}>
+      <p>Next</p>
+      <strong>Govee &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

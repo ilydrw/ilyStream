@@ -1,0 +1,304 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const latestVersion = '0.0.5';
+const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
+const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
+const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
+const repoUrl = 'https://github.com/ilydrw/ilyStream';
+const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
+
+const downloads = [
+  {
+    tag: 'Recommended',
+    title: 'Windows installer',
+    badge: 'Setup .exe',
+    copy: 'Best for stream machines. Installs ilyStream into Program Files, adds Start Menu and desktop shortcuts, and supports automatic updates from GitHub Releases.',
+    href: setupUrl,
+    action: 'Download Setup',
+    featured: true,
+    bullets: ['Auto-updates from GitHub Releases', 'Desktop & Start Menu shortcuts', 'Standard Windows uninstall'],
+  },
+  {
+    tag: 'Portable',
+    title: 'Portable build',
+    badge: 'Portable .exe',
+    copy: 'Single executable that runs without installation. Useful when testing the app on a streaming PC you do not control or trying it before committing.',
+    href: portableUrl,
+    action: 'Download Portable',
+    bullets: ['No install required', 'Stores config beside the .exe', 'Manual update flow'],
+  },
+  {
+    tag: 'macOS',
+    title: 'macOS builds',
+    badge: 'In progress',
+    copy: 'macOS packaging requires a macOS runner for code signing and notarization. Watch the release page for signed DMG builds when they ship.',
+    href: releaseUrl,
+    action: 'Watch releases',
+    bullets: ['Universal binary planned', 'Notarized DMG when signing lands', 'Use source for now'],
+  },
+  {
+    tag: 'Linux / ChromeOS',
+    title: 'From source',
+    badge: 'Source',
+    copy: 'Linux and ChromeOS users can run from source today. Native AppImage / deb packages are evaluated alongside macOS.',
+    href: repoUrl,
+    action: 'Open source',
+    bullets: ['Node 22+ and npm', 'Electron build works on Linux', 'See README for steps'],
+  },
+];
+---
+
+<Layout
+  active="download"
+  title="Download ilyStream"
+  description="Download the Windows installer or portable build of ilyStream, plus the DeskThing companion app."
+>
+  <section class="page-hero">
+    <div class="container">
+      <p class="eyebrow">Download &middot; v{latestVersion}</p>
+      <h1>Install it like a normal desktop app.</h1>
+      <p class="lede">
+        Grab the Windows setup file, run the installer, and launch ilyStream from
+        the Start menu. No npm, no terminal, no developer setup.
+      </p>
+      <div class="page-hero__actions">
+        <a class="button button--primary" href={setupUrl}>Download Setup .exe</a>
+        <a class="button button--ghost" href={portableUrl}>Portable .exe</a>
+        <a class="button button--ghost" href={releaseUrl} rel="noopener">Release notes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="download-grid">
+      {downloads.map((d) => (
+        <article class:list={['download-card', { 'download-card--primary': d.featured }]}>
+          <div class="download-card__head">
+            <p class="tag">{d.tag}</p>
+            {d.featured ? <p class="download-card__badge">Best for most</p> : null}
+          </div>
+          <h2>{d.title}</h2>
+          <p class="download-card__copy">{d.copy}</p>
+          <ul class="download-card__bullets">
+            {d.bullets.map((b) => <li>{b}</li>)}
+          </ul>
+          <a class:list={['button', d.featured ? 'button--primary' : 'button--ghost']} href={d.href}>
+            {d.action}
+          </a>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="section__heading">
+      <p class="eyebrow">System requirements</p>
+      <h2>What you need to run ilyStream.</h2>
+    </div>
+    <div class="reqs">
+      <div class="req">
+        <h3>OS</h3>
+        <p>Windows 10 or 11, 64-bit. Tested on Windows 11 23H2 and 24H2.</p>
+      </div>
+      <div class="req">
+        <h3>CPU</h3>
+        <p>Modern x64 chip. Hardware encoders (NVENC, AMF, QuickSync) are optional but recommended for live encoding.</p>
+      </div>
+      <div class="req">
+        <h3>Memory</h3>
+        <p>8&nbsp;GB minimum, 16&nbsp;GB recommended when running OBS, browsers, and capture apps alongside.</p>
+      </div>
+      <div class="req">
+        <h3>Network</h3>
+        <p>Internet for streaming. LAN for DeskThing pairing and Hue/Govee LAN control.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="section__heading">
+      <p class="eyebrow">Companion</p>
+      <h2>DeskThing client</h2>
+      <p>The DeskThing companion runs on a Spotify Car Thing or any DeskThing client over your local network.</p>
+    </div>
+    <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">DeskThing releases</a>
+  </section>
+
+  <section class="container section">
+    <div class="install-help">
+      <h2>SmartScreen warning?</h2>
+      <p>
+        Windows shows a SmartScreen prompt for new code-signing certificates until they
+        accumulate enough reputation. Click <strong>More info</strong> &rarr; <strong>Run anyway</strong>
+        to continue, or build from source if you prefer.
+      </p>
+      <a class="link-arrow" href={withBase('docs/getting-started/')}>Getting started <span aria-hidden="true">&rarr;</span></a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .page-hero {
+    padding: 64px 0 16px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(700px 280px at 20% 0%, rgba(37, 199, 255, 0.14), transparent 60%),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.06), transparent 80%);
+  }
+  .page-hero h1 {
+    margin-top: 12px;
+    font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+  }
+  .lede {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 1.12rem;
+    max-width: 64ch;
+  }
+  .page-hero__actions {
+    margin-top: 26px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section { padding-top: 72px; }
+  .section__heading { max-width: 740px; margin-bottom: 28px; }
+  .section__heading h2 {
+    margin-top: 12px;
+    font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+  }
+  .section__heading p:not(.eyebrow) {
+    margin-top: 12px;
+    color: var(--muted);
+  }
+
+  .download-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .download-card {
+    display: flex;
+    flex-direction: column;
+    padding: 28px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)), var(--bg-raised);
+    box-shadow: var(--shadow-card);
+  }
+
+  .download-card--primary {
+    border-color: rgba(37, 199, 255, 0.4);
+    background:
+      radial-gradient(420px 160px at 0% 0%, rgba(37, 199, 255, 0.16), transparent 60%),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.08), rgba(255, 255, 255, 0)),
+      var(--bg-raised);
+  }
+
+  .download-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .tag {
+    display: inline-flex;
+    color: var(--cyan);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .download-card__badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(37, 199, 255, 0.15);
+    color: var(--cyan);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .download-card h2 { font-size: 1.5rem; }
+  .download-card__copy { margin-top: 10px; color: var(--muted); }
+
+  .download-card__bullets {
+    margin: 18px 0 24px;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+  .download-card__bullets li {
+    position: relative;
+    padding-left: 22px;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .download-card__bullets li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 12px;
+    height: 12px;
+    background: var(--cyan);
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
+  }
+
+  .download-card .button { margin-top: auto; align-self: flex-start; }
+
+  .reqs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .req {
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+  }
+  .req h3 {
+    color: var(--cyan);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .req p { color: var(--muted); }
+
+  .install-help {
+    padding: 28px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+  }
+  .install-help h2 { font-size: 1.4rem; }
+  .install-help p { margin-top: 10px; color: var(--muted); max-width: 70ch; }
+  .install-help .link-arrow {
+    display: inline-block;
+    margin-top: 14px;
+    color: var(--cyan);
+    font-weight: 700;
+  }
+  .link-arrow span { display: inline-block; margin-left: 4px; transition: transform 120ms ease; }
+  .link-arrow:hover span { transform: translateX(4px); }
+
+  @media (max-width: 900px) {
+    .download-grid { grid-template-columns: 1fr; }
+    .reqs { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 540px) {
+    .reqs { grid-template-columns: 1fr; }
+  }
+</style>
