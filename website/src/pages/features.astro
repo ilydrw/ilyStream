@@ -1,0 +1,266 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { Image } from 'astro:assets';
+import broadcastCanvasPreview from '../assets/broadcast-canvas-preview.png';
+import alertsPreview from '../assets/alerts-preview.png';
+import widgetsPreview from '../assets/widgets-preview.png';
+import voiceFxPreview from '../assets/voice-fx-preview.png';
+import ttsPreview from '../assets/tts-preview.png';
+import studioSettingsPreview from '../assets/studio-settings-preview.png';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const featureSections = [
+  {
+    eyebrow: 'Studio',
+    title: 'Scenes, capture, and output in one canvas.',
+    copy: 'Compose horizontal and vertical scenes side by side, manage capture sources, and arrange overlays without switching apps.',
+    image: broadcastCanvasPreview,
+    bullets: [
+      'Scene canvas for horizontal and TikTok-style portrait layouts',
+      'Source list with quick visibility, lock, and reorder controls',
+      'Hardware-accelerated preview with selectable encoder (NVENC, AMF, QuickSync)',
+      'Persistent top bar with fixed window controls during long sessions',
+    ],
+  },
+  {
+    eyebrow: 'Audio',
+    title: 'TTS, soundboard, and Voice FX share one mixer.',
+    copy: 'Chat TTS, hotkey-triggered sound effects, and voice modulation all flow into a single broadcast bus that OBS receives unchanged.',
+    image: voiceFxPreview,
+    flip: true,
+    bullets: [
+      'Chat TTS engine with voice profiles, cooldowns, and routing rules',
+      'Soundboard with hotkeys, per-clip gain, and ducking',
+      'Voice FX rack with monitoring and signal meters',
+      'Single broadcast mix so OBS and recorder hear what you hear',
+    ],
+  },
+  {
+    eyebrow: 'Alerts & widgets',
+    title: 'Browser-source overlays without the asset shuffle.',
+    copy: 'Build alerts, chat widgets, goal counters, socials, and Spotify overlays from one workspace, then add them to OBS as transparent browser sources.',
+    image: alertsPreview,
+    bullets: [
+      'Alert routing with sound and image asset libraries',
+      'Widget composer with templates for common overlays',
+      'Per-widget URLs you paste straight into OBS',
+      'Preview behavior tuned for live editing',
+    ],
+  },
+  {
+    eyebrow: 'Automation',
+    title: 'Chat events drive lights, alerts, and widgets together.',
+    copy: 'Wire chat triggers to ilyStream features and supported smart-light fixtures so the room reacts to what is happening on stream.',
+    image: widgetsPreview,
+    flip: true,
+    bullets: [
+      'Trigger rules for follows, subs, raids, donations, and custom events',
+      'Philips Hue and Govee fixture targeting',
+      'Action chains: light pulse, sound, alert, widget cue',
+      'Cooldowns and per-rule enable toggles',
+    ],
+  },
+  {
+    eyebrow: 'TTS engine',
+    title: 'Voice profiles per chatter, per channel, per command.',
+    copy: 'Configure voices, queue behavior, and provider setup in one workspace. Per-user voices stick across sessions.',
+    image: ttsPreview,
+    bullets: [
+      'Multi-provider TTS with per-user voice persistence',
+      'Cooldowns, length limits, and moderation hooks',
+      'Queue controls so back-to-back messages stay readable',
+      'Mixing routes that keep TTS distinct from soundboard',
+    ],
+  },
+  {
+    eyebrow: 'Settings',
+    title: 'One settings surface for the whole rig.',
+    copy: 'Personalization, OBS, broadcast defaults, integrations, and runtime behavior live together so changes are easy to find.',
+    image: studioSettingsPreview,
+    flip: true,
+    bullets: [
+      'Personalization and theme controls',
+      'OBS connection, scene mapping, and encoder selection',
+      'Integration credentials for Hue, Govee, DeskThing',
+      'Runtime toggles for diagnostics and developer mode',
+    ],
+  },
+];
+---
+
+<Layout
+  active="features"
+  title="ilyStream features"
+  description="Detailed feature breakdown of ilyStream: studio canvas, audio routing, TTS, alerts, widgets, automation, and integrations."
+>
+  <section class="page-hero">
+    <div class="container">
+      <p class="eyebrow">Features</p>
+      <h1>Production tools that stay close together.</h1>
+      <p class="lede">
+        Every workspace in ilyStream is built around the live workflow. Here is what
+        you get when you install it.
+      </p>
+      <div class="page-hero__actions">
+        <a class="button button--primary" href={withBase('download/')}>Download</a>
+        <a class="button button--ghost" href={withBase('docs/')}>Read the docs</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="feature-stack">
+      {featureSections.map((f) => (
+        <article class:list={['feature-row', { 'feature-row--flip': f.flip }]}>
+          <div class="feature-row__copy">
+            <p class="eyebrow">{f.eyebrow}</p>
+            <h2>{f.title}</h2>
+            <p>{f.copy}</p>
+            <ul>
+              {f.bullets.map((b) => <li>{b}</li>)}
+            </ul>
+          </div>
+          <div class="feature-row__media">
+            <Image src={f.image} alt="" loading="lazy" decoding="async" />
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="cta-band__inner">
+      <div>
+        <h2>Try it on your stream rig.</h2>
+        <p>Free, open source, and built by streamers.</p>
+      </div>
+      <div class="cta-band__actions">
+        <a class="button button--primary" href={withBase('download/')}>Download for Windows</a>
+        <a class="button button--ghost" href={withBase('docs/getting-started/')}>Getting started</a>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .page-hero {
+    padding: 64px 0 16px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(700px 280px at 80% 0%, rgba(167, 131, 255, 0.14), transparent 60%),
+      linear-gradient(180deg, rgba(37, 199, 255, 0.06), transparent 80%);
+  }
+  .page-hero h1 {
+    margin-top: 12px;
+    font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+  }
+  .lede {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 1.12rem;
+    max-width: 64ch;
+  }
+  .page-hero__actions {
+    margin-top: 26px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section { padding-top: 64px; }
+
+  .feature-stack {
+    display: grid;
+    gap: 64px;
+  }
+
+  .feature-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 56px;
+  }
+  .feature-row--flip { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .feature-row--flip .feature-row__copy { order: 2; }
+  .feature-row--flip .feature-row__media { order: 1; }
+
+  .feature-row__copy h2 {
+    margin-top: 12px;
+    font-size: clamp(1.7rem, 2.8vw, 2.2rem);
+  }
+  .feature-row__copy > p {
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 1.05rem;
+    max-width: 56ch;
+  }
+
+  .feature-row__copy ul {
+    margin-top: 22px;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+  .feature-row__copy li {
+    position: relative;
+    padding-left: 26px;
+    color: var(--muted);
+  }
+  .feature-row__copy li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 14px;
+    height: 14px;
+    background: var(--cyan);
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
+  }
+
+  .feature-row__media {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-card);
+  }
+  .feature-row__media img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    display: block;
+  }
+
+  .cta-band__inner {
+    margin-top: 64px;
+    padding: 36px;
+    border: 1px solid rgba(37, 199, 255, 0.28);
+    border-radius: 16px;
+    background:
+      radial-gradient(600px 200px at 20% 0%, rgba(37, 199, 255, 0.18), transparent 70%),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.1), rgba(255, 255, 255, 0)),
+      var(--bg-raised);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .cta-band__inner h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
+  .cta-band__inner p { color: var(--muted); margin-top: 8px; }
+  .cta-band__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .feature-row, .feature-row--flip {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .feature-row--flip .feature-row__copy { order: 0; }
+    .feature-row--flip .feature-row__media { order: 0; }
+    .feature-stack { gap: 48px; }
+  }
+</style>

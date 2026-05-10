@@ -1,0 +1,111 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'request-key', label: 'Request an API key' },
+  { id: 'configure', label: 'Configure ilyStream' },
+  { id: 'rules', label: 'Wire up reactions' },
+  { id: 'lan-vs-cloud', label: 'LAN vs cloud' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Govee integration"
+  description="Connect Govee smart lights to ilyStream using a Developer API key, then assign fixtures to chat reactions."
+  slug="govee"
+  updated="May 2026"
+  readingTime="6 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    The Govee integration uses Govee's official Developer API. You request a free
+    API key from the Govee Home app, paste it into ilyStream, and pick the lamps
+    or strips that get to react during the show. Compatible cloud-controlled and
+    LAN-controlled fixtures both work.
+  </p>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>The <strong>Govee Home</strong> app installed on your phone, signed in to the same account that owns the lights.</li>
+    <li>At least one Govee fixture that exposes the cloud API. Most current-generation lamps and strips do; check the product page if unsure.</li>
+    <li>The fixture is online in the Govee app right now.</li>
+  </ul>
+
+  <h2 id="request-key">Request an API key</h2>
+  <ol>
+    <li><strong>Open the Govee Home app.</strong> Tap the profile icon in the top right.</li>
+    <li><strong>Open Settings.</strong> Tap the gear icon in the profile screen.</li>
+    <li><strong>Find the API key option.</strong> Tap <em>Apply for API Key</em>.</li>
+    <li><strong>Fill in the form.</strong> Use a real reason (e.g. "personal stream lighting automation"). Govee typically responds in a few minutes by email with the key.</li>
+    <li><strong>Copy the key from the email.</strong> It looks like a UUID, e.g. <code>a1b2c3d4-...-...</code>.</li>
+  </ol>
+
+  <div class="callout callout--warn">
+    <span class="callout__icon">!</span>
+    <p><strong>Rate limits.</strong> Govee enforces about 10,000 requests per day and roughly 10 commands per minute per device. ilyStream throttles automatically, but heavy automation rules can run you up against the cap.</p>
+  </div>
+
+  <h2 id="configure">Configure ilyStream</h2>
+  <ol>
+    <li><strong>Open settings.</strong> In ilyStream go to <em>Settings &rarr; Integrations &rarr; Govee</em>.</li>
+    <li><strong>Paste the API key.</strong> Use the value Govee emailed you.</li>
+    <li><strong>Click <em>Refresh devices</em>.</strong> ilyStream queries the Govee API and lists every supported fixture on your account.</li>
+    <li><strong>Allow the fixtures you want.</strong> Toggle each device that is allowed to react. Devices left off remain controlled by Govee Home only.</li>
+    <li><strong>Set a default state.</strong> Pick a default color or scene so ilyStream can return your fixtures to a known state after a reaction ends.</li>
+  </ol>
+
+  <h2 id="rules">Wire up reactions</h2>
+  <p>
+    Govee actions live alongside Hue actions in the <strong>Automation</strong>
+    workspace. You can mix and match in a single rule, so a single chat event can
+    pulse a Hue lamp and a Govee strip together.
+  </p>
+  <ol>
+    <li><strong>Open Automation.</strong> In the <em>Alerts</em> workspace, switch to <em>Automation</em>.</li>
+    <li><strong>Add a rule.</strong> Pick a trigger.</li>
+    <li><strong>Add a Govee action.</strong> Choose <em>Govee</em>, pick a fixture, and configure color, brightness, scene, and hold time.</li>
+    <li><strong>Add a return-to-state action.</strong> Snap the fixture back to your default after the hold.</li>
+  </ol>
+
+  <h3>Example: rainbow pulse on sub</h3>
+  <pre><code>{`Trigger: New subscriber
+Action 1: Govee → Desk Strip → scene "Rainbow", brightness 80%, hold 6s
+Action 2: Govee → Desk Strip → color #2233ff, brightness 60%
+Cooldown: 10s`}</code></pre>
+
+  <h2 id="lan-vs-cloud">LAN vs cloud</h2>
+  <p>
+    The Developer API is cloud-routed: ilyStream calls Govee, Govee calls your
+    fixture. Latency depends on Govee's API and your internet connection. For most
+    chat-driven reactions the &lt;1s latency is fine.
+  </p>
+  <p>
+    Several Govee strips also support LAN control. ilyStream uses LAN paths when
+    available because the round-trip stays inside your network. Nothing extra to
+    configure &mdash; if a fixture supports LAN, ilyStream picks it automatically.
+  </p>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>API key rejected.</strong> Re-check the email; the key is one continuous string. Trim leading or trailing spaces.</p>
+  <p><strong>Device list is empty.</strong> Confirm the device is online in Govee Home. Some older models do not expose the cloud API. Refresh after a few seconds &mdash; Govee occasionally needs a moment to register the key.</p>
+  <p><strong>Commands stop after many reactions.</strong> You hit the daily quota. Lower trigger density, or coalesce many micro-actions into a single longer cue.</p>
+  <p><strong>Color is slightly wrong.</strong> Govee fixtures vary in color accuracy. Use named scenes from the Govee app if you need consistent palettes.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/philips-hue/')}>
+      <p>Previous</p>
+      <strong>&larr; Philips Hue</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/obs/')}>
+      <p>Next</p>
+      <strong>OBS browser sources &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

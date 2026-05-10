@@ -2,35 +2,47 @@
 import Layout from '../layouts/Layout.astro';
 import { Image } from 'astro:assets';
 import broadcastCanvasPreview from '../assets/broadcast-canvas-preview.png';
-import broadcastCanvasPreviewPortrait from '../assets/broadcast-canvas-preview-portrait.png';
 import alertsPreview from '../assets/alerts-preview.png';
 import deskThingIcon from '../assets/deskthing.svg';
 import deskThingPairTight from '../assets/deskthing-pair-tight.png';
-import logo from '../assets/logo.svg';
-import s3Icon from '../assets/s3.svg';
 import studioSettingsPreview from '../assets/studio-settings-preview.png';
 import ttsPreview from '../assets/tts-preview.png';
-import voiceFxPreview from '../assets/voice-fx-preview.png';
 import widgetsPreview from '../assets/widgets-preview.png';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
 const latestVersion = '0.0.5';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
-const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
 const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
-const deskThingWebsiteUrl = 'https://deskthing.app/';
-const deskThingDocsUrl = 'https://carthing.wiki/thinglabs-apps/deskthing/introduction/';
-const hueDocsUrl = 'https://developers.meethue.com/develop/get-started-2/';
-const goveeDocsUrl = 'https://govee.readme.io/reference/applying-for-an-api-key';
-const obsBrowserSourceUrl = 'https://obsproject.com/kb/browser-source';
-const simpleIconsUrl = 'https://github.com/simple-icons/simple-icons';
 
 const highlights = [
-  ['Studio', 'Scenes, capture, overlays, source controls, and stream output in one Windows app.'],
-  ['Audio', 'TTS, soundboard, Voice FX, and alert audio route into the broadcast mix.'],
-  ['Automation', 'Chat events, widgets, alerts, and selected smart lights can react together.'],
-  ['Companion', 'DeskThing keeps pairing, status, and live actions close without crowding the studio.'],
+  {
+    title: 'Studio',
+    copy: 'Scenes, capture, overlays, source controls, and stream output in one Windows app.',
+    swatch: 'cyan',
+    icon: 'M3 4h18v12H3z M7 18h10v2H7z',
+  },
+  {
+    title: 'Audio',
+    copy: 'TTS, soundboard, Voice FX, and alert audio route into the broadcast mix.',
+    swatch: 'green',
+    icon: 'M11 4v16l-5-4H3V8h3l5-4z M16 8a5 5 0 0 1 0 8 M19 5a8 8 0 0 1 0 14',
+  },
+  {
+    title: 'Automation',
+    copy: 'Chat events, widgets, alerts, and selected smart lights can react together.',
+    swatch: 'amber',
+    icon: 'M13 2 4 14h7l-1 8 9-12h-7z',
+  },
+  {
+    title: 'Companion',
+    copy: 'DeskThing keeps pairing, status, and live actions close without crowding the studio.',
+    swatch: 'rose',
+    icon: 'M3 5h12v10H3z M16 7h5v8h-5z M9 18h0',
+  },
 ];
 
 const releaseNotes = [
@@ -41,866 +53,573 @@ const releaseNotes = [
   'Packaged logo and app icon resources restored',
 ];
 
-const downloads = [
-  {
-    tag: 'Recommended',
-    title: 'Windows installer',
-    copy: 'Best for stream machines. Installs ilyStream and supports future app updates from GitHub Releases.',
-    href: setupUrl,
-    action: 'Download Setup EXE',
-    featured: true,
-  },
-  {
-    tag: 'Portable',
-    title: 'Portable build',
-    copy: 'Use this when you want to test the app without running the installer.',
-    href: portableUrl,
-    action: 'Download Portable EXE',
-  },
-  {
-    tag: 'macOS',
-    title: 'macOS builds',
-    copy: 'macOS packaging requires a macOS runner for signing. Watch the release page for signed DMG builds.',
-    href: releaseUrl,
-    action: 'Check Releases',
-  },
-  {
-    tag: 'ChromeOS',
-    title: 'ChromeOS option',
-    copy: 'ChromeOS users can follow the source path in Linux mode while native packages are evaluated.',
-    href: repoUrl,
-    action: 'Open Source',
-  },
+const docPreviews = [
+  { title: 'Getting started', copy: 'Install, launch, and connect your first scene in under five minutes.', href: 'docs/getting-started/', kicker: 'Tutorial' },
+  { title: 'Philips Hue', copy: 'Pair the Bridge, generate a username, and map fixtures to chat reactions.', href: 'docs/philips-hue/', kicker: 'Smart lights' },
+  { title: 'OBS overlays', copy: 'Add ilyStream widgets and alerts as transparent OBS browser sources.', href: 'docs/obs/', kicker: 'Browser sources' },
+  { title: 'DeskThing companion', copy: 'Pair a Car Thing or DeskThing client to control your stream.', href: 'docs/deskthing/', kicker: 'Companion app' },
 ];
 
-const docs = [
-  {
-    title: 'Philips Hue',
-    kicker: 'Smart lights',
-    copy: 'Find your Bridge IP in the Hue app, press the bridge link button, create a Hue API username, then paste the bridge IP and username into ilyStream.',
-    link: hueDocsUrl,
-    linkLabel: 'Hue setup docs',
-  },
-  {
-    title: 'Govee',
-    kicker: 'Cloud and LAN lights',
-    copy: 'Request a Govee Developer API key from the Govee Home app, paste it into ilyStream, refresh devices, and select the fixtures allowed to react.',
-    link: goveeDocsUrl,
-    linkLabel: 'Govee API key',
-  },
-  {
-    title: 'OBS overlays',
-    kicker: 'Browser sources',
-    copy: 'Start the overlay server in ilyStream, copy the widget or alert URL, then add it as an OBS Browser Source with transparent background CSS.',
-    link: obsBrowserSourceUrl,
-    linkLabel: 'OBS browser source',
-  },
-  {
-    title: 'DeskThing',
-    kicker: 'Companion app',
-    copy: 'Install DeskThing, add the ilyStream companion app, then pair using the local address and code shown inside the ilyStream DeskThing page.',
-    link: deskThingWebsiteUrl,
-    linkLabel: 'DeskThing website',
-  },
-  {
-    title: 'Voice and alerts',
-    kicker: 'Production audio',
-    copy: 'Set your TTS voice, choose alert sounds or images, then route audio through the broadcast mixer so OBS receives the same mix you hear.',
-    link: repoUrl,
-    linkLabel: 'Project notes',
-  },
-  {
-    title: 'Icon set',
-    kicker: 'Visual polish',
-    copy: 'Brand and platform marks are sourced from open SVG libraries where possible, with local Tabler symbols used for app-native controls.',
-    link: simpleIconsUrl,
-    linkLabel: 'Simple Icons',
-  },
-];
-
-const screenshots = [
-  {
-    title: 'Broadcast Studio',
-    copy: 'Arrange scenes, sources, preview output, and mixer controls in a single production view.',
-    image: broadcastCanvasPreview,
-    alt: 'ilyStream broadcast studio showing a horizontal scene canvas, source list, preview, and audio mixer',
-  },
-  {
-    title: 'Vertical Layouts',
-    copy: 'Build TikTok-style portrait scenes without hiding the tools you need while live.',
-    image: broadcastCanvasPreviewPortrait,
-    alt: 'ilyStream broadcast studio showing a vertical scene layout with camera, overlays, and mixer controls',
-  },
-  {
-    title: 'Alerts Command Center',
-    copy: 'Tune alert routing, sounds, images, and preview behavior from a single production surface.',
-    image: alertsPreview,
-    alt: 'ilyStream alerts page with event rules, asset libraries, and alert configuration controls',
-  },
-  {
-    title: 'Widget Composer',
-    copy: 'Create browser-source widgets for chat, goals, socials, Spotify, and event overlays.',
-    image: widgetsPreview,
-    alt: 'ilyStream widgets page with overlay compositor controls and widget templates',
-  },
-  {
-    title: 'Voice FX Rack',
-    copy: 'Switch voice effects, monitor the processed mic, and tune output levels without leaving the studio.',
-    image: voiceFxPreview,
-    alt: 'ilyStream voice effects page showing voice presets, monitoring controls, and signal meters',
-  },
-  {
-    title: 'Voice Engine',
-    copy: 'Manage chat TTS routing, queue behavior, voice profiles, cooldowns, and provider setup.',
-    image: ttsPreview,
-    alt: 'ilyStream text to speech configuration with voice engine and profile controls',
-  },
-  {
-    title: 'System Setup',
-    copy: 'Tune OBS, broadcast defaults, personalization, integrations, and runtime behavior.',
-    image: studioSettingsPreview,
-    alt: 'ilyStream settings screen with personalization, OBS, and broadcast controls',
-  },
+const screensPreview = [
+  { image: broadcastCanvasPreview, alt: 'ilyStream broadcast studio canvas with scene list, preview, and mixer.' },
+  { image: alertsPreview, alt: 'ilyStream alerts page with event rules and asset library.' },
+  { image: widgetsPreview, alt: 'ilyStream widgets page with overlay compositor.' },
+  { image: ttsPreview, alt: 'ilyStream TTS configuration page.' },
+  { image: studioSettingsPreview, alt: 'ilyStream system settings.' },
 ];
 ---
 
 <Layout
+  active="home"
   title="ilyStream - Windows creator broadcast studio"
   description="ilyStream is a Windows broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place."
 >
-  <header class="hero" id="top">
-    <Image
-      class="hero__image"
-      src={broadcastCanvasPreview}
-      alt=""
-      loading="eager"
-      decoding="async"
-      fetchpriority="high"
-    />
-    <div class="hero__scrim"></div>
-
-    <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="ilyStream home">
-        <span class="brand__mark"><Image src={logo} alt="" width="34" height="34" loading="eager" /></span>
-        <span>ilyStream</span>
-      </a>
-      <div class="nav__links">
-        <a href="#download">Download</a>
-        <a href="#features">Features</a>
-        <a href="#screens">Screens</a>
-        <a href="#docs">Docs</a>
-        <a href={repoUrl}>GitHub</a>
-      </div>
-    </nav>
-
-    <div class="hero__content">
-      <p class="eyebrow">Windows preview v{latestVersion}</p>
-      <h1>ilyStream</h1>
-      <p class="lede">
-        A creator broadcast studio for running scenes, overlays, chat TTS, alerts,
-        audio routing, and smart-light reactions from one focused control room.
-      </p>
-      <div class="hero__actions" aria-label="Primary actions">
-        <a class="button button--primary" href={setupUrl}>Download for Windows</a>
-        <a class="button button--ghost" href={releaseUrl}>View release</a>
-      </div>
-      <p class="release-line">Installer build {latestVersion} is live on GitHub Releases.</p>
-    </div>
-  </header>
-
-  <main>
-    <section class="status-strip" aria-label="Release status">
-      <div class="status-strip__item">
-        <span>Release</span>
-        <strong>v{latestVersion}</strong>
-      </div>
-      <div class="status-strip__item">
-        <span>Platform</span>
-        <strong>Windows x64 now</strong>
-      </div>
-      <div class="status-strip__item">
-        <span>Install</span>
-        <strong>Setup or portable</strong>
-      </div>
-      <div class="status-strip__item">
-        <span>Companion</span>
-        <strong>DeskThing v{latestVersion}</strong>
-      </div>
-    </section>
-
-    <section class="download section" id="download" aria-labelledby="download-title">
-      <div class="section__heading">
-        <p class="eyebrow">Download</p>
-        <h2 id="download-title">Install it like a normal desktop app.</h2>
-        <p>
-          Grab the Windows setup file, run the installer, and launch ilyStream from
-          the Start menu or desktop shortcut. No npm, no terminal, no developer setup.
-        </p>
-      </div>
-
-      <div class="download-grid">
-        {downloads.map((download) => (
-          <article class:list={['download-card', { 'download-card--primary': download.featured }]}>
-            <p class="tag">{download.tag}</p>
-            <h3>{download.title}</h3>
-            <p>{download.copy}</p>
-            <a class:list={['button', download.featured ? 'button--primary' : 'button--ghost']} href={download.href}>
-              {download.action}
-            </a>
-          </article>
-        ))}
-      </div>
-    </section>
-
-    <section class="section release" aria-labelledby="release-title">
-      <div class="section__heading">
-        <p class="eyebrow">What is in v{latestVersion}</p>
-        <h2 id="release-title">A cleaner first public build.</h2>
-      </div>
-      <ul class="release-list">
-        {releaseNotes.map((note) => <li>{note}</li>)}
-      </ul>
-    </section>
-
-    <section class="section features" id="features" aria-labelledby="features-title">
-      <div class="section__heading">
-        <p class="eyebrow">Features</p>
-        <h2 id="features-title">Built around the live workflow.</h2>
-        <p>
-          ilyStream keeps production controls close together so you can make changes
-          without hunting through a stack of windows during a stream.
-        </p>
-      </div>
-
-      <div class="feature-grid">
-        {highlights.map(([title, copy]) => (
-          <article class="feature-card">
-            <span class="feature-card__rule"></span>
-            <h3>{title}</h3>
-            <p>{copy}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-
-    <section class="section screens" id="screens" aria-labelledby="screens-title">
-      <div class="section__heading section__heading--wide">
-        <p class="eyebrow">Screens</p>
-        <h2 id="screens-title">A control room you can scan fast.</h2>
-        <p>
-          The interface is dense on purpose: scenes, audio, chat automation, and
-          device settings stay visible where they matter.
-        </p>
-      </div>
-
-      <div class="screen-grid">
-        {screenshots.map((screen) => (
-          <article class="screen-card">
-            <Image src={screen.image} alt={screen.alt} loading="lazy" decoding="async" />
-            <div class="screen-card__copy">
-              <h3>{screen.title}</h3>
-              <p>{screen.copy}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-
-    <section class="docs section" id="docs" aria-labelledby="docs-title">
-      <div class="section__heading section__heading--wide">
-        <p class="eyebrow">Documentation</p>
-        <h2 id="docs-title">Set up the pieces that make a stream feel alive.</h2>
-        <p>
-          These are the first paths new users usually need: lights, OBS overlays,
-          DeskThing pairing, and audio routing.
-        </p>
-      </div>
-
-      <div class="docs-grid">
-        {docs.map((doc) => (
-          <article class="doc-card">
-            <p class="tag">{doc.kicker}</p>
-            <h3>{doc.title}</h3>
-            <p>{doc.copy}</p>
-            <a href={doc.link}>{doc.linkLabel}</a>
-          </article>
-        ))}
-      </div>
-    </section>
-
-    <section class="companion section" id="companion" aria-labelledby="companion-title">
-      <div class="companion__copy">
-        <p class="eyebrow">Companion</p>
-        <h2 id="companion-title">DeskThing stays on deck.</h2>
-        <p>
-          Pair over your local network and keep quick actions, refreshes, clocks,
-          and live status checks on a small second screen.
-        </p>
-        <div class="companion__actions">
-          <a class="button button--ghost" href={deskThingReleaseUrl}>
-            Companion builds
-            <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
-          </a>
-          <a class="button button--ghost" href={deskThingDocsUrl}>
-            Setup guide
-          </a>
-        </div>
-      </div>
+  <section class="hero">
+    <div class="hero__bg" aria-hidden="true">
       <Image
-        class="companion__image"
-        src={deskThingPairTight}
-        alt="DeskThing pairing screen for ilyStream"
-        width="560"
-        height="360"
-        loading="lazy"
+        src={broadcastCanvasPreview}
+        alt=""
+        loading="eager"
         decoding="async"
+        fetchpriority="high"
       />
-    </section>
-  </main>
+      <div class="hero__scrim"></div>
+      <div class="hero__glow"></div>
+    </div>
 
-  <footer class="footer">
-    <div class="footer__inner">
-      <a class="brand" href="#top" aria-label="ilyStream home">
-        <span class="brand__mark"><Image src={logo} alt="" width="30" height="30" loading="lazy" /></span>
-        <span>ilyStream</span>
+    <div class="container hero__inner">
+      <p class="eyebrow">Windows preview &middot; v{latestVersion}</p>
+      <h1>The control room for live creators.</h1>
+      <p class="lede">
+        Run scenes, overlays, chat TTS, alerts, audio routing, and smart-light reactions
+        from a single focused Windows app. No browser tabs, no terminal, no piecing
+        together five different services.
+      </p>
+      <div class="hero__actions">
+        <a class="button button--primary" href={setupUrl}>
+          Download for Windows
+          <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1v9.6L4.7 7.3 3.3 8.7 8 13.4l4.7-4.7-1.4-1.4L9 10.6V1H8zM2 13h12v2H2z"/></svg>
+        </a>
+        <a class="button button--ghost" href={withBase('docs/getting-started/')}>Read the docs</a>
+        <a class="button button--ghost" href={releaseUrl} rel="noopener">Release notes</a>
+      </div>
+      <p class="hero__meta">
+        Free &amp; open source. Windows installer build {latestVersion} live on
+        <a href={releaseUrl} rel="noopener">GitHub Releases</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="container status-strip" aria-label="Release status">
+    <div class="status-strip__item">
+      <span>Release</span>
+      <strong>v{latestVersion}</strong>
+    </div>
+    <div class="status-strip__item">
+      <span>Platform</span>
+      <strong>Windows x64</strong>
+    </div>
+    <div class="status-strip__item">
+      <span>Install</span>
+      <strong>Setup or portable</strong>
+    </div>
+    <div class="status-strip__item">
+      <span>Companion</span>
+      <strong>DeskThing v{latestVersion}</strong>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="section__heading">
+      <p class="eyebrow">Why ilyStream</p>
+      <h2>Built around the live workflow.</h2>
+      <p>
+        Production controls stay close together so you can make changes mid-stream
+        without hunting through a stack of windows.
+      </p>
+    </div>
+
+    <div class="feature-grid">
+      {highlights.map((h) => (
+        <article class:list={['feature-card', `feature-card--${h.swatch}`]}>
+          <div class="feature-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d={h.icon} />
+            </svg>
+          </div>
+          <h3>{h.title}</h3>
+          <p>{h.copy}</p>
+        </article>
+      ))}
+    </div>
+
+    <div class="section__cta">
+      <a class="link-arrow" href={withBase('features/')}>
+        See the full feature breakdown
+        <span aria-hidden="true">&rarr;</span>
       </a>
-      <nav class="footer__links" aria-label="Footer navigation">
-        <a href={setupUrl}>Download</a>
-        <a href={releaseUrl}>Release</a>
-        <a href="#docs">Docs</a>
-        <a href={repoUrl}>GitHub</a>
-      </nav>
-      <div class="footer__s3">
-        <Image src={s3Icon} alt="" width="20" height="20" loading="lazy" />
-        <span>Copyright 2026 Sovereign Systems & Solutions (S3)</span>
+    </div>
+  </section>
+
+  <section class="container section release">
+    <div class="section__heading">
+      <p class="eyebrow">What is in v{latestVersion}</p>
+      <h2>A cleaner first public build.</h2>
+      <p>Polish, recovery, and consistency for the production surfaces creators reach for first.</p>
+    </div>
+    <ul class="release-list">
+      {releaseNotes.map((note, i) => (
+        <li>
+          <span class="release-list__num">{String(i + 1).padStart(2, '0')}</span>
+          <span>{note}</span>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section class="container section">
+    <div class="section__heading section__heading--row">
+      <div>
+        <p class="eyebrow">Documentation</p>
+        <h2>Set up the integrations that make a stream feel alive.</h2>
+        <p>Step-by-step guides for the integrations new users reach for first.</p>
+      </div>
+      <a class="button button--ghost section__heading-cta" href={withBase('docs/')}>Browse all guides</a>
+    </div>
+
+    <div class="docs-grid">
+      {docPreviews.map((doc) => (
+        <a class="doc-card" href={withBase(doc.href)}>
+          <p class="tag">{doc.kicker}</p>
+          <h3>{doc.title}</h3>
+          <p>{doc.copy}</p>
+          <span class="doc-card__cta">Read guide <span aria-hidden="true">&rarr;</span></span>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="section__heading section__heading--row">
+      <div>
+        <p class="eyebrow">Screens</p>
+        <h2>A control room you can scan fast.</h2>
+        <p>Dense on purpose. Scenes, audio, and chat automation stay visible where they matter.</p>
+      </div>
+      <a class="button button--ghost section__heading-cta" href={withBase('screens/')}>Open gallery</a>
+    </div>
+
+    <div class="screens-strip">
+      {screensPreview.map((s, i) => (
+        <a class:list={['screens-strip__item', { 'screens-strip__item--lead': i === 0 }]} href={withBase('screens/')}>
+          <Image src={s.image} alt={s.alt} loading="lazy" decoding="async" />
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="container section companion">
+    <div class="companion__copy">
+      <p class="eyebrow">Companion</p>
+      <h2>DeskThing stays on deck.</h2>
+      <p>
+        Pair a Car Thing or DeskThing client over your local network and keep quick
+        actions, refreshes, clocks, and live status checks on a small second screen.
+      </p>
+      <div class="companion__actions">
+        <a class="button button--ghost" href={withBase('docs/deskthing/')}>
+          Setup guide
+          <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
+        </a>
+        <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">Companion builds</a>
       </div>
     </div>
-  </footer>
+    <Image
+      class="companion__image"
+      src={deskThingPairTight}
+      alt="DeskThing pairing screen for ilyStream"
+      width="560"
+      height="360"
+      loading="lazy"
+      decoding="async"
+    />
+  </section>
+
+  <section class="container section cta-band">
+    <div class="cta-band__inner">
+      <div>
+        <h2>Ready to go live?</h2>
+        <p>Install the Windows app and follow the five-minute getting started guide.</p>
+      </div>
+      <div class="cta-band__actions">
+        <a class="button button--primary" href={setupUrl}>Download v{latestVersion}</a>
+        <a class="button button--ghost" href={withBase('docs/getting-started/')}>Getting started</a>
+      </div>
+    </div>
+  </section>
 </Layout>
 
 <style>
+  /* Hero */
   .hero {
     position: relative;
-    min-height: 86svh;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
+    min-height: clamp(560px, 72svh, 760px);
     overflow: hidden;
     border-bottom: 1px solid var(--line);
   }
 
-  .hero__image,
-  .hero__scrim {
+  .hero__bg {
     position: absolute;
     inset: 0;
   }
 
-  .hero__image {
+  .hero__bg img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: 58% 50%;
-    opacity: 0.58;
+    object-position: 60% 50%;
+    opacity: 0.5;
   }
 
   .hero__scrim {
+    position: absolute;
+    inset: 0;
     background:
-      linear-gradient(90deg, rgba(11, 13, 17, 0.96) 0%, rgba(11, 13, 17, 0.82) 42%, rgba(11, 13, 17, 0.38) 100%),
-      linear-gradient(0deg, rgba(11, 13, 17, 0.92) 0%, rgba(11, 13, 17, 0) 38%);
+      linear-gradient(90deg, rgba(10, 12, 16, 0.94) 0%, rgba(10, 12, 16, 0.78) 38%, rgba(10, 12, 16, 0.30) 100%),
+      linear-gradient(0deg, rgba(10, 12, 16, 0.94) 0%, rgba(10, 12, 16, 0) 42%);
   }
 
-  .nav {
+  .hero__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(700px 360px at 18% 80%, rgba(37, 199, 255, 0.18), transparent 65%),
+      radial-gradient(500px 280px at 80% 20%, rgba(167, 131, 255, 0.18), transparent 65%);
+    pointer-events: none;
+  }
+
+  .hero__inner {
     position: relative;
-    z-index: 2;
-    width: min(100%, var(--max));
-    min-height: 64px;
-    margin: 0 auto;
-    padding: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    border: 1px solid var(--line);
-    background: rgba(11, 13, 17, 0.72);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    padding: clamp(72px, 12svh, 120px) 0 clamp(48px, 9svh, 80px);
   }
 
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 800;
-    font-size: 1.05rem;
-  }
-
-  .brand__mark {
-    width: 38px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    background: linear-gradient(135deg, var(--cyan), var(--violet));
-    border-radius: 8px;
-  }
-
-  .brand__mark img {
-    border-radius: 6px;
-  }
-
-  .nav__links {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .nav__links a {
-    padding: 9px 12px;
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 0.92rem;
-    font-weight: 700;
-  }
-
-  .nav__links a:hover {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .hero__content {
-    position: relative;
-    z-index: 1;
-    width: min(100%, var(--max));
-    margin: auto;
-    padding: 96px 0 64px;
-  }
-
-  .eyebrow {
-    color: var(--cyan);
-    font-size: 0.78rem;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  h1 {
-    margin-top: 12px;
-    font-size: 5.2rem;
-    max-width: 720px;
+  .hero h1 {
+    margin-top: 16px;
+    font-size: clamp(2.6rem, 6vw, 5rem);
+    max-width: 18ch;
+    background: linear-gradient(180deg, #ffffff 0%, #cbd2dc 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .lede {
-    max-width: 660px;
-    margin-top: 24px;
+    max-width: 56ch;
+    margin-top: 22px;
     color: var(--muted);
-    font-size: 1.24rem;
+    font-size: clamp(1.05rem, 1.6vw, 1.22rem);
   }
 
   .hero__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 34px;
-  }
-
-  .button {
-    min-height: 48px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     gap: 10px;
-    padding: 12px 18px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    font-weight: 800;
+    margin-top: 32px;
   }
 
-  .button--primary {
-    background: var(--cyan);
-    color: #041017;
-  }
-
-  .button--primary:hover {
-    background: #5bd8ff;
-  }
-
-  .button--ghost {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: var(--line);
-    color: var(--text);
-  }
-
-  .button--ghost:hover {
-    border-color: var(--line-strong);
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .release-line {
-    margin-top: 16px;
+  .hero__meta {
+    margin-top: 20px;
     color: var(--quiet);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
   }
+  .hero__meta a { color: var(--cyan); }
+  .hero__meta a:hover { color: var(--cyan-soft); }
 
-  .status-strip,
-  .section,
-  .footer__inner {
-    width: min(100% - 40px, var(--max));
-    margin: 0 auto;
-  }
-
+  /* Status strip */
   .status-strip {
-    margin-top: 28px;
+    margin-top: 32px;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     border: 1px solid var(--line);
-    background: var(--bg-raised);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+    overflow: hidden;
   }
 
   .status-strip__item {
-    min-height: 84px;
-    padding: 18px;
+    min-height: 80px;
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     border-right: 1px solid var(--line);
   }
-
-  .status-strip__item:last-child {
-    border-right: 0;
-  }
+  .status-strip__item:last-child { border-right: 0; }
 
   .status-strip__item span {
     color: var(--quiet);
-    font-size: 0.78rem;
-    font-weight: 900;
+    font-size: 0.74rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
   }
 
-  .status-strip__item strong {
-    font-size: 1.05rem;
-  }
+  .status-strip__item strong { font-size: 1.05rem; font-weight: 700; }
 
+  /* Sections */
   .section {
-    padding: 108px 0 0;
+    padding: 96px 0 0;
   }
 
   .section__heading {
-    max-width: 720px;
-    margin-bottom: 32px;
+    max-width: 760px;
+    margin-bottom: 36px;
   }
-
-  .section__heading--wide {
-    max-width: 860px;
+  .section__heading--row {
+    max-width: none;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
   }
-
+  .section__heading--row > div { max-width: 760px; }
   .section__heading h2 {
-    margin-top: 10px;
-    font-size: 3rem;
+    margin-top: 12px;
+    font-size: clamp(1.9rem, 3.4vw, 2.8rem);
   }
-
   .section__heading p:not(.eyebrow) {
-    margin-top: 16px;
+    margin-top: 14px;
     color: var(--muted);
-    font-size: 1.08rem;
+    font-size: 1.05rem;
+    max-width: 60ch;
   }
 
-  .download-grid,
+  .section__cta {
+    margin-top: 28px;
+  }
+
+  .section__heading-cta {
+    flex-shrink: 0;
+  }
+
+  .link-arrow {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+  .link-arrow:hover { color: var(--cyan-soft); }
+  .link-arrow span { display: inline-block; transition: transform 120ms ease; margin-left: 4px; }
+  .link-arrow:hover span { transform: translateX(4px); }
+
+  /* Feature cards */
   .feature-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 14px;
   }
 
-  .download-card,
-  .feature-card,
-  .screen-card {
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--bg-raised);
-  }
-
-  .download-card,
   .feature-card {
     padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+    box-shadow: var(--shadow-card);
+    transition: transform 200ms ease, border-color 200ms ease;
+  }
+  .feature-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
   }
 
-  .download-card--primary {
-    border-color: rgba(37, 199, 255, 0.42);
-    background: linear-gradient(180deg, rgba(37, 199, 255, 0.12), var(--bg-raised));
+  .feature-card__icon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 18px;
+    border-radius: 10px;
+    background: rgba(37, 199, 255, 0.12);
+    color: var(--cyan);
   }
+  .feature-card--green .feature-card__icon { background: rgba(36, 209, 139, 0.12); color: var(--green); }
+  .feature-card--amber .feature-card__icon { background: rgba(247, 184, 75, 0.14); color: var(--amber); }
+  .feature-card--rose  .feature-card__icon { background: rgba(255, 92, 122, 0.14); color: var(--rose); }
 
-  .tag {
-    display: inline-flex;
-    margin-bottom: 16px;
-    color: var(--green);
-    font-size: 0.75rem;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
+  .feature-card h3 { font-size: 1.2rem; }
+  .feature-card p { margin-top: 8px; color: var(--muted); }
 
-  .download-card h3,
-  .feature-card h3,
-  .screen-card h3 {
-    font-size: 1.35rem;
-  }
-
-  .download-card p:not(.tag),
-  .feature-card p,
-  .screen-card p,
-  .doc-card p:not(.tag) {
-    margin-top: 12px;
-    color: var(--muted);
-  }
-
-  .download-card .button {
-    margin-top: 24px;
-    width: 100%;
-  }
-
+  /* Release list */
   .release-list {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 10px;
-    padding: 0;
-    margin: 0;
     list-style: none;
+    padding: 0;
   }
-
   .release-list li {
-    min-height: 96px;
+    min-height: 116px;
     padding: 18px;
     display: flex;
-    align-items: flex-end;
+    flex-direction: column;
+    gap: 12px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--bg-soft);
     color: var(--text);
-    font-weight: 750;
+  }
+  .release-list__num {
+    color: var(--cyan);
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
   }
 
-  .feature-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  .feature-card__rule {
-    display: block;
-    width: 42px;
-    height: 4px;
-    margin-bottom: 22px;
-    border-radius: 4px;
-    background: var(--cyan);
-  }
-
-  .feature-card:nth-child(2) .feature-card__rule {
-    background: var(--green);
-  }
-
-  .feature-card:nth-child(3) .feature-card__rule {
-    background: var(--amber);
-  }
-
-  .feature-card:nth-child(4) .feature-card__rule {
-    background: var(--rose);
-  }
-
-  .screen-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-  }
-
-  .screen-card {
-    overflow: hidden;
-  }
-
-  .screen-card img {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .screen-card__copy {
-    padding: 22px;
-  }
-
+  /* Doc cards */
   .docs-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
   }
 
   .doc-card {
-    min-height: 260px;
-    padding: 24px;
     display: flex;
     flex-direction: column;
+    min-height: 220px;
+    padding: 24px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
       var(--bg-raised);
-  }
-
-  .doc-card h3 {
-    font-size: 1.28rem;
-  }
-
-  .doc-card a {
-    width: fit-content;
-    margin-top: auto;
-    color: var(--cyan);
-    font-weight: 850;
-  }
-
-  .doc-card a:hover {
     color: var(--text);
+    box-shadow: var(--shadow-card);
+    transition: transform 200ms ease, border-color 200ms ease;
+  }
+  .doc-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(37, 199, 255, 0.4);
   }
 
+  .tag {
+    display: inline-flex;
+    margin-bottom: 14px;
+    color: var(--cyan);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .doc-card h3 { font-size: 1.18rem; }
+  .doc-card p { margin-top: 8px; color: var(--muted); }
+
+  .doc-card__cta {
+    margin-top: auto;
+    padding-top: 16px;
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+  .doc-card:hover .doc-card__cta { color: var(--cyan-soft); }
+
+  /* Screens strip */
+  .screens-strip {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(4, 1fr);
+    gap: 10px;
+  }
+  .screens-strip__item {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    aspect-ratio: 16 / 10;
+    transition: transform 220ms ease, border-color 220ms ease;
+  }
+  .screens-strip__item:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+  }
+  .screens-strip__item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .screens-strip__item--lead { aspect-ratio: 16 / 9; }
+
+  /* Companion */
   .companion {
     display: grid;
     grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1fr);
     align-items: center;
     gap: 48px;
-    padding-bottom: 108px;
   }
-
+  .companion__copy h2 {
+    margin-top: 12px;
+    font-size: clamp(1.9rem, 3.4vw, 2.6rem);
+  }
   .companion__copy p:not(.eyebrow) {
     margin-top: 16px;
     color: var(--muted);
-    font-size: 1.08rem;
+    font-size: 1.05rem;
+    max-width: 56ch;
   }
-
   .companion__actions {
     margin-top: 26px;
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
   }
-
   .companion__image {
     width: 100%;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: #000;
+    box-shadow: var(--shadow-card);
   }
 
-  .footer {
-    border-top: 1px solid var(--line);
-    background: #080a0d;
-  }
-
-  .footer__inner {
-    min-height: 132px;
-    padding: 28px 0;
+  /* CTA band */
+  .cta-band__inner {
+    padding: 36px 36px;
+    border: 1px solid rgba(37, 199, 255, 0.28);
+    border-radius: 16px;
+    background:
+      radial-gradient(600px 200px at 20% 0%, rgba(37, 199, 255, 0.18), transparent 70%),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.1), rgba(255, 255, 255, 0)),
+      var(--bg-raised);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 28px;
-  }
-
-  .footer__links {
-    display: flex;
     flex-wrap: wrap;
-    gap: 18px;
-    color: var(--muted);
-    font-weight: 700;
   }
+  .cta-band__inner h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
+  .cta-band__inner p { color: var(--muted); margin-top: 8px; }
+  .cta-band__actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-  .footer__links a:hover {
-    color: var(--text);
-  }
-
-  .footer__s3 {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--quiet);
-    font-size: 0.86rem;
-  }
-
-  @media (max-width: 980px) {
-    h1 {
-      font-size: 4rem;
-    }
-
-    .status-strip,
-    .download-grid,
-    .feature-grid,
-    .docs-grid,
-    .screen-grid,
-    .release-list,
-    .companion {
-      grid-template-columns: 1fr 1fr;
-    }
+  @media (max-width: 1100px) {
+    .release-list { grid-template-columns: repeat(3, 1fr); }
+    .feature-grid, .docs-grid { grid-template-columns: repeat(2, 1fr); }
+    .screens-strip { grid-template-columns: repeat(3, 1fr); }
+    .screens-strip__item--lead { grid-column: span 3; aspect-ratio: 16 / 7; }
   }
 
   @media (max-width: 720px) {
-    .hero {
-      min-height: 84svh;
-      padding: 14px;
-    }
-
-    .hero__scrim {
-      background:
-        linear-gradient(90deg, rgba(11, 13, 17, 0.96), rgba(11, 13, 17, 0.7)),
-        linear-gradient(0deg, rgba(11, 13, 17, 0.94) 0%, rgba(11, 13, 17, 0) 46%);
-    }
-
-    .nav {
-      min-height: 56px;
-    }
-
-    .nav__links {
-      display: none;
-    }
-
-    .hero__content {
-      padding: 72px 0 48px;
-    }
-
-    h1 {
-      font-size: 3rem;
-    }
-
-    .lede,
-    .section__heading p:not(.eyebrow),
-    .companion__copy p:not(.eyebrow) {
-      font-size: 1rem;
-    }
-
-    .section__heading h2 {
-      font-size: 2.15rem;
-    }
-
-    .status-strip,
-    .download-grid,
-    .feature-grid,
-    .docs-grid,
-    .screen-grid,
-    .release-list,
-    .companion {
-      grid-template-columns: 1fr;
-    }
-
-    .status-strip__item {
-      border-right: 0;
+    .hero__inner { padding-top: 56px; }
+    .status-strip { grid-template-columns: 1fr 1fr; }
+    .status-strip__item:nth-child(odd) { border-right: 1px solid var(--line); }
+    .status-strip__item:nth-child(even) { border-right: 0; }
+    .status-strip__item:nth-child(1), .status-strip__item:nth-child(2) {
       border-bottom: 1px solid var(--line);
     }
-
-    .status-strip__item:last-child {
-      border-bottom: 0;
-    }
-
-    .section {
-      padding-top: 76px;
-    }
-
-    .footer__inner {
-      align-items: flex-start;
-      flex-direction: column;
-    }
+    .release-list { grid-template-columns: 1fr 1fr; }
+    .feature-grid, .docs-grid { grid-template-columns: 1fr; }
+    .screens-strip { grid-template-columns: 1fr 1fr; }
+    .screens-strip__item--lead { grid-column: span 2; aspect-ratio: 16 / 9; }
+    .section { padding-top: 64px; }
+    .section__heading--row { flex-direction: column; align-items: flex-start; }
+    .section__heading-cta { margin-top: 4px; }
+    .companion { grid-template-columns: 1fr; }
+    .cta-band__inner { padding: 24px; }
   }
 </style>

@@ -1,0 +1,241 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const sections = [
+  {
+    label: 'Start here',
+    cards: [
+      {
+        title: 'Getting started',
+        copy: 'Install ilyStream, launch it for the first time, and connect to your streaming service in under five minutes.',
+        href: 'docs/getting-started/',
+        kicker: 'Tutorial',
+        time: '5 min',
+      },
+    ],
+  },
+  {
+    label: 'Smart light integrations',
+    cards: [
+      {
+        title: 'Philips Hue',
+        copy: 'Pair the Hue Bridge with ilyStream, generate a developer username, and select the fixtures allowed to react to chat events.',
+        href: 'docs/philips-hue/',
+        kicker: 'Smart lights',
+        time: '8 min',
+      },
+      {
+        title: 'Govee',
+        copy: 'Request a Govee Developer API key from the Govee Home app, paste it into ilyStream, and pick the lamps that join the show.',
+        href: 'docs/govee/',
+        kicker: 'Smart lights',
+        time: '6 min',
+      },
+    ],
+  },
+  {
+    label: 'Broadcast & overlays',
+    cards: [
+      {
+        title: 'OBS browser sources',
+        copy: 'Add ilyStream widgets and alerts to OBS as transparent browser sources so they composite cleanly with your scenes.',
+        href: 'docs/obs/',
+        kicker: 'Browser sources',
+        time: '7 min',
+      },
+      {
+        title: 'Audio routing & TTS',
+        copy: 'Set up the broadcast mix, configure chat TTS voices, and route alert audio so OBS hears the same thing you hear.',
+        href: 'docs/audio-tts/',
+        kicker: 'Production audio',
+        time: '10 min',
+      },
+    ],
+  },
+  {
+    label: 'Companion',
+    cards: [
+      {
+        title: 'DeskThing pairing',
+        copy: 'Install the DeskThing companion, pair over your local network, and use a Car Thing as a hardware deck for ilyStream.',
+        href: 'docs/deskthing/',
+        kicker: 'Companion app',
+        time: '6 min',
+      },
+    ],
+  },
+];
+---
+
+<Layout
+  active="docs"
+  title="Documentation"
+  description="ilyStream integration guides and setup workflows: Philips Hue, Govee, OBS, DeskThing, and audio routing."
+>
+  <section class="page-hero">
+    <div class="container">
+      <p class="eyebrow">Documentation</p>
+      <h1>Integration guides &amp; setup workflows.</h1>
+      <p class="lede">
+        Hands-on guides for connecting ilyStream to the lights, overlays, and
+        companion devices that make a stream feel alive. Each guide walks through
+        the same path: prerequisites, step-by-step setup, configuration in ilyStream,
+        and troubleshooting.
+      </p>
+      <div class="page-hero__actions">
+        <a class="button button--primary" href={withBase('docs/getting-started/')}>Start here</a>
+        <a class="button button--ghost" href={withBase('docs/philips-hue/')}>Philips Hue</a>
+        <a class="button button--ghost" href={withBase('docs/obs/')}>OBS overlays</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    {sections.map((section) => (
+      <div class="docs-section">
+        <h2>{section.label}</h2>
+        <div class="docs-grid">
+          {section.cards.map((card) => (
+            <a class="doc-card" href={withBase(card.href)}>
+              <div class="doc-card__head">
+                <p class="tag">{card.kicker}</p>
+                <p class="doc-card__time">{card.time}</p>
+              </div>
+              <h3>{card.title}</h3>
+              <p>{card.copy}</p>
+              <span class="doc-card__cta">Read guide <span aria-hidden="true">&rarr;</span></span>
+            </a>
+          ))}
+        </div>
+      </div>
+    ))}
+  </section>
+
+  <section class="container section">
+    <div class="cta-band">
+      <div>
+        <h2>Need a guide that is not here?</h2>
+        <p>Open an issue on GitHub and tell us what integration you would like documented next.</p>
+      </div>
+      <a class="button button--ghost" href="https://github.com/ilydrw/ilyStream/issues" rel="noopener">
+        Open an issue
+      </a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .page-hero {
+    padding: 64px 0 16px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(700px 280px at 80% 0%, rgba(167, 131, 255, 0.14), transparent 60%),
+      linear-gradient(180deg, rgba(37, 199, 255, 0.08), transparent 80%);
+  }
+  .page-hero h1 {
+    margin-top: 12px;
+    font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+  }
+  .lede {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    max-width: 70ch;
+  }
+  .page-hero__actions {
+    margin-top: 26px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section { padding-top: 64px; }
+
+  .docs-section { margin-bottom: 48px; }
+  .docs-section h2 {
+    margin-bottom: 18px;
+    font-size: 1.2rem;
+    color: var(--quiet);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .docs-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .doc-card {
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
+      var(--bg-raised);
+    color: var(--text);
+    box-shadow: var(--shadow-card);
+    transition: transform 200ms ease, border-color 200ms ease;
+  }
+  .doc-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(37, 199, 255, 0.4);
+  }
+
+  .doc-card__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .tag {
+    color: var(--cyan);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .doc-card__time {
+    color: var(--quiet);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .doc-card h3 { font-size: 1.18rem; }
+  .doc-card p { margin-top: 8px; color: var(--muted); }
+
+  .doc-card__cta {
+    margin-top: 18px;
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+
+  .cta-band {
+    padding: 28px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg-raised);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .cta-band h2 { font-size: 1.3rem; }
+  .cta-band p { color: var(--muted); margin-top: 8px; }
+
+  @media (max-width: 720px) {
+    .docs-grid { grid-template-columns: 1fr; }
+  }
+</style>

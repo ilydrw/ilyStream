@@ -1,0 +1,474 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Slug of the current doc, e.g. 'philips-hue'. Used to highlight the sidebar entry. */
+  slug?: string;
+  /** Last reviewed / updated label shown under the title. */
+  updated?: string;
+  /** Estimated reading time. */
+  readingTime?: string;
+  /** Inline table of contents, in document order. */
+  toc?: { id: string; label: string }[];
+}
+
+const {
+  title,
+  description = 'ilyStream documentation',
+  slug,
+  updated,
+  readingTime,
+  toc = [],
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+type DocLink = { slug: string; label: string; href: string };
+type DocGroup = { label: string; items: DocLink[] };
+
+const groups: DocGroup[] = [
+  {
+    label: 'Start here',
+    items: [
+      { slug: 'index', label: 'Overview', href: withBase('docs/') },
+      { slug: 'getting-started', label: 'Getting started', href: withBase('docs/getting-started/') },
+    ],
+  },
+  {
+    label: 'Smart lights',
+    items: [
+      { slug: 'philips-hue', label: 'Philips Hue', href: withBase('docs/philips-hue/') },
+      { slug: 'govee', label: 'Govee', href: withBase('docs/govee/') },
+    ],
+  },
+  {
+    label: 'Broadcast & overlays',
+    items: [
+      { slug: 'obs', label: 'OBS browser sources', href: withBase('docs/obs/') },
+      { slug: 'audio-tts', label: 'Audio routing & TTS', href: withBase('docs/audio-tts/') },
+    ],
+  },
+  {
+    label: 'Companion',
+    items: [
+      { slug: 'deskthing', label: 'DeskThing pairing', href: withBase('docs/deskthing/') },
+    ],
+  },
+];
+---
+
+<Layout
+  active="docs"
+  title={`${title} - ilyStream docs`}
+  description={description}
+>
+  <div class="docs-shell">
+    <aside class="docs-sidebar" aria-label="Documentation navigation">
+      <div class="docs-sidebar__inner">
+        <p class="docs-sidebar__heading">Documentation</p>
+        <nav>
+          {groups.map((group) => (
+            <div class="docs-sidebar__group">
+              <p class="docs-sidebar__group-label">{group.label}</p>
+              <ul>
+                {group.items.map((item) => (
+                  <li>
+                    <a
+                      href={item.href}
+                      class:list={['docs-sidebar__link', { 'docs-sidebar__link--active': slug === item.slug }]}
+                      aria-current={slug === item.slug ? 'page' : undefined}
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </div>
+    </aside>
+
+    <article class="doc">
+      <header class="doc__header">
+        <p class="eyebrow">Documentation</p>
+        <h1>{title}</h1>
+        <p class="doc__meta">
+          {updated ? <span>Updated {updated}</span> : null}
+          {updated && readingTime ? <span aria-hidden="true">&middot;</span> : null}
+          {readingTime ? <span>{readingTime} read</span> : null}
+        </p>
+      </header>
+
+      <div class="doc__layout">
+        <div class="doc__body">
+          <slot />
+        </div>
+
+        {toc.length > 0 ? (
+          <nav class="doc__toc" aria-label="On this page">
+            <p class="doc__toc-label">On this page</p>
+            <ul>
+              {toc.map((item) => (
+                <li><a href={`#${item.id}`}>{item.label}</a></li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
+      </div>
+    </article>
+  </div>
+</Layout>
+
+<style is:global>
+  /* Document body typography (global so individual MD-like content in slot inherits cleanly). */
+  .doc__body h2 {
+    margin-top: 56px;
+    font-size: 1.65rem;
+    letter-spacing: -0.01em;
+    scroll-margin-top: calc(var(--header-h) + 24px);
+  }
+  .doc__body h2:first-child { margin-top: 0; }
+
+  .doc__body h3 {
+    margin-top: 32px;
+    font-size: 1.15rem;
+    color: var(--text);
+    scroll-margin-top: calc(var(--header-h) + 24px);
+  }
+
+  .doc__body p {
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 1.02rem;
+    line-height: 1.7;
+  }
+  .doc__body p strong { color: var(--text); }
+
+  .doc__body a {
+    color: var(--cyan);
+    text-decoration: underline;
+    text-decoration-color: rgba(37, 199, 255, 0.32);
+    text-underline-offset: 3px;
+  }
+  .doc__body a:hover { color: var(--cyan-soft); text-decoration-color: var(--cyan-soft); }
+
+  .doc__body ul, .doc__body ol {
+    margin: 16px 0 0;
+    padding-left: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+
+  .doc__body ul li {
+    position: relative;
+    padding-left: 22px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .doc__body ul li::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0.7em;
+    width: 6px;
+    height: 6px;
+    background: var(--cyan);
+    border-radius: 999px;
+  }
+
+  .doc__body ol {
+    counter-reset: step;
+  }
+  .doc__body ol > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 44px;
+    color: var(--muted);
+    line-height: 1.65;
+    min-height: 32px;
+  }
+  .doc__body ol > li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(37, 199, 255, 0.4);
+    background: rgba(37, 199, 255, 0.1);
+    color: var(--cyan);
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: 0.78rem;
+  }
+  .doc__body ol > li > strong:first-child {
+    display: block;
+    color: var(--text);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .doc__body code {
+    padding: 2px 6px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+
+  .doc__body pre {
+    margin-top: 18px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #0d1018;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #d6dbe7;
+  }
+  .doc__body pre code {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .callout {
+    margin-top: 22px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 14px;
+  }
+  .callout__icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: rgba(37, 199, 255, 0.16);
+    color: var(--cyan);
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 0.78rem;
+  }
+  .callout p { margin: 0; color: var(--muted); }
+  .callout p strong { color: var(--text); }
+  .callout--warn { border-color: rgba(247, 184, 75, 0.36); }
+  .callout--warn .callout__icon { background: rgba(247, 184, 75, 0.16); color: var(--amber); }
+  .callout--success { border-color: rgba(36, 209, 139, 0.32); }
+  .callout--success .callout__icon { background: rgba(36, 209, 139, 0.14); color: var(--green); }
+
+  .kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--bg-soft);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82em;
+  }
+
+  .doc__body .next-prev {
+    margin-top: 56px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .doc__body .next-prev a {
+    display: block;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    text-decoration: none;
+    transition: border-color 160ms ease, transform 160ms ease;
+  }
+  .doc__body .next-prev a:hover {
+    border-color: rgba(37, 199, 255, 0.4);
+    transform: translateY(-1px);
+  }
+  .doc__body .next-prev p {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--quiet);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 800;
+  }
+  .doc__body .next-prev strong {
+    display: block;
+    margin-top: 6px;
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .doc__body .next-prev a.is-prev { text-align: left; }
+  .doc__body .next-prev a.is-next { text-align: right; }
+
+  @media (max-width: 720px) {
+    .doc__body .next-prev { grid-template-columns: 1fr; }
+  }
+</style>
+
+<style>
+  .docs-shell {
+    width: min(100% - 32px, var(--max));
+    margin: 0 auto;
+    padding: 40px 0 0;
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 48px;
+    align-items: flex-start;
+  }
+
+  .docs-sidebar {
+    position: sticky;
+    top: calc(var(--header-h) + 16px);
+    align-self: flex-start;
+  }
+
+  .docs-sidebar__heading {
+    color: var(--cyan);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .docs-sidebar__group { margin-bottom: 24px; }
+
+  .docs-sidebar__group-label {
+    color: var(--quiet);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .docs-sidebar nav ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .docs-sidebar__link {
+    display: block;
+    padding: 8px 12px;
+    color: var(--muted);
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+    font-size: 0.94rem;
+    line-height: 1.4;
+  }
+  .docs-sidebar__link:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .docs-sidebar__link--active {
+    color: var(--text);
+    background: rgba(37, 199, 255, 0.08);
+    border-left-color: var(--cyan);
+    font-weight: 600;
+  }
+
+  .doc { padding-top: 16px; min-width: 0; }
+
+  .doc__header {
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 36px;
+  }
+  .doc__header h1 {
+    margin-top: 12px;
+    font-size: clamp(2rem, 3.6vw, 2.6rem);
+    letter-spacing: -0.02em;
+  }
+  .doc__meta {
+    margin-top: 12px;
+    color: var(--quiet);
+    font-size: 0.92rem;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .doc__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 200px;
+    gap: 48px;
+    align-items: flex-start;
+  }
+
+  .doc__body { min-width: 0; max-width: 70ch; }
+
+  .doc__toc {
+    position: sticky;
+    top: calc(var(--header-h) + 16px);
+    align-self: flex-start;
+  }
+  .doc__toc-label {
+    color: var(--quiet);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .doc__toc ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .doc__toc a {
+    display: block;
+    padding: 4px 8px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    border-left: 1px solid var(--line);
+    transition: color 120ms ease, border-color 120ms ease;
+  }
+  .doc__toc a:hover {
+    color: var(--text);
+    border-left-color: var(--cyan);
+  }
+
+  @media (max-width: 1100px) {
+    .doc__layout { grid-template-columns: 1fr; }
+    .doc__toc { display: none; }
+  }
+
+  @media (max-width: 900px) {
+    .docs-shell { grid-template-columns: 1fr; gap: 24px; padding-top: 24px; }
+    .docs-sidebar {
+      position: static;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-raised);
+    }
+    .docs-sidebar__group { margin-bottom: 16px; }
+  }
+</style>

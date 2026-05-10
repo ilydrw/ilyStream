@@ -1,0 +1,116 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'start-server', label: 'Start the overlay server' },
+  { id: 'add-source', label: 'Add a Browser Source' },
+  { id: 'transparent', label: 'Transparent backgrounds' },
+  { id: 'sizing', label: 'Sizing & layering' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="OBS browser sources"
+  description="Add ilyStream widgets and alerts to OBS as transparent browser sources so they composite cleanly with your scenes."
+  slug="obs"
+  updated="May 2026"
+  readingTime="7 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    ilyStream serves widgets and alerts over a small local HTTP server. To use them
+    in OBS you add them as <strong>Browser Sources</strong>. This guide covers
+    starting the server, adding the source, and the small CSS detail that keeps the
+    background transparent so overlays composite cleanly with your camera.
+  </p>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>OBS Studio 28 or newer.</li>
+    <li>ilyStream running on the same machine as OBS (recommended) or on the same LAN.</li>
+    <li>Your stream PC's firewall allows local HTTP traffic on the overlay port.</li>
+  </ul>
+
+  <h2 id="start-server">Start the overlay server</h2>
+  <ol>
+    <li><strong>Open the Widgets workspace.</strong> ilyStream's overlay server starts automatically when the app launches, but the URLs live here.</li>
+    <li><strong>Note the port.</strong> The status bar shows the overlay URL (e.g. <code>http://127.0.0.1:7100</code>). Open <em>Settings &rarr; Overlays</em> to change it.</li>
+    <li><strong>Pick the widget you want.</strong> Each widget shows its own URL with the widget id appended.</li>
+    <li><strong>Copy the URL.</strong> Use the copy button in the widget card.</li>
+  </ol>
+
+  <h2 id="add-source">Add a Browser Source in OBS</h2>
+  <ol>
+    <li><strong>Select the scene.</strong> In OBS, pick the scene that should display the overlay.</li>
+    <li><strong>Add a Browser Source.</strong> Click <em>+</em> in the Sources list and choose <em>Browser</em>. Name it something descriptive (e.g. "ilyStream alerts").</li>
+    <li>
+      <strong>Paste the URL.</strong> Set:
+      <ul>
+        <li><strong>URL</strong>: the URL you copied from ilyStream.</li>
+        <li><strong>Width</strong>: 1920 (or your canvas width).</li>
+        <li><strong>Height</strong>: 1080.</li>
+        <li><strong>FPS</strong>: 60. Lower if CPU is tight.</li>
+      </ul>
+    </li>
+    <li><strong>Leave the Custom CSS field empty for now.</strong> Most ilyStream widgets ship with a transparent body already.</li>
+    <li><strong>Click OK.</strong> The widget renders into your scene.</li>
+  </ol>
+
+  <h2 id="transparent">Transparent backgrounds</h2>
+  <p>
+    OBS browser sources default to a transparent background, but if your widget
+    shows a black box you can force it with a one-line CSS override:
+  </p>
+  <pre><code>{`body { background: rgba(0, 0, 0, 0) !important; margin: 0; }`}</code></pre>
+  <p>
+    Paste that into the <em>Custom CSS</em> field of the Browser Source. Useful if
+    you've nested your own HTML wrapper around an ilyStream widget.
+  </p>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>Once per source.</strong> OBS keeps custom CSS per-source, so each browser source can override its own background independently.</p>
+  </div>
+
+  <h2 id="sizing">Sizing &amp; layering</h2>
+  <p>Two practical patterns cover most overlays:</p>
+  <ul>
+    <li><strong>Full-canvas overlays.</strong> Set the source size to your canvas resolution and pin it at <code>0,0</code>. The widget itself positions content.</li>
+    <li><strong>Component overlays.</strong> Set the source size to just the area the widget covers (e.g. 480&times;120 for a chat box) and place it on the canvas. Easier to nudge.</li>
+  </ul>
+  <p>
+    Layer alerts on top of camera and scene art. Pin them above your camera source
+    so animation never gets clipped by mid-scene transitions.
+  </p>
+
+  <h3>Refreshing after edits</h3>
+  <p>
+    When you tweak a widget in ilyStream, OBS does not always pick the change up
+    immediately. Right-click the Browser Source in OBS and pick <em>Refresh
+    cache of current page</em>.
+  </p>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>OBS shows a blank source.</strong> Confirm the URL loads in a normal browser on the same PC. If it does not, the overlay server is not running or the port is blocked.</p>
+  <p><strong>Source shows the URL with an error.</strong> ilyStream is probably not running. Start ilyStream and click <em>Refresh</em> on the source.</p>
+  <p><strong>Animations stutter.</strong> Browser sources cost CPU. Drop the FPS to 30 if the machine is heavily loaded, or move the OBS process to a separate GPU.</p>
+  <p><strong>Source still has a black background after editing CSS.</strong> Make sure <em>Shutdown source when not visible</em> is OFF and the page actually reloaded. Right-click &rarr; <em>Refresh cache</em>.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/govee/')}>
+      <p>Previous</p>
+      <strong>&larr; Govee</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/audio-tts/')}>
+      <p>Next</p>
+      <strong>Audio routing &amp; TTS &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

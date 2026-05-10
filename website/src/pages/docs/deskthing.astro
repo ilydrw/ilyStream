@@ -1,0 +1,111 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'install-deskthing', label: 'Install DeskThing' },
+  { id: 'install-app', label: 'Install the ilyStream app' },
+  { id: 'pair', label: 'Pair over LAN' },
+  { id: 'usage', label: 'Day-to-day use' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="DeskThing pairing"
+  description="Install the DeskThing companion, pair it with ilyStream over LAN, and use a Car Thing as a hardware deck for your stream."
+  slug="deskthing"
+  updated="May 2026"
+  readingTime="6 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    DeskThing is a companion app that runs on a Spotify Car Thing or other
+    DeskThing client and pairs with ilyStream over your local network. Once paired
+    it acts as a small dedicated control surface: scene buttons, soundboard hits,
+    quick toggles, clocks, and live status &mdash; all without crowding your studio
+    monitor.
+  </p>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>A <strong>Spotify Car Thing</strong> (or any DeskThing-compatible client) flashed with DeskThing.</li>
+    <li>The <strong>DeskThing desktop server</strong> installed on the same PC as ilyStream, or on a PC reachable over LAN.</li>
+    <li>Both devices on the <strong>same local network</strong>.</li>
+  </ul>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>New to DeskThing?</strong> Start with the <a href="https://deskthing.app/" rel="noopener">DeskThing project page</a> for the desktop install, and the <a href="https://carthing.wiki/thinglabs-apps/deskthing/introduction/" rel="noopener">Car Thing flashing guide</a> if you have not flashed the device yet.</p>
+  </div>
+
+  <h2 id="install-deskthing">Install DeskThing</h2>
+  <ol>
+    <li><strong>Install the DeskThing desktop server.</strong> Follow the official DeskThing installer for your platform.</li>
+    <li><strong>Flash and connect the Car Thing.</strong> Use the DeskThing flashing tool to install the firmware, then plug the Car Thing into the host PC or a DeskThing-aware power source so it appears as a connected client in DeskThing.</li>
+    <li><strong>Confirm the pairing works.</strong> The DeskThing default home screen should appear on the Car Thing.</li>
+  </ol>
+
+  <h2 id="install-app">Install the ilyStream companion app</h2>
+  <p>
+    The ilyStream client for DeskThing is published as a separate release. You add
+    it to your DeskThing desktop server and assign it to the device.
+  </p>
+  <ol>
+    <li><strong>Download the latest release.</strong> Visit <a href="https://github.com/ilydrw/ilystream-deskthing/releases" rel="noopener">ilystream-deskthing releases</a> and download the most recent <code>.zip</code>.</li>
+    <li><strong>Install via DeskThing.</strong> In the DeskThing desktop app, open the apps panel and use the <em>Install from file</em> option, then select the downloaded archive.</li>
+    <li><strong>Assign it to the Car Thing.</strong> Drop the ilyStream app into the Car Thing's app slot list so it shows up in the device's app rotation.</li>
+  </ol>
+
+  <h2 id="pair">Pair over LAN</h2>
+  <p>
+    With the companion app running on the Car Thing, ilyStream and DeskThing find
+    each other over LAN. Pairing happens once and persists between launches.
+  </p>
+  <ol>
+    <li><strong>Open the DeskThing page in ilyStream.</strong> In the ilyStream studio, switch to the DeskThing workspace.</li>
+    <li><strong>Note the local address and code.</strong> ilyStream displays a host (e.g. <code>192.168.1.50:7110</code>) and a 6-digit pairing code.</li>
+    <li><strong>Open the ilyStream app on the Car Thing.</strong> Scroll to the ilyStream tile and select it. The first launch shows a pairing screen.</li>
+    <li><strong>Enter the code.</strong> Use the dial on the Car Thing to enter the 6-digit code shown by ilyStream.</li>
+    <li><strong>Confirm the pair.</strong> ilyStream's DeskThing page flips to <em>Paired</em>. The Car Thing is now a hardware deck.</li>
+  </ol>
+
+  <div class="callout callout--success">
+    <span class="callout__icon">&check;</span>
+    <p><strong>Paired.</strong> Pairing is per-device. If you swap stream PCs, repeat the steps with the new host.</p>
+  </div>
+
+  <h2 id="usage">Day-to-day use</h2>
+  <p>The companion ships with three layouts you can switch between with the dial:</p>
+  <ul>
+    <li><strong>Now Playing</strong> &mdash; current track, source, and live status.</li>
+    <li><strong>Scenes</strong> &mdash; one button per OBS scene.</li>
+    <li><strong>Deck</strong> &mdash; soundboard hits, alert tests, and quick toggles.</li>
+  </ul>
+  <p>
+    Customize button assignments from the <em>DeskThing</em> page in ilyStream. The
+    layout updates live on the device.
+  </p>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>The Car Thing does not see ilyStream.</strong> Confirm both devices are on the same subnet. Some routers isolate guest WiFi from wired LAN.</p>
+  <p><strong>Pairing code is rejected.</strong> Codes rotate every five minutes. Click <em>New code</em> in ilyStream and try again.</p>
+  <p><strong>Buttons do nothing after pairing.</strong> Check that the DeskThing app is allowed to talk to ilyStream's local port in Windows Defender Firewall.</p>
+  <p><strong>Disconnects after sleep.</strong> The Car Thing reconnects automatically once the host PC wakes; if it does not, restart the ilyStream app on the device.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/audio-tts/')}>
+      <p>Previous</p>
+      <strong>&larr; Audio routing &amp; TTS</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/')}>
+      <p>Next</p>
+      <strong>Documentation overview &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

@@ -1,0 +1,119 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'install', label: 'Install ilyStream' },
+  { id: 'first-launch', label: 'First launch' },
+  { id: 'connect-obs', label: 'Connect OBS' },
+  { id: 'go-live', label: 'Go live' },
+  { id: 'next-steps', label: 'Next steps' },
+];
+---
+
+<DocsLayout
+  title="Getting started"
+  description="Install ilyStream, walk through the first-launch checklist, and connect to OBS so you can go live in five minutes."
+  slug="getting-started"
+  updated="May 2026"
+  readingTime="5 min"
+  toc={toc}
+>
+  <p>
+    This guide walks through installing ilyStream on a Windows PC, the first-launch
+    checklist, and the minimum configuration to go live with OBS. Once you finish,
+    you can drop into any of the integration guides to wire up lights, alerts,
+    and the DeskThing companion.
+  </p>
+
+  <h2 id="install">Install ilyStream</h2>
+  <p>
+    ilyStream ships as a standard Windows application. Pick the installer if this
+    is your stream PC and you want auto-updates, or the portable build if you are
+    testing.
+  </p>
+  <ol>
+    <li><strong>Download the installer.</strong> Grab <code>ilyStream-Setup-0.0.5.exe</code> from the <a href={withBase('download/')}>Download page</a>.</li>
+    <li><strong>Run the installer.</strong> Double-click the file. If Windows SmartScreen warns about a new publisher, click <em>More info</em> &rarr; <em>Run anyway</em>.</li>
+    <li><strong>Launch ilyStream.</strong> Open it from the Start menu or the desktop shortcut the installer created.</li>
+  </ol>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>Portable build.</strong> Prefer no install? Download <code>ilyStream-Portable-0.0.5.exe</code>, drop it in a folder, and run it. It stores config beside the executable.</p>
+  </div>
+
+  <h2 id="first-launch">First launch</h2>
+  <p>
+    On first launch ilyStream opens to the Studio workspace with a default scene.
+    Take a minute to walk the three workspaces you will use the most:
+  </p>
+  <ul>
+    <li><strong>Studio</strong> &mdash; scene canvas, source list, preview, and audio mixer.</li>
+    <li><strong>Alerts</strong> &mdash; event rules, sound and image asset libraries.</li>
+    <li><strong>Settings</strong> &mdash; OBS connection, encoder, integrations, personalization.</li>
+  </ul>
+
+  <h3>Pick an encoder</h3>
+  <p>
+    Open <strong>Settings &rarr; Broadcast</strong> and choose the hardware encoder for your GPU:
+  </p>
+  <ul>
+    <li><strong>NVENC</strong> for NVIDIA cards.</li>
+    <li><strong>AMF</strong> for AMD cards.</li>
+    <li><strong>QuickSync</strong> for Intel iGPU or Arc.</li>
+    <li><strong>x264</strong> as a CPU fallback.</li>
+  </ul>
+
+  <h2 id="connect-obs">Connect OBS</h2>
+  <p>
+    ilyStream pairs cleanly with OBS via the WebSocket plugin built in to OBS 28+.
+    This lets ilyStream control scene transitions and lets you add ilyStream
+    widgets to OBS as browser sources.
+  </p>
+  <ol>
+    <li><strong>Enable WebSocket in OBS.</strong> In OBS, open <em>Tools &rarr; WebSocket Server Settings</em>. Toggle <em>Enable WebSocket Server</em>, set a password, and copy the host, port, and password.</li>
+    <li><strong>Add the connection in ilyStream.</strong> In ilyStream, open <em>Settings &rarr; OBS</em>. Paste the host, port, and password. Click <em>Connect</em>.</li>
+    <li><strong>Verify scene names.</strong> Once connected, ilyStream lists your OBS scenes. Make sure the scene names match what your overlays and triggers expect.</li>
+  </ol>
+
+  <div class="callout callout--success">
+    <span class="callout__icon">&check;</span>
+    <p><strong>Connected.</strong> You now have a working studio. The next thing most creators set up is overlays in OBS &mdash; see the OBS browser sources guide.</p>
+  </div>
+
+  <h2 id="go-live">Go live</h2>
+  <p>
+    With OBS connected and scenes mapped, you can start the broadcast from OBS as
+    usual. ilyStream rides along: alerts, TTS, and any wired integrations all run
+    against the live session.
+  </p>
+  <ol>
+    <li><strong>Start streaming in OBS.</strong> Click <em>Start Streaming</em> in OBS.</li>
+    <li><strong>Confirm audio routing.</strong> Watch the ilyStream mixer meters &mdash; TTS and soundboard hits should show up alongside your mic.</li>
+    <li><strong>Test an alert.</strong> Open <em>Alerts</em> in ilyStream and use the test button to fire a sample event.</li>
+  </ol>
+
+  <h2 id="next-steps">Next steps</h2>
+  <p>Pick the integrations you actually need:</p>
+  <ul>
+    <li><a href={withBase('docs/obs/')}>OBS browser sources</a> &mdash; add ilyStream widgets and alerts to your scenes.</li>
+    <li><a href={withBase('docs/audio-tts/')}>Audio routing &amp; TTS</a> &mdash; configure the broadcast mix and chat TTS voices.</li>
+    <li><a href={withBase('docs/philips-hue/')}>Philips Hue</a> &mdash; pair the Bridge so chat events can flash your lights.</li>
+    <li><a href={withBase('docs/govee/')}>Govee</a> &mdash; add Govee fixtures via the Developer API.</li>
+    <li><a href={withBase('docs/deskthing/')}>DeskThing pairing</a> &mdash; turn a Car Thing into a hardware deck.</li>
+  </ul>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/')}>
+      <p>Back</p>
+      <strong>Documentation overview</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/obs/')}>
+      <p>Next</p>
+      <strong>OBS browser sources &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>
