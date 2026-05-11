@@ -38,7 +38,7 @@ export function ChatUnifiedConfigEditor({
       </Section>
 
       <Section label="Appearance">
-        <Field label={`Scale — ${Math.round(config.scale * 100)}%`}>
+        <Field label={`Global Scale — ${Math.round(config.scale * 100)}%`}>
           <input
             type="range"
             min={0.5}
@@ -50,7 +50,7 @@ export function ChatUnifiedConfigEditor({
           />
         </Field>
 
-        <Field label={`Opacity — ${Math.round(config.opacity * 100)}%`}>
+        <Field label={`Overall Opacity — ${Math.round(config.opacity * 100)}%`}>
           <input
             type="range"
             min={0}
@@ -58,6 +58,30 @@ export function ChatUnifiedConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
+            className="w-full accent-white"
+          />
+        </Field>
+
+        <Field label={`Message BG Opacity — ${Math.round(config.backgroundOpacity * 100)}%`}>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={config.backgroundOpacity}
+            onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
+            className="w-full accent-white"
+          />
+        </Field>
+
+        <Field label={`Glass Blur — ${config.blur}px`}>
+          <input
+            type="range"
+            min={0}
+            max={80}
+            step={1}
+            value={config.blur}
+            onChange={(e) => update('blur', Number(e.currentTarget.value))}
             className="w-full accent-white"
           />
         </Field>

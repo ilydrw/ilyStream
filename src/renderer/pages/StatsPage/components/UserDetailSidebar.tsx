@@ -105,7 +105,7 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
                 <button 
                   onClick={() => onUnlink(acc.platform, acc.username)}
                   className="p-1.5 hover:bg-red-500/20 rounded-lg text-white/40 hover:text-red-400 transition-all"
-                  title="IconUnlink this account"
+                  title="Unlink this account"
                 >
                   <IconUnlink size={14} />
                 </button>

@@ -27,6 +27,7 @@ import { StatsService } from '../stats/stats-service'
 import { DeviceApi } from '../overlay/device-api'
 import { BrowserSourceService } from './browser-source-service'
 import { GoveeService } from './govee-service'
+import { VirtualCameraService } from './virtual-camera-service'
 
 export class ServiceRegistry {
   public db: Database
@@ -55,6 +56,7 @@ export class ServiceRegistry {
   public deviceApi: DeviceApi
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
+  public virtualCameraService: VirtualCameraService
   private initialized = false
   private initializationPromise: Promise<void> | null = null
 
@@ -78,6 +80,7 @@ export class ServiceRegistry {
     this.browserSourceService = new BrowserSourceService()
     this.statsService = new StatsService(this.db)
     this.goveeService = new GoveeService(this.db)
+    this.virtualCameraService = new VirtualCameraService(this.streamingService)
 
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)

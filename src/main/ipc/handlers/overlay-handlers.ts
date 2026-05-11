@@ -26,4 +26,12 @@ export function registerOverlayHandlers(
   ipcMain.on('overlay:notify-speech-state', (_event, isSpeaking: boolean, isAI: boolean) => {
     overlayServer.broadcastSpeechState(isSpeaking, isAI)
   })
+
+  ipcMain.on('overlay:dual-vertical-frame', (_event, payload: ArrayBuffer | Uint8Array) => {
+    if (!payload) return
+    const buffer = payload instanceof Uint8Array
+      ? Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength)
+      : Buffer.from(new Uint8Array(payload))
+    overlayServer.pushDualVerticalFrame(buffer)
+  })
 }

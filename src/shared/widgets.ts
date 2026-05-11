@@ -66,8 +66,8 @@ export const DEFAULT_CHAT_CONFIG: ChatConfig = {
   position: 'bottom-left',
   width: 480,
   fontSize: 15,
-  backgroundOpacity: 0.55,
-  blur: 20,
+  backgroundOpacity: 0.65,
+  blur: 40,
   showPlatformBadge: true,
   chatOnly: false,
   accentColor: '#ff7a45',
@@ -523,6 +523,8 @@ export interface ChatUnifiedConfig {
   maxItems: number
   opacity: number
   scale: number
+  backgroundOpacity: number
+  blur: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
 }
 
@@ -530,6 +532,8 @@ export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
   maxItems: 75,
   opacity: 1.0,
   scale: 1.0,
+  backgroundOpacity: 0.65,
+  blur: 40,
   aspectRatio: 'auto'
 }
 

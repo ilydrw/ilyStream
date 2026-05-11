@@ -86,9 +86,12 @@ describe('OverlayServer', () => {
 
     const goalsResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/goals/state`)
     const goals = await goalsResponse.json()
+    // Goal state now prefers the platform's authoritative cumulative count
+    // (event.totalLikes = 400) over the per-event delta (event.likeCount = 25).
+    // This stays accurate when we miss events or connect mid-stream.
     expect(goals).toEqual(
       expect.objectContaining({
-        totalLikes: 25
+        totalLikes: 400
       })
     )
 

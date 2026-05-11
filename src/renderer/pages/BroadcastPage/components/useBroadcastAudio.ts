@@ -49,12 +49,19 @@ export function useBroadcastAudio(
     const broadcastHeadroom = ctx.createGain()
     broadcastHeadroom.gain.value = 0.82
     
+    // Broadcast safety limiter — sits at the end of the chain to catch true
+    // peaks that would clip on Twitch's transcoder. DynamicsCompressorNode is
+    // not a true look-ahead limiter, so the previous (-3 dB / ratio 20 / 2 ms)
+    // settings caused audible pumping any time TTS / soundboard / alerts
+    // overlapped. New settings act as a soft safety net: no audible action
+    // until peaks reach -1 dBFS (which the 0.82 headroom gain rarely permits),
+    // then a moderate ratio to prevent over-clamping.
     const broadcastLimiter = ctx.createDynamicsCompressor()
-    broadcastLimiter.threshold.value = -3.0
-    broadcastLimiter.knee.value = 12
-    broadcastLimiter.ratio.value = 20
-    broadcastLimiter.attack.value = 0.002
-    broadcastLimiter.release.value = 0.1
+    broadcastLimiter.threshold.value = -1.0
+    broadcastLimiter.knee.value = 6
+    broadcastLimiter.ratio.value = 12
+    broadcastLimiter.attack.value = 0.003
+    broadcastLimiter.release.value = 0.05
 
     const outputSilencer = ctx.createGain()
     outputSilencer.gain.value = 0

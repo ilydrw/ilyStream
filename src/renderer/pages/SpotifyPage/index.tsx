@@ -216,7 +216,7 @@ export default function SpotifyPage() {
 
               <div className="flex items-center justify-between py-3">
                 <div>
-                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Per-IconUser Cap</h4>
+                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Per-User Cap</h4>
                   <p className="text-[10px] text-white/20">Max requests one viewer can hold.</p>
                 </div>
                 <NumberInput

@@ -115,7 +115,7 @@ export function Select({
   })
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative ${className} ${open ? 'z-[100]' : 'z-auto'}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

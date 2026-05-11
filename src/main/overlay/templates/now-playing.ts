@@ -18,7 +18,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function buildNowPlayingOverlayHtml(widget?: any): string {
   const cfg: NowPlayingConfig = { ...DEFAULT_NOW_PLAYING_CONFIG, ...(widget?.config || {}) }
-  const bgRgba = hexToRgba(cfg.backgroundColor, cfg.backgroundOpacity)
+  const bgRgba = hexToRgba(cfg.backgroundColor, 0.4)
   const accentRgba = hexToRgba(cfg.accentColor, 1)
 
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] ?? OVERLAY_POSITION_MAP['top-left']
@@ -99,12 +99,13 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         display: flex;
         align-items: center;
         gap: 20px;
-        padding: 20px;
         background: ${bgRgba};
         margin: ${cfg.showBorder ? cfg.borderWidth : 0}px;
         border-radius: ${cfg.showBorder ? `calc(24px - ${cfg.borderWidth}px)` : '24px'};
-        backdrop-filter: blur(24px) saturate(180%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        backdrop-filter: blur(40px) saturate(220%);
+        -webkit-backdrop-filter: blur(40px) saturate(220%);
+        box-shadow: inset 0 0 20px rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.12);
         width: calc(100% - ${cfg.showBorder ? cfg.borderWidth * 2 : 0}px);
         overflow: hidden;
       }

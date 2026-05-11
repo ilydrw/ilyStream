@@ -285,7 +285,7 @@ export function EmojiPickerModal({
               disabled={!emojiInput && mode !== 'edit'}
               className="app-button-primary flex-1 disabled:opacity-30 disabled:pointer-events-none"
             >
-              {mode === 'edit' ? (emojiInput ? 'DeviceFloppy Emoji' : 'Clear Emoji') : 'Add Sound'}
+              {mode === 'edit' ? (emojiInput ? 'Save Emoji' : 'Clear Emoji') : 'Add Sound'}
             </button>
           </div>
         </div>

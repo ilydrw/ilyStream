@@ -9,7 +9,7 @@ import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { StatsMetricGrid } from './components/StatsMetricGrid'
 import { PlatformTelemetry } from './components/PlatformTelemetry'
 import { UserStatTable } from './components/UserStatTable'
-import { UserDetailSidebar } from './components/UserDetailSidebar'
+import { FollowersBreakdown } from './components/FollowersBreakdown'
 
 // Utils
 import { formatCurrency, formatRelativeTime } from './utils'
@@ -60,11 +60,6 @@ export default function StatsPage() {
   // Linking state
   const [linkSource, setLinkSource] = useState<UserStat | null>(null)
   const [isLinking, setIsLinking] = useState(false)
-
-  const selectedIdentity = useMemo(
-    () => identities.find(i => i.id === selectedIdentityId) || null,
-    [identities, selectedIdentityId]
-  )
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(query), 200)
@@ -143,7 +138,7 @@ export default function StatsPage() {
       await window.api.stats.unlinkAccount({ platform, username })
       loadAll()
     } catch (err) {
-      console.error('[Stats] IconUnlink failed', err)
+      console.error('[Stats] Unlink failed', err)
     } finally {
       setLoading(false)
     }
@@ -185,44 +180,39 @@ export default function StatsPage() {
 
       <StatsMetricGrid global={global} activePlatformTab={activePlatformTab} />
 
-      <PlatformTelemetry 
-        global={global} 
-        activePlatformTab={activePlatformTab} 
+      <FollowersBreakdown global={global} />
+
+      <PlatformTelemetry
+        global={global}
+        activePlatformTab={activePlatformTab}
         onTabChange={setActivePlatformTab}
         isRelevant={isRelevant}
       />
 
       <div className="mt-12" />
 
-      <section className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-12">
-        <UserStatTable 
-          identities={identities}
-          activePlatformTab={activePlatformTab}
-          sortBy={sortBy}
-          platform={platform}
-          query={query}
-          loading={loading}
-          selectedIdentityId={selectedIdentityId}
-          isLinking={isLinking}
-          linkSource={linkSource}
-          activeSortColumns={activeSortColumns}
-          onQueryChange={setQuery}
-          onPlatformChange={setPlatform}
-          onSortChange={setSortBy}
-          onSelectIdentity={setSelectedIdentityId}
-          onLink={handleLink}
-          onCancelLink={() => { setIsLinking(false); setLinkSource(null); }}
-          isRelevant={isRelevant}
-          SORT_COLUMNS={SORT_COLUMNS}
-        />
-
-        <UserDetailSidebar 
-          identity={selectedIdentity} 
-          onClose={() => setSelectedIdentityId(null)} 
-          onStartLink={(u) => { setLinkSource(u); setIsLinking(true); }}
-          onUnlink={handleUnlink}
-        />
-      </section>
+      <UserStatTable 
+        identities={identities}
+        activePlatformTab={activePlatformTab}
+        sortBy={sortBy}
+        platform={platform}
+        query={query}
+        loading={loading}
+        selectedIdentityId={selectedIdentityId}
+        isLinking={isLinking}
+        linkSource={linkSource}
+        activeSortColumns={activeSortColumns}
+        onQueryChange={setQuery}
+        onPlatformChange={setPlatform}
+        onSortChange={setSortBy}
+        onSelectIdentity={setSelectedIdentityId}
+        onLink={handleLink}
+        onCancelLink={() => { setIsLinking(false); setLinkSource(null); }}
+        onStartLink={(u) => { setLinkSource(u); setIsLinking(true); }}
+        onUnlink={handleUnlink}
+        isRelevant={isRelevant}
+        SORT_COLUMNS={SORT_COLUMNS}
+      />
     </div>
   )
 }

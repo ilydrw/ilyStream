@@ -29,7 +29,7 @@ export function registerStreamingHandlers(streamingService: StreamingService): v
   ipcMain.handle('streaming:start-recording', async (_event, config: RecordingConfig) => {
     try {
       await streamingService.startRecording(config)
-      return { success: true }
+      return { success: true, path: streamingService.getRecordingOutputPath() }
     } catch (err) {
       return { success: false, error: String(err) }
     }
