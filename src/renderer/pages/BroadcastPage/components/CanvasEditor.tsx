@@ -32,7 +32,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     activeScene, isStreaming, isRecording, captureInputFormat,
     outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
-    dualVerticalOverlayEnabled = false,
+    dualVerticalOverlayEnabled = false, isVisible = true,
     onContextMenu, onSelectionContextChange
   } = props
   
@@ -97,7 +97,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     canvasRef, secondaryPreviewCanvasRef, activeScene, aspectRatio, outputFps, outputActive, previewMode,
     videoRefs, mediaFrameCache, browserFrameCache, imageCache, audioClockRef, encoderWorkerRef,
     horizontalEncoderWorkerRef, verticalEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
-    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled
+    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible
   })
 
   useImperativeHandle(ref, () => ({

@@ -13,6 +13,7 @@ import { VTubeService } from './vtube-service'
 import { EconomyService } from '../economy/economy-service'
 import { StatsService } from '../stats/stats-service'
 import { GoveeService } from './govee-service'
+import { LightingManagerService } from './lighting/lighting-manager'
 
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
@@ -32,7 +33,8 @@ export class EventOrchestrator {
     private vtubeService: VTubeService,
     private economyService: EconomyService,
     private statsService: StatsService,
-    private goveeService: GoveeService
+    private goveeService: GoveeService,
+    private lightingManager: LightingManagerService
   ) {}
 
   init(): void {
@@ -209,24 +211,34 @@ export class EventOrchestrator {
 
   private handleHardwareAlerts(event: any): void {
     const settings = resolveAppSettings(this.db.getAllSettings())
-    if (event.type === 'follow' && settings.hueFlashOnFollow) {
-      this.hueService.triggerStrobe(settings.hueFlashDurationMs).catch(() => {})
-    }
-    if (event.type === 'follow' && settings.goveeFlashOnFollow) {
-      this.goveeService.triggerStrobe(settings.goveeFlashDurationMs).catch(() => {})
+    const devices = this.lightingManager.getState().devices
+
+    if (event.type === 'follow') {
+      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      for (const device of devices) {
+        if (device.platform === 'hue' && settings.hueFlashOnFollow) {
+          this.lightingManager.executeAction(device.id, 'flash', { duration })
+        } else if (device.platform === 'govee' && settings.goveeFlashOnFollow) {
+          this.lightingManager.executeAction(device.id, 'flash', { duration })
+        }
+      }
     }
 
-    if (event.type === 'gift' && settings.hueFlashOnGift && !event.isCombo) {
-      this.hueService.triggerCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
-    }
-    if (event.type === 'gift' && settings.goveeFlashOnGift && !event.isCombo) {
-      this.goveeService.triggerCyberGradientStrobe(settings.goveeFlashDurationMs).catch(() => {})
+    if (event.type === 'gift' && !event.isCombo) {
+      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      for (const device of devices) {
+        if (device.platform === 'hue' && settings.hueFlashOnGift) {
+          this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#D035F1' })
+        } else if (device.platform === 'govee' && settings.goveeFlashOnGift) {
+          this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#D035F1' })
+        }
+      }
     }
 
     if (event.type === 'subscription') {
-      this.hueService.triggerSuperfanCyberGradientStrobe(settings.hueFlashDurationMs).catch(() => {})
-      if (settings.goveeFlashOnFollow || settings.goveeFlashOnGift) {
-        this.goveeService.triggerSuperfanCyberGradientStrobe(settings.goveeFlashDurationMs).catch(() => {})
+      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      for (const device of devices) {
+        this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#19C8FF' })
       }
     }
   }
@@ -302,8 +314,9 @@ export class EventOrchestrator {
         break
 
       case 'HUE_STRIKE':
-        this.hueService.triggerStrobe(2000).catch(() => {})
-        this.goveeService.triggerStrobe(2000).catch(() => {})
+        for (const device of this.lightingManager.getState().devices) {
+          this.lightingManager.executeAction(device.id, 'flash', { duration: 2000 })
+        }
         break
 
       case 'HALVING':

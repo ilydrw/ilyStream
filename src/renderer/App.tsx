@@ -13,6 +13,7 @@ import { useTTS } from './hooks/useTTS'
 import { useSettingsSync } from './hooks/useSettingsSync'
 import { useSoundPlayback } from './hooks/useSoundPlayback'
 import { useLogInterception } from './hooks/useLogInterception'
+import { useUpdateSync } from './hooks/useUpdateSync'
 import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
 
@@ -83,6 +84,7 @@ export default function App() {
   useTTS(isMounted)
   useSoundPlayback()
   useLogInterception()
+  useUpdateSync()
   
   const location = useLocation()
   const searchParams = new URLSearchParams(location.search || window.location.search)

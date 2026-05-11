@@ -29,6 +29,7 @@ export interface CanvasEditorProps {
   previewMode?: CanvasPreviewMode
   selectionContext?: '16:9' | '9:16'
   dualVerticalOverlayEnabled?: boolean
+  isVisible?: boolean
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
 }

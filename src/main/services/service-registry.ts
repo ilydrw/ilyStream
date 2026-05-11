@@ -28,6 +28,7 @@ import { DeviceApi } from '../overlay/device-api'
 import { BrowserSourceService } from './browser-source-service'
 import { GoveeService } from './govee-service'
 import { VirtualCameraService } from './virtual-camera-service'
+import { LightingManagerService } from './lighting/lighting-manager'
 
 export class ServiceRegistry {
   public db: Database
@@ -57,6 +58,7 @@ export class ServiceRegistry {
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
   public virtualCameraService: VirtualCameraService
+  public lightingManager: LightingManagerService
   private initialized = false
   private initializationPromise: Promise<void> | null = null
 
@@ -81,6 +83,11 @@ export class ServiceRegistry {
     this.statsService = new StatsService(this.db)
     this.goveeService = new GoveeService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
+    this.lightingManager = new LightingManagerService()
+    
+    // Register lighting providers
+    this.lightingManager.registerProvider(this.hueService)
+    this.lightingManager.registerProvider(this.goveeService)
 
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)
@@ -109,7 +116,8 @@ export class ServiceRegistry {
       this.vtubeService,
       this.economyService,
       this.statsService,
-      this.goveeService
+      this.goveeService,
+      this.lightingManager
     )
 
     this.overlayServer.setDatabase(this.db)
@@ -219,12 +227,8 @@ export class ServiceRegistry {
         console.log('[services] Spotify session restoration attempt complete.')
       })(),
       (async () => {
-        console.log('[services] Initializing Hue service...')
-        await this.hueService.initialize()
-      })(),
-      (async () => {
-        console.log('[services] Initializing Govee service...')
-        await this.goveeService.initialize()
+        console.log('[services] Initializing Lighting Manager (and hardware providers)...')
+        await this.lightingManager.initialize()
       })()
     ])
     console.log('[services] Service initialization sequence finished.')
@@ -234,8 +238,7 @@ export class ServiceRegistry {
     this.chatRelayService.dispose()
     this.economyService.dispose()
     this.spotifyService.dispose()
-    this.hueService.dispose()
-    this.goveeService.dispose()
+    await this.lightingManager.dispose()
     await Promise.allSettled([
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),

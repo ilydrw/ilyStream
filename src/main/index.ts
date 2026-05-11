@@ -8,6 +8,7 @@ import { ServiceRegistry } from './services/service-registry'
 import { registerIpcHandlers } from './ipc/handlers'
 import { setupEventForwarding } from './ipc/events'
 import { setupLogger } from './lib/logger'
+import { setupAutoUpdates, disposeAutoUpdates } from './services/update-service'
 
 // Global logger setup
 setupLogger()
@@ -322,6 +323,10 @@ app.whenReady().then(async () => {
   createTray()
   console.log('[main] Creating main window...')
   createWindow()
+  
+  // Initialize auto-updates (handled in background)
+  setupAutoUpdates(() => mainWindow)
+  
   console.log('[main] Application ready.')
 
   app.on('activate', function () {
@@ -370,6 +375,7 @@ app.on('before-quit', (event) => {
   isQuitting = true
   event.preventDefault()
   stopBackgroundTimers()
+  disposeAutoUpdates()
   void (async () => {
     try {
       await services.dispose()

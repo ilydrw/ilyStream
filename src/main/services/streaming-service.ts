@@ -286,7 +286,7 @@ export class StreamingService extends EventEmitter {
     this.emitStatusChanged('error', `${session.config.name}: ${error.message}`)
   }
 
-  private stopStreamOutput(id: string) {
+  public stopStreamOutput(id: string) {
     const session = this.streamOutputs.get(id)
     if (session) {
       session.stop()

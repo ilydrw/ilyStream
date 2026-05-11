@@ -12,6 +12,11 @@ const Colors = {
   FgOrange: "\x1b[38;5;208m",
 };
 
+import { EventEmitter } from 'events'
+
+class LogEmitter extends EventEmitter {}
+export const logEmitter = new LogEmitter()
+
 const PrefixColors: Record<string, string> = {
   'main': Colors.FgYellow,
   'services': Colors.FgYellow,
@@ -104,6 +109,7 @@ export function setupLogger() {
       }
     }
     originalLog(...sanitizedArgs);
+    logEmitter.emit('log', { level: 'info', args: sanitizedArgs });
   };
 
   console.warn = (...args: any[]) => {
@@ -118,6 +124,7 @@ export function setupLogger() {
       }
     }
     originalWarn(...sanitizedArgs);
+    logEmitter.emit('log', { level: 'warn', args: sanitizedArgs });
   };
 
   console.error = (...args: any[]) => {
@@ -132,5 +139,6 @@ export function setupLogger() {
       }
     }
     originalError(...sanitizedArgs);
+    logEmitter.emit('log', { level: 'error', args: sanitizedArgs });
   };
 }

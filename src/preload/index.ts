@@ -37,7 +37,9 @@ const allowedEventChannels = new Set([
   'spotify:now-playing',
   'govee:status-changed',
   'streaming:native-audio-clock',
-  'virtualcamera:status-changed'
+  'system:log',
+  'virtualcamera:status-changed',
+  'system:update-status'
 ])
 
 const api = {
@@ -278,6 +280,10 @@ const api = {
     start: (opts?: any) => ipcRenderer.invoke('virtualcamera:start', opts),
     stop: () => ipcRenderer.invoke('virtualcamera:stop'),
     getStatus: () => ipcRenderer.invoke('virtualcamera:get-status')
+  },
+  // --- System ---
+  system: {
+    installUpdate: () => ipcRenderer.invoke('system:install-update')
   }
 }
 

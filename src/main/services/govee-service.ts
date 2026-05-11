@@ -3,6 +3,8 @@ import dgram from 'node:dgram'
 import os from 'node:os'
 import log from 'electron-log'
 import { Database } from '../db/database'
+import { LightProvider } from './lighting/lighting-manager'
+import { LightingDevice, LightPlatform } from '../../shared/lighting'
 
 const GOVEE_MULTICAST_ADDRESS = '239.255.255.250'
 const GOVEE_SCAN_PORT = 4001
@@ -33,7 +35,8 @@ export interface GoveeDevice {
   selected?: boolean
 }
 
-export class GoveeService extends EventEmitter {
+export class GoveeService extends EventEmitter implements LightProvider {
+  public platform: LightPlatform = 'govee'
   private apiKey: string | null = null
   private isConnected = false
   private devices: GoveeDevice[] = []
@@ -592,6 +595,70 @@ export class GoveeService extends EventEmitter {
         cmd: { name, value }
       })
     })
+  }
+
+  // --- LightProvider Implementation ---
+
+  public getDevices(): LightingDevice[] {
+    return this.devices.map(d => ({
+      id: d.device,
+      name: d.deviceName,
+      platform: 'govee',
+      online: this.isConnected,
+      reachable: d.controllable,
+      brightness: 100, // Placeholder
+      on: true, // Placeholder
+      lastSeen: d.lanDiscoveredAt || Date.now()
+    }))
+  }
+
+  public async scan(): Promise<void> {
+    await this.getDevices(true)
+  }
+
+  public async setPower(deviceId: string, on: boolean): Promise<void> {
+    const device = this.devices.find(d => d.device === deviceId)
+    if (!device) return
+    if (device.ip) {
+      await this.setLanTurn(device, on)
+    } else {
+      await this.controlCloudDevice(device, 'turn', on ? 'on' : 'off')
+    }
+  }
+
+  public async setBrightness(deviceId: string, brightness: number): Promise<void> {
+    const device = this.devices.find(d => d.device === deviceId)
+    if (!device) return
+    if (device.ip) {
+      await this.setLanBrightness(device, brightness)
+    } else {
+      await this.controlCloudDevice(device, 'brightness', brightness)
+    }
+  }
+
+  public async setColor(deviceId: string, color: string): Promise<void> {
+    const device = this.devices.find(d => d.device === deviceId)
+    if (!device) return
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    
+    if (device.ip) {
+      await this.setLanColor(device, { r, g, b })
+    } else {
+      await this.controlCloudDevice(device, 'color', { r, g, b })
+    }
+  }
+
+  public async applyEffect(deviceId: string, effect: 'flash' | 'pulse', color?: string, duration?: number): Promise<void> {
+    if (effect === 'flash') {
+      const r = color ? parseInt(color.slice(1, 3), 16) : 255
+      const g = color ? parseInt(color.slice(3, 5), 16) : 255
+      const b = color ? parseInt(color.slice(5, 7), 16) : 255
+      await this.triggerAlert({ r, g, b }, duration || 5000)
+    } else if (effect === 'pulse') {
+      await this.triggerStrobe(duration || 5000)
+    }
   }
 }
 
