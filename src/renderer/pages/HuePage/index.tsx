@@ -99,7 +99,7 @@ export default function HuePage() {
     try {
       const success = await connect(targetIp, localUsername)
       if (!success) {
-        setError('Failed to connect to the bridge at ' + targetIp + '. IconCheck the IP and ensure the Bridge is powered on.')
+        setError('Failed to connect to the bridge at ' + targetIp + '. Check the IP and ensure the Bridge is powered on.')
       }
     } catch (err: any) {
       setError(`Technical error during connection: ${err.message || 'Unknown error'}`)
@@ -320,7 +320,7 @@ export default function HuePage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-white mb-1">Flash on IconGift</div>
+                  <div className="text-sm font-bold text-white mb-1">Flash on Gift</div>
                   <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on gifts</div>
                 </div>
                 <Toggle value={settings.hueFlashOnGift} onChange={(val) => updateSetting('hueFlashOnGift', val)} />

@@ -10,7 +10,7 @@ interface StudioRuntimeSectionProps {
 }
 
 const relayModes: Array<{ value: RelayTagMode; label: string }> = [
-  { value: 'platform-and-user', label: 'Platform + IconUser' },
+  { value: 'platform-and-user', label: 'Platform + User' },
   { value: 'platform', label: 'Platform Only' },
   { value: 'none', label: 'Clean Relay' }
 ]

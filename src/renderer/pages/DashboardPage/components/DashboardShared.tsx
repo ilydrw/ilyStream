@@ -8,7 +8,7 @@ export function MetricCard({ icon, label, value, subValue, trend, accent = 'text
       <div className={`mb-3 transition-transform duration-300 ${accent}`}>
         {icon}
       </div>
-      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 mb-1 truncate">
+      <div className="kicker !opacity-100 mb-1 truncate">
         {label}
       </div>
       <div className="text-xl font-black text-white tabular-nums leading-none mb-1 truncate">{value}</div>
@@ -25,7 +25,7 @@ export function QuickLink({ to, icon, label }: { to: string; icon: ReactNode; la
       <div className="text-white/20 group-hover:text-accent transition-colors scale-90">
         {icon}
       </div>
-      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      <span className="kicker !opacity-100 group-hover:!text-accent transition-colors">{label}</span>
     </Link>
   )
 }

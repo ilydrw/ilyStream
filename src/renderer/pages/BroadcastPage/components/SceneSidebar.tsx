@@ -3,7 +3,7 @@ import type { StudioScene } from '../../../../shared/studio'
 
 interface SceneSidebarProps {
   scenes: StudioScene[]
-  activeSceneId: string
+  activeSceneId: string | null
   onSelectScene: (id: string) => void
   onAddScene: (name: string) => void
   onRenameScene: (id: string, name: string) => void
@@ -22,7 +22,7 @@ export function SceneSidebar(props: SceneSidebarProps) {
   return (
     <div className="w-64 shrink-0 border-r border-white/[0.04] flex flex-col bg-[#050505] animate-in slide-in-from-left duration-300">
       <div className="px-5 py-5 flex items-center justify-between border-b border-white/[0.02] bg-white/[0.01]">
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-white/30">Scenes</h3>
+        <h3 className="kicker !opacity-100">Scenes</h3>
         <button onClick={() => onAddScene(`Scene ${scenes.length + 1}`)} className="text-accent hover:text-white transition-colors">
           <IconPlus size={20} />
         </button>

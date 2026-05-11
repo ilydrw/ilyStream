@@ -231,7 +231,7 @@ export class StatsRepository extends BaseRepository {
     this.db.prepare(`
       INSERT INTO user_stats (
         username, platform, display_name, profile_picture_url, is_fan_club_member,
-        total_likes, total_gifts, total_gift_value_cents, total_subscriptions, 
+        total_likes, total_gifts, total_gift_value_cents, total_subscriptions,
         total_follows, total_shares, total_raids, total_chats, total_song_requests,
         first_seen_at, last_seen_at
       )
@@ -244,7 +244,10 @@ export class StatsRepository extends BaseRepository {
         total_gifts = user_stats.total_gifts + excluded.total_gifts,
         total_gift_value_cents = user_stats.total_gift_value_cents + excluded.total_gift_value_cents,
         total_subscriptions = user_stats.total_subscriptions + excluded.total_subscriptions,
-        total_follows = user_stats.total_follows + excluded.total_follows,
+        -- A user can only "have followed" a channel once. Clamp to 1 so repeat
+        -- follow events (TikTok social spam, Twitch backfill on every reconnect)
+        -- don't inflate the count.
+        total_follows = MIN(user_stats.total_follows + excluded.total_follows, 1),
         total_shares = user_stats.total_shares + excluded.total_shares,
         total_raids = user_stats.total_raids + excluded.total_raids,
         total_chats = user_stats.total_chats + excluded.total_chats,
@@ -253,7 +256,10 @@ export class StatsRepository extends BaseRepository {
     `).run(
       username, platform, displayName || null, profilePictureUrl || null, isFanClubMember ? 1 : 0,
       increments.likes || 0, increments.gifts || 0, increments.giftValueCents || 0,
-      increments.subscriptions || 0, increments.follows || 0, increments.shares || 0,
+      increments.subscriptions || 0,
+      // Clamp the incoming delta too so a single oversized increment can't bypass the upsert clamp.
+      Math.min(1, increments.follows || 0),
+      increments.shares || 0,
       increments.raids || 0, increments.chats || 0, increments.songRequests || 0
     )
   }
@@ -278,12 +284,13 @@ export class StatsRepository extends BaseRepository {
 
   getPlatformTotals(platform: string): any {
     const row = this.db.prepare(`
-      SELECT 
+      SELECT
         COALESCE(SUM(total_likes), 0) as totalLikes,
         COALESCE(SUM(total_gifts), 0) as totalGifts,
         COALESCE(SUM(total_gift_value_cents), 0) as totalGiftValueCents,
         COALESCE(SUM(total_subscriptions), 0) as totalSubscriptions,
-        COALESCE(SUM(total_follows), 0) as totalFollows,
+        -- "Followers we've seen events from" — one per user, never multiplied.
+        COALESCE(SUM(CASE WHEN total_follows > 0 THEN 1 ELSE 0 END), 0) as totalFollows,
         COALESCE(SUM(total_shares), 0) as totalShares,
         COALESCE(SUM(total_raids), 0) as totalRaids,
         COALESCE(SUM(total_chats), 0) as totalChats,
@@ -293,8 +300,8 @@ export class StatsRepository extends BaseRepository {
     `).get(platform) as any
 
     return row || {
-      totalLikes: 0, totalGifts: 0, totalGiftValueCents: 0, 
-      totalSubscriptions: 0, totalFollows: 0, totalShares: 0, 
+      totalLikes: 0, totalGifts: 0, totalGiftValueCents: 0,
+      totalSubscriptions: 0, totalFollows: 0, totalShares: 0,
       totalRaids: 0, totalChats: 0, totalSongRequests: 0,
       uniqueUserCount: 0
     }
@@ -302,6 +309,103 @@ export class StatsRepository extends BaseRepository {
 
   getUniqueFollowerCount(): number {
     return (this.db.prepare('SELECT COUNT(*) as count FROM user_stats WHERE total_follows > 0').get() as { count: number }).count
+  }
+
+  getUniqueFollowerCountByPlatform(platform: string): number {
+    return (this.db.prepare('SELECT COUNT(*) as count FROM user_stats WHERE total_follows > 0 AND platform = ?').get(platform) as { count: number }).count
+  }
+
+  /**
+   * Store the platform's authoritative follower count (pulled from its public
+   * API or live-room state). Also records an hourly snapshot so we can compute
+   * growth deltas later — same hour writes are upserted so we don't bloat
+   * the snapshots table with sub-hour samples.
+   */
+  setPlatformFollowerCount(platform: string, count: number): void {
+    const safeCount = Math.max(0, Math.floor(count))
+    this.db.prepare(`
+      INSERT INTO platform_follower_stats (platform, follower_count, last_synced_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(platform) DO UPDATE SET
+        follower_count = excluded.follower_count,
+        last_synced_at = CURRENT_TIMESTAMP
+    `).run(platform, safeCount)
+
+    const hourStart = new Date()
+    hourStart.setMinutes(0, 0, 0)
+    this.db.prepare(`
+      INSERT INTO follower_snapshots (platform, captured_at, follower_count)
+      VALUES (?, ?, ?)
+      ON CONFLICT(platform, captured_at) DO UPDATE SET
+        follower_count = excluded.follower_count
+    `).run(platform, hourStart.toISOString(), safeCount)
+  }
+
+  /**
+   * For every platform we have a count for: current count + growth deltas
+   * (24 h / 7 d / 30 d). Deltas are null when we don't have a snapshot that
+   * old yet — better than reporting "0 growth" which would be misleading.
+   */
+  getPlatformFollowerStats(): Record<string, {
+    followerCount: number
+    delta24h: number | null
+    delta7d: number | null
+    delta30d: number | null
+    lastSyncedAt: string | null
+  }> {
+    const rows = this.db.prepare('SELECT platform, follower_count, last_synced_at FROM platform_follower_stats').all() as Array<{
+      platform: string
+      follower_count: number
+      last_synced_at: string | null
+    }>
+
+    const result: Record<string, {
+      followerCount: number
+      delta24h: number | null
+      delta7d: number | null
+      delta30d: number | null
+      lastSyncedAt: string | null
+    }> = {}
+
+    const snapshotStmt = this.db.prepare(`
+      SELECT follower_count FROM follower_snapshots
+      WHERE platform = ? AND captured_at <= ?
+      ORDER BY captured_at DESC LIMIT 1
+    `)
+
+    const now = Date.now()
+    const delta = (platform: string, current: number, msAgo: number): number | null => {
+      const cutoff = new Date(now - msAgo).toISOString()
+      const row = snapshotStmt.get(platform, cutoff) as { follower_count: number } | undefined
+      if (!row) return null
+      return current - row.follower_count
+    }
+
+    const DAY = 24 * 60 * 60 * 1000
+    for (const row of rows) {
+      result[row.platform] = {
+        followerCount: row.follower_count,
+        delta24h: delta(row.platform, row.follower_count, DAY),
+        delta7d: delta(row.platform, row.follower_count, 7 * DAY),
+        delta30d: delta(row.platform, row.follower_count, 30 * DAY),
+        lastSyncedAt: row.last_synced_at
+      }
+    }
+
+    return result
+  }
+
+  /**
+   * Return raw snapshots for a platform within the requested window. Useful
+   * for sparkline charts. Capped at `limit` rows.
+   */
+  getFollowerSnapshots(platform: string, sinceIso: string, limit = 720): Array<{ capturedAt: string; followerCount: number }> {
+    const rows = this.db.prepare(`
+      SELECT captured_at, follower_count FROM follower_snapshots
+      WHERE platform = ? AND captured_at >= ?
+      ORDER BY captured_at ASC LIMIT ?
+    `).all(platform, sinceIso, Math.max(1, Math.min(5000, limit))) as Array<{ captured_at: string; follower_count: number }>
+    return rows.map(r => ({ capturedAt: r.captured_at, followerCount: r.follower_count }))
   }
 
   getUniqueUserCount(): number {

@@ -90,7 +90,7 @@ export function WidgetEditorModal({
         </div>
 
         {/* Body: config left, preview right */}
-        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] flex-1 min-h-0">
           {/* Config */}
           <div className="border-r border-white/[0.04] overflow-y-auto custom-scrollbar p-5">
             <ConfigEditor draft={draft} onChange={handleDraftChange} onPreview={handlePreviewOverride} />

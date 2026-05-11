@@ -64,6 +64,10 @@ export class FFmpegArgsBuilder {
     const inputFormat = config.inputFormat || 'mjpeg'
     const audioFormat = config.audioFormat || 'silent'
     const copyEncodedVideo = inputFormat === 'h264'
+    const isVirtualCam = fullUrl.startsWith('video=') || fullUrl.startsWith('/dev/video')
+    const format = isVirtualCam 
+      ? (process.platform === 'win32' ? 'dshow' : 'v4l2')
+      : 'flv'
 
     return [
       ...(inputFormat === 'h264'
@@ -77,31 +81,41 @@ export class FFmpegArgsBuilder {
       '-b:a', '160k',
       '-ar', '48000',
       '-ac', '2',
-      '-af', 'aresample=async=1:min_comp=0.001:min_hard_comp=0.050:first_pts=0',
+      // Allow up to 500 ms of AV drift before async-resampling kicks in.
+      // The previous 50 ms threshold caused audible pitch chirps every time
+      // the renderer hitched, because aresample stretches/compresses to "catch up".
+      '-af', 'aresample=async=1:min_hard_comp=0.500:first_pts=0',
       '-avoid_negative_ts', 'make_zero',
-      '-max_interleave_delta', '50000',
-      '-muxdelay', '0',
-      '-muxpreload', '0',
-      '-flush_packets', '1',
-      '-flvflags', 'no_duration_filesize+add_keyframe_index',
-      '-f', 'flv',
+      '-max_interleave_delta', '0',
+      ...(isVirtualCam ? [] : ['-flvflags', 'no_duration_filesize+add_keyframe_index']),
+      '-f', format,
       '-probesize', '5M',
       '-analyzeduration', '2000000',
-      '-tcp_nodelay', '1',
-      '-rtmp_buffer', '0',
-      '-rtmp_live', 'live',
-      '-rtmp_flashver', 'FMLE/3.0 (compatible; FMSc/1.0)',
+      ...(isVirtualCam ? [] : [
+        '-tcp_nodelay', '1',
+        // 2-second send buffer absorbs Wi-Fi reassociation / brief upload jitter.
+        // Previously `0` meant any 30 ms hiccup stalled the encoder.
+        '-rtmp_buffer', '2000',
+        '-rtmp_live', 'live',
+        '-rtmp_flashver', 'FMLE/3.0 (compatible; FMSc/1.0)',
+      ]),
       '-rw_timeout', '5000000',
-      '-reconnect', '1',
-      '-reconnect_at_eof', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '2',
-      '-bufsize', `${config.bitrateKbps}k`,
+      ...(isVirtualCam ? [] : [
+        '-reconnect', '1',
+        '-reconnect_at_eof', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '2',
+      ]),
+      // x264 VBV buffer 2× bitrate gives the encoder room to vary bitrate
+      // across complex/simple frames without forcing keyframes or lowering quality.
+      '-bufsize', `${config.bitrateKbps * 2}k`,
       fullUrl
     ]
   }
 
   public async buildRecordArgs(config: RecordingConfig, bestEncoder: string): Promise<string[]> {
+    if (!config.outputPath) throw new Error('Recording output path is required')
+
     const inputFormat = config.inputFormat || 'mjpeg'
     const encoder = inputFormat === 'h264' ? 'copy' : bestEncoder
     const audioFormat = config.audioFormat || 'silent'

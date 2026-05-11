@@ -1,6 +1,7 @@
-import {IconRadio, IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconCircle, IconRefresh, IconVideo, IconSquare, IconPlayerPlay, IconChevronRight, IconChevronLeft} from '@tabler/icons-react'
+import {IconRadio, IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconCircle, IconRefresh, IconVideo, IconSquare, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus} from '@tabler/icons-react'
 import { Select } from '../../../components/ui/Select'
 import { LayoutPlatformPicker } from '../components/LayoutPlatformPicker'
+import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 
 interface BroadcastHeaderProps {
   isStreaming: boolean
@@ -27,6 +28,8 @@ interface BroadcastHeaderProps {
   onOpenProjector: () => void
   obsStatus: any
   onToggleObsVirtualCamera: () => void
+  virtualCameraInfo: any
+  onToggleVirtualCamera: () => void
   platforms: any[]
   layoutAssignments: any
   onToggleLayoutAssignment: (layout: any, id: string) => void
@@ -45,7 +48,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
     showRightSidebar, onToggleRightSidebar, broadcastLayoutMode, onLayoutModeChange,
     undo, redo, canUndo, canRedo, onTakeScreenshot, onStartRecording, onStopRecording,
     onForceRefreshMedia, monitors, selectedMonitorId, onSetSelectedMonitorId,
-    onOpenProjector, obsStatus, onToggleObsVirtualCamera, platforms, layoutAssignments,
+    onOpenProjector, obsStatus, onToggleObsVirtualCamera, virtualCameraInfo, onToggleVirtualCamera, platforms, layoutAssignments,
     onToggleLayoutAssignment, onRemoveLayoutAssignment, customRtmpUrl, onCustomRtmpUrlChange,
     customStreamKey, onCustomStreamKeyChange, onStartBroadcast, onStopBroadcast
   } = props
@@ -97,8 +100,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           </button>
         </div>
 
-        <button onClick={onForceRefreshMedia} className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
-          <IconRefresh size={14} /> Reset Cam
+        <button onClick={onForceRefreshMedia} className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shrink-0">
+          <IconRefresh size={14} /> <span className="hidden xl:inline">Reset Cam</span>
         </button>
 
         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2 h-9">
@@ -109,20 +112,58 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             className="w-32"
             buttonClassName="h-7 bg-transparent border-0 px-2 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
           />
-          <button onClick={onOpenProjector} disabled={!monitors.length} className="h-7 px-3 rounded-lg bg-white/5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
-            <IconDeviceDesktop size={13} /> Project
+          <button onClick={onOpenProjector} disabled={!monitors.length} className="h-7 px-3 rounded-lg bg-white/5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest shrink-0">
+            <IconDeviceDesktop size={13} /> <span className="hidden xl:inline">Project</span>
           </button>
         </div>
 
-        <button onClick={onToggleObsVirtualCamera} disabled={!obsStatus?.connected} className={`h-9 px-4 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-25 disabled:cursor-not-allowed ${obsStatus?.virtualCameraActive ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300' : 'bg-white/5 border-white/10 text-white/35 hover:text-white hover:bg-white/10'}`}>
-          <IconVideo size={14} /> OBS Cam
+        <button onClick={onToggleObsVirtualCamera} disabled={!obsStatus?.connected} className={`h-9 px-4 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-25 disabled:cursor-not-allowed shrink-0 ${obsStatus?.virtualCameraActive ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300' : 'bg-white/5 border-white/10 text-white/35 hover:text-white hover:bg-white/10'}`}>
+          <IconVideo size={14} /> <span className="hidden xl:inline">OBS Cam</span>
         </button>
 
-        <LayoutPlatformPicker layout="horizontal" label="Horizontal" icon={<IconDeviceDesktop size={14} />} platforms={platforms} selectedIds={layoutAssignments.horizontal} blockedIds={layoutAssignments.vertical} disabled={broadcastLayoutMode === 'vertical'} isStreaming={isStreaming} onToggle={onToggleLayoutAssignment} onRemove={onRemoveLayoutAssignment} />
-        <LayoutPlatformPicker layout="vertical" label="Vertical" icon={<IconDeviceMobile size={14} />} platforms={platforms} selectedIds={layoutAssignments.vertical} blockedIds={layoutAssignments.horizontal} disabled={broadcastLayoutMode === 'horizontal'} isStreaming={isStreaming} onToggle={onToggleLayoutAssignment} onRemove={onRemoveLayoutAssignment} />
+        <button 
+          onClick={onToggleVirtualCamera} 
+          disabled={virtualCameraInfo?.state === 'unsupported'} 
+          className={`h-9 px-4 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-25 disabled:cursor-not-allowed shrink-0 ${virtualCameraInfo?.state === 'active' ? 'bg-accent/20 border-accent/30 text-accent' : 'bg-white/5 border-white/10 text-white/35 hover:text-white hover:bg-white/10'}`}
+        >
+          <IconVideo size={14} /> <span className="hidden xl:inline">Virtual Cam</span>
+        </button>
 
-        {assignedStreamCount === 0 && (
-          <div className="flex items-center gap-2">
+        <div className="flex bg-white/5 rounded-xl p-0.5 border border-white/10 ml-2">
+          <Select
+            value={platforms.find(p => layoutAssignments.horizontal.includes(p.id) || layoutAssignments.vertical.includes(p.id))?.id || (customRtmpUrl ? 'custom' : '')}
+            onChange={(val) => {
+              // Clear current assignments
+              platforms.forEach(p => {
+                if (layoutAssignments.horizontal.includes(p.id)) onRemoveLayoutAssignment('horizontal', p.id)
+                if (layoutAssignments.vertical.includes(p.id)) onRemoveLayoutAssignment('vertical', p.id)
+              })
+
+              if (val === 'custom') {
+                if (!customRtmpUrl) onCustomRtmpUrlChange('rtmp://')
+              } else {
+                onCustomRtmpUrlChange('')
+                onCustomStreamKeyChange('')
+                const isVertical = broadcastLayoutMode === 'vertical' || broadcastLayoutMode === 'dual-portrait'
+                onToggleLayoutAssignment(isVertical ? 'vertical' : 'horizontal', val)
+              }
+            }}
+            options={[
+              ...platforms.map(p => ({ 
+                value: p.id, 
+                label: p.name, 
+                icon: <PlatformLogo platform={p.id} size={14} /> 
+              })),
+              { value: 'custom', label: 'Custom RTMP', icon: <IconPlus size={14} /> }
+            ]}
+            className="w-48"
+            buttonClassName="h-9 bg-transparent border-0 px-4 text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all"
+            placeholder="Select Service"
+          />
+        </div>
+
+        {(customRtmpUrl || layoutAssignments.horizontal.includes('custom') || layoutAssignments.vertical.includes('custom')) && (
+          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
             <input value={customRtmpUrl} onChange={e => onCustomRtmpUrlChange(e.target.value)} placeholder="rtmp://server/app" className="h-9 w-44 rounded-xl bg-white/5 border border-white/10 px-3 text-[11px] font-bold text-white/70 placeholder:text-white/20 outline-none focus:border-accent/40" />
             <input value={customStreamKey} onChange={e => onCustomStreamKeyChange(e.target.value)} placeholder="Stream key" type="password" className="h-9 w-36 rounded-xl bg-white/5 border border-white/10 px-3 text-[11px] font-bold text-white/70 placeholder:text-white/20 outline-none focus:border-accent/40" />
           </div>

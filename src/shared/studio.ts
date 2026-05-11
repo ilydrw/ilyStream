@@ -40,6 +40,33 @@ export interface StudioLayer {
   // Cropping (Values are in pixels relative to original source size)
   crop?: { top: number; bottom: number; left: number; right: number }
   portraitCrop?: { top: number; bottom: number; left: number; right: number }
+
+  // Video Enhancements
+  enhancements?: {
+    brightness?: number // 0-200 (Default: 100)
+    contrast?: number   // 0-200 (Default: 100)
+    saturation?: number // 0-200 (Default: 100)
+    sharpen?: number    // 0-100 (Default: 0)
+    beauty?: number     // 0-100 (Default: 0)
+    temperature?: number // -100 to 100 (Default: 0)
+    vignette?: number   // 0-100 (Default: 0)
+    filterPreset?: string // 'none', 'bw', 'sepia', 'vintage', 'polaroid', etc.
+    cornerRadius?: number // 0 to 100
+    shape?: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond' | {
+      type: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond'
+      x: number // 0-100
+      y: number // 0-100
+      scale: number // 1-100
+      scope: 'both' | '16:9' | '9:16'
+    }
+    focusCircle?: {
+      enabled: boolean
+      x: number // 0-100
+      y: number // 0-100
+      radius: number // 1-100
+      blur: number // 0-100
+    }
+  }
 }
 
 export interface StudioScene {
@@ -52,6 +79,7 @@ export interface AudioSource {
   id: string
   name: string
   label?: string
+  color?: string
   deviceId?: string
   volume: number // 0 to 1
   muted: boolean

@@ -200,10 +200,13 @@ export function useMediaManagement(options: MediaManagementOptions) {
             channelMode: (layer.type === 'camera' || (layer.type === 'audio' && layer.config.audioOnlyDisplayCapture)) ? 'stereo' : 'mono',
             deviceId: layer.type === 'camera' ? resolveCameraAudioDeviceId(layer, devices) : layer.config.deviceId
           })
+        } else if (existing.name !== layer.name) {
+          // Sync name changes from layers to mixer tracks
+          addAudioSource(layer.id, { name: layer.name })
         }
       }
     })
-  }, [activeScene.id, devices, audioSources.length])
+  }, [activeScene.id, devices, audioSources.length, activeScene.layers.map(l => l.name).join(',')])
 
   return { streamReady, forceRefreshMedia, initMedia }
 }

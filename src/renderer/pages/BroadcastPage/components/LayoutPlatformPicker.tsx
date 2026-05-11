@@ -41,7 +41,7 @@ export function LayoutPlatformPicker({
     <div className={`flex items-center gap-2 rounded-xl border px-2 h-11 ${disabled ? 'border-white/5 bg-white/[0.02] opacity-40' : 'border-white/10 bg-white/5'}`}>
       <div className="flex items-center gap-1.5 text-white/45" title={`${label} output`}>
         {icon}
-        <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
+        <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">{label}</span>
       </div>
 
       <div className="flex items-center gap-1 max-w-52 overflow-x-auto custom-scrollbar">

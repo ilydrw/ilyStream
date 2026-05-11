@@ -14,6 +14,7 @@ import {
   StreamInfoEvent,
   UserInfo,
   ViewerCountEvent,
+  FollowerCountEvent,
   AnyStreamEvent
 } from '../types'
 
@@ -322,10 +323,44 @@ export class TwitchConnector extends BaseConnector {
   private startStreamPolling(): void {
     if (this.streamPollTimer) clearInterval(this.streamPollTimer)
     let lastSnapshotKey = ''
+    let unauthorizedCount = 0
+    let suppressUntil = 0
+    let lastFollowerCountAt = 0
     const tick = async () => {
       if (!this.apiClient || !this.broadcasterId) return
+      // A previously-failed 401 puts us in a quiet window so we don't spam
+      // Helix (and the console) with the same expired-token error every 30 s.
+      if (Date.now() < suppressUntil) return
       try {
         const stream = await this.apiClient.streams.getStreamByUserId(this.broadcasterId)
+        unauthorizedCount = 0
+
+        // Follower count poll — every 5 minutes so we don't hammer Helix.
+        // Requires moderator:read:followers (same scope as the EventSub follow).
+        if (Date.now() - lastFollowerCountAt > 5 * 60 * 1000 && this.hasTokenScope(FOLLOW_EVENTSUB_SCOPE)) {
+          lastFollowerCountAt = Date.now()
+          try {
+            const followers = await this.apiClient.channels.getChannelFollowers(this.broadcasterId)
+            if (typeof followers.total === 'number') {
+              this.emitEvent({
+                id: randomUUID(),
+                platform: 'twitch',
+                timestamp: new Date(),
+                type: 'follower-count',
+                raw: null,
+                count: followers.total
+              } satisfies FollowerCountEvent)
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            if (!/HTTP status code 401|Unauthorized/i.test(message)) {
+              console.warn('[twitch] Follower count poll failed:', message)
+            }
+            // If it's a 401, the outer try/catch's next iteration will detect
+            // it via the stream poll and start the suppression window.
+          }
+        }
+
         if (stream) {
           this.emitEvent({
             id: randomUUID(),
@@ -375,7 +410,20 @@ export class TwitchConnector extends BaseConnector {
           }
         }
       } catch (err) {
-        console.warn('[twitch] Stream poll failed:', err instanceof Error ? err.message : err)
+        const message = err instanceof Error ? err.message : String(err)
+        // Twurple surfaces HTTP errors with the status code in the message.
+        // Treat 401 (token revoked/expired) as terminal-ish: we can't recover
+        // without re-auth, so back off to a 5-minute heartbeat and only log
+        // the first occurrence so the user sees the cause without a flood.
+        if (/HTTP status code 401|Unauthorized/i.test(message)) {
+          unauthorizedCount++
+          suppressUntil = Date.now() + 5 * 60 * 1000
+          if (unauthorizedCount === 1) {
+            console.warn('[twitch] Stream poll: 401 Unauthorized — token appears invalid. Backing off for 5 minutes. Reconnect Twitch from Settings to resume metadata polling.')
+          }
+        } else {
+          console.warn('[twitch] Stream poll failed:', message)
+        }
       }
     }
     // Kick off an immediate poll so the UI doesn't sit empty for 30s after

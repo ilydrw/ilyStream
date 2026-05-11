@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {IconActivity, IconGripVertical, IconHeadphones, IconLock, IconMicrophone, IconMusic, IconPlus, IconPower, IconRadio, IconRoute, IconAdjustmentsHorizontal, IconSparkles, IconTrash, IconVolume2, IconVolume, IconVolumeOff, IconWaveSine, IconLockOpen} from '@tabler/icons-react'
+import {IconActivity, IconGripVertical, IconHeadphones, IconLock, IconMicrophone, IconMusic, IconPlus, IconPower, IconRadio, IconRoute, IconAdjustmentsHorizontal, IconSparkles, IconTrash, IconVolume2, IconVolume, IconVolumeOff, IconWaveSine, IconLockOpen, IconPencil, IconPalette, IconRefresh, IconEraser, IconLayoutSidebarLeftCollapse, IconLayoutSidebarRightCollapse} from '@tabler/icons-react'
 import { useStudioStore } from '../../../stores/studio-store'
 import type { AudioSource, StudioScene } from '../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../components/ui/ContextMenu'
@@ -74,7 +74,16 @@ const FX_PRESETS: FxPreset[] = [
   { type: 'eq', label: '3-Band EQ', params: { low: 0, mid: 0, high: 0 } },
   { type: 'limiter', label: 'Limiter', params: { threshold: -3 } },
   { type: 'radio', label: 'Radio Color', params: { drive: 12 } },
-  { type: 'echo', label: 'Delay IconSend', params: { delay: 0.22, feedback: 0.28, mix: 0.22 } }
+  { type: 'echo', label: 'Delay Send', params: { delay: 0.22, feedback: 0.28, mix: 0.22 } }
+]
+
+const TRACK_COLOR_PRESETS = [
+  { id: 'blue', label: 'Blue', value: '#64c7ff' },
+  { id: 'violet', label: 'Violet', value: '#a56bff' },
+  { id: 'green', label: 'Green', value: '#6ee787' },
+  { id: 'amber', label: 'Amber', value: '#f7c948' },
+  { id: 'pink', label: 'Pink', value: '#ff70b8' },
+  { id: 'red', label: 'Red', value: '#ff6b6b' }
 ]
 
 const VOLUME_MARKS = [
@@ -91,8 +100,19 @@ function sanitizeAudioSourceUpdates(updates: Partial<AudioSource>): Partial<Audi
   if ('volume' in next) next.volume = sanitizeVolume(next.volume)
   if ('pan' in next) next.pan = sanitizePan(next.pan)
   if ('channelMode' in next) next.channelMode = sanitizeChannelMode(next.channelMode)
+  if ('color' in next) next.color = normalizeTrackColor(next.color)
   if ('fxChain' in next && !Array.isArray(next.fxChain)) next.fxChain = []
   return next
+}
+
+function normalizeTrackColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed : undefined
+}
+
+function getTrackColor(source: AudioSource): string {
+  return normalizeTrackColor(source.color) || 'rgb(var(--accent-rgb))'
 }
 
 export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, streamReady = 0 }) => {
@@ -216,16 +236,107 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
     return Boolean(source.locked || layer?.locked || layer?.portraitLocked)
   }
 
+  const renameMixerTrack = (source: AudioSource) => {
+    // Select the source first to show the inspector
+    selectSource(source.id)
+    
+    // Focus the label input in the inspector for a sleek experience
+    setTimeout(() => {
+      const input = document.querySelector('input[placeholder="Track Label"]') as HTMLInputElement
+      if (input) {
+        input.focus()
+        input.select()
+      } else {
+        // Fallback for edge cases
+        const nextName = window.prompt('Rename mixer track', source.label || source.name)
+        if (nextName !== null) {
+          const trimmed = nextName.trim()
+          updateSource(source.id, { label: trimmed || undefined })
+          const layer = activeScene.layers.find(l => l.id === source.id)
+          if (layer && trimmed) updateLayer(activeScene.id, layer.id, { name: trimmed })
+        }
+      }
+    }, 100)
+  }
+
+  const recolorMixerTrack = (source: AudioSource) => {
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
+    const currentIndex = colors.indexOf(source.color || '')
+    const nextColor = colors[(currentIndex + 1) % colors.length]
+    updateSource(source.id, { color: nextColor })
+  }
+
+  const resetMixerTrack = (source: AudioSource) => {
+    updateSource(source.id, {
+      volume: 0.8,
+      pan: 0,
+      muted: false,
+      monitoring: source.id === 'master' ? true : false,
+      channelMode: source.type === 'mic' ? 'mono' : 'stereo'
+    })
+  }
+
+  const setCustomTrackColor = (source: AudioSource) => {
+    const current = normalizeTrackColor(source.color) || '#64c7ff'
+    const nextColor = window.prompt('Track color hex value', current)
+    if (nextColor === null) return
+    const normalized = normalizeTrackColor(nextColor)
+    if (!normalized) return
+    updateSource(source.id, { color: normalized })
+  }
+
+  const buildColorMenu = (source: AudioSource): ContextMenuItem[] => [
+    ...TRACK_COLOR_PRESETS.map(preset => ({
+      id: `color-${preset.id}`,
+      label: preset.label,
+      icon: <span className="h-3.5 w-3.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: preset.value }} />,
+      onClick: () => updateSource(source.id, { color: preset.value })
+    })),
+    { id: 'color-divider', label: '', divider: true },
+    {
+      id: 'color-custom',
+      label: 'Custom Color',
+      icon: <IconPalette size={16} />,
+      onClick: () => setCustomTrackColor(source)
+    },
+    {
+      id: 'color-clear',
+      label: 'Use Default Color',
+      icon: <IconEraser size={16} />,
+      onClick: () => updateSource(source.id, { color: undefined })
+    }
+  ]
+
   const buildTrackMenu = (source: AudioSource): ContextMenuItem[] => {
     const locked = getTrackLocked(source)
+    const isMaster = source.id === 'master'
     return [
       {
+        id: 'rename',
+        label: 'Rename Track',
+        icon: <IconPencil size={16} />,
+        onClick: () => renameMixerTrack(source)
+      },
+      {
+        id: 'color',
+        label: 'Track Color',
+        icon: <IconPalette size={16} />,
+        submenu: buildColorMenu(source)
+      },
+      {
+        id: 'reset',
+        label: 'Reset Mix Settings',
+        icon: <IconRefresh size={16} />,
+        onClick: () => resetMixerTrack(source)
+      },
+      { id: 'divider-edit', label: '', divider: true },
+      {
         id: 'lock',
-        label: locked ? 'IconLockOpen Track' : 'IconLock Track',
+        label: locked ? 'Unlock Track' : 'Lock Track',
         icon: locked ? <IconLockOpen size={16} /> : <IconLock size={16} />,
+        disabled: isMaster,
         onClick: () => lockMixerTrack(source, !locked)
       },
-      { id: 'divider-1', label: '', divider: true },
       {
         id: 'mute',
         label: source.muted ? 'Unmute Track' : 'Mute Track',
@@ -238,13 +349,30 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
         icon: <IconHeadphones size={16} />,
         onClick: () => updateSource(source.id, { monitoring: !source.monitoring })
       },
+      {
+        id: 'channel-mode',
+        label: sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo') === 'mono' ? 'Switch to Stereo' : 'Switch to Mono',
+        icon: <IconRoute size={16} />,
+        disabled: isMaster,
+        onClick: () => {
+          const current = sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo')
+          updateSource(source.id, { channelMode: current === 'mono' ? 'stereo' : 'mono' })
+        }
+      },
+      {
+        id: 'clear-fx',
+        label: 'Clear Inserts',
+        icon: <IconSparkles size={16} />,
+        disabled: !(source.fxChain || []).length,
+        onClick: () => updateSource(source.id, { fxChain: [] })
+      },
       { id: 'divider-2', label: '', divider: true },
       {
         id: 'delete',
-        label: locked ? 'IconLockOpen to Delete' : 'Delete Source + Track',
+        label: locked ? 'Unlock to Delete' : 'Delete Mixer Track',
         icon: <IconTrash size={16} />,
         danger: true,
-        disabled: locked,
+        disabled: locked || isMaster,
         onClick: () => removeMixerTrack(source)
       }
     ]
@@ -279,6 +407,12 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
               isMaster
               onSelect={() => setSelectedAudioSource('master')}
               onUpdate={updates => updateSource('master', updates)}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setSelectedAudioSource('master')
+                setContextMenu({ x: event.clientX, y: event.clientY, source: masterBus })
+              }}
             />
 
             <div className="w-px shrink-0 bg-white/[0.07] my-3" />
@@ -324,24 +458,28 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             className="shrink-0 border-l border-white/[0.07] bg-[#080808] flex flex-col min-h-0 relative z-10 shadow-[-30px_0_70px_rgba(0,0,0,0.45)]"
             style={{ width: sidebarWidth }}
           >
-        <div className="p-5 border-b border-white/[0.06]">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[9px] font-black uppercase tracking-[0.24em] text-accent whitespace-nowrap">Selected insert</span>
+        <div className="p-6 border-b border-white/[0.06] bg-black/20">
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-accent/80 whitespace-nowrap">Source Configuration</span>
                 <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.9)]" />
               </div>
               <input
                 value={selectedSource.label || selectedSource.name}
                 onChange={event => updateSource(selectedSource.id, { label: event.target.value })}
-                className="w-full bg-transparent text-xl font-black text-white outline-none uppercase tracking-tight"
+                className="w-full bg-transparent text-lg font-black text-white outline-none uppercase tracking-tighter focus:text-accent transition-colors"
+                placeholder="Track Label"
               />
-              <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 truncate">
-                {selectedSource.type} / {selectedSource.name}
+              <div className="mt-2 flex items-center gap-2">
+                <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-bold uppercase tracking-widest text-white/40">{selectedSource.type}</span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/20 truncate">
+                  {selectedSource.name}
+                </span>
               </div>
               {selectedSource.id !== 'master' && (
-                <div className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getStatusClasses(trackStatuses[selectedSource.id])}`}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                <div className={`mt-4 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest ${getStatusClasses(trackStatuses[selectedSource.id])}`}>
+                  <span className="h-2 w-2 rounded-full bg-current shadow-[0_0_8px_currentColor]" />
                   {trackStatuses[selectedSource.id]?.label || 'No stream'}
                 </div>
               )}
@@ -349,7 +487,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             <MiniPeak id={selectedSource.id} meter={selectedMeter} />
           </div>
 
-            <div className={`mt-5 grid gap-2 ${sidebarWidth < 340 ? 'grid-cols-1' : 'grid-cols-3'}`}>
+          <div className={`mt-6 grid gap-3 ${sidebarWidth < 300 ? 'grid-cols-1' : sidebarWidth < 480 ? 'grid-cols-2' : 'grid-cols-3'}`}>
             <InspectorToggle
               active={!selectedSource.muted}
               label="Output"
@@ -378,11 +516,11 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
             <button
               onClick={() => removeMixerTrack(selectedSource)}
               disabled={getTrackLocked(selectedSource)}
-              className="mt-3 h-9 w-full rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/15 transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
+              className="mt-4 h-11 w-full rounded-xl border border-red-500/20 bg-red-500/5 text-red-400/60 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all flex items-center justify-center gap-2.5 text-[10px] font-black uppercase tracking-[0.2em]"
               title="Remove this channel from the mixer"
             >
-              <IconTrash size={14} />
-              Delete Mixer Track
+              <IconTrash size={15} />
+              Remove Channel
             </button>
           )}
         </div>
@@ -921,8 +1059,16 @@ function ChannelStrip({
 }) {
   const Icon = isMaster ? IconRadio : source.type === 'mic' ? IconMicrophone : source.type === 'media' ? IconMusic : IconVolume2
   const db = linearToDb(source.volume)
+  const trackColor = getTrackColor(source)
   const [trackHeight, setTrackHeight] = useState(160)
+  const [folded, setFolded] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
+  const stripStyle = {
+    backfaceVisibility: 'hidden',
+    transform: 'translateZ(0)',
+    background: selected ? `color-mix(in srgb, ${trackColor} 13%, transparent)` : undefined,
+    boxShadow: selected ? `0 0 0 2px color-mix(in srgb, ${trackColor} 45%, transparent), 0 0 50px color-mix(in srgb, ${trackColor} 18%, transparent)` : undefined
+  } as React.CSSProperties
 
   useEffect(() => {
     if (!trackRef.current) return
@@ -935,20 +1081,122 @@ function ChannelStrip({
     return () => observer.disconnect()
   }, [])
 
+  // --- FOLDED (compact) view ---
+  if (folded) {
+    return (
+      <div
+        onClick={onSelect}
+        onContextMenu={onContextMenu}
+        className={`relative w-[64px] shrink-0 rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out ${
+          selected
+            ? 'ring-0'
+            : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]'
+        }`}
+        style={stripStyle}
+      >
+        <div className="absolute inset-y-0 left-0 w-1 opacity-80" style={{ backgroundColor: trackColor }} />
+
+        {/* Tiny header: icon + unfold */}
+        <div
+          className={`h-10 flex flex-col items-center justify-center gap-0.5 border-b border-white/[0.035] cursor-pointer ${isMaster ? 'bg-accent/[0.12]' : 'bg-black/20'}`}
+          onDoubleClick={e => { e.stopPropagation(); setFolded(false) }}
+          title="Double-click to expand"
+        >
+          <Icon size={12} style={{ color: trackColor }} />
+          <span className="text-[6px] font-black uppercase tracking-tight text-white/40 max-w-[52px] truncate text-center leading-none">
+            {(source.label || source.name).slice(0, 6)}
+          </span>
+        </div>
+
+        {/* Meters + Fader */}
+        <div className="flex-1 min-h-0 flex items-stretch overflow-hidden py-2 px-1.5 gap-1" ref={trackRef}>
+          {/* Left meter */}
+          <div className="w-[5px] shrink-0 rounded-sm bg-black/75 border border-white/[0.04] relative overflow-hidden">
+            <div
+              className={`absolute inset-0 bg-gradient-to-t from-emerald-500 via-lime-400 to-red-400 meter-clip-l-${source.id}`}
+              style={{ clipPath: `inset(${100 - Math.max(0, ((source.muted ? -60 : (meter.left <= 0.001 ? -60 : 20 * Math.log10(meter.left))) + 60) / 60) * 100}% 0 0 0)` }}
+            />
+          </div>
+
+          {/* Fader */}
+          <div className="relative flex-1 flex items-center justify-center">
+            <div className="absolute inset-y-1 left-1/2 -translate-x-1/2 w-0.5 rounded-full bg-black/60 border border-white/[0.04]" />
+            <input
+              aria-label={`${source.name} volume`}
+              type="range"
+              min={-60}
+              max={6}
+              step={0.1}
+              value={linearToDb(source.volume)}
+              onChange={event => onUpdate({ volume: dbToLinear(Number(event.target.value)) })}
+              onContextMenu={e => { e.preventDefault(); onUpdate({ volume: 1.0 }) }}
+              onPointerDown={event => {
+                event.stopPropagation()
+                useStudioStore.getState().saveHistory()
+              }}
+              onDragStart={event => event.preventDefault()}
+              className="absolute h-6 rotate-[-90deg] cursor-ns-resize accent-accent origin-center"
+              style={{ width: `${trackHeight - 8}px` }}
+            />
+          </div>
+
+          {/* Right meter */}
+          <div className="w-[5px] shrink-0 rounded-sm bg-black/75 border border-white/[0.04] relative overflow-hidden">
+            <div
+              className={`absolute inset-0 bg-gradient-to-t from-emerald-500 via-lime-400 to-red-400 meter-clip-r-${source.id}`}
+              style={{ clipPath: `inset(${100 - Math.max(0, ((source.muted ? -60 : (meter.right <= 0.001 ? -60 : 20 * Math.log10(meter.right))) + 60) / 60) * 100}% 0 0 0)` }}
+            />
+          </div>
+        </div>
+
+        {/* dB readout */}
+        <div className="shrink-0 text-center py-1">
+          <span className={`text-[8px] font-black tabular-nums tracking-tighter ${selected ? 'text-accent' : 'text-white/35'}`}>
+            {db <= -59.5 ? '-∞' : `${Math.round(db)}`}
+          </span>
+        </div>
+
+        {/* Monitor + Mute */}
+        <div className="h-10 px-1 border-t border-white/[0.035] bg-[#090909] flex items-center justify-center gap-1">
+          <button
+            onClick={event => { event.stopPropagation(); onUpdate({ monitoring: !source.monitoring }) }}
+            className={`flex-1 h-7 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent/15 ring-accent/35 text-accent' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
+            title="Monitor"
+          >
+            <IconHeadphones size={12} />
+          </button>
+          <button
+            onClick={event => { event.stopPropagation(); onUpdate({ muted: !source.muted }) }}
+            className={`flex-1 h-7 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.muted ? 'bg-red-500/15 ring-red-500/35 text-red-300' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
+            title="Mute"
+          >
+            {source.muted ? <IconVolumeOff size={12} /> : <IconVolume size={12} />}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // --- UNFOLDED (full) view ---
   return (
     <div
       onDragOver={onDragOver}
       onDrop={onDrop}
       onClick={onSelect}
       onContextMenu={onContextMenu}
-      className={`w-[106px] shrink-0 rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out ${
+      className={`relative w-[140px] shrink-0 rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out ${
         selected
-          ? 'bg-accent/[0.12] ring-2 ring-accent/40 shadow-[0_0_50px_rgba(var(--accent-rgb),0.15)]'
-          : 'bg-white/[0.025] ring-1 ring-white/[0.05] hover:bg-white/[0.045] hover:ring-white/[0.08]'
+          ? 'ring-0'
+          : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]'
       } ${dragActive ? 'opacity-40 scale-95' : ''}`}
-      style={{ backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
+      style={stripStyle}
     >
-      <div className={`h-12 px-2 border-b border-white/[0.035] flex items-center gap-2 ${isMaster ? 'bg-accent/[0.12]' : 'bg-black/20'}`}>
+      <div className="absolute inset-y-0 left-0 w-1 opacity-80" style={{ backgroundColor: trackColor }} />
+      <div
+        className={`h-12 px-2 border-b border-white/[0.035] flex items-center gap-2 ${isMaster ? 'bg-accent/[0.12]' : 'bg-black/20'}`}
+        onDoubleClick={e => { e.stopPropagation(); setFolded(true) }}
+        title="Double-click to collapse"
+      >
         {!isMaster && (
           <span
             draggable={!locked}
@@ -962,13 +1210,13 @@ function ChannelStrip({
             {locked ? <IconLock size={12} /> : <IconGripVertical size={12} />}
           </span>
         )}
-        <Icon size={14} className={selected || isMaster ? 'text-accent' : 'text-white/28'} />
+        <Icon size={14} className={selected || isMaster ? '' : 'text-white/28'} style={selected || isMaster ? { color: trackColor } : undefined} />
         <span className="min-w-0 truncate text-[10px] font-black uppercase tracking-tight text-white/55">
           {source.label || source.name}
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 px-3 py-3 flex gap-3 overflow-hidden relative">
+      <div className="flex-1 min-h-0 py-3 pr-3 pl-5 flex gap-3 overflow-hidden">
         <StereoMeter id={source.id} meter={meter} muted={source.muted} />
         <div className="flex-1 flex flex-col items-center gap-2 min-h-0">
           <div className="shrink-0">
@@ -1060,7 +1308,7 @@ function ChannelStrip({
 
 function StereoMeter({ id, meter, muted }: { id: string; meter: MeterFrame; muted: boolean }) {
   return (
-    <div className="w-6 flex gap-1">
+    <div className="w-6 h-full flex gap-1 shrink-0" style={{ marginLeft: 8 }}>
       {(['left', 'right'] as const).map((side, i) => {
         const linearLevel = muted ? 0 : meter[side]
         const db = linearLevel <= 0.001 ? -60 : 20 * Math.log10(linearLevel)
@@ -1188,12 +1436,12 @@ function InspectorToggle({ active, label, icon: Icon, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`h-11 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-        active ? 'bg-accent/13 border-accent/30 text-accent' : 'bg-white/[0.025] border-white/[0.07] text-white/25 hover:text-white/50'
+      className={`h-11 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all px-2 overflow-hidden ${
+        active ? 'bg-accent/13 border-accent/30 text-accent shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)]' : 'bg-white/[0.025] border-white/[0.07] text-white/25 hover:text-white/50'
       }`}
     >
-      <Icon size={14} />
-      {label}
+      <Icon size={14} className="shrink-0" />
+      <span className="truncate">{label}</span>
     </button>
   )
 }
@@ -1354,25 +1602,34 @@ function FxCard({ fx, index, onToggle, onRemove, onParam }: {
   const preset = FX_PRESETS.find(item => item.type === fx.type)
   const params = fx.params || {}
   return (
-    <div className={`rounded-xl ring-1 p-4 transition-all ${fx.enabled ? 'bg-white/[0.035] ring-white/[0.08]' : 'bg-white/[0.015] ring-white/[0.04] opacity-60'}`}>
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-[10px] font-black text-white/18 tabular-nums">{String(index + 1).padStart(2, '0')}</span>
-        <div className={`w-1 h-7 rounded-full ${fx.enabled ? 'bg-accent' : 'bg-white/10'}`} />
-        <div className="flex-1">
-          <div className="text-[11px] font-black uppercase tracking-widest text-white/75">{preset?.label || fx.type}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest text-white/20">{fx.type}</div>
+    <div className={`rounded-2xl ring-1 p-6 transition-all duration-400 ${fx.enabled ? 'bg-white/[0.06] ring-white/[0.15] shadow-2xl' : 'bg-white/[0.02] ring-white/[0.06] opacity-30'}`}>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black text-white/20 tabular-nums leading-none mb-1.5">{String(index + 1).padStart(2, '0')}</span>
+            <div className={`w-1.5 h-6 rounded-full transition-all duration-500 ${fx.enabled ? 'bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.8)]' : 'bg-white/10'}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[13px] font-black uppercase tracking-[0.08em] text-white/95 truncate">{preset?.label || fx.type}</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-accent/40">Insert Node</div>
+          </div>
         </div>
-        <button onClick={onToggle} className={fx.enabled ? 'text-accent' : 'text-white/20'} title="Bypass">
-          <IconPower size={16} />
-        </button>
-        <button onClick={onRemove} className="text-white/18 hover:text-red-300" title="Remove">
-          <IconTrash size={16} />
-        </button>
+        <div className="flex items-center gap-2 bg-black/50 p-1.5 rounded-xl border border-white/10">
+          <button onClick={onToggle} className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${fx.enabled ? 'bg-accent/25 text-accent shadow-inner' : 'text-white/20 hover:text-white/40'}`} title="Toggle Bypass">
+            <IconPower size={15} />
+          </button>
+          <button onClick={onRemove} className="h-9 w-9 flex items-center justify-center rounded-lg text-white/20 hover:text-red-400 hover:bg-red-400/20 transition-all" title="Remove Insert">
+            <IconTrash size={15} />
+          </button>
+        </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {Object.entries(params).map(([key, value]) => (
-          <div key={key} className="flex flex-col sm:grid sm:grid-cols-[72px_1fr_48px] items-stretch sm:items-center gap-1 sm:gap-3">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/28">{key}</span>
+          <div key={key} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-white/35">{key}</span>
+              <span className="text-[9px] font-black text-white/50 tabular-nums">{formatParam(key, value)}</span>
+            </div>
             <input
               type="range"
               min={getParamRange(key).min}
@@ -1385,9 +1642,8 @@ function FxCard({ fx, index, onToggle, onRemove, onParam }: {
                 const defaultValue = preset?.params[key] ?? 0
                 onParam(key, defaultValue)
               }}
-              className="accent-accent"
+              className="accent-accent w-full h-1.5 rounded-full bg-white/[0.05] appearance-none cursor-pointer"
             />
-            <span className="text-[9px] font-black text-white/35 text-right tabular-nums">{formatParam(key, value)}</span>
           </div>
         ))}
       </div>
@@ -1397,7 +1653,7 @@ function FxCard({ fx, index, onToggle, onRemove, onParam }: {
 
 function MiniPeak({ id, meter }: { id: string; meter: MeterFrame }) {
   return (
-    <div className="w-16 h-11 rounded-lg border border-white/[0.07] bg-black/45 p-1 flex items-end gap-1">
+    <div className="w-16 h-11 rounded-lg border border-white/[0.07] bg-black/45 px-2 py-1 flex items-end gap-1.5">
       <div 
         className={`flex-1 rounded-sm bg-accent/70 meter-peak-l-${id}`} 
         style={{ height: `${Math.max(4, meter.left * 100)}%` }} 

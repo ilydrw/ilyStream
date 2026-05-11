@@ -160,7 +160,7 @@ export function ChatConfigEditor({
           <input
             type="range"
             min={0}
-            max={40}
+            max={80}
             step={1}
             value={config.blur}
             onChange={(e) => update('blur', Number(e.currentTarget.value))}

@@ -1,7 +1,7 @@
 {
   "name": "ilystream",
   "productName": "ilyStream",
-  "version": "0.0.5",
+  "version": "0.0.7-dev",
   "type": "module",
   "description": "Multi-platform livestream management interface with custom TTS",
   "main": "./out/main/index.js",
@@ -80,7 +80,7 @@
     "node-addon-api": "^8.7.0",
     "obs-websocket-js": "^5.0.8",
     "tailwind-merge": "^3.5.0",
-    "tiktok-live-connector": "^2.1.0",
+    "tiktok-live-connector": "2.1.1-beta1",
     "ws": "^8.20.0"
   },
   "overrides": {

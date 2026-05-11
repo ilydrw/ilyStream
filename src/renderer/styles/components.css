@@ -399,7 +399,49 @@
 
 .voice-fx-spectrum.is-live span {
   background: linear-gradient(180deg, rgba(25, 200, 255, 0.8), rgba(208, 53, 241, 0.5));
-  animation: voiceMeter 760ms ease-in-out infinite alternate;
+}
+
+.voice-fx-spectrum.is-clipping span {
+  background: linear-gradient(180deg, rgba(255, 100, 100, 0.9), rgba(255, 46, 80, 0.62));
+}
+
+.voice-fx-meter__readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.voice-fx-meter__readout span {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.voice-fx-meter__readout strong {
+  display: block;
+  margin-top: 3px;
+  color: white;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.voice-fx-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 89, 111, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 89, 111, 0.08);
+  color: rgba(255, 210, 216, 0.86);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .voice-fx-slider {

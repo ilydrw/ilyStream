@@ -2,7 +2,7 @@ import type { MutableRefObject } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 
 export type CanvasOutputLayoutId = 'horizontal' | 'vertical'
-export type CanvasPreviewMode = 'horizontal' | 'vertical' | 'dual' | 'dual-portrait' | 'dual-horizontal'
+export type CanvasPreviewMode = 'single' | 'horizontal' | 'vertical' | 'dual' | 'dual-portrait' | 'dual-horizontal'
 
 export interface CanvasStreamOutput {
   id: CanvasOutputLayoutId
@@ -27,6 +27,10 @@ export interface CanvasEditorProps {
   outputCodec?: string
   streamOutputs?: CanvasStreamOutput[]
   previewMode?: CanvasPreviewMode
+  selectionContext?: '16:9' | '9:16'
+  dualVerticalOverlayEnabled?: boolean
+  onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
+  onSelectionContextChange?: (context: '16:9' | '9:16') => void
 }
 
 export type HandleDir = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
@@ -70,13 +74,9 @@ export interface RotateState {
 }
 
 export interface BrowserFrameSurface {
-  canvas: HTMLCanvasElement
-  ctx: CanvasRenderingContext2D
-  imageData: ImageData
-  rgba: Uint8ClampedArray
-  pixels: Uint32Array
   width: number
   height: number
+  bitmap?: ImageBitmap
   lastUpdateAt?: number
 }
 

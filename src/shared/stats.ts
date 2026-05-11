@@ -83,6 +83,20 @@ export interface PlatformStats {
   totalChats: number
   totalSongRequests: number
   uniqueUserCount: number
+  /** Authoritative current follower count from the platform's API. null = not yet synced. */
+  followerCount: number | null
+  /** Growth delta over the last 24 hours, or null if we don't have a snapshot that old. */
+  followerDelta24h: number | null
+  followerDelta7d: number | null
+  followerDelta30d: number | null
+  /** ISO timestamp of the last successful API sync. */
+  followersLastSyncedAt: string | null
+}
+
+/** Single time-series sample of a platform's follower count. */
+export interface FollowerSnapshot {
+  capturedAt: string
+  followerCount: number
 }
 
 export type UserStatSortKey =
@@ -116,7 +130,12 @@ export const EMPTY_PLATFORM_STATS: PlatformStats = {
   totalRaids: 0,
   totalChats: 0,
   totalSongRequests: 0,
-  uniqueUserCount: 0
+  uniqueUserCount: 0,
+  followerCount: null,
+  followerDelta24h: null,
+  followerDelta7d: null,
+  followerDelta30d: null,
+  followersLastSyncedAt: null
 }
 
 export const EMPTY_GLOBAL_STATS: GlobalStats = {

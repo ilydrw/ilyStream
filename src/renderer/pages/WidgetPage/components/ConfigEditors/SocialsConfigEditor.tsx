@@ -40,52 +40,51 @@ export function SocialsConfigEditor({
 
   return (
     <div className="flex flex-col gap-8">
-      <Section label="Accounts">
-        <div className="flex flex-col gap-3">
+      <Section label="Linked Accounts">
+        <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
           {config.accounts.map((acc) => (
-            <div key={acc.id} className="flex flex-col gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 group relative">
+            <div key={acc.id} className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/5 group hover:bg-white/[0.05] transition-all">
+              <div className="w-8 h-8 rounded-lg bg-black/40 flex items-center justify-center shrink-0 border border-white/5 relative">
+                <select
+                  value={acc.platform}
+                  onChange={(e) => updateAccount(acc.id, { platform: e.target.value as any })}
+                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10"
+                >
+                  <option value="twitter">X</option>
+                  <option value="youtube">YT</option>
+                  <option value="tiktok">TT</option>
+                  <option value="twitch">TW</option>
+                  <option value="kick">KK</option>
+                  <option value="instagram">IG</option>
+                  <option value="discord">DC</option>
+                  <option value="custom">CS</option>
+                </select>
+                <span className="text-[9px] font-black uppercase text-accent pointer-events-none">{acc.platform.slice(0, 2)}</span>
+              </div>
+              
+              <input
+                type="text"
+                value={acc.username}
+                onChange={(e) => updateAccount(acc.id, { username: e.target.value })}
+                className="flex-1 bg-transparent border-none text-xs font-bold text-white/90 outline-none placeholder:text-white/10"
+                placeholder="@handle"
+              />
+
               <button 
                 onClick={() => removeAccount(acc.id)}
-                className="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center text-white/20 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/10 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100"
               >
-                <IconTrash size={13} />
+                <IconTrash size={12} />
               </button>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Platform">
-                  <select
-                    value={acc.platform}
-                    onChange={(e) => updateAccount(acc.id, { platform: e.target.value as any })}
-                    className="app-input !h-9 !text-xs !px-2 bg-white/[0.05] border-white/10"
-                  >
-                    <option value="twitter">Twitter / X</option>
-                    <option value="youtube">YouTube</option>
-                    <option value="tiktok">TikTok</option>
-                    <option value="twitch">Twitch</option>
-                    <option value="kick">Kick</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="discord">Discord</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </Field>
-                <Field label="Username">
-                  <input
-                    type="text"
-                    value={acc.username}
-                    onChange={(e) => updateAccount(acc.id, { username: e.target.value })}
-                    className="app-input !h-9 !text-xs !px-3"
-                    placeholder="@handle"
-                  />
-                </Field>
-              </div>
             </div>
           ))}
+          
           <button
             onClick={addAccount}
-            className="flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-white/40 hover:border-white/20 hover:text-white transition-all text-xs font-bold"
+            className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest text-white/20 hover:border-white/20 hover:text-white hover:bg-white/[0.02] transition-all"
           >
-            <IconPlus size={14} />
-            Add Social Account
+            <IconPlus size={12} />
+            Add Account
           </button>
         </div>
       </Section>

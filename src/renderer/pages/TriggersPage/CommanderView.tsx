@@ -190,7 +190,7 @@ export function CommanderView() {
                   <QuickActionButton 
                     icon={<IconMessage size={14} />} 
                     label="Discord Ping" 
-                    description="IconSend Test Webhook"
+                    description="Send Test Webhook"
                     onClick={() => {}}
                   />
                    <QuickActionButton 

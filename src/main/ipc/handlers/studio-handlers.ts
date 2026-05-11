@@ -26,6 +26,9 @@ function resolveBundledResource(...segments: string[]): string | null {
 }
 
 export function registerStudioHandlers(db: Database, overlayServer: OverlayServer, browserSourceService: BrowserSourceService) {
+  const projectorWindows = new Set<BrowserWindow>()
+  const ownerCleanupHandlers = new WeakMap<BrowserWindow, () => void>()
+
   // Deck Actions
   ipcMain.handle('studio:get-deck-actions', () => db.getAllDeckActions())
   ipcMain.handle('studio:save-deck-action', (_event, action) => {
@@ -169,13 +172,22 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
   }, { useSystemPicker: false })
 
   // Open fullscreen projector
-  ipcMain.handle('studio:open-projector', async (_event, { monitorId, sceneId }) => {
+  ipcMain.handle('studio:open-projector', async (event, payload: { monitorId: number, sceneId: string, aspectRatio?: string, layerId?: string }) => {
+    console.log('[StudioHandlers] Opening Projector Payload:', payload)
+    const { monitorId, sceneId, aspectRatio = '16:9', layerId } = payload
+    
+    if (!sceneId) {
+      console.error('[StudioHandlers] Cannot open projector: Missing sceneId')
+      return false
+    }
+
     const displays = screen.getAllDisplays()
     const targetDisplay = displays.find(d => d.id === monitorId) || screen.getPrimaryDisplay()
+    console.log('[StudioHandlers] Target Display Bounds:', targetDisplay.bounds)
 
     const iconPath = resolveBundledResource('ilyStream-AppIcon.ico')
     const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
-    
+
     const projectorWindow = new BrowserWindow({
       x: targetDisplay.bounds.x,
       y: targetDisplay.bounds.y,
@@ -186,25 +198,44 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       fullscreen: true,
       autoHideMenuBar: true,
       frame: false,
-      skipTaskbar: false,
       backgroundColor: '#000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: true,
+        sandbox: false,
         contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-        backgroundThrottling: false
+        nodeIntegration: false
       }
     })
 
-    const encodedSceneId = encodeURIComponent(String(sceneId || ''))
-    const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
-      ? `${process.env['ELECTRON_RENDERER_URL']}?projectorSceneId=${encodedSceneId}`
-      : `file://${join(__dirname, '../renderer/index.html')}?projectorSceneId=${encodedSceneId}`
+    projectorWindows.add(projectorWindow)
+    projectorWindow.once('closed', () => projectorWindows.delete(projectorWindow))
+    
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (owner && !ownerCleanupHandlers.has(owner)) {
+      const closeAllProjectors = () => {
+        for (const win of projectorWindows) {
+          if (!win.isDestroyed()) win.close()
+        }
+        projectorWindows.clear()
+      }
+      ownerCleanupHandlers.set(owner, closeAllProjectors)
+      owner.once('close', closeAllProjectors)
+    }
 
+    const encodedSceneId = encodeURIComponent(String(sceneId || ''))
+    const query = `?projectorSceneId=${encodedSceneId}&aspectRatio=${encodeURIComponent(aspectRatio)}${layerId ? `&projectorLayerId=${encodeURIComponent(layerId)}` : ''}`
+
+    const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
+      ? `${process.env['ELECTRON_RENDERER_URL']}${query}`
+      : `file://${join(__dirname, '../renderer/index.html')}${query}`
+
+    console.log('[StudioHandlers] Loading Projector URL:', loadUrl)
     await projectorWindow.loadURL(loadUrl)
+
+    projectorWindow.once('ready-to-show', () => {
+      projectorWindow.show()
+      projectorWindow.focus()
+    })
 
     // Close on Escape, and allow F11 to escape fullscreen if focus ever gets weird.
     projectorWindow.webContents.on('before-input-event', (event, input) => {

@@ -74,7 +74,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
               disabled={!settings.obsEnabled}
               className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-accent/5 hover:bg-accent/10 text-accent border-accent/20"
             >
-              {obsStatus?.connecting ? 'Linking...' : 'DeviceFloppy & Connect'}
+              {obsStatus?.connecting ? 'Linking...' : 'Save & Connect'}
             </button>
           </div>
         </div>

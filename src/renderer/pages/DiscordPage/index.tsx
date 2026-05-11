@@ -10,7 +10,7 @@ import {
 const PLATFORM_ID = 'discord'
 const FIELDS = [
   { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://discord.com/api/webhooks/...' },
-  { key: 'botToken', label: 'Robot Token', type: 'password', placeholder: 'Discord IconRobot Token' },
+  { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Discord Bot Token' },
   { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'Discord Application ID' }
 ]
 
@@ -23,7 +23,7 @@ export default function DiscordPage() {
       <PlatformPageHeader 
         platformId={PLATFORM_ID as any}
         title="Discord Integration"
-        description="Bridge your stream community to your Discord server. IconSend automated alerts, sync chat messages, and manage roles based on viewer activity."
+        description="Bridge your stream community to your Discord server. Send automated alerts, sync chat messages, and manage roles based on viewer activity."
         icon={<IconMessage size={14} />}
       />
 

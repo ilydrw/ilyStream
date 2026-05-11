@@ -264,38 +264,28 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
 
     function addLike(payload) {
       if (!payload) return;
-      const { displayName, profilePictureUrl, amount, meta } = payload;
+      const { displayName, profilePictureUrl, amount } = payload;
 
       // Skip events without an identifiable user — otherwise we'd key the Map by undefined.
       if (!displayName) return;
 
       const likeAmount = Math.max(1, Math.floor(Number(amount)) || 1);
 
-      // Update global total. totalLikes / meta can be platform-reported
-      // cumulative totals; if they are absent or stale, fall back to the delta.
-      let acceptedCumulative = false;
-      if (Number.isFinite(Number(payload.totalLikes)) && Number(payload.totalLikes) > totalLikes) {
-        totalLikes = Number(payload.totalLikes);
-        acceptedCumulative = true;
-      }
-
-      if (meta) {
-        const digits = String(meta).replace(/[^0-9]/g, '');
-        if (digits) {
-          const parsed = parseInt(digits, 10);
-          if (Number.isFinite(parsed) && parsed > totalLikes) {
-            totalLikes = parsed;
-            acceptedCumulative = true;
-          }
-        }
-      }
-
-      if (!acceptedCumulative) {
+      // The server now applies all source-of-truth logic for the global total
+      // (prefer platform cumulative, fall back to delta accumulation, ignore
+      // regressions). The overlay just trusts payload.totalLikes if present
+      // and never lets the on-screen counter go backward.
+      const incoming = Number(payload.totalLikes);
+      if (Number.isFinite(incoming) && incoming > totalLikes) {
+        totalLikes = incoming;
+      } else if (!Number.isFinite(incoming) || incoming <= 0) {
+        // Server didn't supply a total — increment locally as a fallback.
         totalLikes += likeAmount;
       }
       totalLikesEl.textContent = totalLikes.toLocaleString();
 
-      // Update per-user data
+      // Per-user count always increments by the per-event delta — the platform
+      // total only describes the aggregate, not the per-user attribution.
       let userData = users.get(displayName);
       if (!userData) {
         userData = { profilePictureUrl, count: 0, element: null };
@@ -335,7 +325,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
           displayName: 'Test User ' + Math.floor(Math.random() * 5),
           profilePictureUrl: 'https://via.placeholder.com/36',
           amount: 50,
-          meta: (totalLikes + 50).toLocaleString() + ' total'
+          totalLikes: totalLikes + 50
         });
       }
     });

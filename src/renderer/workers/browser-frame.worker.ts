@@ -19,12 +19,11 @@ self.onmessage = (event: MessageEvent) => {
     // High-speed bitwise swap (BGRA -> RGBA)
     for (let i = 0; i < sourcePixels.length; i++) {
       const v = sourcePixels[i]
-      const alpha = v >>> 24
-      const red = (v >>> 16) & 0xff
-      const green = (v >>> 8) & 0xff
-      const blue = v & 0xff
-      if (alpha > 8 && red + green + blue > 18) visiblePixels++
       targetPixels[i] = (v & 0xff00ff00) | ((v & 0xff0000) >> 16) | ((v & 0xff) << 16)
+      // Sampling-based blank detection (every 16th pixel)
+      if ((i & 15) === 0) {
+        if ((v >>> 24) > 8 && (v & 0xffffff) > 0) visiblePixels += 16
+      }
     }
   } else {
     // Optimized transparency check
@@ -36,15 +35,15 @@ self.onmessage = (event: MessageEvent) => {
         continue
       }
       
-      const red = (v >>> 16) & 0xff
-      const green = (v >>> 8) & 0xff
       const blue = v & 0xff
+      const green = (v >>> 8) & 0xff
+      const red = (v >>> 16) & 0xff
       
-      // Chroma key optimization
+      // Chroma key optimization: mostly dark or keyed pixels
       if (alpha >= 250 && red <= transparentChromaTolerance && green <= transparentChromaTolerance && blue <= transparentChromaTolerance) {
         targetPixels[i] = 0
       } else {
-        if (alpha > 8) visiblePixels++
+        if ((i & 15) === 0) visiblePixels += 16
         targetPixels[i] = (alpha << 24) | (blue << 16) | (green << 8) | red
       }
     }

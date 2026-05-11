@@ -259,8 +259,8 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
               <div className="flex items-center gap-3">
                 <IconHeadphones size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor IconRoute</h3>
-                  <p className="text-[11px] text-white/25">IconSend speech to a device or virtual cable.</p>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor Route</h3>
+                  <p className="text-[11px] text-white/25">Send speech to a device or virtual cable.</p>
                 </div>
               </div>
               <Toggle value={ttsMonitoring} onChange={toggleMonitoring} />
@@ -307,7 +307,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
                 className="app-button w-full !h-11 !text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <IconGauge size={15} />
-                {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'DeviceFloppy Provider Key'}
+                {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'Save Provider Key'}
               </button>
             </div>
           </aside>

@@ -83,7 +83,7 @@ export function OutboundSidebar({
             value={composerText}
             onChange={(e) => onComposerTextChange(e.target.value)}
             rows={4}
-            placeholder="IconTypography a message to send across platforms..."
+            placeholder="Type a message to send across platforms..."
             className="app-textarea !text-sm !resize-none"
           />
         </div>
@@ -93,7 +93,7 @@ export function OutboundSidebar({
           disabled={isSending || !composerText.trim() || selectedTargets.length === 0}
           className="app-button-primary !h-12 w-full font-bold"
         >
-          {isSending ? 'Transmitting...' : 'IconSend Message'}
+          {isSending ? 'Transmitting...' : 'Send Message'}
           <IconSend size={16} className="ml-2" />
         </button>
 

@@ -1,47 +1,18 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Suspense, lazy } from 'react'
+import { routes } from './routes'
 import { DashboardLayout } from './components/layout/DashboardLayout'
-import DashboardPage from './pages/DashboardPage'
-import ChatPage from './pages/ChatPage'
-import TTSPage from './pages/TTSPage'
-import TriggersPage from './pages/TriggersPage'
-import AlertsPage from './pages/AlertsPage/index'
-import SpotifyPage from './pages/SpotifyPage/index'
-import HuePage from './pages/HuePage'
-import TikTokPage from './pages/TikTokPage'
-import TwitchPage from './pages/TwitchPage'
-import YouTubePage from './pages/YouTubePage'
-import KickPage from './pages/KickPage'
-import XPage from './pages/XPage'
-import DiscordPage from './pages/DiscordPage'
-import SettingsPage from './pages/SettingsPage'
-import WidgetPage from './pages/WidgetPage'
+
+// Static imports for core performance-critical pages
 import BroadcastPage from './pages/BroadcastPage'
 import StudioOverlayPage from './pages/BroadcastPage/StudioOverlay'
-import StatsPage from './pages/StatsPage'
-import SoundboardPage from './pages/SoundboardPage'
-import VoiceEffectsPage from './pages/VoiceEffectsPage'
-import AICoHostPage from './pages/AICoHostPage'
-import DeskThingPage from './pages/DeskThingPage'
-import GoveePage from './pages/GoveePage'
-import ElgatoPage from './pages/ElgatoPage'
-import NanoleafPage from './pages/NanoleafPage'
-import LifxPage from './pages/LifxPage'
-import LoupedeckPage from './pages/LoupedeckPage'
-import RazerPage from './pages/RazerPage'
-import LogitechPage from './pages/LogitechPage'
-import YeelightPage from './pages/YeelightPage'
-import WizPage from './pages/WizPage'
-import FacebookPage from './pages/FacebookPage'
-import InstagramPage from './pages/InstagramPage'
-import RestreamPage from './pages/RestreamPage'
-import LinkedinPage from './pages/LinkedinPage'
-import TelegramPage from './pages/TelegramPage'
 import { usePlatformEvents } from './hooks/usePlatformEvents'
 import { useTTS } from './hooks/useTTS'
 import { useSettingsSync } from './hooks/useSettingsSync'
 import { useSoundPlayback } from './hooks/useSoundPlayback'
+import { useLogInterception } from './hooks/useLogInterception'
 import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
 
@@ -111,9 +82,12 @@ export default function App() {
   usePlatformEvents(isMounted)
   useTTS(isMounted)
   useSoundPlayback()
+  useLogInterception()
   
   const location = useLocation()
-  const projectorSceneId = new URLSearchParams(location.search || window.location.search).get('projectorSceneId')
+  const searchParams = new URLSearchParams(location.search || window.location.search)
+  const projectorSceneId = searchParams.get('projectorSceneId')
+  const projectorLayerId = searchParams.get('projectorLayerId')
   const isOverlay = Boolean(projectorSceneId) || location.pathname.startsWith('/overlay/')
   const isBroadcastRoute = location.pathname === '/broadcast'
 
@@ -127,13 +101,13 @@ export default function App() {
     return (
       <div className="fixed inset-0 overflow-hidden bg-black">
         <ErrorBoundary>
-          <StudioOverlayPage sceneId={projectorSceneId} />
+          <StudioOverlayPage sceneId={projectorSceneId} layerId={projectorLayerId || undefined} />
         </ErrorBoundary>
       </div>
     )
   }
 
-  const routes = (
+  const renderedRoutes = (
     <ErrorBoundary>
       <div className="flex-1 flex flex-col min-h-0">
         {!isOverlay && keepBroadcastMounted && (
@@ -153,52 +127,29 @@ export default function App() {
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={location.pathname}
-              initial={isOverlay ? false : { opacity: 0, y: 10 }}
+              initial={isOverlay ? undefined : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={isOverlay ? false : { opacity: 0, y: -10 }}
+              exit={isOverlay ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="flex-1 flex flex-col min-h-0"
             >
-              {console.log('[nav] Rendering Routes for path:', location.pathname)}
-              <Routes location={location}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/stats" element={<StatsPage />} />
-                <Route path="/broadcast" element={null} />
-                <Route path="/overlay/studio/:sceneId" element={<StudioOverlayPage />} />
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/tts" element={<TTSPage />} />
-                <Route path="/triggers" element={<TriggersPage />} />
-                <Route path="/alerts" element={<AlertsPage />} />
-                <Route path="/soundboard" element={<SoundboardPage />} />
-                <Route path="/voice-effects" element={<VoiceEffectsPage />} />
-                <Route path="/ai-cohost" element={<AICoHostPage />} />
-                <Route path="/spotify" element={<SpotifyPage />} />
-                <Route path="/connections/tiktok" element={<TikTokPage />} />
-                <Route path="/connections/twitch" element={<TwitchPage />} />
-                <Route path="/connections/youtube" element={<YouTubePage />} />
-                <Route path="/connections/kick" element={<KickPage />} />
-                <Route path="/connections/x" element={<XPage />} />
-                <Route path="/connections/discord" element={<DiscordPage />} />
-                <Route path="/connections/hue" element={<HuePage />} />
-                <Route path="/connections/govee" element={<GoveePage />} />
-                <Route path="/connections/elgato" element={<ElgatoPage />} />
-                <Route path="/connections/nanoleaf" element={<NanoleafPage />} />
-                <Route path="/connections/lifx" element={<LifxPage />} />
-                <Route path="/connections/loupedeck" element={<LoupedeckPage />} />
-                <Route path="/connections/razer" element={<RazerPage />} />
-                <Route path="/connections/logitech" element={<LogitechPage />} />
-                <Route path="/connections/yeelight" element={<YeelightPage />} />
-                <Route path="/connections/wiz" element={<WizPage />} />
-                <Route path="/connections/facebook" element={<FacebookPage />} />
-                <Route path="/connections/instagram" element={<InstagramPage />} />
-                <Route path="/connections/restream" element={<RestreamPage />} />
-                <Route path="/connections/linkedin" element={<LinkedinPage />} />
-                <Route path="/connections/telegram" element={<TelegramPage />} />
-                <Route path="/connections/deskthing" element={<DeskThingPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/widgets" element={<WidgetPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <Suspense fallback={
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+                </div>
+              }>
+                <Routes location={location}>
+                  {routes.map((route: any) => (
+                    <Route 
+                      key={route.path} 
+                      path={route.path} 
+                      element={route.path === '/broadcast' ? null : <route.component />} 
+                    />
+                  ))}
+                  <Route path="/overlay/studio/:sceneId" element={<StudioOverlayPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         )}
@@ -209,7 +160,7 @@ export default function App() {
   if (isOverlay) {
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-black">
-        {routes}
+        {renderedRoutes}
       </div>
     )
   }
@@ -220,7 +171,7 @@ export default function App() {
       <DashboardLayout>
         <ToastContainer />
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
-          {routes}
+          {renderedRoutes}
         </div>
       </DashboardLayout>
     </ErrorBoundary>

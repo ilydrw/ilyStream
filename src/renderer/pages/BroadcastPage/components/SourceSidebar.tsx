@@ -11,10 +11,13 @@ interface SourceSidebarProps {
   onShowSourceModal: () => void
   onContextMenu: (e: React.MouseEvent, layer: StudioLayer) => void
   aspectRatio: string
+  broadcastLayoutMode: string
   widgets: any[]
   devices: any[]
   sidebarWidth: number
   onSidebarResizeStart: () => void
+  selectionContext: '16:9' | '9:16'
+  onSelectionContextChange: (ctx: '16:9' | '9:16') => void
 }
 
 const LAYER_TYPE_ICONS: Record<string, any> = {
@@ -24,11 +27,59 @@ const LAYER_TYPE_ICONS: Record<string, any> = {
 export function SourceSidebar(props: SourceSidebarProps) {
   const { 
     activeScene, selectedLayerId, onSelectLayer, onUpdateLayer, onReorderLayer, 
-    onShowSourceModal, onContextMenu, aspectRatio, widgets, devices, sidebarWidth, onSidebarResizeStart 
+    onShowSourceModal, onContextMenu, aspectRatio, broadcastLayoutMode, widgets, devices, sidebarWidth, onSidebarResizeStart,
+    selectionContext, onSelectionContextChange
   } = props
 
   const selectedLayer = activeScene.layers.find(l => l.id === selectedLayerId) || null
-  const isPortrait = aspectRatio === '9:16'
+
+  const renderLayerList = (orientation: '16:9' | '9:16', title: string) => {
+    const isPortraitList = orientation === '9:16'
+    const isCurrentContext = selectionContext === orientation
+
+    return (
+      <div className="flex flex-col min-h-0 flex-1 border-b border-white/[0.04]">
+        <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.02] bg-white/[0.01]">
+          <h3 className={`kicker !opacity-100 transition-colors ${isCurrentContext ? '!text-accent' : ''}`}>{title}</h3>
+          {!isPortraitList && (
+            <button onClick={onShowSourceModal} className="text-accent hover:text-white transition-colors p-1"><IconPlus size={16} /></button>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+          {[...activeScene.layers].reverse().map((layer) => {
+            const Icon = LAYER_TYPE_ICONS[layer.type] || IconStack2
+            const isSelected = selectedLayerId === layer.id && isCurrentContext
+            const isVisible = isPortraitList ? (layer.portraitVisible ?? layer.visible) : layer.visible
+            const isLocked = isPortraitList ? (layer.portraitLocked ?? layer.locked) : layer.locked
+
+            return (
+              <div
+                key={`${orientation}-${layer.id}`}
+                onClick={() => {
+                  onSelectLayer(layer.id)
+                  onSelectionContextChange(orientation)
+                }}
+                onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, layer) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all border cursor-pointer ${isSelected ? 'bg-accent/10 border-accent/20 text-white shadow-lg shadow-accent/5' : 'bg-transparent border-transparent text-white/30 hover:bg-white/5'}`}
+              >
+                <IconArrowsMove size={12} className="text-white/10 shrink-0" />
+                <Icon size={16} className={isSelected ? 'text-accent' : ''} />
+                <span className="flex-1 text-[12px] font-black truncate text-left">{layer.name}</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitLocked: !isLocked } : { locked: !isLocked }) }} className="p-1 hover:bg-white/10 rounded-md transition-colors group">
+                    {isLocked ? <IconLock size={12} className="text-amber-500/80" /> : <IconLockOpen size={12} className="text-white/40" />}
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitVisible: !isVisible } : { visible: !isVisible }) }} className="p-1 hover:bg-white/10 rounded-md transition-colors group">
+                    {isVisible ? <IconEye size={12} className="text-white/40" /> : <IconEyeOff size={12} className="text-red-500/80" />}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex shrink-0 min-h-0 bg-[#050505] relative animate-in slide-in-from-right duration-300" style={{ width: sidebarWidth }}>
@@ -39,46 +90,22 @@ export function SourceSidebar(props: SourceSidebarProps) {
       </div>
       
       <div className="flex-1 flex flex-col min-h-0 min-w-0 border-l border-white/[0.04]">
-        <div className="flex flex-col min-h-0 h-1/2">
-          <div className="px-5 py-5 flex items-center justify-between border-b border-white/[0.02] bg-white/[0.01]">
-            <h3 className="text-[11px] font-black uppercase tracking-widest text-white/30">Sources</h3>
-            <button onClick={onShowSourceModal} className="text-accent hover:text-white transition-colors"><IconPlus size={20} /></button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-            {[...activeScene.layers].reverse().map((layer, visIdx) => {
-              const Icon = LAYER_TYPE_ICONS[layer.type] || IconStack2
-              const isSelected = selectedLayerId === layer.id
-              const isVisible = isPortrait ? (layer.portraitVisible ?? layer.visible) : layer.visible
-              const isLocked = isPortrait ? (layer.portraitLocked ?? layer.locked) : layer.locked
-
-              return (
-                <div key={layer.id}>
-                  <div
-                    onClick={() => onSelectLayer(isSelected ? null : layer.id)}
-                    onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, layer) }}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all border cursor-pointer ${isSelected ? 'bg-accent/10 border-accent/20 text-white shadow-xl shadow-accent/10' : 'bg-transparent border-transparent text-white/30 hover:bg-white/5'}`}
-                  >
-                    <IconArrowsMove size={14} className="text-white/10 shrink-0" />
-                    <Icon size={18} className={isSelected ? 'text-accent' : ''} />
-                    <span className="flex-1 text-[13px] font-black truncate text-left">{layer.name}</span>
-                    <div className="flex items-center gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortrait ? { portraitLocked: !isLocked } : { locked: !isLocked }) }} className="p-1.5 hover:bg-white/10 rounded-md transition-colors group">
-                        {isLocked ? <IconLock size={14} className="text-amber-500/80" /> : <IconLockOpen size={14} className="text-white/40" />}
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortrait ? { portraitVisible: !isVisible } : { visible: !isVisible }) }} className="p-1.5 hover:bg-white/10 rounded-md transition-colors group">
-                        {isVisible ? <IconEye size={14} className="text-white/40" /> : <IconEyeOff size={14} className="text-red-500/80" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+        <div className="flex flex-col min-h-0 flex-1">
+          {renderLayerList('16:9', 'Sources (Horizontal / Twitch)')}
+          <div className="h-1.5 bg-black/40 border-y border-white/[0.02]" />
+          {renderLayerList('9:16', 'Sources (Vertical / TikTok)')}
         </div>
 
         {selectedLayer && (
-          <div className="flex-1 min-h-0 border-t border-white/[0.04] overflow-y-auto custom-scrollbar">
-            <LayerProperties layer={selectedLayer} sceneId={activeScene.id} widgets={widgets} devices={devices} />
+          <div className="flex-1 min-h-0 border-t border-white/[0.04] overflow-y-auto custom-scrollbar bg-[#080808]">
+            <LayerProperties 
+              layer={selectedLayer} 
+              sceneId={activeScene.id} 
+              widgets={widgets} 
+              devices={devices} 
+              broadcastLayoutMode={broadcastLayoutMode}
+              activeOrientation={selectionContext}
+            />
           </div>
         )}
       </div>

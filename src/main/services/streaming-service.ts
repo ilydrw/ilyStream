@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import ffmpegPath from 'ffmpeg-static'
 import { EventEmitter } from 'events'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { app, powerSaveBlocker } from 'electron'
 import { createRequire } from 'module'
 import type { Writable } from 'stream'
@@ -10,6 +10,12 @@ import { StreamingEncoderResolver } from './streaming-encoder'
 import type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
 import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
 import { StreamSession } from './streaming/stream-session'
+import { PipeBuffer } from './streaming/pipe-buffer'
+
+// f32le stereo 48 kHz = 384,000 bytes/sec → ~85 ms of audio headroom.
+const AUDIO_PIPE_QUEUE_BYTES = 32 * 1024
+// MJPEG/H264 frames are large; ~2 MB absorbs a few frames of network/encoder jitter.
+const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
 
 const require = createRequire(import.meta.url);
 
@@ -53,9 +59,15 @@ export class StreamingService extends EventEmitter {
   private lastClockReportedAt = 0
   private streamFailureEmitted = false
   private recordingFailureEmitted = false
+  private activeRecordingPath: string | null = null
   private streamOutputs = new Map<string, StreamSession>()
   private encoderResolver = new StreamingEncoderResolver(ffmpegPath || 'ffmpeg')
   private argsBuilder = new FFmpegArgsBuilder(this.encoderResolver)
+  private streamVideoBuffer: PipeBuffer | null = null
+  private streamAudioBuffer: PipeBuffer | null = null
+  private recordingVideoBuffer: PipeBuffer | null = null
+  private recordingAudioBuffer: PipeBuffer | null = null
+  private silentClockInterval: ReturnType<typeof setInterval> | null = null
 
   constructor() {
     super()
@@ -162,6 +174,14 @@ export class StreamingService extends EventEmitter {
     this.getAudioPipe(this.ffmpegProcess)?.setMaxListeners(100)
     this.attachPipeGuards(this.ffmpegProcess, 'stream', this.streamAudioEnabled)
 
+    if (this.ffmpegProcess.stdin) {
+      this.streamVideoBuffer = new PipeBuffer(this.ffmpegProcess.stdin, VIDEO_PIPE_QUEUE_BYTES)
+    }
+    if (this.streamAudioEnabled) {
+      const audioPipe = this.getAudioPipe(this.ffmpegProcess)
+      if (audioPipe) this.streamAudioBuffer = new PipeBuffer(audioPipe, AUDIO_PIPE_QUEUE_BYTES)
+    }
+
     if (inputFormat === 'mjpeg') this.ensureVideoPump(config.fps)
     else this.stopVideoPumpIfIdle(true)
 
@@ -173,11 +193,18 @@ export class StreamingService extends EventEmitter {
       if (/error|failed|invalid|denied/i.test(msg)) console.error('[FFmpeg Stream]', msg.trim())
     })
 
+    // Only run the synthetic sample clock when ffmpeg is generating its own
+    // silence (anullsrc). With f32le pipe input the renderer's feedAudioFrame
+    // owns totalSamples — having a 60 Hz interval racing it caused clock drift.
+    this.stopSilentClock()
     if (audioFormat === 'silent') {
-      const startTime = performance.now()
-      const clockInterval = setInterval(() => {
-        if (!this.isStreaming && !this.isRecording) return clearInterval(clockInterval)
-        this.totalSamples = Math.floor((performance.now() - startTime) * 48)
+      const startedAt = performance.now()
+      this.silentClockInterval = setInterval(() => {
+        if (!this.isStreaming && !this.isRecording) {
+          this.stopSilentClock()
+          return
+        }
+        this.totalSamples = Math.floor((performance.now() - startedAt) * 48)
         if (Date.now() - this.lastClockReportedAt > 30) {
           this.lastClockReportedAt = Date.now()
           this.emit('native-clock', { totalSamples: this.totalSamples })
@@ -186,6 +213,8 @@ export class StreamingService extends EventEmitter {
     }
 
     this.ffmpegProcess.on('close', (code, signal) => {
+      this.detachStreamBuffers()
+      this.stopSilentClock()
       if (this.streamFailureEmitted) return
       this.isStreaming = false
       this.ffmpegProcess = null
@@ -284,6 +313,8 @@ export class StreamingService extends EventEmitter {
       this.ffmpegProcess.kill('SIGINT')
       this.ffmpegProcess = null
     }
+    this.detachStreamBuffers()
+    this.stopSilentClock()
     this.isStreaming = false
     this.streamAudioEnabled = false
     this.stopFrameWatchdog()
@@ -292,22 +323,48 @@ export class StreamingService extends EventEmitter {
     this.emitStatusChanged('stopped')
   }
 
+  private detachStreamBuffers(): void {
+    this.streamVideoBuffer?.detach()
+    this.streamVideoBuffer = null
+    this.streamAudioBuffer?.detach()
+    this.streamAudioBuffer = null
+  }
+
+  private detachRecordingBuffers(): void {
+    this.recordingVideoBuffer?.detach()
+    this.recordingVideoBuffer = null
+    this.recordingAudioBuffer?.detach()
+    this.recordingAudioBuffer = null
+  }
+
+  private stopSilentClock(): void {
+    if (this.silentClockInterval) {
+      clearInterval(this.silentClockInterval)
+      this.silentClockInterval = null
+    }
+  }
+
   public async startRecording(config: RecordingConfig): Promise<void> {
     if (this.isRecording) return
     if (!this.isStreaming) this.totalSamples = 0
+    if (this.powerSaveId === null) this.powerSaveId = powerSaveBlocker.start('prevent-app-suspension')
     if (!ffmpegPath) throw new Error('FFmpeg binary not found')
 
     const inputFormat = config.inputFormat || 'mjpeg'
     const bestEncoder = await this.encoderResolver.getBestEncoder()
     this.reserveInputFormat(inputFormat)
-    
-    const dir = join(config.outputPath, '..')
+
+    const outputPath = config.outputPath || this.createDefaultRecordingPath()
+    const resolvedConfig: RecordingConfig = { ...config, outputPath }
+
+    const dir = dirname(outputPath)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
-    const args = await this.argsBuilder.buildRecordArgs(config, bestEncoder)
+    const args = await this.argsBuilder.buildRecordArgs(resolvedConfig, bestEncoder)
     this.recordingAudioEnabled = config.audioFormat === 'f32le'
     this.lastRecordingStderr = ''
     this.recordingFailureEmitted = false
+    this.activeRecordingPath = outputPath
     
     this.recordingProcess = spawn(ffmpegPath, args, {
       stdio: ['pipe', 'ignore', 'pipe', this.recordingAudioEnabled ? 'pipe' : 'ignore']
@@ -315,6 +372,14 @@ export class StreamingService extends EventEmitter {
     this.recordingProcess.stdin?.setMaxListeners(100)
     this.getAudioPipe(this.recordingProcess)?.setMaxListeners(100)
     this.attachPipeGuards(this.recordingProcess, 'recording', this.recordingAudioEnabled)
+
+    if (this.recordingProcess.stdin) {
+      this.recordingVideoBuffer = new PipeBuffer(this.recordingProcess.stdin, VIDEO_PIPE_QUEUE_BYTES)
+    }
+    if (this.recordingAudioEnabled) {
+      const audioPipe = this.getAudioPipe(this.recordingProcess)
+      if (audioPipe) this.recordingAudioBuffer = new PipeBuffer(audioPipe, AUDIO_PIPE_QUEUE_BYTES)
+    }
 
     if (inputFormat === 'mjpeg') this.ensureVideoPump(config.fps)
     else this.stopVideoPumpIfIdle(true)
@@ -328,9 +393,11 @@ export class StreamingService extends EventEmitter {
     })
 
     this.recordingProcess.on('close', (code, signal) => {
+      this.detachRecordingBuffers()
       if (this.recordingFailureEmitted) return
       this.isRecording = false
       this.recordingProcess = null
+      this.recordingAudioEnabled = false
       this.checkPowerSave()
       this.emit('recording-stopped')
       this.emitStatusChanged(code === 0 ? 'recording-stopped' : 'error', code === 0 ? undefined : this.getFailureSummary('FFmpeg recording', this.lastRecordingStderr, code, signal))
@@ -347,7 +414,9 @@ export class StreamingService extends EventEmitter {
       this.recordingProcess.kill('SIGINT')
       this.recordingProcess = null
     }
+    this.detachRecordingBuffers()
     this.isRecording = false
+    this.recordingAudioEnabled = false
     this.checkPowerSave()
     if (!this.isStreaming) this.stopFrameWatchdog()
     this.emit('recording-stopped')
@@ -365,11 +434,13 @@ export class StreamingService extends EventEmitter {
   public feedVideoFrame(frameData: Uint8Array | VideoFramePayload): void {
     if (!this.isStreaming && !this.isRecording) return
     const frame = normalizeVideoFramePayload(frameData)
-    
+
     if (frame.outputId) {
-      const session = this.streamOutputs.get(frame.outputId)
-      if (session) session.pushVideoFrame(frame)
-      return
+      const routedSessions = this.getStreamSessionsForFrame(frame.outputId)
+      if (routedSessions.length > 0) {
+        routedSessions.forEach(session => session.pushVideoFrame(frame))
+        return
+      }
     }
 
     if (frame.timestamp !== undefined) this.lastVideoPts = frame.timestamp
@@ -377,8 +448,8 @@ export class StreamingService extends EventEmitter {
     this.lastFrameReceivedAt = Date.now()
 
     if (this.activeInputFormat === 'h264') {
-      if (this.isStreaming && this.ffmpegProcess?.stdin) this.ffmpegProcess.stdin.write(frame.data)
-      if (this.isRecording && this.recordingProcess?.stdin) this.recordingProcess.stdin.write(frame.data)
+      if (this.isStreaming) this.streamVideoBuffer?.write(frame.data)
+      if (this.isRecording) this.recordingVideoBuffer?.write(frame.data)
     } else {
       this.latestVideoFrame = frame.data
     }
@@ -387,23 +458,33 @@ export class StreamingService extends EventEmitter {
   public feedAudioFrame(audioData: Uint8Array | AudioFramePayload): void {
     if (!this.isStreaming && !this.isRecording) return
     const frame = normalizeAudioFramePayload(audioData)
-    this.totalSamples += frame.data.byteLength / 4 / 2
 
-    const now = Date.now()
-    if (now - this.lastClockReportedAt > 20) {
-      this.lastClockReportedAt = now
-      this.emit('native-clock', { totalSamples: this.totalSamples })
+    // Bytes / 4 (float32) / 2 (stereo) = mono frames pushed.
+    const framesInChunk = frame.data.byteLength / 4 / 2
+
+    let acceptedByStream = true
+    let acceptedByRecording = true
+    if (this.isStreaming && this.streamAudioBuffer) {
+      acceptedByStream = this.streamAudioBuffer.write(frame.data)
+    }
+    if (this.isRecording && this.recordingAudioBuffer) {
+      acceptedByRecording = this.recordingAudioBuffer.write(frame.data)
     }
 
-    const streamPipe = this.streamAudioEnabled ? this.getAudioPipe(this.ffmpegProcess) : null
-    const recordingPipe = this.recordingAudioEnabled ? this.getAudioPipe(this.recordingProcess) : null
-    
-    if (this.isStreaming && streamPipe?.writable) streamPipe.write(frame.data)
-    if (this.isRecording && recordingPipe?.writable) recordingPipe.write(frame.data)
-    
     for (const session of this.streamOutputs.values()) {
-      if (session.config.audioEnabled && session.process.stdio[3]) {
-        (session.process.stdio[3] as any).write(frame.data)
+      if (session.config.audioEnabled) session.pushAudioFrame(frame.data)
+    }
+
+    // Only advance the AV-sync clock for samples that actually went out to a
+    // pipe. If both sinks dropped the chunk we'd otherwise lie about how much
+    // audio has been emitted, which causes the renderer's video PTS extrapolation
+    // (and ffmpeg's aresample async filter) to compensate with audible glitches.
+    if (acceptedByStream || acceptedByRecording || this.streamOutputs.size > 0) {
+      this.totalSamples += framesInChunk
+      const now = Date.now()
+      if (now - this.lastClockReportedAt > 20) {
+        this.lastClockReportedAt = now
+        this.emit('native-clock', { totalSamples: this.totalSamples })
       }
     }
   }
@@ -421,14 +502,18 @@ export class StreamingService extends EventEmitter {
 
   private pumpVideoFrame() {
     if (this.videoPumpBusy || this.activeInputFormat === 'h264') return
-    const frame = this.latestVideoFrame || this.lastVideoFrame
+    // Skip ticks when no new frame arrived. ffmpeg's `-fps_mode cfr` will
+    // duplicate the previous frame on its side based on PTS, which is correct.
+    // Re-writing `lastVideoFrame` ourselves caused ffmpeg to encode a stale
+    // image at advancing wall-clock timestamps → frozen picture on Twitch.
+    const frame = this.latestVideoFrame
     if (!frame) return
     this.latestVideoFrame = null
     this.lastVideoFrame = frame
     this.videoPumpBusy = true
     try {
-      if (this.isStreaming && this.ffmpegProcess?.stdin) this.ffmpegProcess.stdin.write(frame)
-      if (this.isRecording && this.recordingProcess?.stdin) this.recordingProcess.stdin.write(frame)
+      if (this.isStreaming) this.streamVideoBuffer?.write(frame)
+      if (this.isRecording) this.recordingVideoBuffer?.write(frame)
     } finally {
       this.videoPumpBusy = false
     }
@@ -452,7 +537,17 @@ export class StreamingService extends EventEmitter {
     this.stopFrameWatchdog()
     this.frameWatchdog = setInterval(() => {
       const fps = this.framesSinceLastReport / 5
-      console.log(`[Streaming] ${kind} health — ${fps.toFixed(1)} fps received`)
+      const dropParts: string[] = []
+      const sa = this.streamAudioBuffer?.getStats()
+      const sv = this.streamVideoBuffer?.getStats()
+      const ra = this.recordingAudioBuffer?.getStats()
+      const rv = this.recordingVideoBuffer?.getStats()
+      if (sa && sa.droppedChunks) dropParts.push(`stream-audio drops=${sa.droppedChunks}`)
+      if (sv && sv.droppedChunks) dropParts.push(`stream-video drops=${sv.droppedChunks}`)
+      if (ra && ra.droppedChunks) dropParts.push(`record-audio drops=${ra.droppedChunks}`)
+      if (rv && rv.droppedChunks) dropParts.push(`record-video drops=${rv.droppedChunks}`)
+      const dropSuffix = dropParts.length > 0 ? ` — ${dropParts.join(', ')}` : ''
+      console.log(`[Streaming] ${kind} health — ${fps.toFixed(1)} fps received${dropSuffix}`)
       this.framesSinceLastReport = 0
     }, 5000)
   }
@@ -466,6 +561,32 @@ export class StreamingService extends EventEmitter {
 
   public getStreamStatus() { return this.isStreaming }
   public getRecordingStatus() { return this.isRecording }
+  public getRecordingOutputPath() { return this.activeRecordingPath }
+
+  private getStreamSessionsForFrame(outputId: string): StreamSession[] {
+    const exact = this.streamOutputs.get(outputId)
+    if (exact) return [exact]
+
+    const layoutPrefix = `${outputId}:`
+    return Array.from(this.streamOutputs.entries())
+      .filter(([id]) => id.startsWith(layoutPrefix))
+      .map(([, session]) => session)
+  }
+
+  private createDefaultRecordingPath(): string {
+    const folder = join(app.getPath('videos'), 'ilyStream', 'Recordings')
+    const now = new Date()
+    const stamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0')
+    ].join('-') + '_' + [
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+      String(now.getSeconds()).padStart(2, '0')
+    ].join('-')
+    return join(folder, `ilyStream_${stamp}.mp4`)
+  }
 }
 
 function normalizeVideoFramePayload(frameData: Uint8Array | VideoFramePayload): VideoFramePayload {

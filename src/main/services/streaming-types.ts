@@ -17,7 +17,7 @@ export interface RecordingConfig {
   height: number
   fps: number
   bitrateKbps: number
-  outputPath: string
+  outputPath?: string
   inputFormat?: 'h264' | 'mjpeg'
   audioFormat?: 'f32le' | 'silent'
   audioSampleRate?: number

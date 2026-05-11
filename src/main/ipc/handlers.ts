@@ -20,6 +20,7 @@ import { registerStudioHandlers } from './handlers/studio-handlers'
 import { registerStatsHandlers } from './handlers/stats-handlers'
 import { registerDeviceHandlers } from './handlers/device-handlers'
 import { registerGoveeHandlers } from './handlers/govee-handlers'
+import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 
 export function registerIpcHandlers(
   window: BrowserWindow,
@@ -103,6 +104,7 @@ export function registerIpcHandlers(
   registerStatsHandlers(services.statsService)
   registerDeviceHandlers(services.deviceApi)
   registerGoveeHandlers(services.goveeService)
+  registerVirtualCameraHandlers(services)
 
   // Trigger handlers
   ipcMain.handle('triggers:get-all', () => triggerEngine.getRules())

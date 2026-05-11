@@ -23,8 +23,8 @@ interface BrowserSourceCapture {
 
 const MAX_CAPTURE_EDGE = 1920
 const MAX_CAPTURE_PIXELS = 1920 * 1080
-const MAX_CAPTURE_FPS = 30
-const DEFAULT_CAPTURE_FPS = 12
+const MAX_CAPTURE_FPS = 60
+const DEFAULT_CAPTURE_FPS = 60
 
 export class BrowserSourceService {
   private captures = new Map<string, BrowserSourceCapture>()
@@ -62,7 +62,8 @@ export class BrowserSourceService {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true
-      }
+      },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ilyStream/1.0.0'
     })
 
     window.webContents.setFrameRate(fps)

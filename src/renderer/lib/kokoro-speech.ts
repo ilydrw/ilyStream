@@ -227,14 +227,20 @@ async function playKokoroAudio(
   const context = await getAudioContext()
   if (requestId !== activeRequestId) return
 
-  const buffer = context.createBuffer(1, audio.samples.length, audio.sampleRate)
-  buffer.copyToChannel(audio.samples, 0)
+  // Kokoro renders at its own sample rate (typically 24 kHz). Letting Web Audio
+  // resample implicitly at playback time interacts badly with non-unity
+  // playbackRate (pitch/rate shifts), producing metallic edges. Resampling once
+  // up-front into a context-rate buffer is sub-millisecond for short utterances.
+  const playbackBuffer = await resampleToContextRate(context, audio)
 
   const source = context.createBufferSource()
-  source.buffer = buffer
+  source.buffer = playbackBuffer
 
+  const targetVolume = clamp(profile.volume ?? 1, 0, 1)
   const gain = context.createGain()
-  gain.gain.value = clamp(profile.volume ?? 1, 0, 1)
+  // Start silent; ramp up over 6 ms inside source.start() below. The previous
+  // hard 0→target jump produced an audible click at the start of every TTS line.
+  gain.gain.value = 0
 
   // Fetch current settings for modifiers
   const settingsRaw = await window.api.settings.getAll()
@@ -306,18 +312,39 @@ async function playKokoroAudio(
     activeResolve = settle
     source.onended = settle
     source.start()
+    // 6 ms linear attack — long enough to be click-free, short enough to keep
+    // the utterance's natural onset transient.
+    const startAt = context.currentTime
+    gain.gain.setValueAtTime(0, startAt)
+    gain.gain.linearRampToValueAtTime(targetVolume, startAt + 0.006)
   })
 }
+
+const STOP_RELEASE_SECONDS = 0.018
 
 export function stopKokoroSpeech(): void {
   activeRequestId += 1
 
-  if (activeSource) {
+  // If audio is mid-flight, fade the gain over ~18 ms before stopping the
+  // source. An abrupt source.stop() truncates the buffer at sample boundaries,
+  // which is heard as a sharp click — especially noticeable when interrupting
+  // for the next TTS line.
+  const sourceToStop = activeSource
+  const gainToFade = activeGain
+  if (sourceToStop && gainToFade) {
     try {
-      activeSource.stop()
+      const ctx = gainToFade.context
+      const now = ctx.currentTime
+      const stopAt = now + STOP_RELEASE_SECONDS
+      gainToFade.gain.cancelScheduledValues(now)
+      gainToFade.gain.setValueAtTime(gainToFade.gain.value, now)
+      gainToFade.gain.linearRampToValueAtTime(0, stopAt)
+      try { sourceToStop.stop(stopAt) } catch {}
     } catch {
-      // Already stopped or never started.
+      try { sourceToStop.stop() } catch {}
     }
+  } else if (activeSource) {
+    try { activeSource.stop() } catch {}
   }
 
   activeResolve?.()
@@ -411,6 +438,32 @@ function toRenderedAudio(rawAudio: RawAudio): RenderedAudio {
     samples: rawAudio.audio,
     sampleRate: rawAudio.sampling_rate
   }
+}
+
+async function resampleToContextRate(
+  context: AudioContext,
+  audio: RenderedAudio
+): Promise<AudioBuffer> {
+  const targetRate = context.sampleRate
+  if (audio.sampleRate === targetRate || !audio.samples.length) {
+    const buf = context.createBuffer(1, Math.max(1, audio.samples.length), audio.sampleRate)
+    if (audio.samples.length) buf.copyToChannel(audio.samples, 0)
+    return buf
+  }
+
+  const targetLength = Math.max(1, Math.ceil(audio.samples.length * targetRate / audio.sampleRate))
+  const offlineCtx = new OfflineAudioContext(1, targetLength, targetRate)
+  const srcBuffer = offlineCtx.createBuffer(1, audio.samples.length, audio.sampleRate)
+  srcBuffer.copyToChannel(audio.samples, 0)
+  const offlineSrc = offlineCtx.createBufferSource()
+  offlineSrc.buffer = srcBuffer
+  offlineSrc.connect(offlineCtx.destination)
+  offlineSrc.start()
+  const rendered = await offlineCtx.startRendering()
+
+  const buf = context.createBuffer(1, rendered.length, targetRate)
+  buf.copyToChannel(rendered.getChannelData(0), 0)
+  return buf
 }
 
 function clamp(value: number, min: number, max: number): number {

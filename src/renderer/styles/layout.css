@@ -289,8 +289,9 @@
 }
 
 .app-rail-item.is-active .app-rail-icon-wrapper {
-  background: var(--brand-gradient);
+  background: var(--bg-brand-gradient);
   color: white;
+  box-shadow: 0 0 20px rgba(25, 200, 255, 0.3);
 }
 
 .app-rail-item.is-active svg,
@@ -311,6 +312,9 @@
   flex-direction: column;
   min-width: 0;
   max-width: 228px;
+  background: rgba(12, 14, 19, 0.4);
+  backdrop-filter: blur(24px);
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .app-drawer-item {
@@ -333,9 +337,10 @@
 }
 
 .app-drawer-item.is-active {
-  background: var(--brand-gradient);
+  background: var(--bg-brand-gradient);
   color: white;
   font-weight: 700;
+  box-shadow: 0 4px 12px rgba(25, 200, 255, 0.15);
 }
 
 .app-drawer-item.is-active svg,
@@ -420,11 +425,11 @@
 }
 
 .app-drawer-heading h2 {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: var(--color-muted);
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 1380px) {
@@ -515,3 +520,20 @@
 .custom-scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar-slim::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 1px; }
 .custom-scrollbar-slim::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.1); }
+
+.canvas-viewport {
+  overflow: scroll;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+}
+
+.canvas-viewport::-webkit-scrollbar { width: 14px; height: 14px; }
+.canvas-viewport::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); }
+.canvas-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 7px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.canvas-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); background-clip: content-box; }
+.canvas-viewport::-webkit-scrollbar-corner { background: rgba(255, 255, 255, 0.04); }

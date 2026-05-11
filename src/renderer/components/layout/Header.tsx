@@ -15,8 +15,8 @@ export function Header() {
         <span className="app-topbar-logo">
           <Logo size={28} />
         </span>
-        <span className="app-topbar-wordmark">ilyStream</span>
-        <span className="app-topbar-version">v0.0.5</span>
+        <span className="app-topbar-wordmark !font-black !tracking-tight !text-[16px] bg-clip-text text-transparent bg-brand-gradient">ilyStream</span>
+        <span className="app-topbar-version !bg-white/[0.05] !border-white/5 !text-white/20 !px-2.5 !py-0.5 !h-auto !rounded-md !font-black !text-[8px] !tracking-widest uppercase ml-2">Internal Alpha</span>
       </div>
 
       <div className="app-topbar-route" aria-live="polite">

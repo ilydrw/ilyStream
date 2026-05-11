@@ -118,6 +118,27 @@ export const SCHEMA_SQL = `
     peak_viewer_count INTEGER DEFAULT 0
   );
 
+  -- Authoritative follower counts pulled from each platform's API
+  -- (Twitch helix, TikTok roomInfo, YouTube channels.list, Kick API).
+  -- These are NOT the same as user_stats.total_follows — that counts
+  -- accounts who fired a 'follow' event during a session. This table is
+  -- the actual lifetime audience number the platform reports.
+  CREATE TABLE IF NOT EXISTS platform_follower_stats (
+    platform TEXT PRIMARY KEY,
+    follower_count INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Hourly snapshots of platform_follower_stats so we can compute growth
+  -- deltas (Social Blade style: 24 h / 7 d / 30 d). One row per platform
+  -- per hour; ON CONFLICT updates so the most recent reading in that hour wins.
+  CREATE TABLE IF NOT EXISTS follower_snapshots (
+    platform TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    follower_count INTEGER NOT NULL,
+    PRIMARY KEY (platform, captured_at)
+  );
+
   CREATE TABLE IF NOT EXISTS user_stats (
     username TEXT,
     platform TEXT,
@@ -145,6 +166,8 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_user_stats_gift_value ON user_stats(total_gift_value_cents DESC);
   CREATE INDEX IF NOT EXISTS idx_user_stats_last_seen ON user_stats(last_seen_at DESC);
   CREATE INDEX IF NOT EXISTS idx_user_stats_profile_id ON user_stats(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_follower_snapshots_platform_time
+    ON follower_snapshots(platform, captured_at DESC);
 `
 
 export function ensureColumn(db: BetterSqlite3.Database, table: string, column: string, definition: string): void {
@@ -163,5 +186,17 @@ export function runMigrations(db: BetterSqlite3.Database) {
   ensureColumn(db, 'voice_profiles', 'provider', `TEXT NOT NULL DEFAULT '${DEFAULT_TTS_PROVIDER}'`)
   ensureColumn(db, 'voice_profiles', 'kokoro_voice', `TEXT NOT NULL DEFAULT '${DEFAULT_KOKORO_VOICE}'`)
   ensureColumn(db, 'voice_profiles', 'meta_json', `TEXT NOT NULL DEFAULT '{}'`)
-  // ... and others if needed ...
+
+  // One-time data fix: prior versions allowed total_follows to climb past 1
+  // when the same user fired multiple follow events (TikTok social spam,
+  // Twitch follower backfill on every reconnect). A user can only "have
+  // followed" once, so clamp anything > 1 back to 1. Cheap & idempotent.
+  try {
+    const clamped = db.prepare('UPDATE user_stats SET total_follows = 1 WHERE total_follows > 1').run()
+    if (clamped.changes > 0) {
+      console.log(`[db] Clamped ${clamped.changes} user_stats rows with inflated total_follows.`)
+    }
+  } catch (err) {
+    console.warn('[db] Could not clamp inflated total_follows:', err)
+  }
 }

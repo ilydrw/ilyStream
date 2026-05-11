@@ -97,7 +97,7 @@ export function VoiceEditor({
             className="app-button !h-12 !px-6 text-xs font-black uppercase tracking-widest"
           >
             <IconDeviceFloppy size={16} className="mr-2 opacity-40" />
-            {isSaving ? 'Synching...' : 'DeviceFloppy Profile'}
+            {isSaving ? 'Syncing...' : 'Save Profile'}
           </button>
           <button onClick={onDelete} className="p-3 text-white/10 hover:text-danger hover:bg-danger/10 rounded-xl transition-all">
             <IconTrash size={18} />
@@ -184,7 +184,7 @@ export function VoiceEditor({
                       </div>
                       {syncError && (
                         <p className="text-[10px] text-white/30 italic">
-                          IconCheck the provider key in Voice Engine or verify connection.
+                          Check the provider key in Voice Engine or verify connection.
                         </p>
                       )}
                     </div>

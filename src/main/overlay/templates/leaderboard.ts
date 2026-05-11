@@ -26,12 +26,26 @@ export function buildLeaderboardHtml(): string {
 
         .container {
             width: 320px;
-            background: var(--bg);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            padding: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            background: rgba(10, 12, 18, 0.45);
+            backdrop-filter: blur(40px) saturate(220%);
+            -webkit-backdrop-filter: blur(40px) saturate(220%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 32px;
+            padding: 24px;
+            box-shadow: 
+                0 25px 60px rgba(0, 0, 0, 0.5),
+                inset 0 0 20px rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
+            pointer-events: none;
+            border-radius: inherit;
         }
 
         .header {

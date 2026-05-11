@@ -61,23 +61,23 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
     <>
       {!isSubmenu && (
         <div 
-          className="fixed inset-0 z-[9998]"
+          className="fixed inset-0 z-context"
           onContextMenu={(e) => { e.preventDefault(); onClose(); }}
           onClick={onClose}
         />
       )}
       <motion.div
         ref={menuRef}
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.1 }}
+        initial={{ opacity: 0, scale: 0.98, y: -4 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: -4 }}
+        transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
         style={{ left: position.x, top: position.y }}
-        className={`fixed min-w-[200px] bg-[#1a1c22]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden p-1.5 z-[9999]`}
+        className="fixed min-w-[220px] bg-[#0c0d10]/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_30px_80px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.08)] overflow-hidden p-1.5 z-context"
       >
         {items.map((item, idx) => (
           <div key={item.id + idx}>
-            {item.divider && <div className="h-px bg-white/5 my-1.5 mx-1" />}
+            {item.divider && <div className="h-px bg-white/10 my-1.5 mx-3" />}
             {!item.divider && (
               <button
                 disabled={item.disabled}
@@ -90,22 +90,29 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
                 onMouseEnter={(e) => {
                   if (item.submenu) {
                     const rect = e.currentTarget.getBoundingClientRect()
-                    setActiveSubmenu({ id: item.id, x: rect.right + 2, y: rect.top, items: item.submenu })
+                    setActiveSubmenu({ id: item.id, x: rect.right + 6, y: rect.top - 4, items: item.submenu })
                   } else {
                     setActiveSubmenu(null)
                   }
                 }}
                 className={`
-                  w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-medium transition-colors
-                  ${item.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-white/70 hover:bg-white/5 hover:text-white'}
-                  ${item.disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
+                  w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition-all duration-200 group
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+                  ${item.danger ? 'text-red-400 hover:bg-red-500/20' : 'text-white/80 hover:bg-white/[0.08] hover:text-white'}
+                  ${item.disabled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer active:scale-[0.97]'}
                 `}
               >
-                <div className="flex items-center gap-3">
-                  {item.icon && <span className="text-white/40">{item.icon}</span>}
-                  <span>{item.label}</span>
+                <div className="flex items-center gap-3.5">
+                  {item.icon && (
+                    <span className={`w-5 h-5 flex items-center justify-center ${item.danger ? 'text-red-400/80' : 'text-white/40'} transition-all group-hover:text-current group-hover:scale-105`}>
+                      {item.icon}
+                    </span>
+                  )}
+                  <span className="tracking-tight">{item.label}</span>
                 </div>
-                {item.submenu && <IconChevronRight size={14} className="text-white/20" />}
+                {item.submenu && (
+                  <IconChevronRight size={16} className="text-white/20 group-hover:text-white/60 transition-colors" />
+                )}
               </button>
             )}
           </div>

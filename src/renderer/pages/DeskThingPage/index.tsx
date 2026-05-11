@@ -19,7 +19,7 @@ export default function DeskThingPage() {
       const list = await window.api.device.listPaired()
       setDevices(list as PairedDevice[])
     } catch (err) {
-      console.error('[DeskThing] IconList failed', err)
+      console.error('[DeskThing] List failed', err)
     }
   }
 

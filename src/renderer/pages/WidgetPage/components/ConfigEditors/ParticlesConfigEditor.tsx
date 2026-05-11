@@ -242,7 +242,7 @@ export function ParticlesConfigEditor({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between mb-1">
         <p className="text-[10px] text-white/30">
-          IconCheck a layer to include it. Each runs in the same overlay — one URL for all.
+          Check a layer to include it. Each runs in the same overlay — one URL for all.
         </p>
         {activeCount > 0 && (
           <span className="text-[10px] font-black uppercase tracking-widest text-white/40">

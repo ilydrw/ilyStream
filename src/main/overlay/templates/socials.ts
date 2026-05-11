@@ -82,13 +82,24 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       .card-bg {
         position: absolute;
         inset: 0;
-        background: ${bgRgba} !important;
-        backdrop-filter: blur(var(--blur)) saturate(180%);
-        -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
-        border: ${cfg.showBorder ? '1px solid rgba(255,255,255,0.1)' : 'none'};
-        box-shadow: 0 1vh 3vh rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.05);
+        background: rgba(10, 12, 18, 0.45) !important;
+        backdrop-filter: blur(40px) saturate(250%);
+        -webkit-backdrop-filter: blur(40px) saturate(250%);
+        border: 1px solid rgba(255,255,255,0.15);
+        box-shadow: 
+            0 20px 50px rgba(0,0,0,0.5),
+            inset 0 0 20px rgba(255,255,255,0.05);
         border-radius: 2vh;
         z-index: -1;
+      }
+
+      .card-bg::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
+        pointer-events: none;
       }
 
       ${cfg.style === 'chroma' ? `
@@ -174,18 +185,21 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       }
  
       .platform-name {
-        font-size: 2.2vh;
+        font-size: 2.8vh;
         font-weight: 900;
-        letter-spacing: 0.15em;
+        letter-spacing: 0.25em;
         text-transform: uppercase;
         color: var(--accent);
-        margin-bottom: 0.5vh;
+        margin-bottom: 0.8vh;
+        opacity: 0.9;
       }
       .username {
-        font-size: 5vh;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        font-size: 6.5vh;
+        font-weight: 800;
+        letter-spacing: -0.02em;
         white-space: nowrap;
+        color: #FFFFFF;
+        filter: drop-shadow(0 2px 10px rgba(0,0,0,0.5));
       }
 
       .anim-wrapper {
@@ -277,49 +291,76 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         elUsername.textContent = acc.username;
       }
 
-      function updateWidget() {
+      async function updateWidget() {
         if (ACCOUNTS.length <= 1) return;
         const nextIndex = (currentIndex + 1) % ACCOUNTS.length;
 
-        elContent.classList.remove('anim-active');
-        elContent.classList.add('anim-out-' + ANIMATION_TYPE);
+        // Smooth exit
+        const exitKeyframes = {
+          roll: [{ transform: 'translate3d(0, 0, 0)', opacity: 1 }, { transform: 'translate3d(0, -20px, 0)', opacity: 0 }],
+          fade: [{ opacity: 1 }, { opacity: 0 }],
+          slide: [{ transform: 'translate3d(0, 0, 0)', opacity: 1 }, { transform: 'translate3d(-20px, 0, 0)', opacity: 0 }]
+        }[ANIMATION_TYPE] || exitKeyframes.roll;
+
+        const exitAnim = elContent.animate(exitKeyframes, {
+          duration: 400,
+          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          fill: 'forwards'
+        });
 
         if (progressAnimation) progressAnimation.cancel();
-        elProgress.style.width = '0%';
+        
+        await exitAnim.finished;
 
-        setTimeout(() => {
-          elContent.classList.add('no-transition');
-          renderAccount(nextIndex);
-          currentIndex = nextIndex;
+        renderAccount(nextIndex);
+        currentIndex = nextIndex;
 
-          elContent.classList.remove('anim-out-' + ANIMATION_TYPE);
-          elContent.classList.add('anim-in-' + ANIMATION_TYPE);
-          void elContent.offsetWidth;
-          elContent.classList.remove('no-transition');
-          elContent.classList.remove('anim-in-' + ANIMATION_TYPE);
-          elContent.classList.add('anim-active');
+        // Smooth enter
+        const enterKeyframes = {
+          roll: [{ transform: 'translate3d(0, 20px, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }],
+          fade: [{ opacity: 0 }, { opacity: 1 }],
+          slide: [{ transform: 'translate3d(20px, 0, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }]
+        }[ANIMATION_TYPE] || enterKeyframes.roll;
 
-          progressAnimation = elProgress.animate([{ width: '0%' }, { width: '100%' }], {
-            duration: INTERVAL_MS,
-            easing: 'linear',
-            fill: 'forwards'
-          });
-        }, 600);
+        elContent.animate(enterKeyframes, {
+          duration: 500,
+          easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          fill: 'forwards'
+        });
+
+        progressAnimation = elProgress.animate([
+          { width: '0%', opacity: 0.5 },
+          { width: '100%', opacity: 1 }
+        ], {
+          duration: INTERVAL_MS,
+          easing: 'linear',
+          fill: 'forwards'
+        });
       }
 
+      // Initial state
       renderAccount(0);
-      setTimeout(() => {
-        elContent.classList.remove('anim-in-' + ANIMATION_TYPE);
-        elContent.classList.add('anim-active');
-        if (ACCOUNTS.length > 1) {
-          progressAnimation = elProgress.animate([{ width: '0%' }, { width: '100%' }], {
-            duration: INTERVAL_MS,
-            easing: 'linear',
-            fill: 'forwards'
-          });
-          setInterval(updateWidget, INTERVAL_MS);
-        }
-      }, 300);
+      elContent.style.opacity = '1';
+      
+      if (ACCOUNTS.length > 1) {
+        progressAnimation = elProgress.animate([
+          { width: '0%', opacity: 0.5 },
+          { width: '100%', opacity: 1 }
+        ], {
+          duration: INTERVAL_MS,
+          easing: 'linear',
+          fill: 'forwards'
+        });
+
+        // Robust loop that waits for animations to complete correctly
+        const loop = async () => {
+          while (true) {
+            await new Promise(r => setTimeout(r, INTERVAL_MS));
+            await updateWidget();
+          }
+        };
+        loop().catch(console.error);
+      }
 
       if (!${isPreview}) {
         function connectSSE() {

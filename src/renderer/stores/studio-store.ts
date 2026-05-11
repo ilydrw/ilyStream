@@ -64,10 +64,17 @@ function normalizeChannelMode(value: unknown, fallback: AudioSource['channelMode
   return value === 'mono' || value === 'stereo' ? value : fallback
 }
 
+function normalizeTrackColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed : undefined
+}
+
 function normalizeAudioSource(source: AudioSource): AudioSource {
   const fallbackMode: AudioSource['channelMode'] = source.type === 'mic' ? 'mono' : 'stereo'
   return {
     ...source,
+    color: normalizeTrackColor((source as any).color),
     volume: clamp(Number(source.volume ?? 0.8), 0, 2),
     muted: Boolean(source.muted),
     monitoring: Boolean(source.monitoring),
@@ -302,22 +309,15 @@ export const useStudioStore = create<StudioStore>()(
                   }
 
                   if (isPortrait) {
-                    if ('x' in updates) { mappedUpdates.portraitX = updates.x; delete mappedUpdates.x }
-                    if ('y' in updates) { mappedUpdates.portraitY = updates.y; delete mappedUpdates.y }
-                    if ('width' in updates) { mappedUpdates.portraitWidth = updates.width; delete mappedUpdates.width }
-                    if ('height' in updates) { mappedUpdates.portraitHeight = updates.height; delete mappedUpdates.height }
-                    if ('rotation' in updates) { mappedUpdates.portraitRotation = updates.rotation; delete mappedUpdates.rotation }
-                    if ('visible' in updates) { mappedUpdates.portraitVisible = updates.visible; delete mappedUpdates.visible }
-                    if ('locked' in updates) { mappedUpdates.portraitLocked = updates.locked; delete mappedUpdates.locked }
+                    if ('x' in updates && !('portraitX' in updates)) { mappedUpdates.portraitX = updates.x; delete mappedUpdates.x }
+                    if ('y' in updates && !('portraitY' in updates)) { mappedUpdates.portraitY = updates.y; delete mappedUpdates.y }
+                    if ('width' in updates && !('portraitWidth' in updates)) { mappedUpdates.portraitWidth = updates.width; delete mappedUpdates.width }
+                    if ('height' in updates && !('portraitHeight' in updates)) { mappedUpdates.portraitHeight = updates.height; delete mappedUpdates.height }
+                    if ('rotation' in updates && !('portraitRotation' in updates)) { mappedUpdates.portraitRotation = updates.rotation; delete mappedUpdates.rotation }
+                    if ('visible' in updates && !('portraitVisible' in updates)) { mappedUpdates.portraitVisible = updates.visible; delete mappedUpdates.visible }
+                    if ('locked' in updates && !('portraitLocked' in updates)) { mappedUpdates.portraitLocked = updates.locked; delete mappedUpdates.locked }
                   } else {
-                    // Already correct, but ensure we don't accidentally update portrait values
-                    delete mappedUpdates.portraitX
-                    delete mappedUpdates.portraitY
-                    delete mappedUpdates.portraitWidth
-                    delete mappedUpdates.portraitHeight
-                    delete mappedUpdates.portraitRotation
-                    delete mappedUpdates.portraitVisible
-                    delete mappedUpdates.portraitLocked
+                    // Do nothing for generic keys as they map to horizontal by default
                   }
                   
                   return { ...l, ...mappedUpdates }
@@ -436,6 +436,16 @@ export const useStudioStore = create<StudioStore>()(
           window.api.studio.loadState().then((dbState: any) => {
             if (dbState) {
               console.log('[StudioStore] Rehydrated from Database')
+              // Ensure default locked sources (Soundboard, TTS) survive rehydration
+              if (dbState.audioSources) {
+                dbState.audioSources = dbState.audioSources.map(normalizeAudioSource)
+                const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+                for (const def of defaultSources) {
+                  if (!dbState.audioSources.find((s: any) => s.id === def.id)) {
+                    dbState.audioSources.push(normalizeAudioSource(def))
+                  }
+                }
+              }
               useStudioStore.setState(dbState)
             }
           })
@@ -476,13 +486,20 @@ export const useStudioStore = create<StudioStore>()(
                   // Use a simplified set to avoid infinite loops
                   // Only update the parts we partialize
                   isSyncing = true
+                  const syncedSources = (parsed.state.audioSources || []).map(normalizeAudioSource)
+                  const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+                  for (const def of defaultSources) {
+                    if (!syncedSources.find((s: any) => s.id === def.id)) {
+                      syncedSources.push(normalizeAudioSource(def))
+                    }
+                  }
                   useStudioStore.setState({
                     scenes: parsed.state.scenes,
                     activeSceneId: parsed.state.activeSceneId,
                     canvasWidth: parsed.state.canvasWidth,
                     canvasHeight: parsed.state.canvasHeight,
                     aspectRatio: parsed.state.aspectRatio,
-                    audioSources: (parsed.state.audioSources || []).map(normalizeAudioSource),
+                    audioSources: syncedSources,
                     masterBus: normalizeAudioSource({
                       id: 'master',
                       name: 'Master',

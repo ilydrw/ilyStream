@@ -36,7 +36,7 @@ const VOICE_EFFECTS: VoiceEffect[] = [
   { id: 'alien', name: 'Alien', icon: IconUfo, description: 'Bright resonant formants for a non-human edge.', band: 'Formant shift', accent: '#65f6a0' },
   { id: 'robot', name: 'Robot', icon: IconRobot, description: 'Hard clipped tone with a narrow synthetic band.', band: 'Vocoder grit', accent: '#6ab8ff' },
   { id: 'monster', name: 'Monster', icon: IconSkull, description: 'Low-pass weight, saturation, and heavy body.', band: 'Sub harmonic', accent: '#ff6c7b' },
-  { id: 'chipmunk', name: 'Chipmunk', icon: IconWaveSawTool, description: 'Fast, bright high-pass lift for comic timing.', band: 'Pitch lift', accent: '#f5c95c' },
+  { id: 'chipmunk', name: 'Chipmunk', icon: IconWaveSawTool, description: 'Fast, bright high-pass lift for comic timing.', band: 'Bright lift', accent: '#f5c95c' },
   { id: 'radio', name: 'Radio', icon: IconRadio, description: 'Crunchy mid-band filter for vintage broadcast texture.', band: 'AM band', accent: '#b8c2d6' },
   { id: 'echo', name: 'Deep Space', icon: IconAntennaBars5, description: 'Filtered delay with feedback for long tails.', band: 'Feedback delay', accent: '#b985ff' },
   { id: 'telephone', name: 'Telephone', icon: IconPhoneCall, description: 'Tight bandpass and light drive for call-in voices.', band: 'Narrow band', accent: '#ffe16a' },
@@ -57,10 +57,20 @@ export default function VoiceEffectsPage() {
     isMonitoring,
     setIsMonitoring,
     volume,
-    setVolume
+    setVolume,
+    isAudioActive,
+    inputLevel,
+    outputLevel,
+    peakLevel,
+    isClipping,
+    error
   } = useVoiceFX()
 
   const selectedEffect = VOICE_EFFECTS.find((effect) => effect.id === selectedEffectId) ?? null
+  const meterLevel = Math.max(outputLevel, inputLevel * 0.72)
+  const inputPercent = Math.round(inputLevel * 100)
+  const outputPercent = Math.round(outputLevel * 100)
+  const peakPercent = Math.round(peakLevel * 100)
 
   return (
     <div className="app-page voice-fx-page">
@@ -135,17 +145,24 @@ export default function VoiceEffectsPage() {
               <IconActivity size={18} />
             </div>
 
-            <div className={`voice-fx-spectrum ${isEnabled ? 'is-live' : ''}`} aria-hidden="true">
+            <div className={`voice-fx-spectrum ${isAudioActive ? 'is-live' : ''} ${isClipping ? 'is-clipping' : ''}`} aria-hidden="true">
               {METER_BARS.map((height, index) => (
                 <span
                   key={index}
                   style={{
-                    height: isEnabled ? `${height}%` : '8%',
-                    animationDelay: `${index * 38}ms`
+                    height: isAudioActive ? `${Math.min(96, Math.max(8, 8 + meterLevel * (height + 32)))}%` : '8%'
                   }}
                 />
               ))}
             </div>
+
+            <div className="voice-fx-meter__readout">
+              <span>In <strong>{inputPercent}%</strong></span>
+              <span>Out <strong>{outputPercent}%</strong></span>
+              <span>Peak <strong>{peakPercent}%</strong></span>
+            </div>
+
+            {error && <p className="voice-fx-error">{error}</p>}
 
             <label className="voice-fx-slider">
               <span>

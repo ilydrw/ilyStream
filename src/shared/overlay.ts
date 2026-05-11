@@ -61,6 +61,7 @@ export interface OverlayRuntimeStatus {
   healthUrl: string | null
   deckUrl?: string | null
   particlesUrl?: string | null
+  dualVerticalUrl?: string | null
   chatClientCount: number
   alertClientCount: number
   goalClientCount: number
@@ -70,4 +71,5 @@ export interface OverlayRuntimeStatus {
   particleClientCount?: number
   roseClientCount?: number
   likesClientCount?: number
+  dualVerticalClientCount?: number
 }

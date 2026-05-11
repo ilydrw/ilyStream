@@ -36,7 +36,8 @@ const allowedEventChannels = new Set([
   'action:stop-all-sounds',
   'spotify:now-playing',
   'govee:status-changed',
-  'streaming:native-audio-clock'
+  'streaming:native-audio-clock',
+  'virtualcamera:status-changed'
 ])
 
 const api = {
@@ -162,7 +163,9 @@ const api = {
     sendRelayMessage: (payload: any) =>
       ipcRenderer.invoke('overlay:send-relay-message', payload),
     notifySpeechState: (isSpeaking: boolean, isAI: boolean) =>
-      ipcRenderer.send('overlay:notify-speech-state', isSpeaking, isAI)
+      ipcRenderer.send('overlay:notify-speech-state', isSpeaking, isAI),
+    pushDualVerticalFrame: (frame: Uint8Array) =>
+      ipcRenderer.send('overlay:dual-vertical-frame', frame)
   },
 
   // --- OBS ---
@@ -217,7 +220,7 @@ const api = {
     findSpotifySource: () => ipcRenderer.invoke('studio:find-spotify-source'),
     prepareDisplayCapture: (request: { sourceId: string; withAudio?: boolean; audioOnly?: boolean }) =>
       ipcRenderer.invoke('studio:prepare-display-capture', request),
-    openProjector: (monitorId: number, sceneId: string) => ipcRenderer.invoke('studio:open-projector', { monitorId, sceneId }),
+    openProjector: (payload: { monitorId: number, sceneId: string, aspectRatio?: string }) => ipcRenderer.invoke('studio:open-projector', payload),
     startBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:start', config),
     updateBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:update', config),
     reloadBrowserSource: (id: string) => ipcRenderer.invoke('studio:browser-source:reload', id),
@@ -269,6 +272,12 @@ const api = {
     getDevices: () => ipcRenderer.invoke('govee:get-devices'),
     setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids),
     testStrobe: () => ipcRenderer.invoke('govee:test-strobe')
+  },
+  // --- Virtual Camera ---
+  virtualCamera: {
+    start: (opts?: any) => ipcRenderer.invoke('virtualcamera:start', opts),
+    stop: () => ipcRenderer.invoke('virtualcamera:stop'),
+    getStatus: () => ipcRenderer.invoke('virtualcamera:get-status')
   }
 }
 

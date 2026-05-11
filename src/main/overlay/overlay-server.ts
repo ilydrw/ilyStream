@@ -47,6 +47,22 @@ const DEFAULT_PORT = 8899
 import { readFile } from 'fs/promises'
 import { join, extname, basename } from 'path'
 
+const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ilyStream — Dual Vertical Overlay</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  img { width: 100%; height: 100%; object-fit: contain; display: block; }
+</style>
+</head>
+<body>
+<img src="/overlay/dual-vertical/stream.mjpeg" alt="" />
+</body>
+</html>`
+
 export class OverlayServer extends EventEmitter {
   private db: Database | null = null
   private assetService: AssetService | null = null
@@ -70,8 +86,15 @@ export class OverlayServer extends EventEmitter {
   private physicsClients = new Set<ServerResponse<IncomingMessage>>()
   private deckClients = new Set<ServerResponse<IncomingMessage>>()
   private likesClients = new Set<ServerResponse<IncomingMessage>>()
+  private dualVerticalClients = new Set<ServerResponse<IncomingMessage>>()
+  private dualVerticalLastFrame: Buffer | null = null
   private likeTrackerUsers = new Map<string, LikesTrackerUser>()
   private likeTrackerTotalLikes = 0
+  // Per-session dedupe so the same account firing repeat follow events
+  // (TikTok social spam, Twitch backfill on reconnect) doesn't inflate
+  // `goalState.totalFollows`. Resets when the OverlayServer instance is
+  // recreated. Keyed by `${platform}:${lowercased-username}`.
+  private seenFollowKeys = new Set<string>()
   private nowPlayingState: NowPlayingPayload = { ...EMPTY_NOW_PLAYING }
   private chatHistory: OverlayFeedItem[] = []
   private alertHistory: OverlayAlertItem[] = []
@@ -188,6 +211,9 @@ export class OverlayServer extends EventEmitter {
   }
 
   handleStreamEvent(event: AnyStreamEvent): void {
+    if (event.type === 'chat' || event.type === 'gift' || event.type === 'follow') {
+      console.log(`[overlay-server] Incoming stream event: ${event.type} from ${event.platform}`);
+    }
     const feedItem = eventToOverlayFeedItem(event)
     if (feedItem) {
       // FILTER: Only allow chat, gift, follow, subscription, and raid in the main feed
@@ -231,6 +257,27 @@ export class OverlayServer extends EventEmitter {
 
   broadcastPhysicsSpawn(payload: any): void {
     this.broadcast('physics', { type: 'spawn', payload })
+  }
+
+  /** Push a JPEG frame for the dual-stream vertical overlay (consumed by MJPEG clients). */
+  pushDualVerticalFrame(jpeg: Buffer): void {
+    this.dualVerticalLastFrame = jpeg
+    if (this.dualVerticalClients.size === 0) return
+    const header = Buffer.from(
+      `\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`
+    )
+    for (const client of [...this.dualVerticalClients]) {
+      try {
+        client.write(header)
+        client.write(jpeg)
+      } catch {
+        this.dualVerticalClients.delete(client)
+      }
+    }
+  }
+
+  getDualVerticalClientCount(): number {
+    return this.dualVerticalClients.size
   }
 
   pushAlert(
@@ -291,6 +338,8 @@ export class OverlayServer extends EventEmitter {
   broadcastWidgetUpdate(type: string, id: string): void {
     const channelMap: Record<string, OverlayChannel> = {
       'chat': 'chat',
+      'chat-unified': 'chat-unified',
+      'likes-tracker': 'likes',
       'alerts': 'alerts',
       'now-playing': 'now-playing',
       'spotify': 'now-playing',
@@ -386,6 +435,7 @@ export class OverlayServer extends EventEmitter {
     this.closeClients(this.physicsClients)
     this.closeClients(this.deckClients)
     this.closeClients(this.likesClients)
+    this.closeClients(this.dualVerticalClients)
     this.chatClients.clear()
     this.alertClients.clear()
     this.goalClients.clear()
@@ -399,6 +449,8 @@ export class OverlayServer extends EventEmitter {
     this.physicsClients.clear()
     this.deckClients.clear()
     this.likesClients.clear()
+    this.dualVerticalClients.clear()
+    this.dualVerticalLastFrame = null
     this.updateClientCounts()
 
     if (!this.server) {
@@ -436,7 +488,6 @@ export class OverlayServer extends EventEmitter {
   ): Promise<{ server: Server; actualPort: number }> {
     return await new Promise((resolve, reject) => {
       const server = createServer((request, response) => {
-        console.log(`[overlay] Incoming Request: ${request.method} ${request.url}`)
         void this.handleRequest(request, response)
       })
 
@@ -466,7 +517,11 @@ export class OverlayServer extends EventEmitter {
     try {
       const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
       const pathname = url.pathname
-      console.log(`[overlay-request] ${request.method} ${pathname}`)
+      // Skip logging for high-frequency polling endpoints — these fire every
+      // 500–1000 ms per open client and drown the console otherwise.
+      if (!isQuietOverlayPath(pathname)) {
+        console.log(`[overlay-request] ${request.method} ${pathname}`)
+      }
 
       // CORS Preflight
       if (request.method === 'OPTIONS') {
@@ -642,6 +697,16 @@ export class OverlayServer extends EventEmitter {
       return
     }
 
+    // Dual-stream vertical overlay (MJPEG stream + viewer page)
+    if (pathname === '/overlay/dual-vertical.html' || pathname === '/overlay/dual-vertical') {
+      this.writeHtml(response, DUAL_VERTICAL_VIEWER_HTML)
+      return
+    }
+    if (pathname === '/overlay/dual-vertical/stream.mjpeg') {
+      this.attachDualVerticalClient(request, response)
+      return
+    }
+
     // Asset Serving (Images/Sounds)
     if (pathname.startsWith('/assets/') || pathname.startsWith('/sounds/')) {
       const isSound = pathname.startsWith('/sounds/')
@@ -812,6 +877,39 @@ export class OverlayServer extends EventEmitter {
     })
   }
 
+  private attachDualVerticalClient(
+    request: IncomingMessage,
+    response: ServerResponse<IncomingMessage>
+  ): void {
+    response.writeHead(200, {
+      'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    })
+
+    this.dualVerticalClients.add(response)
+    this.updateClientCounts()
+
+    if (this.dualVerticalLastFrame) {
+      try {
+        response.write(
+          `\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${this.dualVerticalLastFrame.length}\r\n\r\n`
+        )
+        response.write(this.dualVerticalLastFrame)
+      } catch {
+        this.dualVerticalClients.delete(response)
+      }
+    }
+
+    request.on('close', () => {
+      this.dualVerticalClients.delete(response)
+      this.updateClientCounts()
+      try { response.end() } catch {}
+    })
+  }
+
   private broadcast(channel: OverlayChannel, payload: unknown): void {
     const clients = this.clientsFor(channel)
 
@@ -827,11 +925,35 @@ export class OverlayServer extends EventEmitter {
   }
 
   private updateLikeTrackerState(event: LikeEvent, feedItem: OverlayFeedItem): OverlayFeedItem & { totalLikes: number } {
+    // tiktok-live-connector semantics:
+    //   data.likeCount      = delta (likes in this batch, typically 1–15)
+    //   data.totalLikeCount = TikTok's authoritative cumulative count
+    // The connector preserves both fields onto the LikeEvent so we can trust
+    // the platform's running total when present and fall back to local
+    // accumulation only when the platform doesn't supply one.
     const amount = Math.max(1, Math.floor(event.likeCount || feedItem.amount || 1))
-    this.likeTrackerTotalLikes += amount
+    const platformTotal = Number.isFinite(event.totalLikes) && event.totalLikes > 0
+      ? Math.floor(event.totalLikes)
+      : null
 
-    if (Number.isFinite(event.totalLikes) && event.totalLikes > this.likeTrackerTotalLikes) {
-      this.likeTrackerTotalLikes = event.totalLikes
+    if (platformTotal !== null) {
+      if (platformTotal >= this.likeTrackerTotalLikes) {
+        // Adopt TikTok's cumulative count directly. Naturally absorbs duplicate
+        // websocket emits (same totalLikeCount → no double count) and
+        // restart-induced jumps without compounding with the local delta.
+        this.likeTrackerTotalLikes = platformTotal
+      } else {
+        // TikTok reported a lower cumulative than we already have — either a
+        // late/out-of-order packet or a reconnect with a fresh session counter.
+        // Hold the previous total (never go backward) and log so the user can
+        // see when a regression actually happened.
+        console.warn(
+          `[overlay] Ignoring TikTok totalLikes regression: incoming=${platformTotal}, current=${this.likeTrackerTotalLikes}`
+        )
+      }
+    } else {
+      // No platform total — accumulate the local delta as a best-effort fallback.
+      this.likeTrackerTotalLikes += amount
     }
 
     const key = `${event.platform}:${event.user.username || event.user.id || feedItem.displayName}`.toLowerCase()
@@ -852,7 +974,6 @@ export class OverlayServer extends EventEmitter {
       displayName: existing.displayName,
       profilePictureUrl: existing.profilePictureUrl,
       amount,
-      meta: this.likeTrackerTotalLikes > 0 ? `${this.likeTrackerTotalLikes.toLocaleString()} total` : undefined,
       totalLikes: this.likeTrackerTotalLikes
     }
   }
@@ -1002,6 +1123,7 @@ export class OverlayServer extends EventEmitter {
     this.status.particleClientCount = this.particleClients.size
     this.status.roseClientCount = this.roseClients.size
     this.status.likesClientCount = this.likesClients.size
+    this.status.dualVerticalClientCount = this.dualVerticalClients.size
   }
 
   private emitStatusChanged(): void {
@@ -1018,6 +1140,7 @@ export class OverlayServer extends EventEmitter {
     this.status.healthUrl = this.makeUrl('/overlay/health')
     this.status.deckUrl = this.makeUrl('/overlay/deck')
     this.status.particlesUrl = this.makeUrl('/overlay/particles.html')
+    this.status.dualVerticalUrl = this.makeUrl('/overlay/dual-vertical.html')
     this.status.lastError = null
   }
 
@@ -1033,9 +1156,21 @@ export class OverlayServer extends EventEmitter {
 
   private updateGoalState(event: AnyStreamEvent): void {
     switch (event.type) {
-      case 'like':
-        this.goalState.totalLikes += event.likeCount
+      case 'like': {
+        // Mirror the like-tracker logic: prefer TikTok's cumulative total when
+        // available so reconnects / duplicate emits don't inflate the goal.
+        const platformTotal = Number.isFinite(event.totalLikes) && event.totalLikes > 0
+          ? Math.floor(event.totalLikes)
+          : null
+        if (platformTotal !== null) {
+          if (platformTotal > this.goalState.totalLikes) {
+            this.goalState.totalLikes = platformTotal
+          }
+        } else {
+          this.goalState.totalLikes += Math.max(1, Math.floor(event.likeCount || 1))
+        }
         break
+      }
       case 'gift':
         if (event.isCombo) return
         this.goalState.totalGiftCount += event.giftCount
@@ -1044,9 +1179,19 @@ export class OverlayServer extends EventEmitter {
       case 'subscription':
         this.goalState.totalSubscriptions += 1
         break
-      case 'follow':
+      case 'follow': {
+        // A user can only "have followed" once per platform. Dedupe in-session
+        // so repeat follow events (TikTok social re-emissions, Twitch follower
+        // backfill on every reconnect) don't inflate the goal counter that
+        // the DeskThing companion and goals overlay both read from.
+        const followKey = `${event.platform}:${(event.user?.username || event.user?.id || '').toLowerCase()}`
+        if (!followKey.endsWith(':') && this.seenFollowKeys.has(followKey)) {
+          return
+        }
+        if (!followKey.endsWith(':')) this.seenFollowKeys.add(followKey)
         this.goalState.totalFollows += 1
         break
+      }
       case 'share':
         this.goalState.totalShares += 1
         break
@@ -1064,6 +1209,24 @@ export class OverlayServer extends EventEmitter {
     this.broadcast('goals', { type: 'snapshot', payload: this.goalState })
     this.deviceApi?.broadcast('goals', this.goalState)
   }
+}
+
+// Endpoints we intentionally skip in the request log. These are polled
+// aggressively by overlay clients (often >1 Hz) so logging every hit makes the
+// rest of the console unreadable.
+const QUIET_OVERLAY_PATHS = new Set([
+  '/overlay/alerts/state',
+  '/overlay/chat/state',
+  '/overlay/goals/state',
+  '/overlay/now-playing/state',
+  '/overlay/socials/state',
+  '/overlay/particles/state'
+])
+
+function isQuietOverlayPath(pathname: string): boolean {
+  if (QUIET_OVERLAY_PATHS.has(pathname)) return true
+  // Static assets (svg, png, jpeg, css, js, etc.) served from /overlay/*.
+  return /\.(svg|png|jpe?g|gif|webp|ico|css|js|woff2?)$/i.test(pathname)
 }
 
 /** Convert "#rrggbb" + 0..1 alpha to "rgba(r,g,b,a)". Falls back to a sensible default. */
