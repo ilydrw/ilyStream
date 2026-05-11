@@ -77,7 +77,7 @@ export default function GoveePage() {
         setApiKey('')
         refreshDevices()
       } else {
-        toast.error('Failed to connect to Govee. IconCheck your API key.')
+        toast.error('Failed to connect to Govee. Check your API key.')
       }
     } catch (err) {
       console.error(err)
@@ -183,7 +183,7 @@ export default function GoveePage() {
                 <button 
                   onClick={handleDisconnect}
                   className="p-2 rounded-lg bg-white/5 text-white/20 hover:text-danger hover:bg-danger/10 transition-all"
-                  title="IconUnlink Account"
+                  title="Unlink Account"
                 >
                   <IconUnlink size={16} />
                 </button>
@@ -288,7 +288,7 @@ export default function GoveePage() {
 
                 <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
                   <div>
-                    <h4 className="text-xs font-black text-white uppercase tracking-wider mb-0.5">Flash on IconGift</h4>
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider mb-0.5">Flash on Gift</h4>
                     <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">Cyber strobe on gift events</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">

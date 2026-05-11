@@ -29,7 +29,7 @@ export function VoiceModifiersSidebar({
           {/* IconRadio IconFilter */}
           <div className="flex items-center justify-between gap-6">
             <div className="min-w-0">
-              <h4 className="text-sm font-bold text-white mb-0.5">IconRadio IconFilter</h4>
+              <h4 className="text-sm font-bold text-white mb-0.5">Voice Filters</h4>
               <p className="text-xs text-white/40">High-pass + slight crunch for a broadcast feel.</p>
             </div>
             <Toggle 

@@ -68,17 +68,28 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         min-width: var(--width);
         max-width: calc(100vw - 80px);
         border-radius: 999px;
-        padding: 12px 28px;
-        background: var(--bg);
-        backdrop-filter: blur(var(--blur)) saturate(220%);
-        -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
-        border: ${cfg.showBorder ? '2px solid rgba(255, 255, 255, 0.15)' : 'none'};
-        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        padding: 12px 32px;
+        background: rgba(10, 12, 18, 0.45);
+        backdrop-filter: blur(40px) saturate(250%);
+        -webkit-backdrop-filter: blur(40px) saturate(250%);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 
+            0 25px 60px rgba(0,0,0,0.5),
+            inset 0 0 20px rgba(255,255,255,0.05);
         animation: card-appear 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
         position: relative;
         display: flex;
         align-items: center;
         gap: 24px;
+      }
+
+      .card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
+        pointer-events: none;
       }
       .info-group {
         display: flex;

@@ -66,7 +66,7 @@ export default function FacebookPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Stream Destination</label>
-                <div className="app-input">Gaming IconVideo Creator Page</div>
+                <div className="app-input">Gaming Video Creator Page</div>
               </div>
             </div>
           </section>

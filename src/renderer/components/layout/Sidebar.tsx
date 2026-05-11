@@ -87,6 +87,7 @@ const navigationGroups: NavigationGroup[] = [
       itemByPath('/connections/wiz'),
       itemByPath('/connections/yeelight'),
       { isHeader: true, label: 'General' },
+      itemByPath('/console'),
       itemByPath('/settings')
     ]
   }
@@ -193,10 +194,10 @@ export function Sidebar() {
 
         <div className="app-sidebar-brand px-6 py-5 border-b border-white/[0.03] shrink-0">
           <div className="min-w-0">
-            <h1 className="text-sm font-black tracking-[0.16em] text-white/65 uppercase leading-none mb-1">
+            <h1 className="kicker mb-1.5 opacity-100">
               {activeGroup.label}
             </h1>
-            <p className="text-[10px] font-black tracking-[0.2em] text-white/20 uppercase">
+            <p className="text-[9px] font-black tracking-[0.1em] text-white/10 uppercase">
               {activeGroup.drawerTitle}
             </p>
           </div>
@@ -218,7 +219,7 @@ export function Sidebar() {
                   {section.header && (
                     <div className="flex items-center justify-between px-4 pt-8 pb-3 group/header">
                       <div className="flex items-center gap-4 flex-1">
-                        <span className="text-[11px] font-black tracking-[0.2em] text-white/40 uppercase whitespace-nowrap">{section.header.label}</span>
+                        <span className="kicker opacity-100">{section.header.label}</span>
                         <div className="h-px flex-1 bg-white/[0.03]" />
                       </div>
                       {section.items.length > 4 && (

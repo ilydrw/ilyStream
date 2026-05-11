@@ -121,7 +121,7 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
             </div>
           </SettingRow>
 
-          <SettingRow label="Reduced Motion" hint="IconMinimize animated transitions when you need the UI to stay quiet and predictable.">
+          <SettingRow label="Reduced Motion" hint="Minimize animated transitions when you need the UI to stay quiet and predictable.">
             <Toggle value={settings.reducedMotion} onChange={(value) => onUpdate('reducedMotion', value)} />
           </SettingRow>
 

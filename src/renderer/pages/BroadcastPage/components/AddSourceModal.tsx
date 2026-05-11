@@ -17,8 +17,8 @@ const SOURCE_TYPES: Array<{ type: LayerType; label: string; desc: string; icon: 
   { type: 'widget', label: 'Ily Widget', desc: 'Chat, Alerts, Goals', icon: IconStack2, iconClass: 'text-purple-400', bgClass: 'bg-purple-500/10' },
   { type: 'browser', label: 'Browser Source', desc: 'External URLs & Overlays', icon: IconWorld, iconClass: 'text-emerald-400', bgClass: 'bg-emerald-500/10' },
   { type: 'text', label: 'Text Label', desc: 'Custom Titles & Branding', icon: IconTypography, iconClass: 'text-blue-400', bgClass: 'bg-blue-500/10' },
-  { type: 'image', label: 'IconPhoto / Logo', desc: 'PNG, JPG, SVG files', icon: ImageIcon, iconClass: 'text-sky-400', bgClass: 'bg-sky-500/10' },
-  { type: 'spotify' as any, label: 'Spotify / IconMusic', desc: 'Capture Spotify or System audio', icon: IconMusic, iconClass: 'text-green-400', bgClass: 'bg-green-500/10' },
+  { type: 'image', label: 'Photo / Logo', desc: 'PNG, JPG, SVG files', icon: ImageIcon, iconClass: 'text-sky-400', bgClass: 'bg-sky-500/10' },
+  { type: 'spotify' as any, label: 'Spotify / Music', desc: 'Capture Spotify or System audio', icon: IconMusic, iconClass: 'text-green-400', bgClass: 'bg-green-500/10' },
 ]
 
 interface DesktopSourceOption {
@@ -456,7 +456,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   onClick={handlePickImage}
                   className="w-full bg-white/[0.03] border border-white/10 border-dashed rounded-xl px-4 py-8 text-sm text-white/30 hover:text-white/50 hover:border-white/20 transition-all text-center"
                 >
-                  {config.assetPath ? 'IconPhoto selected — click to change' : 'Click to select an image file'}
+                  {config.assetPath ? 'Photo selected — click to change' : 'Click to select an image file'}
                 </button>
                 {config.assetPath && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/5">

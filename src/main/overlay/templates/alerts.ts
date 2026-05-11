@@ -11,8 +11,9 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     :root {
       --cyber-blue: #00f2ff;
       --cyber-pink: #ff00e5;
-      --glass-bg: rgba(13, 14, 18, 0.85);
-      --glass-border: rgba(255, 255, 255, 0.1);
+      --glass-bg: rgba(10, 12, 18, 0.5);
+      --glass-border: rgba(255, 255, 255, 0.15);
+      --liquid-shine: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -82,15 +83,24 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       gap: 20px;
       overflow: visible;
       border: 1px solid var(--glass-border);
-      border-radius: 32px;
+      border-radius: 40px;
       background: var(--glass-bg);
-      padding: 30px 45px;
+      padding: 35px 50px;
       text-align: center;
       box-shadow:
-        0 25px 60px rgba(0, 0, 0, 0.6),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(30px) saturate(200%);
-      -webkit-backdrop-filter: blur(30px) saturate(200%);
+        0 30px 80px rgba(0, 0, 0, 0.6),
+        inset 0 0 30px rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(50px) saturate(250%);
+      -webkit-backdrop-filter: blur(50px) saturate(250%);
+    }
+
+    .alert-content::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: var(--liquid-shine);
+      pointer-events: none;
     }
 
     .layout-stacked .alert-content {

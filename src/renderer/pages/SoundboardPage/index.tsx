@@ -30,7 +30,7 @@ export default function SoundboardPage() {
     const port = 8899
     const url = `http://localhost:${port}/overlay/deck/action`
     const body = JSON.stringify({ type: 'PLAY_SOUND', payload: { soundId } })
-    const command = `curl -X POST "${url}" -H "Content-IconTypography: application/json" -d '${body}'`
+    const command = `curl -X POST "${url}" -H "Content-Type: application/json" -d '${body}'`
     navigator.clipboard.writeText(command)
   }
 
@@ -254,7 +254,7 @@ export default function SoundboardPage() {
             <div className="app-section-content">
               <p className="text-xs text-white/40 leading-relaxed font-medium">
               Every button in your soundboard can be triggered externally via HTTP requests. 
-              Use the <span className="text-white/80">IconCopy Trigger</span> button on any tile to get a 
+              Use the <span className="text-white/80">Copy Trigger</span> button on any tile to get a 
               ready-to-use curl command for your Elgato or Touch Portal.
             </p>
             <div className="mt-8 p-4 rounded-2xl bg-black/40 border border-white/5">

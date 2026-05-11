@@ -49,7 +49,7 @@ export default function TelegramPage() {
                 <input type="password" placeholder="Paste your Telegram Stream Key..." className="app-input" />
               </div>
               <button className="app-button-primary w-full !h-14 text-xs font-black uppercase tracking-widest">
-                IconDeviceFloppy Stream Details
+                Save Stream Details
               </button>
             </div>
           </section>
@@ -61,7 +61,7 @@ export default function TelegramPage() {
             <ol className="text-xs text-white/40 space-y-4 list-decimal list-inside leading-relaxed">
               <li>Open your Channel or Group on Telegram.</li>
               <li>Tap the three dots and select 'Stream With...'.</li>
-              <li>IconCopy the Server URL and Stream Key into the fields on the left.</li>
+              <li>Copy the Server URL and Stream Key into the fields on the left.</li>
               <li>Press 'Start Streaming' in IlyStream.</li>
             </ol>
           </section>

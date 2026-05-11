@@ -64,6 +64,8 @@ export class TikTokConnector extends BaseConnector {
         
         if (isOffline) {
           console.log(`[tiktok] ${candidate.name} attempt: User is currently offline.`)
+        } else if (message.includes('Euler Stream') && message.includes('lack of permission')) {
+          console.error(`[tiktok] ${candidate.name} attempt: Euler Stream signing failed. This usually means TikTok has blocked the request or requires a valid signApiKey in your settings.`)
         } else {
           console.warn(`[tiktok] ${candidate.name} connection attempt failed: ${message}`)
         }
@@ -101,8 +103,9 @@ export class TikTokConnector extends BaseConnector {
       this.onUnexpectedDisconnect(reason)
     }
 
-    connection.on('connected', () => {
+    connection.on('connected', (state: any) => {
       markActivity()
+      console.log(`[tiktok] Connected to room ${state.roomId || 'unknown'} (Mode: ${candidate.name}, Protocol: ${state.upgradedToWebsocket ? 'WebSocket' : 'Polling'})`)
     })
 
     connection.on('websocketConnected', () => {
@@ -125,7 +128,8 @@ export class TikTokConnector extends BaseConnector {
       if (!isCurrentConnection()) return
       markActivity()
       // Deep Debug Log: See if the message is even reaching the app
-      console.log(`[tiktok-raw-chat] From: ${data.uniqueId} (ID: ${data.userId}) - Message: ${data.comment}`)
+      const comment = data.comment || data.text || data.message || ''
+      console.log(`[tiktok-raw-chat] From: ${data.uniqueId} (ID: ${data.userId}) - Message: ${comment}`)
       this.emitEvent(this.mapChat(data))
     })
 
@@ -146,6 +150,8 @@ export class TikTokConnector extends BaseConnector {
       markActivity()
       if (isTikTokFollowSocialPayload(data)) {
         this.emitFollow(data)
+      } else {
+        console.log(`[tiktok-raw-social] Non-follow social event: ${getTikTokSocialText(data)}`)
       }
     })
 
@@ -343,7 +349,7 @@ export class TikTokConnector extends BaseConnector {
       type: 'chat',
       raw: data,
       user: this.mapUser(data),
-      message: data.comment || '',
+      message: data.comment || data.text || data.message || '',
       emotes: (data.emotes || []).map((e: any) => ({
         id: String(e.emoteId || ''),
         name: e.emoteImageUrl ? '' : '',
@@ -565,8 +571,17 @@ export function buildTikTokConnectionOptionCandidates(
       options: {
         ...baseOptions,
         fetchRoomInfoOnConnect: true,
-        enableRequestPolling: false,
-        connectWithUniqueId: false
+        connectWithUniqueId: false,
+        enableRequestPolling: false
+      }
+    },
+    {
+      name: 'room-info-no-euler',
+      options: {
+        ...baseOptions,
+        fetchRoomInfoOnConnect: true,
+        connectWithUniqueId: false,
+        disableEulerFallbacks: true
       }
     }
   ]
@@ -722,8 +737,8 @@ function extractTikTokGiftRecord(input: any, source: string): TikTokGiftInput | 
       input?.diamondCount,
       input?.gift?.diamond_count
     ),
-    image_url: extractTikTokImageUrl(gift) || extractTikTokImageUrl(input) || input?.giftPictureUrl || null,
-    name_key: nameKey || null,
+    image_url: extractTikTokImageUrl(gift) || extractTikTokImageUrl(input) || input?.giftPictureUrl || undefined,
+    name_key: nameKey || undefined,
     source,
     raw: gift,
     aliases: [
@@ -735,7 +750,7 @@ function extractTikTokGiftRecord(input: any, source: string): TikTokGiftInput | 
   }
 }
 
-function extractTikTokImageUrl(value: any): string | null {
+function extractTikTokImageUrl(value: any): string | undefined {
   return firstString(
     value?.image?.url_list?.[0],
     value?.image?.urlList?.[0],
@@ -744,7 +759,7 @@ function extractTikTokImageUrl(value: any): string | null {
     value?.giftImage?.url_list?.[0],
     value?.giftImage?.urlList?.[0],
     value?.giftPictureUrl
-  ) || null
+  ) || undefined
 }
 
 function firstString(...values: unknown[]): string {

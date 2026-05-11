@@ -83,11 +83,11 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
                   <PlatformLogo platform={p} size={32} />
                 </div>
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-white/90 leading-none block mb-0.5">{PLATFORM_LABELS[p]}</span>
-                  <span className="text-[9px] text-white/30 font-black uppercase tracking-tighter">{ps.uniqueUserCount} Active IconUsers</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-white/90 leading-none block mb-1">{PLATFORM_LABELS[p]}</span>
+                  <span className="text-[9px] text-white/30 font-black uppercase tracking-wider">{ps.uniqueUserCount.toLocaleString()} Active Users</span>
                 </div>
               </div>
-              <div className="space-y-5 text-sm">
+              <div className="space-y-4 text-sm bg-white/[0.02] rounded-xl p-4 border border-white/[0.05]">
                 {isRelevant(p, 'totalLikes') && <PlatformStatRow label="Likes" value={ps.totalLikes.toLocaleString()} />}
                 {isRelevant(p, 'totalGifts') && <PlatformStatRow label="Gifts" value={ps.totalGifts.toLocaleString()} sub={formatCurrency(ps.totalGiftValueCents)} />}
                 {isRelevant(p, 'totalSubscriptions') && <PlatformStatRow label="Subs" value={ps.totalSubscriptions.toLocaleString()} />}

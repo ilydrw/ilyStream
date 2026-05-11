@@ -3,8 +3,8 @@ import type { BrowserFrameSurface, CachedMediaFrame, Crop } from './CanvasEditor
 
 export const BROWSER_SOURCE_CAPTURE_MAX_EDGE = 1920
 export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
-export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 30
-export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 12
+export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
+export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 60
 
 export function drawMediaStatus(
   ctx: CanvasRenderingContext2D,
@@ -12,20 +12,74 @@ export function drawMediaStatus(
   title: string,
   name: string
 ): void {
-  ctx.fillStyle = 'rgba(255, 66, 66, 0.18)'
-  ctx.fillRect(layout.x, layout.y, layout.width, layout.height)
-  ctx.strokeStyle = 'rgba(255, 96, 96, 0.65)'
-  ctx.lineWidth = 3
-  ctx.strokeRect(layout.x + 1.5, layout.y + 1.5, Math.max(0, layout.width - 3), Math.max(0, layout.height - 3))
+  const x = layout.x
+  const y = layout.y
+  const w = Math.max(1, layout.width)
+  const h = Math.max(1, layout.height)
 
-  const fontSize = Math.max(16, Math.min(28, layout.width / 18))
-  ctx.fillStyle = '#fff'
-  ctx.font = `900 ${fontSize}px Inter, Arial, sans-serif`
-  ctx.textBaseline = 'top'
-  ctx.fillText(title, layout.x + 18, layout.y + 18)
-  ctx.fillStyle = 'rgba(255,255,255,0.72)'
-  ctx.font = `700 ${Math.max(12, fontSize * 0.55)}px Inter, Arial, sans-serif`
-  ctx.fillText(name, layout.x + 18, layout.y + 22 + fontSize)
+  ctx.save()
+
+  // Subtle dark gradient panel
+  const bg = ctx.createLinearGradient(x, y, x, y + h)
+  bg.addColorStop(0, 'rgba(22, 24, 32, 0.95)')
+  bg.addColorStop(1, 'rgba(12, 13, 18, 0.95)')
+  ctx.fillStyle = bg
+  ctx.fillRect(x, y, w, h)
+
+  // Hairline inner border
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+
+  // Buffering spinner — sized relative to the smaller edge so it always fits
+  const cx = x + w / 2
+  const cy = y + h / 2
+  const minEdge = Math.min(w, h)
+  const radius = Math.max(8, Math.min(minEdge * 0.18, 56))
+  const lineWidth = Math.max(2, radius * 0.18)
+  const t = performance.now() / 1000
+
+  // Track ring
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+  ctx.lineWidth = lineWidth
+  ctx.stroke()
+
+  // Spinning arc — uses time-based rotation so it animates regardless of frame rate
+  const sweep = Math.PI * 1.25
+  const rot = (t * 1.8) % (Math.PI * 2)
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, rot, rot + sweep)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+  ctx.lineCap = 'round'
+  ctx.lineWidth = lineWidth
+  ctx.stroke()
+
+  // Small accent dot at the leading edge of the spinner
+  const dotX = cx + Math.cos(rot + sweep) * radius
+  const dotY = cy + Math.sin(rot + sweep) * radius
+  ctx.beginPath()
+  ctx.arc(dotX, dotY, lineWidth * 0.55, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  // Labels — only show when there's room below the spinner
+  const labelTop = cy + radius + Math.max(12, radius * 0.35)
+  const labelFontSize = Math.max(11, Math.min(16, minEdge / 22))
+  if (labelTop + labelFontSize * 2.4 < y + h - 8) {
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+    ctx.font = `600 ${labelFontSize}px Inter, Arial, sans-serif`
+    const titleText = title === 'WAITING' ? 'Connecting' : title.charAt(0) + title.slice(1).toLowerCase()
+    ctx.fillText(titleText, cx, labelTop)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
+    ctx.font = `500 ${labelFontSize * 0.78}px Inter, Arial, sans-serif`
+    ctx.fillText(name, cx, labelTop + labelFontSize * 1.35)
+  }
+
+  ctx.restore()
 }
 
 export function drawAndCacheMediaFrame(
@@ -54,8 +108,8 @@ export function drawAndCacheMediaFrame(
 
   ctx.drawImage(
     cached.canvas,
-    Math.round(layout.x),
-    Math.round(layout.y),
+    layout.x,
+    layout.y,
     width,
     height
   )
@@ -87,7 +141,7 @@ function drawVideoFrame(
   crop?: Crop
 ): void {
   if (!crop) {
-    ctx.drawImage(video, Math.round(layout.x), Math.round(layout.y), Math.round(layout.width), Math.round(layout.height))
+    ctx.drawImage(video, layout.x, layout.y, layout.width, layout.height)
     return
   }
 
@@ -104,10 +158,10 @@ function drawVideoFrame(
     sy,
     sw,
     sh,
-    Math.round(layout.x),
-    Math.round(layout.y),
-    Math.round(layout.width),
-    Math.round(layout.height)
+    layout.x,
+    layout.y,
+    layout.width,
+    layout.height
   )
 }
 
@@ -195,7 +249,7 @@ export function resolveBrowserSourceUrl(layer: StudioLayer, overlayPort: number)
   if (layer.type === 'widget') {
     if (!layer.config?.widgetId) return ''
     const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(layer.config || {}))))
-    return `http://localhost:${overlayPort}/overlay/${layer.config.widgetId}?config=${encodedConfig}&preview=1`
+    return `http://localhost:${overlayPort}/overlay/${layer.config.widgetId}?config=${encodedConfig}`
   }
 
   const url = String(layer.config?.url || '').trim()
@@ -214,55 +268,11 @@ export function getBrowserFrameSurface(
   const existing = cache[id]
   if (existing && existing.width === width && existing.height === height) return existing
 
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false })
-  if (!ctx) throw new Error('Browser source frame surface could not be created')
-
-  const rgba = new Uint8ClampedArray(width * height * 4)
-  const imageData = new ImageData(rgba, width, height)
-  const pixels = new Uint32Array(rgba.buffer)
-  const surface = { canvas, ctx, imageData, rgba, pixels, width, height }
+  const surface = { width, height }
   cache[id] = surface
   return surface
 }
 
-export function copyBgraToRgba(source: Uint8Array, surface: BrowserFrameSurface, transparentBackground = false): void {
-  const length = Math.min(source.byteLength, surface.rgba.byteLength)
-  const sourcePixels = new Uint32Array(source.buffer, source.byteOffset, length / 4)
-  const targetPixels = surface.pixels
-
-  if (!transparentBackground) {
-    // High-speed bitwise swap (BGRA -> RGBA)
-    for (let i = 0; i < sourcePixels.length; i++) {
-      const v = sourcePixels[i]
-      targetPixels[i] = (v & 0xff00ff00) | ((v & 0xff0000) >> 16) | ((v & 0xff) << 16)
-    }
-  } else {
-    // Optimized transparency check
-    for (let i = 0; i < sourcePixels.length; i++) {
-      const v = sourcePixels[i]
-      // Check if it's a "green screen" or dark keyed pixel quickly
-      const alpha = (v >>> 24)
-      if (alpha < 5) {
-        targetPixels[i] = 0
-        continue
-      }
-      
-      const red = (v >>> 16) & 0xff
-      const green = (v >>> 8) & 0xff
-      const blue = v & 0xff
-      
-      // Chroma key optimization: if mostly black/alpha, drop it
-      if (alpha >= 250 && red <= 8 && green <= 8 && blue <= 8) {
-        targetPixels[i] = 0
-      } else {
-        targetPixels[i] = (alpha << 24) | (blue << 16) | (green << 8) | red
-      }
-    }
-  }
-}
 
 export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number, height: number): { width: number; height: number; fps: number } {
   const sourceWidth = Math.max(16, Math.round(width || 1280))

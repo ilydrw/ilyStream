@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { StudioLayer } from '../../../../shared/studio'
+import { resolveLayerLayout } from '../../../../shared/studio'
 import { resolveBrowserSourceUrl, resolveBrowserCaptureSettings, getBrowserFrameSurface } from './CanvasEditor.utils'
 import type { BrowserFrameSurface } from './CanvasEditor.types'
 
@@ -27,10 +28,12 @@ export function useBrowserSources(options: BrowserSourceOptions) {
       const { id, bitmap, width, height, isBlank } = event.data
       browserWorkerBusy.current[id] = false
 
+      // Disable blank frame optimization for now as it causes mostly-transparent widgets to stop updating
+      /*
       if (isBlank && browserFrameCache.current[id]?.lastUpdateAt) {
         const blanks = (browserBlankFrames.current[id] || 0) + 1
         browserBlankFrames.current[id] = blanks
-        if (blanks < 30) { // arbitrary threshold
+        if (blanks < 30) {
           try { bitmap?.close?.() } catch {}
           const latest = latestBrowserBitmaps.current[id]
           if (latest) {
@@ -41,13 +44,13 @@ export function useBrowserSources(options: BrowserSourceOptions) {
           return
         }
       }
+      */
 
       browserBlankFrames.current[id] = 0
       const surface = getBrowserFrameSurface(browserFrameCache.current, id, width, height)
-      surface.ctx.clearRect(0, 0, surface.width, surface.height)
-      surface.ctx.drawImage(bitmap, 0, 0, surface.width, surface.height)
+      try { surface.bitmap?.close() } catch {}
+      surface.bitmap = bitmap
       surface.lastUpdateAt = performance.now()
-      try { bitmap.close() } catch {}
 
       const latest = latestBrowserBitmaps.current[id]
       if (latest) {
@@ -59,6 +62,7 @@ export function useBrowserSources(options: BrowserSourceOptions) {
 
     const onIpcFrame = (payload: any) => {
       const { id, bitmap, width, height } = payload
+
       if (browserWorkerBusy.current[id]) {
         try { latestBrowserBitmaps.current[id]?.bitmap?.close?.() } catch {}
         latestBrowserBitmaps.current[id] = payload
@@ -79,8 +83,9 @@ export function useBrowserSources(options: BrowserSourceOptions) {
     for (const layer of layers) {
       if (layer.type !== 'widget' && layer.type !== 'browser') continue
       activeIds.add(layer.id)
+      const layout = resolveLayerLayout(layer, aspectRatio as any)
       const url = resolveBrowserSourceUrl(layer, overlayPort)
-      const capture = resolveBrowserCaptureSettings(layer, 1280, 720) // default
+      const capture = resolveBrowserCaptureSettings(layer, layout.width, layout.height)
       const config = { id: layer.id, url, ...capture }
       const sig = JSON.stringify(config)
 

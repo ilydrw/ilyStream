@@ -125,7 +125,7 @@ export default function SettingsPage() {
           <OBSStatusBadge status={obsStatus} />
           <button onClick={handleSave} className="app-button-primary !h-12 !px-8">
             <IconDeviceFloppy size={18} className="mr-2" />
-            {saved ? 'Settings Synced' : 'DeviceFloppy Changes'}
+            {saved ? 'Settings Synced' : 'Save Changes'}
           </button>
         </div>
       </header>

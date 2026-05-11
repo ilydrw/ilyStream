@@ -7,9 +7,9 @@ export function Toggle({ value, onChange, disabled = false }: { value: boolean; 
       disabled={disabled}
       role="switch"
       aria-checked={value}
-      className={`relative h-6 w-11 rounded-full transition-all duration-300 ${
-        value 
-          ? 'bg-white/40' 
+      className={`relative h-6 w-11 rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        value
+          ? 'bg-white/40'
           : 'bg-white/10 shadow-inner'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
     >
@@ -29,12 +29,14 @@ export function NumberInput({
   onChange,
   min,
   max,
+  step,
   className = ''
 }: {
   value: number
   onChange: (value: number) => void
   min: number
   max: number
+  step?: number
   className?: string
 }) {
   return (
@@ -47,6 +49,7 @@ export function NumberInput({
       }}
       min={min}
       max={max}
+      step={step}
       className={`app-input font-mono text-sm ${className}`}
     />
   )

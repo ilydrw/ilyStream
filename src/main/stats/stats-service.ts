@@ -124,6 +124,15 @@ export class StatsService {
         this.db.stats.setGlobalStatIfGreater('peakViewerCount', event.count)
         return // viewer-count has no user, so skip the lastUpdatedAt write below
       }
+      case 'follower-count': {
+        // Authoritative platform follower count — Twitch helix, TikTok roomInfo,
+        // etc. We just persist whatever the connector reports; the repo also
+        // takes an hourly snapshot for growth deltas.
+        if (typeof event.count === 'number' && event.count >= 0) {
+          this.db.stats.setPlatformFollowerCount(platform, Math.floor(event.count))
+        }
+        return
+      }
       default:
         return
     }
@@ -158,6 +167,7 @@ export class StatsService {
 
   getGlobalStats(): GlobalStats {
     const counters = this.db.stats.getAllGlobalStats()
+    const followerStatsByPlatform = this.db.stats.getPlatformFollowerStats()
     const byPlatform: Record<Platform, PlatformStats> = {
       tiktok: { ...EMPTY_PLATFORM_STATS },
       twitch: { ...EMPTY_PLATFORM_STATS },
@@ -165,7 +175,17 @@ export class StatsService {
       kick: { ...EMPTY_PLATFORM_STATS }
     }
     for (const platform of PLATFORMS) {
-      byPlatform[platform] = this.db.stats.getPlatformTotals(platform)
+      const totals = this.db.stats.getPlatformTotals(platform)
+      const followerInfo = followerStatsByPlatform[platform]
+      byPlatform[platform] = {
+        ...EMPTY_PLATFORM_STATS,
+        ...totals,
+        followerCount: followerInfo ? followerInfo.followerCount : null,
+        followerDelta24h: followerInfo ? followerInfo.delta24h : null,
+        followerDelta7d: followerInfo ? followerInfo.delta7d : null,
+        followerDelta30d: followerInfo ? followerInfo.delta30d : null,
+        followersLastSyncedAt: followerInfo ? followerInfo.lastSyncedAt : null
+      }
     }
 
     const lastUpdatedAt = this.db.getSetting('stats:lastUpdatedAt')
@@ -186,6 +206,20 @@ export class StatsService {
       lastUpdatedAt: typeof lastUpdatedAt === 'string' ? lastUpdatedAt : null,
       byPlatform
     }
+  }
+
+  /**
+   * Called by platform connectors when they have an authoritative follower
+   * count from the platform's API. Updates the live row and records a
+   * snapshot for growth trending.
+   */
+  setPlatformFollowerCount(platform: Platform, count: number): void {
+    if (!Number.isFinite(count) || count < 0) return
+    this.db.stats.setPlatformFollowerCount(platform, Math.floor(count))
+  }
+
+  getFollowerSnapshots(platform: Platform, sinceIso: string, limit = 720) {
+    return this.db.stats.getFollowerSnapshots(platform, sinceIso, limit)
   }
 
   getTopUsers(opts: GetTopUsersOptions): UserStat[] {

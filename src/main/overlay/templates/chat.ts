@@ -31,14 +31,15 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         color-scheme: dark;
         font-family: "Outfit", "Inter", system-ui, sans-serif;
         --blur: ${cfg.blur}px;
-        --bg: rgba(13, 16, 28, ${bgOpacity});
+        --glass: rgba(15, 18, 25, ${bgOpacity});
+        --glass-border: rgba(255, 255, 255, 0.12);
         --bg-event: rgba(26, 12, 48, ${bgOpacity});
         --font-size: ${cfg.fontSize}px;
         --feed-width: ${cfg.width}px;
         --fallback-accent: ${cfg.accentColor};
       }
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: transparent !important; background-color: transparent !important; color: #fff; min-height: 100vh; overflow: hidden; }
+      body { background: transparent !important; background-color: transparent !important; color: #fff; min-height: 100vh; overflow: hidden; font-family: "Outfit", "Inter", system-ui, sans-serif; }
       .shell {
         position: relative;
         ${cfg.forceTikTokDimensions ? 'width: 1080px; height: 1920px;' : (
@@ -50,77 +51,97 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         ${shellStyle};
       }
       .feed {
-        width: min(var(--feed-width), calc(100vw - 40px));
+        width: min(${cfg.width}px, calc(100vw - 40px));
         display: flex;
         flex-direction: ${feedDir};
-        gap: 8px;
+        gap: 12px;
+        filter: drop-shadow(0 20px 40px rgba(0,0,0,0.5));
       }
       .entry {
         position: relative;
         overflow: hidden;
-        border-radius: 18px;
-        padding: 12px 18px;
-        background: var(--bg);
-        backdrop-filter: blur(var(--blur)) saturate(180%);
-        -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.08);
-        animation: entry-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+        border-radius: 24px;
+        padding: 16px 20px;
+        background: var(--glass);
+        backdrop-filter: blur(var(--blur)) saturate(220%);
+        -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
+        border: 1px solid var(--glass-border);
+        box-shadow: 
+            0 10px 30px rgba(0,0,0,0.4), 
+            inset 0 0 20px rgba(255,255,255,0.05);
+        animation: entry-slide-in 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
         transition: transform 0.3s ease;
+      }
+      .entry::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 20% 0%, rgba(255,255,255,0.08) 0%, transparent 60%);
+        pointer-events: none;
       }
       .entry--event { 
         background: linear-gradient(135deg, var(--bg-event), rgba(20, 10, 40, ${bgOpacity}));
-        border-color: rgba(147, 51, 234, 0.3);
+        border-color: rgba(147, 51, 234, 0.4);
+      }
+      .entry--event::before {
+        background: radial-gradient(circle at 20% 0%, rgba(147, 51, 234, 0.15) 0%, transparent 60%);
       }
       .entry::after {
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
         transform: translateX(-100%);
-        animation: EntryShimmer 3s infinite;
+        animation: EntryShimmer 4s infinite linear;
+        pointer-events: none;
       }
       @keyframes EntryShimmer {
-        to { transform: translateX(100%); }
+        0% { transform: translateX(-100%); }
+        30% { transform: translateX(100%); }
+        100% { transform: translateX(100%); }
       }
       .username {
-        font-size: calc(var(--font-size) * 1.05);
+        font-size: calc(var(--font-size) * 0.9);
         font-weight: 800;
         color: var(--accent, var(--fallback-accent));
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
       }
       .badge {
-        font-size: 9px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        background: rgba(255,255,255,0.1);
-        color: rgba(255,255,255,0.6);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.8);
         text-transform: uppercase;
         font-weight: 900;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
       }
       .body {
-        margin-top: 6px;
         font-size: var(--font-size);
-        line-height: 1.5;
-        color: rgba(255,255,255,0.95);
+        line-height: 1.4;
+        color: #fff;
         word-break: break-word;
-        font-weight: 500;
+        font-weight: 600;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.4);
       }
       .event-tag {
         font-size: 10px;
         font-weight: 900;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
         color: var(--accent, var(--fallback-accent));
-        margin-bottom: 2px;
+        margin-bottom: 6px;
         display: block;
+        opacity: 0.8;
       }
       @keyframes entry-slide-in {
-        from { opacity: 0; transform: translateX(-20px) scale(0.95); }
+        from { opacity: 0; transform: translateX(-30px) scale(0.9); }
         to { opacity: 1; transform: translateX(0) scale(1); }
       }
       .fading {
@@ -130,15 +151,17 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         to { opacity: 0; transform: translateY(-10px) scale(0.95); }
       }
       .empty {
-        background: rgba(255,255,255,0.03);
-        border: 1px dashed rgba(255,255,255,0.1);
-        border-radius: 18px;
-        padding: 20px;
-        color: rgba(255,255,255,0.2);
-        font-size: 12px;
-        font-weight: 700;
+        background: rgba(255,255,255,0.05);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px dashed rgba(255,255,255,0.2);
+        border-radius: 24px;
+        padding: 30px;
+        color: rgba(255,255,255,0.3);
+        font-size: 14px;
+        font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 4px;
         text-align: center;
       }
     </style>
@@ -261,6 +284,11 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
           var msg = JSON.parse(e.data);
           if (msg.type === 'snapshot') renderSnapshot(msg.payload);
           else if (msg.type === 'append') addItem(msg.payload, true);
+          else if (msg.type === 'reload') window.location.reload();
+          else if (msg.type === 'feature-broadcast') {
+            // Optional: Implement featured message popup for standard chat too
+            console.log('Featured broadcast:', msg.payload);
+          }
         };
         src.onerror = function() {
           src.close();

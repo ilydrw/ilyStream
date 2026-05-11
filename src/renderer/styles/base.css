@@ -17,13 +17,13 @@
   --color-accent: #19c8ff;
   --color-accent-hover: #61d9ff;
   --color-accent-rgb: 25, 200, 255;
-  --color-success: #a0a0a0;
-  --color-warning: #707070;
-  --color-danger: #404040;
-  --color-tiktok: #808080;
-  --color-twitch: #909090;
-  --color-youtube: #606060;
-  --color-kick: #b0b0b0;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-tiktok: #fe2c55;
+  --color-twitch: #9146ff;
+  --color-youtube: #ff0000;
+  --color-kick: #53fc18;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "Cascadia Code", monospace;
   --radius-lg: 8px;
@@ -31,11 +31,56 @@
   --radius-2xl: 14px;
   --radius-3xl: 16px;
   --bg-brand-gradient: linear-gradient(135deg, #19c8ff, #d035f1);
+  --glass-blur: blur(12px);
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  /* Semantic z-index scale */
+  --z-base: 10;
+  --z-dropdown: 50;
+  --z-sticky: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+  --z-tooltip: 400;
+  --z-context: 500;
+}
+
+@utility z-base { z-index: var(--z-base); }
+@utility z-dropdown { z-index: var(--z-dropdown); }
+@utility z-sticky { z-index: var(--z-sticky); }
+@utility z-modal { z-index: var(--z-modal); }
+@utility z-toast { z-index: var(--z-toast); }
+@utility z-tooltip { z-index: var(--z-tooltip); }
+@utility z-context { z-index: var(--z-context); }
+
+/* Premium Typography System */
+@utility kicker {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1;
+}
+
+@utility title-main {
+  font-size: 2.25rem;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+  line-height: 0.9;
+}
+
+@utility glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
 }
 
 :root {
   --accent-rgb: var(--color-accent-rgb);
 }
+
 
 html[data-density="compact"] .app-page {
   padding: 24px 32px;

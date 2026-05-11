@@ -60,7 +60,7 @@ export default function DashboardPage() {
             <IconRadio size={32} className="text-accent" />
           </div>
           <div>
-            <h1>Broadcast Dashboard</h1>
+            <h1 className="title-main">Broadcast Dashboard</h1>
           </div>
         </div>
       </header>
@@ -96,7 +96,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black tracking-tight">Service Nodes</h2>
+                <h2 className="kicker !opacity-100 mb-1">Service Nodes</h2>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 pt-0">
@@ -132,7 +132,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass !flex flex-col min-h-[600px]">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black tracking-tight">Event Pulse</h2>
+                <h2 className="kicker !opacity-100 mb-1">Event Pulse</h2>
               </div>
               <div className="flex items-center gap-2">
                 <Link to="/stats" className="app-button !bg-white/[0.03] !border-white/10 !h-10 !px-5 text-[10px] font-black tracking-widest hover:!bg-white/[0.05]">
@@ -180,7 +180,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black tracking-tight">Speech Engine</h2>
+                <h2 className="kicker !opacity-100 mb-1">Speech Engine</h2>
               </div>
               <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black tracking-widest ${ttsEnabled ? 'bg-success/10 text-success' : 'bg-white/5 text-white/20'}`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${ttsEnabled ? 'bg-success' : 'bg-white/10'}`} />
@@ -214,7 +214,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black tracking-tight">Quick Routes</h2>
+                <h2 className="kicker !opacity-100 mb-1">Quick Routes</h2>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 p-8 pt-0">
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black tracking-tight">System Health</h2>
+                <h2 className="kicker !opacity-100 mb-1">System Health</h2>
               </div>
             </div>
             <div className="p-8 pt-0 space-y-6">

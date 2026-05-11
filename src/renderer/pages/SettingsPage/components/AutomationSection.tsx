@@ -84,7 +84,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
                       className="w-full h-12 bg-black/40 border border-white/10 rounded-xl px-4 text-sm font-medium focus:outline-none focus:border-accent transition-all hover:bg-black/60"
                     >
                       <option value="chat-command">Chat Command</option>
-                      <option value="gift">IconGift Name</option>
+                      <option value="gift">Gift Name</option>
                     </select>
                   </div>
                 </div>
