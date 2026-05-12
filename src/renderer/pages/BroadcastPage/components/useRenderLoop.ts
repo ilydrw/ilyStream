@@ -27,6 +27,7 @@ interface RenderLoopOptions {
   outputCodec?: string
   outputBitrateKbps: number
   dualVerticalOverlayEnabled?: boolean
+  isVisible?: boolean
 }
 
 const DUAL_VERTICAL_OVERLAY_FPS = 20
@@ -39,7 +40,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
     mediaFrameCache, browserFrameCache, imageCache,
     audioClockRef, encoderWorkerRef, horizontalEncoderWorkerRef, verticalEncoderWorkerRef,
     streamOutputs, canvasWidth, canvasHeight, captureInputFormat,
-    dualVerticalOverlayEnabled = false
+    dualVerticalOverlayEnabled = false,
+    isVisible = true
   } = options
 
   const [fps, setFps] = useState(0)
@@ -76,6 +78,26 @@ export function useRenderLoop(options: RenderLoopOptions) {
     let targetRenderFps = maxRenderFps
     let targetFrameMs = 1000 / targetRenderFps
     let lastRenderAt = 0
+    let isHibernated = false
+
+    const checkHibernation = () => {
+      // Hibernate if page is hidden AND we aren't doing any work that requires frames (streaming, recording, etc)
+      const workActive = outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
+      const shouldHibernate = !isVisible && !workActive
+      
+      if (shouldHibernate !== isHibernated) {
+        isHibernated = shouldHibernate
+        if (isHibernated) {
+          console.log('[useRenderLoop] Hibernating canvas loop...')
+          setFps(0)
+        } else {
+          console.log('[useRenderLoop] Resuming canvas loop...')
+          lastRenderAt = performance.now()
+          frameId = requestAnimationFrame(render)
+        }
+      }
+      return isHibernated
+    }
 
     const drawScene = (targetCtx: CanvasRenderingContext2D, targetCanvas: HTMLCanvasElement, targetRatio: '16:9' | '9:16') => {
       targetCtx.fillStyle = '#000'
@@ -306,6 +328,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
     const SECONDARY_PREVIEW_FPS = 30
 
     const render = () => {
+      if (checkHibernation()) return
+
       const now = performance.now()
       // Smooth Preview Optimization:
       // We skip the global 60fps throttle to allow the preview to run at the monitor's native refresh rate (e.g. 144Hz).
@@ -368,9 +392,13 @@ export function useRenderLoop(options: RenderLoopOptions) {
       frameId = requestAnimationFrame(render)
     }
 
-    render()
+    // Initial check and start
+    if (!checkHibernation()) {
+      render()
+    }
+
     return () => cancelAnimationFrame(frameId)
-  }, [activeScene, aspectRatio, outputFps, outputActive, previewMode, streamOutputs])
+  }, [activeScene, aspectRatio, outputFps, outputActive, previewMode, streamOutputs, isVisible])
 
   return { fps }
 }

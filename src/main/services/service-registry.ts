@@ -28,6 +28,8 @@ import { DeviceApi } from '../overlay/device-api'
 import { BrowserSourceService } from './browser-source-service'
 import { GoveeService } from './govee-service'
 import { VirtualCameraService } from './virtual-camera-service'
+import { LightingManagerService } from './lighting/lighting-manager'
+import { TikTokChatSender } from '../platforms/tiktok/tiktok-chat-sender'
 
 export class ServiceRegistry {
   public db: Database
@@ -57,12 +59,15 @@ export class ServiceRegistry {
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
   public virtualCameraService: VirtualCameraService
+  public lightingManager: LightingManagerService
+  public tiktokChatSender: TikTokChatSender
   private initialized = false
   private initializationPromise: Promise<void> | null = null
 
   constructor() {
     this.db = new Database()
-    this.platformManager = new PlatformManager(this.db)
+    this.tiktokChatSender = new TikTokChatSender()
+    this.platformManager = new PlatformManager(this.db, this.tiktokChatSender)
     this.spotifyService = new SpotifyService(this.db, this.platformManager)
     this.ttsEngine = new TTSEngine()
     this.soundboardService = new SoundboardService(this.db)
@@ -81,6 +86,11 @@ export class ServiceRegistry {
     this.statsService = new StatsService(this.db)
     this.goveeService = new GoveeService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
+    this.lightingManager = new LightingManagerService()
+    
+    // Register lighting providers
+    this.lightingManager.registerProvider(this.hueService)
+    this.lightingManager.registerProvider(this.goveeService)
 
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)
@@ -109,13 +119,16 @@ export class ServiceRegistry {
       this.vtubeService,
       this.economyService,
       this.statsService,
-      this.goveeService
+      this.goveeService,
+      this.lightingManager
     )
 
     this.overlayServer.setDatabase(this.db)
     this.overlayServer.setAssetService(this.assetService)
     this.overlayServer.setAuthService(this.remoteAuthService)
     this.overlayServer.setSoundboardService(this.soundboardService)
+    this.overlayServer.setObsService(this.obsService)
+    this.overlayServer.setPlatformManager(this.platformManager)
 
     // Device API forwards deck actions back through the orchestrator's normal path.
     this.deviceApi = new DeviceApi(
@@ -147,7 +160,7 @@ export class ServiceRegistry {
     if (process.platform !== 'win32') return
 
     const settings = resolveAppSettings(this.db.getAllSettings())
-    const configuredPort = Number(settings.overlayPort || 8899)
+    const configuredPort = Number(settings.overlay.port || 8899)
     const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
       ? configuredPort
       : 8899
@@ -176,33 +189,33 @@ export class ServiceRegistry {
   private async initializeCoreServices(): Promise<void> {
     const settings = resolveAppSettings(this.db.getAllSettings())
     
-    this.ttsEngine.applySettings(settings)
-    this.eventSoundService.applySettings(settings)
-    this.aiService.applySettings(settings)
-    this.coHostService.applySettings(settings)
-    this.voicemodService.applySettings(settings)
-    this.vtubeService.applySettings(settings)
+    this.ttsEngine.applySettings(settings.tts)
+    this.eventSoundService.applySettings(settings.alerts)
+    this.aiService.applySettings(settings.ai)
+    this.coHostService.applySettings(settings.ai)
+    this.voicemodService.applySettings(settings.integrations.voicemod)
+    this.vtubeService.applySettings(settings.integrations.vtube)
     this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())
     
     this.eventOrchestrator.init()
     
-    // Background services start
-    console.log('[services] Initializing core services...')
+    // Start OverlayServer first (critical for renderer)
+    try {
+      const port = settings.overlay.port || 8899;
+      console.log(`[services] Starting OverlayServer on port ${port}...`)
+      await this.overlayServer.start(port)
+      console.log('[services] OverlayServer ready.')
+    } catch (err) {
+      console.error('[services] OverlayServer failed:', err)
+    }
+
+    // Start other background services
     await Promise.allSettled([
-      (async () => {
-        try {
-          const port = settings.overlayPort || 8899;
-          console.log(`[services] Attempting to start OverlayServer on port ${port}...`)
-          await this.overlayServer.start(port)
-          console.log('[services] OverlayServer started successfully.')
-        } catch (err) {
-          console.error('[services] OverlayServer failed to start:', err)
-        }
-      })(),
+      
       (async () => {
         console.log('[services] Applying OBS settings...')
         // Timeout OBS initialization to 5s to prevent startup hang
-        const obsPromise = this.obsService.applySettings(settings)
+        const obsPromise = this.obsService.applySettings(settings.integrations.obs)
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('OBS connection timed out')), 5000)
         )
@@ -219,12 +232,8 @@ export class ServiceRegistry {
         console.log('[services] Spotify session restoration attempt complete.')
       })(),
       (async () => {
-        console.log('[services] Initializing Hue service...')
-        await this.hueService.initialize()
-      })(),
-      (async () => {
-        console.log('[services] Initializing Govee service...')
-        await this.goveeService.initialize()
+        console.log('[services] Initializing Lighting Manager (and hardware providers)...')
+        await this.lightingManager.initialize()
       })()
     ])
     console.log('[services] Service initialization sequence finished.')
@@ -234,9 +243,9 @@ export class ServiceRegistry {
     this.chatRelayService.dispose()
     this.economyService.dispose()
     this.spotifyService.dispose()
-    this.hueService.dispose()
-    this.goveeService.dispose()
-    await Promise.allSettled([
+    await this.lightingManager.dispose()
+    this.tiktokChatSender.closeWindow()
+    const startResults = await Promise.allSettled([
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),
       this.obsService.disconnect(),
@@ -245,3 +254,7 @@ export class ServiceRegistry {
     this.db.close()
   }
 }
+
+
+
+

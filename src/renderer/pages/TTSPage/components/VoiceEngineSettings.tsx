@@ -160,7 +160,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
 
   return (
     <section className="app-section-card glass relative overflow-hidden">
-      {settings.ttsEnabled && (
+      {settings.tts.enabled && (
         <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 -translate-y-1/2 translate-x-1/2 rounded-full bg-accent/10 blur-3xl" />
       )}
 
@@ -175,9 +175,9 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
           </div>
         </div>
         <div className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest ${
-          settings.ttsEnabled ? 'bg-accent/15 text-accent' : 'bg-white/5 text-white/25'
+          settings.tts.enabled ? 'bg-accent/15 text-accent' : 'bg-white/5 text-white/25'
         }`}>
-          {settings.ttsEnabled ? 'Online' : 'Muted'}
+          {settings.tts.enabled ? 'Online' : 'Muted'}
         </div>
       </div>
 
@@ -186,7 +186,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
           <div className="px-8">
             <EngineRow label="Global Speech Output" hint="Hard enable or mute all TTS before it reaches the queue.">
               <Toggle
-                value={settings.ttsEnabled}
+                value={settings.tts.enabled}
                 onChange={(value) => {
                   void onUpdate('ttsEnabled', value)
                   toast.info(value ? 'TTS Engine Online' : 'TTS Engine Muted')
@@ -197,14 +197,14 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             <EngineRow label="Message Length Window" hint="Reject tiny spam and trim long messages before synthesis.">
               <div className="grid grid-cols-2 gap-3">
                 <EngineNumber
-                  value={settings.ttsMinLength}
+                  value={settings.tts.minLength}
                   onChange={(value) => void onUpdate('ttsMinLength', value)}
                   min={0}
                   max={100}
                   suffix="min"
                 />
                 <EngineNumber
-                  value={settings.ttsMaxLength}
+                  value={settings.tts.maxLength}
                   onChange={(value) => void onUpdate('ttsMaxLength', value)}
                   min={20}
                   max={1000}
@@ -216,14 +216,14 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             <EngineRow label="Burst Control" hint="Cap per-user queue pressure and cool down repeated messages.">
               <div className="grid grid-cols-2 gap-3">
                 <EngineNumber
-                  value={settings.ttsPerUserLimit}
+                  value={settings.tts.perUserLimit}
                   onChange={(value) => void onUpdate('ttsPerUserLimit', value)}
                   min={1}
                   max={20}
                   suffix="user"
                 />
                 <EngineNumber
-                  value={settings.ttsDuplicateWindow}
+                  value={settings.tts.duplicateWindow}
                   onChange={(value) => void onUpdate('ttsDuplicateWindow', value)}
                   min={5}
                   max={120}
@@ -235,16 +235,16 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             <EngineRow label="Mention Handling" hint="Tune how @names are spoken or ignored when chat gets noisy.">
               <div className="flex flex-wrap justify-end gap-3">
                 <button
-                  onClick={() => void onUpdate('ttsReadAtSymbol', !settings.ttsReadAtSymbol)}
-                  className={`app-button !h-10 !px-4 ${settings.ttsReadAtSymbol ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
+                  onClick={() => void onUpdate('ttsReadAtSymbol', !settings.tts.readAtSymbol)}
+                  className={`app-button !h-10 !px-4 ${settings.tts.readAtSymbol ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
                   title="Read @ symbols aloud"
                 >
                   <IconAt size={15} />
                   Read
                 </button>
                 <button
-                  onClick={() => void onUpdate('ttsSkipMessagesStartingWithAt', !settings.ttsSkipMessagesStartingWithAt)}
-                  className={`app-button !h-10 !px-4 ${settings.ttsSkipMessagesStartingWithAt ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
+                  onClick={() => void onUpdate('ttsSkipMessagesStartingWithAt', !settings.tts.skipMessagesStartingWithAt)}
+                  className={`app-button !h-10 !px-4 ${settings.tts.skipMessagesStartingWithAt ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
                   title="Skip messages starting with @"
                 >
                   <IconShieldCheck size={15} />
@@ -274,7 +274,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             </div>
 
             <select
-              value={settings.audioOutputDeviceId || 'default'}
+              value={settings.audio.outputDeviceId || 'default'}
               onChange={(event) => void onUpdate('audioOutputDeviceId', event.target.value)}
               className="mb-8 h-11 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-sm font-medium transition-all hover:bg-black/60 focus:border-accent focus:outline-none"
             >
@@ -316,3 +316,4 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
     </section>
   )
 }
+

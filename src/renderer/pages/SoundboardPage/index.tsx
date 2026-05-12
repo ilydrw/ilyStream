@@ -262,7 +262,7 @@ export default function SoundboardPage() {
                 <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Local API URL</span>
                 <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[8px] font-black uppercase">Active</span>
               </div>
-              <code className="text-[10px] text-accent font-mono block truncate">http://localhost:8899/overlay/deck/action</code>
+              <code className="text-[10px] text-accent font-mono block truncate">http://127.0.0.1:8899/overlay/deck/action</code>
             </div>
           </div>
         </div>
@@ -286,7 +286,7 @@ export default function SoundboardPage() {
               Perfect for secondary monitors.
             </p>
             <button 
-              onClick={() => window.open('http://localhost:8899/overlay/deck', '_blank', 'noopener,noreferrer')}
+              onClick={() => window.open('http://127.0.0.1:8899/overlay/deck', '_blank', 'noopener,noreferrer')}
               className="app-button !w-full !h-12 !text-[10px] font-black tracking-widest"
             >
               OPEN STUDIO DECK
@@ -393,3 +393,4 @@ function DeckButton({
     </motion.button>
   )
 }
+

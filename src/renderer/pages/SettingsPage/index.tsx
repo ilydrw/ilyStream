@@ -37,7 +37,7 @@ export default function SettingsPage() {
     void window.api.settings.getAll().then((all: AppSettings) => {
       const resolved = resolveAppSettings(all)
       setSettings(resolved)
-      applyAppAppearance(resolved)
+      applyAppAppearance(resolved.ui)
       setIsInitialized(true)
     })
     loadOverlayStatus()
@@ -46,7 +46,7 @@ export default function SettingsPage() {
     const settingsUnsubscribe = window.api.on('settings:changed', (nextSettings: unknown) => {
       const resolved = resolveAppSettings(nextSettings as Partial<Record<keyof AppSettings, unknown>>)
       setSettings(resolved)
-      applyAppAppearance(resolved)
+      applyAppAppearance(resolved.ui)
       loadOverlayStatus()
       loadOBSStatus()
     })
@@ -67,14 +67,18 @@ export default function SettingsPage() {
   }, [])
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    updateSettings({ [key]: value })
+  }
+
+  const updateSettings = (updates: Partial<AppSettings>) => {
     if (!isInitialized) return
     
     setSettings((prev) => {
-      const next = resolveAppSettings({ ...prev, [key]: value })
-      applyAppAppearance(next)
+      const next = resolveAppSettings({ ...prev, ...updates })
+      applyAppAppearance(next.ui)
       
       // Auto-save
-      void window.api.settings.setMany({ [key]: value }).then(() => {
+      void window.api.settings.setMany(updates).then(() => {
         setSaved(true)
         setTimeout(() => setSaved(false), 1000)
       })
@@ -84,6 +88,8 @@ export default function SettingsPage() {
   }
 
   const handleSave = async () => {
+    // Only send the core settings keys that need persistence
+    const rawSettings = await window.api.settings.getAll()
     await window.api.settings.setMany(settings)
     const status = (await window.api.overlay.getStatus()) as OverlayRuntimeStatus
     setOverlayStatus(status)
@@ -139,7 +145,7 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
         <div className="flex flex-col gap-10">
-          <PersonalizationSection settings={settings} onUpdate={updateSetting} />
+          <PersonalizationSection settings={settings} onUpdate={updateSetting} onUpdateMany={updateSettings} />
           <StudioRuntimeSection settings={settings} onUpdate={updateSetting} />
           <BroadcastDefaultsSection settings={settings} onUpdate={updateSetting} />
           <AutomationSection settings={settings} onUpdate={updateSetting} />

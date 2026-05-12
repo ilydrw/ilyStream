@@ -90,12 +90,12 @@ export function useTTSPage() {
         setSyncedElevenLabsVoices([])
       }
     }
-    setTtsRequireCommand(settings.ttsRequireCommand)
-    setTtsCommandPrefixes(settings.ttsCommandPrefixes)
-    setTtsAllowedRoles(settings.ttsAllowedRoles)
-    setTtsIgnoreEmotes(settings.ttsIgnoreEmotes)
-    setTtsVolume(settings.ttsVolume)
-    setVoiceModifiers(settings.voiceModifiers)
+    setTtsRequireCommand(settings.tts.requireCommand)
+    setTtsCommandPrefixes(settings.tts.commandPrefixes)
+    setTtsAllowedRoles(settings.tts.allowedRoles)
+    setTtsIgnoreEmotes(settings.tts.ignoreEmotes)
+    setTtsVolume(settings.tts.volume)
+    setVoiceModifiers(settings.tts.modifiers)
   }
 
   // 2. Sync Profiles
@@ -323,3 +323,4 @@ export function useTTSPage() {
     updateVoiceModifiers
   }
 }
+

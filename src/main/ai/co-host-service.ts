@@ -3,6 +3,7 @@ import { AIService } from './ai-service'
 import { TTSEngine } from '../tts/tts-engine'
 import { ChatRelayService } from '../chat/chat-relay-service'
 import { ChatEvent } from '../platforms/types'
+import { AppSettings } from '../../shared/app-settings'
 
 import { MemoryService } from './memory-service'
 
@@ -25,8 +26,8 @@ export class CoHostService {
     })
   }
 
-  public applySettings(settings: { aiEnabled: boolean }): void {
-    this.enabled = settings.aiEnabled
+  public applySettings(settings: AppSettings['ai']): void {
+    this.enabled = settings?.enabled ?? false
   }
 
   private async handleChat(event: ChatEvent): Promise<void> {

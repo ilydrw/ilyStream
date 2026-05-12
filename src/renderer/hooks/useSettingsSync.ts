@@ -9,12 +9,12 @@ function applyRendererSettings(settings: ReturnType<typeof resolveAppSettings>):
   const chatStore = useChatStore.getState()
   const ttsStore = useTTSStore.getState()
 
-  chatStore.setMaxMessages(settings.chatMaxMessages)
-  ttsStore.setEnabled(settings.ttsEnabled)
-  applyAppAppearance(settings)
+  chatStore.setMaxMessages(settings.chat.maxMessages)
+  ttsStore.setEnabled(settings.tts.enabled)
+  applyAppAppearance(settings.ui)
   
   // Sync hardware audio routing
-  void audioEngine.setSinkId(settings.audioOutputDeviceId)
+  void audioEngine.setSinkId(settings.audio.outputDeviceId)
 }
 
 export function useSettingsSync() {
@@ -38,3 +38,5 @@ export function useSettingsSync() {
     }
   }, [])
 }
+
+

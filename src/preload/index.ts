@@ -37,7 +37,9 @@ const allowedEventChannels = new Set([
   'spotify:now-playing',
   'govee:status-changed',
   'streaming:native-audio-clock',
-  'virtualcamera:status-changed'
+  'system:log',
+  'virtualcamera:status-changed',
+  'system:update-status'
 ])
 
 const api = {
@@ -97,7 +99,10 @@ const api = {
     tiktok: {
       getGifts: () => ipcRenderer.invoke('tiktok:get-gifts'),
       saveGift: (gift: any) => ipcRenderer.invoke('tiktok:save-gift', gift),
-      fixStats: () => ipcRenderer.invoke('tiktok:fix-stats')
+      fixStats: () => ipcRenderer.invoke('tiktok:fix-stats'),
+      openSender: () => ipcRenderer.invoke('tiktok:open-sender'),
+      closeSender: () => ipcRenderer.invoke('tiktok:close-sender'),
+      getSenderStatus: () => ipcRenderer.invoke('tiktok:get-sender-status')
     }
   },
 
@@ -187,7 +192,8 @@ const api = {
   // --- System ---
   system: {
     openWindowsSettings: (target: WindowsSettingsTarget) =>
-      ipcRenderer.invoke('system:open-windows-settings', target)
+      ipcRenderer.invoke('system:open-windows-settings', target),
+    installUpdate: () => ipcRenderer.invoke('system:install-update')
   },
 
   // --- Spotify ---
@@ -269,7 +275,7 @@ const api = {
     connect: (apiKey: string) => ipcRenderer.invoke('govee:connect', apiKey),
     disconnect: () => ipcRenderer.invoke('govee:disconnect'),
     getStatus: () => ipcRenderer.invoke('govee:get-status'),
-    getDevices: () => ipcRenderer.invoke('govee:get-devices'),
+    getDevices: (forceRefresh?: boolean) => ipcRenderer.invoke('govee:get-devices', forceRefresh),
     setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids),
     testStrobe: () => ipcRenderer.invoke('govee:test-strobe')
   },

@@ -16,7 +16,7 @@ export function registerGoveeHandlers(goveeService: GoveeService) {
   })
 
   ipcMain.handle('govee:get-devices', async (_event, forceRefresh = false) => {
-    return await goveeService.getDevices(forceRefresh)
+    return await goveeService.getGoveeDevices(forceRefresh)
   })
 
   ipcMain.handle('govee:set-selected-devices', (_event, ids: string[]) => {

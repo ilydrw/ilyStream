@@ -215,7 +215,7 @@ export default function AlertsPage() {
           <div>
             <IconRoute size={17} />
             <span>Routes</span>
-            <strong>{draftSettings.alertRules.length}</strong>
+            <strong>{(draftSettings.alertRules ?? []).length}</strong>
           </div>
           <div>
             <IconVolume size={17} />
@@ -232,7 +232,7 @@ export default function AlertsPage() {
         <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_460px]">
           <div className="flex flex-col gap-10">
             <AlertRuleSection
-              rules={draftSettings.alertRules}
+              rules={draftSettings.alertRules ?? []}
               sounds={sounds}
               images={images}
               onChange={handleRulesChange}

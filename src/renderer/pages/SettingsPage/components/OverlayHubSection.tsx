@@ -34,7 +34,7 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
             </div>
             <div className="flex-shrink-0">
               <NumberInput
-                value={settings.overlayPort}
+                value={settings.overlay.port}
                 onChange={(value) => onUpdate('overlayPort', value)}
                 min={1024}
                 max={65535}
@@ -51,12 +51,12 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
               <RuntimeLink
                 label="Chat Overlay"
                 href={overlayStatus?.chatUrl || undefined}
-                fallback={`http://127.0.0.1:${settings.overlayPort}/overlay/chat`}
+                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/chat`}
               />
               <RuntimeLink
                 label="Alert Source"
                 href={overlayStatus?.alertsUrl || undefined}
-                fallback={`http://127.0.0.1:${settings.overlayPort}/overlay/alerts`}
+                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/alerts`}
               />
               <RuntimeLink
                 label="Goals Widget"
@@ -65,7 +65,7 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
                     ? `${overlayStatus.goalsUrl}?likes=5000&follows=100&subs=25`
                     : undefined
                 }
-                fallback={`http://127.0.0.1:${settings.overlayPort}/overlay/goals?likes=5000&follows=100&subs=25`}
+                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/goals?likes=5000&follows=100&subs=25`}
               />
             </div>
           </div>
@@ -74,3 +74,4 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
     </section>
   )
 }
+

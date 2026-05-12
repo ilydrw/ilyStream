@@ -1,7 +1,5 @@
 import { create } from 'zustand'
-
-type Platform = 'tiktok' | 'twitch' | 'youtube' | 'kick'
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+import type { Platform, ConnectionStatus } from '../../main/platforms/types'
 
 export interface ReconnectInfo {
   attempt: number
@@ -18,10 +16,10 @@ export interface PlatformEventDiagnostic {
 }
 
 interface ConnectionStore {
-  statuses: Record<Platform, ConnectionStatus>
-  viewerCounts: Record<Platform, number>
-  errors: Record<Platform, string | null>
-  reconnectInfo: Record<Platform, ReconnectInfo | null>
+  statuses: Partial<Record<Platform, ConnectionStatus>>
+  viewerCounts: Partial<Record<Platform, number>>
+  errors: Partial<Record<Platform, string | null>>
+  reconnectInfo: Partial<Record<Platform, ReconnectInfo | null>>
   recentEvents: PlatformEventDiagnostic[]
 
   setStatus: (platform: Platform, status: ConnectionStatus) => void
@@ -32,30 +30,10 @@ interface ConnectionStore {
 }
 
 export const useConnectionStore = create<ConnectionStore>((set) => ({
-  statuses: {
-    tiktok: 'disconnected',
-    twitch: 'disconnected',
-    youtube: 'disconnected',
-    kick: 'disconnected'
-  },
-  viewerCounts: {
-    tiktok: 0,
-    twitch: 0,
-    youtube: 0,
-    kick: 0
-  },
-  errors: {
-    tiktok: null,
-    twitch: null,
-    youtube: null,
-    kick: null
-  },
-  reconnectInfo: {
-    tiktok: null,
-    twitch: null,
-    youtube: null,
-    kick: null
-  },
+  statuses: {},
+  viewerCounts: {},
+  errors: {},
+  reconnectInfo: {},
   recentEvents: [],
 
   setStatus: (platform, status) =>

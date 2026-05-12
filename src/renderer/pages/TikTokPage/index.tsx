@@ -1,4 +1,4 @@
-import {IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
+import {IconBrowser, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -26,10 +26,11 @@ export default function TikTokPage() {
   const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, string>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
+  const [senderStatus, setSenderStatus] = useState({ isWindowOpen: false, isChatReady: false })
 
-  const status = statuses[PLATFORM_ID]
-  const error = errors[PLATFORM_ID]
-  const viewers = viewerCounts[PLATFORM_ID]
+  const status = statuses[PLATFORM_ID] || 'disconnected'
+  const error = errors[PLATFORM_ID] || null
+  const viewers = viewerCounts[PLATFORM_ID] || 0
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
 
@@ -40,11 +41,18 @@ export default function TikTokPage() {
       }
     })
 
-    window.api.platform.getChatCapabilities().then((caps) => {
-      if (caps[PLATFORM_ID]) {
-        setCanSend(caps[PLATFORM_ID])
-      }
-    })
+    const updateCaps = () => {
+      window.api.platform.getChatCapabilities().then((caps) => {
+        if (caps[PLATFORM_ID]) {
+          setCanSend(caps[PLATFORM_ID])
+        }
+      })
+      window.api.platform.tiktok.getSenderStatus().then(setSenderStatus)
+    }
+
+    updateCaps()
+    const interval = setInterval(updateCaps, 2000)
+    return () => clearInterval(interval)
   }, [status])
 
   const platformEvents = useMemo(
@@ -72,6 +80,14 @@ export default function TikTokPage() {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
+  const handleOpenSender = async () => {
+    await window.api.platform.tiktok.openSender()
+  }
+
+  const handleCloseSender = async () => {
+    await window.api.platform.tiktok.closeSender()
+  }
+
   return (
     <div className="app-page">
       <PlatformPageHeader 
@@ -85,7 +101,7 @@ export default function TikTokPage() {
         <Metric 
           icon={<IconUsers size={20} className="text-tiktok" />} 
           label="TikTok Viewers" 
-          value={viewers.toLocaleString()} 
+          value={(viewers || 0).toLocaleString()} 
         />
         <Metric 
           icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
@@ -139,13 +155,27 @@ export default function TikTokPage() {
                 <button onClick={handleDisconnect} className="app-button-danger !h-10 !px-8 text-sm font-bold">
                   Disconnect TikTok
                 </button>
+              ) : isConnecting ? (
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleDisconnect}
+                    className="app-button-secondary !h-10 !px-6 text-sm font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled
+                    className="app-button-primary !h-10 !px-8 text-sm font-bold opacity-50 cursor-not-allowed"
+                  >
+                    Establishing...
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={handleConnect}
-                  disabled={isConnecting}
                   className="app-button-primary !h-10 !px-8 text-sm font-bold"
                 >
-                  {isConnecting ? 'Establishing...' : 'Connect Service'}
+                  Connect Service
                 </button>
               )}
             </div>
@@ -171,6 +201,55 @@ export default function TikTokPage() {
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
               />
+            </div>
+          </section>
+
+          <section className="app-section-card glass overflow-hidden relative">
+            <div className="app-section-head">
+              <div>
+                <h2>Host Chat Sender</h2>
+                <p>Visible session for sending chat messages as the host.</p>
+              </div>
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${senderStatus.isChatReady ? 'bg-success/10 text-success' : 'bg-white/5 text-white/40'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${senderStatus.isChatReady ? 'bg-success animate-pulse' : 'bg-white/20'}`} />
+                {senderStatus.isChatReady ? 'Ready' : 'Not Connected'}
+              </div>
+            </div>
+            <div className="p-8">
+              <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 mb-6">
+                <p className="text-sm text-white/50 leading-relaxed mb-4">
+                  To send messages as yourself (the host), you must log in via the manual session window. 
+                  Once logged in, navigate to your <strong className="text-white">LIVE Dashboard</strong> or 
+                  open your <strong className="text-white">Chat Pop-out</strong>.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
+                    <IconBrowser size={16} className="text-white/40" />
+                    <span className="text-xs font-bold text-white/70">Isolated Session</span>
+                  </div>
+                  <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
+                    <IconWifi size={16} className="text-white/40" />
+                    <span className="text-xs font-bold text-white/70">Direct Injection</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={handleOpenSender}
+                  className="app-button-primary !h-12 flex-1 !px-8 text-sm font-black uppercase tracking-widest"
+                >
+                  {senderStatus.isWindowOpen ? 'Focus Sender Window' : 'Open Chat Session'}
+                </button>
+                {senderStatus.isWindowOpen && (
+                  <button 
+                    onClick={handleCloseSender}
+                    className="app-button-secondary !h-12 !px-8 text-sm font-bold"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
             </div>
           </section>
         </div>
@@ -213,3 +292,4 @@ export default function TikTokPage() {
     </div>
   )
 }
+

@@ -9,12 +9,13 @@ export class AIService {
 
   constructor() {}
 
-  applySettings(settings: AppSettings) {
-    this.apiKey = settings.aiApiKey || ''
-    this.model = settings.aiModel || 'minimax-m2.5:cloud'
-    this.endpoint = settings.aiEndpoint || 'http://localhost:11434/v1/chat/completions'
-    this.systemPrompt = settings.aiSystemPrompt || 'You are a helpful livestream assistant.'
-    this.maxTokens = settings.aiMaxTokens || 500
+  applySettings(settings: AppSettings['ai']) {
+    if (!settings) return
+    this.apiKey = settings.apiKey || ''
+    this.model = settings.model || 'minimax-m2.5:cloud'
+    this.endpoint = settings.endpoint || 'http://localhost:11434/v1/chat/completions'
+    this.systemPrompt = settings.systemPrompt || 'You are a helpful livestream assistant.'
+    this.maxTokens = settings.maxTokens || 500
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
@@ -113,3 +114,4 @@ export class AIService {
     }
   }
 }
+

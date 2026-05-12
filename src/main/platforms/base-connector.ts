@@ -6,6 +6,7 @@ import {
   PlatformConfig,
   PlatformChatCapability
 } from './types'
+import { UserCache } from './user-cache'
 
 export interface ConnectorError {
   platform: Platform
@@ -21,6 +22,8 @@ export abstract class BaseConnector extends EventEmitter {
   public lastError: ConnectorError | null = null
 
   protected currentConfig: PlatformConfig | null = null
+  protected userCache = new UserCache()
+  
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
@@ -35,20 +38,8 @@ export abstract class BaseConnector extends EventEmitter {
     this.setMaxListeners(50)
   }
 
-  /**
-   * Validate platform-specific config before connecting.
-   * Subclasses should override to check required fields.
-   */
   abstract validateConfig(config: PlatformConfig): string | null
-
-  /**
-   * Internal connect implementation. Subclasses implement this.
-   */
   protected abstract doConnect(config: PlatformConfig): Promise<void>
-
-  /**
-   * Internal disconnect implementation. Subclasses implement this.
-   */
   protected abstract doDisconnect(): Promise<void>
 
   async sendChatMessage(_text: string): Promise<void> {
@@ -57,33 +48,15 @@ export abstract class BaseConnector extends EventEmitter {
 
   getChatCapability(): PlatformChatCapability {
     if (this.status !== 'connected') {
-      return {
-        platform: this.platform,
-        canSend: false,
-        reason: 'Not connected'
-      }
+      return { platform: this.platform, canSend: false, reason: 'Not connected' }
     }
-
-    return {
-      platform: this.platform,
-      canSend: false,
-      reason: `${this.platform} outbound chat is not supported`
-    }
+    return { platform: this.platform, canSend: false, reason: `${this.platform} outbound chat is not supported` }
   }
 
-  /**
-   * Connect with validation, guard against double-connect, and auto-reconnect setup.
-   */
   async connect(config: PlatformConfig): Promise<void> {
-    // Guard against concurrent connect calls
-    if (this.connecting) {
-      throw new Error(`Already connecting to ${this.platform}`)
-    }
-    if (this.status === 'connected') {
-      await this.disconnect()
-    }
+    if (this.connecting) throw new Error(`Already connecting to ${this.platform}`)
+    if (this.status === 'connected') await this.disconnect()
 
-    // Validate config
     const validationError = this.validateConfig(config)
     if (validationError) {
       this.handleError(new Error(validationError), 'validation', false)
@@ -99,49 +72,39 @@ export abstract class BaseConnector extends EventEmitter {
 
     try {
       await this.doConnect(config)
+      if (this.isIntentionalDisconnect) {
+        this.connecting = false
+        return
+      }
       this.connecting = false
       this.reconnectAttempts = 0
       this.setStatus('connected')
     } catch (error) {
+      if (this.isIntentionalDisconnect) {
+        this.connecting = false
+        return
+      }
       this.connecting = false
       this.handleError(error, 'connect', true)
       throw error
     }
   }
 
-  /**
-   * Intentional disconnect - stops auto-reconnect.
-   */
   async disconnect(): Promise<void> {
     this.isIntentionalDisconnect = true
     this.connecting = false
     this.clearReconnectTimer()
-
-    try {
-      await this.doDisconnect()
-    } catch (error) {
-      console.error(`[${this.platform}] Error during disconnect:`, error)
-    }
-
+    try { await this.doDisconnect() } catch (error) { console.error(`[${this.platform}] Error during disconnect:`, error) }
     this.setStatus('disconnected')
   }
 
-  /**
-   * Called by subclasses when the connection drops unexpectedly.
-   * Triggers auto-reconnect if enabled.
-   */
   protected onUnexpectedDisconnect(reason?: string): void {
     if (this.isIntentionalDisconnect) return
-
     console.warn(`[${this.platform}] Unexpected disconnect: ${reason || 'unknown'}`)
     this.setStatus('disconnected')
     this.scheduleReconnect()
   }
 
-  /**
-   * Called by subclasses for recoverable errors (network, transient).
-   * Triggers reconnect. For fatal errors (bad auth), use handleError with recoverable=false.
-   */
   protected onRecoverableError(error: unknown, context: string): void {
     this.handleError(error, context, true)
     if (this.status === 'connected' || this.status === 'connecting') {
@@ -153,22 +116,10 @@ export abstract class BaseConnector extends EventEmitter {
   protected handleError(error: unknown, context: string, recoverable = true): void {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[${this.platform}] ${context}: ${message}`)
-
-    this.lastError = {
-      platform: this.platform,
-      context,
-      message,
-      recoverable,
-      timestamp: new Date()
-    }
-
+    this.lastError = { platform: this.platform, context, message, recoverable, timestamp: new Date() }
     this.setStatus('error')
     this.emit('error', this.lastError)
-
-    // Only auto-reconnect for recoverable errors
-    if (recoverable && !this.isIntentionalDisconnect) {
-      this.scheduleReconnect()
-    }
+    if (recoverable && !this.isIntentionalDisconnect) this.scheduleReconnect()
   }
 
   protected emitEvent(event: AnyStreamEvent): void {
@@ -178,58 +129,32 @@ export abstract class BaseConnector extends EventEmitter {
 
   protected setStatus(status: ConnectionStatus): void {
     if (this.status === status) return
-
     this.status = status
     this.emit('status', this.platform, status)
   }
 
-  // --- Reconnection ---
-
   private scheduleReconnect(): void {
     if (!this.autoReconnect || this.isIntentionalDisconnect) return
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(`[${this.platform}] Max reconnect attempts (${this.maxReconnectAttempts}) reached`)
+      console.error(`[${this.platform}] Max reconnect attempts reached`)
       this.emit('reconnect-failed', this.platform)
       return
     }
-
     this.clearReconnectTimer()
     this.reconnectAttempts++
-
-    // Exponential backoff with jitter
-    const delay = Math.min(
-      this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1) +
-        Math.random() * 1000,
-      this.maxReconnectDelayMs
-    )
-
-    console.log(
-      `[${this.platform}] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
-    )
-
-    this.emit('reconnecting', {
-      platform: this.platform,
-      attempt: this.reconnectAttempts,
-      maxAttempts: this.maxReconnectAttempts,
-      delayMs: delay
-    })
-
+    const delay = Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1) + Math.random() * 1000, this.maxReconnectDelayMs)
+    console.log(`[${this.platform}] Reconnecting in ${Math.round(delay / 1000)}s`)
     this.reconnectTimer = setTimeout(async () => {
       if (this.isIntentionalDisconnect || !this.currentConfig) return
-
       this.setStatus('connecting')
       this.connecting = true
-
       try {
         await this.doConnect(this.currentConfig)
         this.connecting = false
         this.reconnectAttempts = 0
         this.setStatus('connected')
-        console.log(`[${this.platform}] Reconnected successfully`)
       } catch (error) {
         this.connecting = false
-        const message = error instanceof Error ? error.message : String(error)
-        console.error(`[${this.platform}] Reconnect failed: ${message}`)
         this.scheduleReconnect()
       }
     }, delay)
@@ -242,11 +167,6 @@ export abstract class BaseConnector extends EventEmitter {
     }
   }
 
-  setAutoReconnect(enabled: boolean): void {
-    this.autoReconnect = enabled
-  }
-
-  setMaxReconnectAttempts(max: number): void {
-    this.maxReconnectAttempts = max
-  }
+  setAutoReconnect(enabled: boolean): void { this.autoReconnect = enabled }
+  setMaxReconnectAttempts(max: number): void { this.maxReconnectAttempts = max }
 }

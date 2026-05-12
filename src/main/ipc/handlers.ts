@@ -21,6 +21,7 @@ import { registerStatsHandlers } from './handlers/stats-handlers'
 import { registerDeviceHandlers } from './handlers/device-handlers'
 import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
+import { registerLightingHandlers } from './handlers/lighting-handlers'
 
 export function registerIpcHandlers(
   window: BrowserWindow,
@@ -57,28 +58,53 @@ export function registerIpcHandlers(
 
   obsService.on('status', emitOBSStatusChanged)
 
-  const applyRuntimeSettings = async () => {
+  const applyRuntimeSettings = async (changedKeys?: string[]) => {
     const settings = resolveAppSettings(db.getAllSettings())
-    ttsEngine.applySettings(settings)
-    eventSoundService.applySettings(settings)
-    await overlayServer.setPort(settings.overlayPort)
-    await obsService.applySettings(settings)
-    aiService.applySettings(settings)
-    services.coHostService.applySettings(settings)
-    services.hueService.applySettings(settings)
-    services.goveeService.applySettings(settings)
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('tts'))) {
+      ttsEngine.applySettings(settings.tts)
+    }
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('alert') || k.startsWith('event'))) {
+      eventSoundService.applySettings(settings)
+    }
+    
+    if (!changedKeys || changedKeys.includes('overlayPort')) {
+      await overlayServer.setPort(settings.overlay.port)
+    }
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('obs'))) {
+      await obsService.applySettings(settings.integrations.obs)
+    }
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('ai'))) {
+      aiService.applySettings(settings.ai)
+      services.coHostService.applySettings(settings.ai)
+    }
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('hue') || k.includes('hue'))) {
+      services.hueService.applySettings(settings)
+    }
+    
+    if (!changedKeys || changedKeys.some(k => k.startsWith('govee') || k.includes('govee'))) {
+      services.goveeService.applySettings(settings)
+    }
+    
+    if (!changedKeys || changedKeys.includes('platformAutoReconnect')) {
+      platformManager.setAutoReconnect(settings.platform.autoReconnect)
+    }
   }
 
   const updateSetting = async <K extends AppSettingKey>(key: K, value: unknown) => {
     const resolvedValue = resolveAppSetting(key, value)
     db.setSetting(key, resolvedValue)
-    await applyRuntimeSettings()
+    await applyRuntimeSettings([key])
     emitSettingsChanged()
     return resolvedValue
   }
 
   // Register modular handlers
-  registerPlatformHandlers(platformManager, chatRelayService, db)
+  registerPlatformHandlers(platformManager, chatRelayService, db, services.tiktokChatSender)
   registerTTSHandlers(window, ttsEngine, db, updateSetting)
   registerSoundHandlers(window, soundboardService, db, applyRuntimeSettings, emitSettingsChanged, overlayServer)
   registerAssetHandlers(window, assetService, db, applyRuntimeSettings, emitSettingsChanged)
@@ -105,6 +131,7 @@ export function registerIpcHandlers(
   registerDeviceHandlers(services.deviceApi)
   registerGoveeHandlers(services.goveeService)
   registerVirtualCameraHandlers(services)
+  registerLightingHandlers(window, services.lightingManager)
 
   // Trigger handlers
   ipcMain.handle('triggers:get-all', () => triggerEngine.getRules())
@@ -140,3 +167,4 @@ export function registerIpcHandlers(
     })
   })
 }
+

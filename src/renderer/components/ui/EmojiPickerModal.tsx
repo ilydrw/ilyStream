@@ -1,4 +1,4 @@
-import {IconClock, IconSearch, IconSparkles, IconX} from '@tabler/icons-react'
+import { IconClock, IconSearch, IconSparkles } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   EMOJI_CATEGORIES,
@@ -7,6 +7,7 @@ import {
   rememberEmoji,
   searchEmojis
 } from '../../lib/emojis'
+import { Modal } from './Modal'
 
 interface EmojiPickerModalProps {
   isOpen: boolean
@@ -39,23 +40,12 @@ export function EmojiPickerModal({
   const [searchQuery, setSearchQuery] = useState('')
   const [recents, setRecents] = useState<string[]>([])
 
-  // Load recents whenever the modal opens (or after clear/select).
   useEffect(() => {
     if (isOpen) {
       setRecents(getRecentEmojis())
       setSearchQuery('')
     }
   }, [isOpen])
-
-  // Esc-to-close at the modal level.
-  useEffect(() => {
-    if (!isOpen) return
-    const handle = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handle)
-    return () => document.removeEventListener('keydown', handle)
-  }, [isOpen, onClose])
 
   const isSearching = searchQuery.trim().length > 0
 
@@ -77,7 +67,6 @@ export function EmojiPickerModal({
   }
 
   const confirmAndClose = () => {
-    // In edit mode, an empty value is valid (it clears the emoji).
     if (!emojiInput && mode !== 'edit') return
     if (emojiInput) rememberEmoji(emojiInput)
     onConfirm(emojiInput)
@@ -87,48 +76,40 @@ export function EmojiPickerModal({
     setEmojiInput('')
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Close emoji picker"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm cursor-default"
-      />
-
-      <div className="relative w-full max-w-md studio-card !bg-[#050505] !p-10 animate-in fade-in zoom-in duration-200">
-        {/* Header */}
-        <div className="flex items-center gap-6 mb-10">
-          <div className="w-20 h-20 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-4xl">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title={mode === 'edit' ? 'Edit Asset Properties' : 'Configure New Asset'}
+      className="max-w-md"
+    >
+      <div className="p-8 space-y-8">
+        <div className="flex items-center gap-6 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+          <div className="w-16 h-16 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-4xl shadow-inner">
             {headerEmoji}
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-white tracking-tight mb-2">
-              {mode === 'edit' ? 'Edit Asset Properties' : 'Configure New Asset'}
-            </h2>
-            <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">Properties & Metadata</p>
+            <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">Preview</p>
+            <p className="text-sm font-bold text-white truncate">{assetName || 'Unnamed Asset'}</p>
           </div>
         </div>
 
-        <div className="space-y-8">
-          {/* Asset Name */}
-          <div className="space-y-4">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/20 px-1">Display Name</label>
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase tracking-widest text-white/20 px-1">Display Name</label>
             <input
               type="text"
               value={assetName}
               onChange={(e) => setAssetName(e.target.value)}
               placeholder="Enter asset name..."
-              className="w-full bg-black/40 border border-white/5 rounded-xl px-5 h-14 text-sm text-white focus:border-accent/40 transition-all outline-none font-bold"
+              className="w-full bg-black/40 border border-white/5 rounded-xl px-5 h-14 text-sm text-white focus:border-accent/40 focus:bg-black/60 transition-all outline-none font-bold"
             />
           </div>
 
-          {/* Emoji Selection (Optional) */}
           {activeCategory !== '__rename_only__' && (
-            <div className="space-y-6">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/20 px-1">Associated Icon</label>
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-white/20 px-1">Associated Icon</label>
+              
               <div className="relative">
                 <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-white/10" size={16} />
                 <input
@@ -136,160 +117,88 @@ export function EmojiPickerModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search emojis..."
-                  className="w-full bg-black/40 border border-white/5 rounded-xl pl-12 pr-12 h-14 text-sm text-white focus:border-accent/40 transition-all outline-none"
+                  className="w-full bg-black/40 border border-white/5 rounded-xl pl-12 pr-12 h-14 text-sm text-white focus:border-accent/40 focus:bg-black/60 transition-all outline-none"
                 />
-                {searchQuery && (
+              </div>
+
+              {!isSearching && (
+                <div className="grid grid-cols-9 gap-1.5 p-1 bg-white/[0.02] rounded-xl border border-white/5">
                   <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all"
-                    title="Clear search"
+                    onClick={() => setActiveCategory(RECENTS_KEY)}
                     type="button"
+                    className={`h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      activeCategory === RECENTS_KEY
+                        ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                        : 'text-white/40 hover:bg-white/5 hover:text-white'
+                    }`}
                   >
-                    <IconX size={14} />
+                    <IconClock size={16} />
                   </button>
+                  {EMOJI_CATEGORIES.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => setActiveCategory(category.id)}
+                      type="button"
+                      className={`h-9 rounded-lg flex items-center justify-center text-base transition-all cursor-pointer ${
+                        activeCategory === category.id
+                          ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                          : 'text-white/60 hover:bg-white/5'
+                      }`}
+                    >
+                      {category.icon}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                key={activeCategory + searchQuery}
+                className="grid grid-cols-7 gap-2 h-[220px] overflow-y-auto p-3 bg-black/40 rounded-xl border border-white/5 scrollbar-thin"
+              >
+                {visibleEmojis.map((emoji, idx) => (
+                  <button
+                    key={`${emoji}-${idx}`}
+                    type="button"
+                    onClick={() => pickEmoji(emoji)}
+                    className={`text-2xl p-2 rounded-lg hover:bg-accent/10 hover:scale-110 transition-all cursor-pointer flex items-center justify-center ${
+                      emojiInput === emoji
+                        ? 'bg-accent/20 border border-accent/40 shadow-lg shadow-accent/5'
+                        : 'border border-transparent'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+
+                {visibleEmojis.length === 0 && (
+                  <div className="col-span-full flex flex-col items-center justify-center h-full text-white/20 space-y-2 py-8">
+                    <IconSparkles size={32} strokeWidth={1} />
+                    <p className="text-xs font-bold uppercase tracking-widest">No emojis found</p>
+                  </div>
                 )}
               </div>
             </div>
           )}
+        </div>
 
-          {/* Category strip — only when not searching and not in rename-only mode */}
-          {!isSearching && activeCategory !== '__rename_only__' && (
-            <div className="grid grid-cols-9 gap-1.5">
-              <button
-                onClick={() => setActiveCategory(RECENTS_KEY)}
-                title="Recently used"
-                type="button"
-                className={`h-9 rounded-lg flex items-center justify-center transition-all ${
-                  activeCategory === RECENTS_KEY
-                    ? 'bg-accent text-black shadow-sm'
-                    : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
-                }`}
-              >
-                <IconClock size={14} />
-              </button>
-              {EMOJI_CATEGORIES.map((category) => (
-                <button
-                  key={category.id}
-                  onClick={() => setActiveCategory(category.id)}
-                  title={category.label}
-                  type="button"
-                  className={`h-9 rounded-lg flex items-center justify-center text-base transition-all ${
-                    activeCategory === category.id
-                      ? 'bg-accent text-black shadow-sm'
-                      : 'bg-white/5 text-white/80 hover:bg-white/10'
-                  }`}
-                >
-                  {category.icon}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Result meta row */}
-          {activeCategory !== '__rename_only__' && (
-            <div className="flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-widest text-white/30">
-              <span>
-                {isSearching
-                  ? `${visibleEmojis.length} match${visibleEmojis.length === 1 ? '' : 'es'}`
-                  : activeCategory === RECENTS_KEY
-                    ? `${visibleEmojis.length} recent`
-                    : activeCategoryDef?.label}
-              </span>
-              {!isSearching && activeCategory === RECENTS_KEY && recents.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearRecentEmojis()
-                    setRecents([])
-                  }}
-                  className="text-white/30 hover:text-white/60 transition-colors normal-case tracking-normal"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Emoji grid */}
-          {activeCategory !== '__rename_only__' && (
-            <div
-              key={activeCategory + searchQuery}
-              className="emoji-picker-grid grid grid-cols-7 gap-2 h-[220px] overflow-y-auto overflow-x-hidden p-3 bg-black/40 rounded-xl border border-white/5"
-            >
-              {visibleEmojis.map((emoji, idx) => (
-                <button
-                  key={`${emoji}-${idx}`}
-                  type="button"
-                  onClick={() => pickEmoji(emoji)}
-                  onDoubleClick={() => {
-                    pickEmoji(emoji)
-                    rememberEmoji(emoji)
-                    onConfirm(emoji)
-                  }}
-                  className={`text-2xl p-2 rounded-lg hover:bg-white/10 hover:scale-110 transition-transform ${
-                    emojiInput === emoji
-                      ? 'bg-accent/20 border border-accent/40'
-                      : 'border border-transparent'
-                  }`}
-                  title={emoji}
-                >
-                  {emoji}
-                </button>
-              ))}
-
-              {visibleEmojis.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center h-full text-white/30 space-y-2 py-8">
-                  {isSearching ? (
-                    <>
-                      <IconSearch size={28} />
-                      <p className="text-xs font-semibold">No matches for "{searchQuery}"</p>
-                      <p className="text-[10px] text-white/20">
-                        Try a shorter word, an alias ("hype", "lol", "sad"), or paste an emoji directly.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <IconSparkles size={28} />
-                      <p className="text-xs font-semibold">No recents yet</p>
-                      <p className="text-[10px] text-white/20">
-                        Pick an emoji and it'll show up here next time.
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="app-button flex-1 opacity-70 hover:opacity-100"
-            >
-              Cancel
-            </button>
-            {mode === 'edit' && emojiInput && (
-              <button
-                type="button"
-                onClick={clearEmoji}
-                className="app-button px-4 text-white/60 hover:text-white"
-                title="Remove emoji"
-              >
-                Remove
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={confirmAndClose}
-              disabled={!emojiInput && mode !== 'edit'}
-              className="app-button-primary flex-1 disabled:opacity-30 disabled:pointer-events-none"
-            >
-              {mode === 'edit' ? (emojiInput ? 'Save Emoji' : 'Clear Emoji') : 'Add Sound'}
-            </button>
-          </div>
+        <div className="flex gap-3 pt-4 border-t border-white/5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 h-12 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 font-bold text-xs uppercase tracking-widest transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirmAndClose}
+            disabled={!emojiInput && mode !== 'edit'}
+            className="flex-[2] h-12 rounded-xl bg-accent text-black font-black text-xs uppercase tracking-[0.2em] transition-all cursor-pointer disabled:opacity-20 disabled:grayscale shadow-lg shadow-accent/10 hover:shadow-accent/20 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            {mode === 'edit' ? (emojiInput ? 'Update Asset' : 'Clear Icon') : 'Confirm Setup'}
+          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

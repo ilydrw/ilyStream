@@ -7,7 +7,7 @@ export default function NanoleafPage() {
     <div className="app-page">
       <header className="app-page-header">
         <div className="flex items-center gap-6">
-          <NanoleafIcon size={48} branded />
+          <NanoleafIcon size={48} />
           <div>
             <h1>Nanoleaf Panels</h1>
             <p className="app-page-intro">
@@ -47,8 +47,8 @@ export default function NanoleafPage() {
           <section className="app-section-card glass h-full flex flex-col min-h-[400px]">
             <div className="app-section-head">
               <div className="flex items-center gap-4">
-                <h2>IconLayout Discovery</h2>
-                <p>Detecting physical panel arrangements.</p>
+                <h2>Panel Discovery</h2>
+                <p>Scanning for Nanoleaf shapes and lines on your local network.</p>
               </div>
               <button className="text-[10px] font-bold text-accent/60 hover:text-accent tracking-widest transition-colors flex items-center gap-2">
                 <IconRefresh size={10} />

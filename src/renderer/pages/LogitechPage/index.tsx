@@ -8,7 +8,7 @@ export default function LogitechPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <LogitechIcon size={48} branded />
+            <LogitechIcon size={48} />
           </div>
           <div>
             <h1>Logitech G-Series</h1>

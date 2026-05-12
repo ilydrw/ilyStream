@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import type { StreamConfig } from './streaming-types'
+import type { StreamConfig } from '../streaming-types'
 
 type EncoderMode = 'stream' | 'record'
 
@@ -141,3 +141,4 @@ export class StreamingEncoderResolver {
     return ok
   }
 }
+

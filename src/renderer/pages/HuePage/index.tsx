@@ -111,11 +111,11 @@ export default function HuePage() {
   const handleTestFlash = async () => {
     setIsTestFlashing(true)
     if (triggerStrobe) {
-      await triggerStrobe(settings.hueFlashDurationMs)
+      await triggerStrobe(settings.integrations.hue.flashDurationMs)
     } else {
       await triggerFlash()
     }
-    setTimeout(() => setIsTestFlashing(false), settings.hueFlashDurationMs)
+    setTimeout(() => setIsTestFlashing(false), settings.integrations.hue.flashDurationMs)
   }
 
   const renderLightCard = (light: HueLight) => {
@@ -315,7 +315,7 @@ export default function HuePage() {
                   <div className="text-sm font-bold text-white mb-1">Flash on Follow</div>
                   <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on new follower</div>
                 </div>
-                <Toggle value={settings.hueFlashOnFollow} onChange={(val) => updateSetting('hueFlashOnFollow', val)} />
+                <Toggle value={settings.integrations.hue.flashOnFollow} onChange={(val) => updateSetting('hueFlashOnFollow', val)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -323,20 +323,20 @@ export default function HuePage() {
                   <div className="text-sm font-bold text-white mb-1">Flash on Gift</div>
                   <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on gifts</div>
                 </div>
-                <Toggle value={settings.hueFlashOnGift} onChange={(val) => updateSetting('hueFlashOnGift', val)} />
+                <Toggle value={settings.integrations.hue.flashOnGift} onChange={(val) => updateSetting('hueFlashOnGift', val)} />
               </div>
 
               <div className="space-y-4 pt-4 border-t border-white/5">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-black tracking-widest text-white/30">Flash Duration</div>
-                  <div className="text-xs font-mono font-bold text-blue-400">{settings.hueFlashDurationMs}ms</div>
+                  <div className="text-xs font-mono font-bold text-blue-400">{settings.integrations.hue.flashDurationMs}ms</div>
                 </div>
                 <input 
                   type="range"
                   min={500}
                   max={15000}
                   step={500}
-                  value={settings.hueFlashDurationMs}
+                  value={settings.integrations.hue.flashDurationMs}
                   onChange={(e) => updateSetting('hueFlashDurationMs', parseInt(e.target.value))}
                   className="app-range"
                 />
@@ -508,3 +508,4 @@ function Metric({ icon, label, value, sub, accent = 'text-accent' }: { icon: any
     </div>
   )
 }
+

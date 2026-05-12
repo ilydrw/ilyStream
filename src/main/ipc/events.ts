@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { ServiceRegistry } from '../services/service-registry'
-import { AnyStreamEvent, Platform, ConnectionStatus } from '../platforms/types'
 import { ConnectorError } from '../platforms/base-connector'
+import { logEmitter } from '../lib/logger'
 
 /**
  * Forward events from main process services to the renderer via IPC.
@@ -127,6 +127,13 @@ export function setupEventForwarding(
   services.goveeService.on('status-changed', (status) => {
     if (!window.isDestroyed()) {
       window.webContents.send('govee:status-changed', status)
+    }
+  })
+
+  // Forward logs to renderer
+  logEmitter.on('log', (logData) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('system:log', logData)
     }
   })
 }

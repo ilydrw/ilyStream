@@ -30,12 +30,12 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
       <div className="app-section-content !p-0">
         <div className="flex flex-col gap-6 p-8">
           <SettingRow label="Automation Link" hint="Enable control over your OBS Studio instance.">
-            <Toggle value={settings.obsEnabled} onChange={(value) => onUpdate('obsEnabled', value)} />
+            <Toggle value={settings.integrations.obs.enabled} onChange={(value) => onUpdate('obsEnabled', value)} />
           </SettingRow>
 
           <SettingRow label="Host Address" hint="Target machine IP (usually local loopback).">
             <TextInput
-              value={settings.obsHost}
+              value={settings.integrations.obs.host}
               onChange={(value) => onUpdate('obsHost', value)}
               placeholder="127.0.0.1"
             />
@@ -43,7 +43,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
 
           <SettingRow label="WebSocket Port" hint="Configured in OBS Studio WebSocket settings.">
             <NumberInput
-              value={settings.obsPort}
+              value={settings.integrations.obs.port}
               onChange={(value) => onUpdate('obsPort', value)}
               min={1}
               max={65535}
@@ -52,7 +52,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
 
           <SettingRow label="Access Password" hint="Configured in OBS WebSocket server settings.">
             <TextInput
-              value={settings.obsPassword}
+              value={settings.integrations.obs.password}
               onChange={(value) => onUpdate('obsPassword', value)}
               placeholder="OBS WebSocket Password"
               type="password"
@@ -65,13 +65,13 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
               <OBSStatusBadge status={obsStatus} />
             </div>
             <div className="space-y-3">
-              <RuntimeValue label="Endpoint" value={`ws://${settings.obsHost}:${settings.obsPort}`} />
+              <RuntimeValue label="Endpoint" value={`ws://${settings.integrations.obs.host}:${settings.integrations.obs.port}`} />
               {obsStatus?.currentSceneName && <RuntimeValue label="Active Scene" value={obsStatus.currentSceneName} />}
               {obsStatus?.obsVersion && <RuntimeValue label="Binary" value={obsStatus.obsVersion} />}
             </div>
             <button
               onClick={onConnect}
-              disabled={!settings.obsEnabled}
+              disabled={!settings.integrations.obs.enabled}
               className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-accent/5 hover:bg-accent/10 text-accent border-accent/20"
             >
               {obsStatus?.connecting ? 'Linking...' : 'Save & Connect'}
@@ -82,3 +82,4 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
     </section>
   )
 }
+

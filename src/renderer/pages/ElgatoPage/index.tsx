@@ -36,7 +36,7 @@ export default function ElgatoPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <ElgatoIcon size={48} branded />
+            <ElgatoIcon size={48} />
           </div>
           <div>
             <h1>Elgato Ecosystem</h1>

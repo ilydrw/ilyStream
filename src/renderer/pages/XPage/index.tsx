@@ -1,5 +1,6 @@
+import { useEffect, useMemo, useState } from 'react'
 import {IconMessage2, IconRadio, IconSend, IconBrandTwitter, IconWifi, IconBolt} from '@tabler/icons-react'
-import { useEffect, useState } from 'react'
+import { useConnectionStore } from '../../stores/connection-store'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -7,7 +8,7 @@ import {
   DiagnosticLine 
 } from '../../components/platforms/PlatformPageLayout'
 
-const PLATFORM_ID = 'x'
+const PLATFORM_ID: Platform = 'x'
 const FIELDS = [
   { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'X Developer API Key' },
   { key: 'apiSecret', label: 'API Secret', type: 'password', placeholder: 'X Developer API Secret' },
@@ -16,13 +17,50 @@ const FIELDS = [
 ]
 
 export default function XPage() {
+  const statuses = useConnectionStore((s) => s.statuses)
+  const errors = useConnectionStore((s) => s.errors)
+  const reconnectInfo = useConnectionStore((s) => s.reconnectInfo)
+  const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, string>>({})
-  const [status, setStatus] = useState('disconnected')
+
+  const status = statuses[PLATFORM_ID] || 'disconnected'
+  const error = errors[PLATFORM_ID]
+  const isConnected = status === 'connected'
+  const isConnecting = status === 'connecting'
+
+  useEffect(() => {
+    window.api.platform.getConfigs().then((configs) => {
+      if (configs[PLATFORM_ID]) {
+        setConfig(configs[PLATFORM_ID])
+      }
+    })
+  }, [status])
+
+  const platformEvents = useMemo(
+    () => recentEvents.filter((event) => event.platform === PLATFORM_ID).slice(0, 15),
+    [recentEvents]
+  )
+
+  const handleConnect = async () => {
+    try {
+      await window.api.platform.connect({
+        platform: PLATFORM_ID,
+        enabled: true,
+        ...config
+      })
+    } catch (err) {
+      console.error('Failed to connect:', err)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    await window.api.platform.disconnect(PLATFORM_ID)
+  }
 
   return (
     <div className="app-page">
       <PlatformPageHeader 
-        platformId={PLATFORM_ID as any}
+        platformId={PLATFORM_ID}
         title="X (Twitter) Integration"
         description="Connect your X account to monitor real-time mentions, sentiment, and trending topics. Feed your AI Co-Host with the pulse of the internet."
         icon={<IconBrandTwitter size={14} />}
@@ -40,9 +78,9 @@ export default function XPage() {
           value="0" 
         />
         <Metric 
-          icon={<IconWifi size={20} className="text-white/20" />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : isConnected ? 'text-success' : 'text-white/20'} />} 
           label="Stream Health" 
-          value="Standby" 
+          value={isConnected ? 'Optimal' : isConnecting ? 'Auth' : 'Standby'} 
         />
       </div>
 
@@ -54,7 +92,7 @@ export default function XPage() {
                 <h2>Developer Settings</h2>
                 <p>Configure X Developer Portal credentials.</p>
               </div>
-              <StatusBadge status={status} />
+              <StatusBadge status={status} reconnect={reconnectInfo[PLATFORM_ID]} />
             </div>
 
             <div className="grid gap-10 p-12 md:grid-cols-2 bg-white/[0.01]">
@@ -66,16 +104,47 @@ export default function XPage() {
                     placeholder={field.placeholder}
                     value={config[field.key] || ''}
                     onChange={(e) => setConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
-                    className="app-input"
+                    disabled={isConnected || isConnecting}
+                    className="app-input disabled:opacity-30 disabled:cursor-not-allowed"
                   />
                 </div>
               ))}
             </div>
 
+            {error && (
+              <div className="px-8 py-4 bg-danger/10 border-y border-danger/20">
+                <p className="text-xs font-bold text-danger leading-relaxed">{error}</p>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-6 p-10 border-t border-white/5 mt-auto">
-              <button className="app-button-primary !h-12 !px-10 text-sm font-bold">
-                Authorize Service
-              </button>
+              {isConnected ? (
+                <button onClick={handleDisconnect} className="app-button-danger !h-12 !px-8 text-sm font-bold">
+                  Disconnect X
+                </button>
+              ) : isConnecting ? (
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleDisconnect}
+                    className="app-button-secondary !h-12 !px-8 text-sm font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled
+                    className="app-button-primary !h-12 !px-10 text-sm font-bold opacity-50 cursor-not-allowed"
+                  >
+                    Authenticating...
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleConnect}
+                  className="app-button-primary !h-12 !px-10 text-sm font-bold"
+                >
+                  Authorize Service
+                </button>
+              )}
             </div>
           </section>
 
@@ -90,14 +159,14 @@ export default function XPage() {
               <DiagnosticLine
                 icon={<IconRadio size={16} />}
                 label="Stream API"
-                value="Disconnected"
-                tone="muted"
+                value={isConnected ? 'Ready' : 'Disconnected'}
+                tone={isConnected ? 'good' : 'muted'}
               />
               <DiagnosticLine
                 icon={<IconSend size={16} />}
                 label="Automated Replies"
-                value="Restricted"
-                tone="muted"
+                value={isConnected ? 'Operational' : 'Restricted'}
+                tone={isConnected ? 'good' : 'muted'}
               />
             </div>
           </section>
@@ -112,10 +181,28 @@ export default function XPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
-            <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
-              <IconBrandTwitter size={48} className="mb-6 opacity-10" />
-              <p className="text-sm font-medium">Waiting for X stream initialization...</p>
-            </div>
+            {platformEvents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-white/10 p-12 text-center">
+                <IconBrandTwitter size={48} className="mb-6 opacity-10" />
+                <p className="text-sm font-medium">Waiting for X stream initialization...</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {platformEvents.map((event) => (
+                  <div key={event.id} className="p-6 hover:bg-white/[0.02] transition-colors group">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-2 py-0.5 rounded bg-info/10 text-info text-[10px] font-black uppercase tracking-tighter">
+                        {event.type}
+                      </span>
+                      <span className="text-[10px] font-mono text-white/20 group-hover:text-white/40">
+                        {new Date(event.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-white/70 group-hover:text-white transition-colors">{event.summary}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </div>

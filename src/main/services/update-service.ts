@@ -1,8 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import log from 'electron-log'
-import updater from 'electron-updater'
-
-const { autoUpdater } = updater
+import pkg from 'electron-updater'
+const { autoUpdater } = pkg
 
 type UpdateState =
   | 'checking'
@@ -96,4 +95,8 @@ export function disposeAutoUpdates(): void {
   if (!updateTimer) return
   clearInterval(updateTimer)
   updateTimer = null
+}
+
+export function installUpdate(): void {
+  autoUpdater.quitAndInstall()
 }

@@ -18,6 +18,7 @@ import { SourceSidebar } from './components/SourceSidebar'
 import { MixerContainer } from './components/MixerContainer'
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
+import { usePageVisibility } from '../../hooks/usePageVisibility'
 
 function formatDuration(totalSeconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds))
@@ -78,6 +79,7 @@ export default function BroadcastPage() {
   const [isResizingMixer, setIsResizingMixer] = useState(false)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [selectionContext, setSelectionContext] = useState<'16:9' | '9:16'>('16:9')
+  const isPageVisible = usePageVisibility()
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const canvasRef = useRef<CanvasEditorHandle>(null)
   const activeLayoutAssignments = useMemo(() => broadcastLayoutMode === 'horizontal' ? { horizontal: layoutAssignments.horizontal, vertical: [] } : broadcastLayoutMode === 'vertical' ? { horizontal: [], vertical: layoutAssignments.vertical } : layoutAssignments, [broadcastLayoutMode, layoutAssignments])
@@ -412,6 +414,7 @@ export default function BroadcastPage() {
             activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording} 
             captureInputFormat={captureInputFormat} outputFps={outputConfig.fps} 
             outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs} 
+            isVisible={isPageVisible}
             streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs} 
             previewMode={broadcastLayoutMode} selectionContext={selectionContext}
             dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}

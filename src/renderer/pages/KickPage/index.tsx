@@ -23,9 +23,9 @@ export default function KickPage() {
   const [config, setConfig] = useState<Record<string, string>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
 
-  const status = statuses[PLATFORM_ID]
-  const error = errors[PLATFORM_ID]
-  const viewers = viewerCounts[PLATFORM_ID]
+  const status = statuses[PLATFORM_ID] || 'disconnected'
+  const error = errors[PLATFORM_ID] || null
+  const viewers = viewerCounts[PLATFORM_ID] || 0
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
 
@@ -81,7 +81,7 @@ export default function KickPage() {
         <Metric 
           icon={<IconUsers size={20} className="text-kick" />} 
           label="Kick Audience" 
-          value={viewers.toLocaleString()} 
+          value={(viewers || 0).toLocaleString()} 
         />
         <Metric 
           icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
@@ -134,13 +134,27 @@ export default function KickPage() {
                 <button onClick={handleDisconnect} className="app-button-danger !h-12 !px-8 text-sm font-bold">
                   Disconnect Kick
                 </button>
+              ) : isConnecting ? (
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleDisconnect}
+                    className="app-button-secondary !h-12 !px-8 text-sm font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled
+                    className="app-button-primary !h-12 !px-10 text-sm font-bold opacity-50 cursor-not-allowed"
+                  >
+                    Linking...
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={handleConnect}
-                  disabled={isConnecting}
                   className="app-button-primary !h-12 !px-10 text-sm font-bold"
                 >
-                  {isConnecting ? 'Linking...' : 'Connect Service'}
+                  Connect Service
                 </button>
               )}
             </div>
@@ -207,3 +221,4 @@ export default function KickPage() {
     </div>
   )
 }
+

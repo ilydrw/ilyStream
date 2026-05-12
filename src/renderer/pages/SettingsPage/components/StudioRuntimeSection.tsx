@@ -11,8 +11,9 @@ interface StudioRuntimeSectionProps {
 
 const relayModes: Array<{ value: RelayTagMode; label: string }> = [
   { value: 'platform-and-user', label: 'Platform + User' },
-  { value: 'platform', label: 'Platform Only' },
-  { value: 'none', label: 'Clean Relay' }
+  { value: 'user-only', label: 'User Only' },
+  { value: 'platform-only', label: 'Platform Only' },
+  { value: 'message-only', label: 'Clean Relay' }
 ]
 
 export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectionProps) {
@@ -34,7 +35,7 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
         <div className="p-8">
           <SettingRow label="Message Buffer" hint="How many chat events the renderer keeps hot before old entries roll off.">
             <NumberInput
-              value={settings.chatMaxMessages}
+              value={settings.chat?.maxMessages}
               onChange={(value) => onUpdate('chatMaxMessages', value)}
               min={100}
               max={5000}
@@ -42,12 +43,16 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
           </SettingRow>
 
           <SettingRow label="Auto Relay" hint="Mirror eligible chat messages into connected platforms when relay is enabled.">
-            <Toggle value={settings.chatAutoRelayEnabled} onChange={(value) => onUpdate('chatAutoRelayEnabled', value)} />
+            <Toggle value={settings.chat?.autoRelayEnabled} onChange={(value) => onUpdate('chatAutoRelayEnabled', value)} />
+          </SettingRow>
+
+          <SettingRow label="Platform Auto-Reconnect" hint="Automatically retry connections when a service drops unexpectedly. Disable this to save API limits.">
+            <Toggle value={settings.platform?.autoReconnect} onChange={(value) => onUpdate('platformAutoReconnect', value)} />
           </SettingRow>
 
           <SettingRow label="Relay Attribution" hint="Controls how relayed messages identify their source platform and sender.">
             <select
-              value={settings.chatRelayTagMode}
+              value={settings.chat?.relayTagMode}
               onChange={(event) => onUpdate('chatRelayTagMode', event.target.value as RelayTagMode)}
               className="h-11 w-56 rounded-xl border border-white/10 bg-black/40 px-4 text-sm font-medium transition-all hover:bg-black/60 focus:border-accent focus:outline-none"
             >
@@ -62,14 +67,14 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
               <IconMessage2 size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Buffer</p>
-                <p className="text-sm font-bold text-white">{settings.chatMaxMessages.toLocaleString()} events</p>
+                <p className="text-sm font-bold text-white">{(settings.chat?.maxMessages || 0).toLocaleString()} events</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconRadio size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Relay</p>
-                <p className="text-sm font-bold text-white">{settings.chatAutoRelayEnabled ? 'Enabled' : 'Manual'}</p>
+                <p className="text-sm font-bold text-white">{settings.chat?.autoRelayEnabled ? 'Enabled' : 'Manual'}</p>
               </div>
             </div>
           </div>
@@ -78,3 +83,6 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
     </section>
   )
 }
+
+
+

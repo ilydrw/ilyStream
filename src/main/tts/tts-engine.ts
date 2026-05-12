@@ -205,42 +205,24 @@ export class TTSEngine extends EventEmitter {
     }
   }
 
-  applySettings(settings: Pick<
-    AppSettings,
-    | 'ttsEnabled'
-    | 'ttsMaxLength'
-    | 'ttsDuplicateWindow'
-    | 'ttsPerUserLimit'
-    | 'ttsChatVoiceProfileId'
-    | 'ttsSubscriptionVoiceProfileId'
-    | 'ttsOnlySubsAndMods'
-    | 'ttsRequireCommand'
-    | 'ttsCommandPrefixes'
-    | 'ttsAllowedRoles'
-    | 'ttsMinLength'
-    | 'ttsUserVoiceOverrides'
-    | 'ttsReadAtSymbol'
-    | 'ttsSkipMessagesStartingWithAt'
-    | 'ttsIgnoreEmotes'
-    | 'ttsVolume'
-  >): void {
-    this.filter.setMaxLength(settings.ttsMaxLength)
-    this.filter.setMinLength(settings.ttsMinLength)
-    this.filter.setDuplicateWindow(settings.ttsDuplicateWindow * 1000)
-    this.filter.setFilterEnabled('readAtSymbol', settings.ttsReadAtSymbol)
-    this.filter.setFilterEnabled('skipMessagesStartingWithAt', settings.ttsSkipMessagesStartingWithAt)
-    this.queue.setPerUserLimit(settings.ttsPerUserLimit)
-    this.queue.setPerUserWindow(settings.ttsDuplicateWindow * 1000)
-    this.chatVoiceProfileId = settings.ttsChatVoiceProfileId
-    this.subscriptionVoiceProfileId = settings.ttsSubscriptionVoiceProfileId
-    this.onlySubsAndMods = settings.ttsOnlySubsAndMods
-    this.requireCommand = settings.ttsRequireCommand
-    this.commandPrefixes = [...settings.ttsCommandPrefixes].sort((left, right) => right.length - left.length)
-    this.allowedRoles = settings.ttsAllowedRoles
-    this.userVoiceOverrides = settings.ttsUserVoiceOverrides
-    this.ignoreEmotes = settings.ttsIgnoreEmotes
-    this.globalVolume = settings.ttsVolume
-    this.setEnabled(settings.ttsEnabled)
+  applySettings(settings: AppSettings['tts']): void {
+    this.filter.setMaxLength(settings.maxLength)
+    this.filter.setMinLength(settings.minLength)
+    this.filter.setDuplicateWindow(settings.duplicateWindow * 1000)
+    this.filter.setFilterEnabled('readAtSymbol', settings.readAtSymbol)
+    this.filter.setFilterEnabled('skipMessagesStartingWithAt', settings.skipMessagesStartingWithAt)
+    this.queue.setPerUserLimit(settings.perUserLimit)
+    this.queue.setPerUserWindow(settings.duplicateWindow * 1000)
+    this.chatVoiceProfileId = settings.chatVoiceProfileId
+    this.subscriptionVoiceProfileId = settings.subscriptionVoiceProfileId
+    this.onlySubsAndMods = settings.onlySubsAndMods
+    this.requireCommand = settings.requireCommand
+    this.commandPrefixes = [...(settings.commandPrefixes || [])].sort((left, right) => right.length - left.length)
+    this.allowedRoles = settings.allowedRoles
+    this.userVoiceOverrides = settings.userVoiceOverrides
+    this.ignoreEmotes = settings.ignoreEmotes
+    this.globalVolume = settings.volume
+    this.setEnabled(settings.enabled)
   }
 
   /** Get current queue state */
@@ -543,3 +525,4 @@ function hasBadge(user: UserInfo, terms: string[]): boolean {
     return terms.some((term) => haystack.includes(term))
   })
 }
+

@@ -14,7 +14,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
   const [isTesting, setIsTesting] = useState(false)
 
   const handleTestConnection = async () => {
-    if (!settings.aiEndpoint) {
+    if (!settings.ai.endpoint) {
       toast.error('Endpoint URL is required')
       return
     }
@@ -37,7 +37,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
   return (
     <section className="app-section-card glass relative overflow-hidden">
       {/* Active Indicator */}
-      {settings.aiEnabled && (
+      {settings.ai.enabled && (
         <div className="absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 bg-accent/10 blur-3xl rounded-full" />
       )}
 
@@ -52,9 +52,9 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
           </div>
         </div>
         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-          settings.aiEnabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/20'
+          settings.ai.enabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/20'
         }`}>
-          {settings.aiEnabled ? 'Active' : 'Offline'}
+          {settings.ai.enabled ? 'Active' : 'Offline'}
         </div>
       </div>
       
@@ -62,7 +62,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
         <div className="flex flex-col gap-6 p-8">
           <SettingRow label="Global Brain" hint="Enable automated moderation, witty responses, and stream context.">
             <Toggle 
-              value={settings.aiEnabled} 
+              value={settings.ai.enabled} 
               onChange={(value) => {
                 onUpdate('aiEnabled', value)
                 toast.info(value ? 'AI Agent Activated' : 'AI Agent Standby')
@@ -73,7 +73,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
           <SettingRow label="Endpoint URL" hint="Base URL for your AI provider (Ollama, OpenAI, etc).">
             <div className="flex gap-3 w-full">
               <TextInput
-                value={settings.aiEndpoint || ''}
+                value={settings.ai.endpoint || ''}
                 onChange={(value) => onUpdate('aiEndpoint', value)}
                 placeholder="http://localhost:11434/"
                 className="flex-1"
@@ -93,7 +93,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
 
           <SettingRow label="Access Key" hint="Securely stored locally. Leave empty for local models.">
             <TextInput
-              value={settings.aiApiKey || ''}
+              value={settings.ai.apiKey || ''}
               onChange={(value) => onUpdate('aiApiKey', value)}
               placeholder="sk-..."
               type="password"
@@ -103,7 +103,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
           <div className="grid grid-cols-2 gap-10 py-6">
             <SettingRow label="Response Depth" hint="Max tokens per message.">
               <NumberInput
-                value={settings.aiMaxTokens}
+                value={settings.ai.maxTokens}
                 onChange={(value) => onUpdate('aiMaxTokens', value)}
                 min={10}
                 max={4096}
@@ -123,7 +123,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
               <span className="text-xs text-white/20 leading-relaxed">Define exactly how your AI co-host behaves and reacts.</span>
             </div>
             <textarea
-              value={settings.aiSystemPrompt}
+              value={settings.ai.systemPrompt}
               onChange={(event) => onUpdate('aiSystemPrompt', event.target.value)}
               className="w-full bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:border-accent/40 min-h-[140px] resize-y custom-scrollbar transition-all"
               placeholder="You are a witty AI co-host named ILY. You keep responses brief, use moderate humor, and prioritize the streamer's context."
@@ -134,3 +134,4 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
     </section>
   )
 }
+

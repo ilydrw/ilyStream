@@ -32,7 +32,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     activeScene, isStreaming, isRecording, captureInputFormat,
     outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
-    dualVerticalOverlayEnabled = false,
+    dualVerticalOverlayEnabled = false, isVisible = true,
     onContextMenu, onSelectionContextChange
   } = props
   
@@ -97,7 +97,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     canvasRef, secondaryPreviewCanvasRef, activeScene, aspectRatio, outputFps, outputActive, previewMode,
     videoRefs, mediaFrameCache, browserFrameCache, imageCache, audioClockRef, encoderWorkerRef,
     horizontalEncoderWorkerRef, verticalEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
-    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled
+    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible
   })
 
   useImperativeHandle(ref, () => ({
@@ -572,7 +572,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     {activeGuides.map((g, i) => (
                       <div 
                         key={i} 
-                        className="absolute bg-white ring-2 ring-[#d035f1] shadow-[0_0_20px_rgba(208,53,241,1)] z-[100]"
+                        className="absolute bg-white ring-2 ring-accent shadow-glow z-context"
                         style={{
                           left: g.type === 'v' ? `${g.pos}px` : 0,
                           top: g.type === 'h' ? `${g.pos}px` : 0,
@@ -586,7 +586,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 )}
 
 
-                <div className="absolute -top-6 left-0 text-[10px] font-black uppercase tracking-[0.2em] text-white/20">
+                <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
                   Primary: {aspectRatio}
                 </div>
               </div>
@@ -625,7 +625,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                       {activeGuides.map((g, i) => (
                         <div 
                           key={i} 
-                          className="absolute bg-[#d035f1] shadow-[0_0_20px_rgba(208,53,241,1),0_0_4px_white] z-[100]"
+                          className="absolute bg-accent shadow-glow z-context"
                           style={{
                             left: g.type === 'v' ? `${g.pos}px` : 0,
                             top: g.type === 'h' ? `${g.pos}px` : 0,
@@ -638,7 +638,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     </div>
                   )}
 
-                  <div className="absolute -top-6 left-0 text-[10px] font-black uppercase tracking-[0.2em] text-white/20">
+                  <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
                     Secondary: {secondaryAspectRatio}
                   </div>
                 </div>

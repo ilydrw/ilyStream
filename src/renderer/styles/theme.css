@@ -1,31 +1,186 @@
-/* Theme Design Tokens */
+/* ============================================================
+   ilyStream Design System — Color & Typography Tokens
+   Mirrors colors_and_type.css canonical design tokens.
+   Font face + Tailwind @theme live in base.css.
+   ============================================================ */
+
 :root {
-  /* Experimental Brand Gradient – Cyan to Magenta */
+  color-scheme: dark;
+
+  /* ---------- Brand Gradient ---------- */
+  --grad-brand:        linear-gradient(135deg, #19C8FF 0%, #D035F1 100%);
+  --grad-brand-soft:   linear-gradient(135deg, rgba(25,200,255,0.16) 0%, rgba(208,53,241,0.10) 100%);
+  --grad-brand-web:    linear-gradient(135deg, #19C8FF 0%, #D035F1 100%);
+  --grad-rose:         linear-gradient(135deg, #FF5C7A 0%, #A783FF 100%);
+  --grad-warm:         linear-gradient(135deg, #F7B84B 0%, #FF5C7A 100%);
+  --grad-cool:         linear-gradient(135deg, #24D18B 0%, #25C7FF 100%);
+
+  /* ---------- Brand anchors ---------- */
+  --color-brand-cyan:    #19C8FF;
+  --color-brand-magenta: #D035F1;
+  --color-brand-violet:  #A783FF;
+
+  /* ---------- Backgrounds ---------- */
+  --bg:           #0F1115;
+  --bg-deep:      #0A0C10;
+  --bg-raised:    #11141B;
+  --bg-soft:      #161A23;
+  --bg-elev:      #1A2030;
+  --bg-titlebar:  rgba(12, 14, 19, 0.92);
+  --bg-glass:     rgba(255, 255, 255, 0.03);
+  --bg-glass-2:   rgba(255, 255, 255, 0.06);
+
+  /* ---------- Foreground / text ---------- */
+  --fg:           #FFFFFF;
+  --fg-1:         #F4F6FB;
+  --fg-2:         #AAB3C2;
+  --fg-3:         #768195;
+  --fg-4:         rgba(255, 255, 255, 0.4);
+  --fg-5:         rgba(255, 255, 255, 0.35);
+  --fg-6:         rgba(255, 255, 255, 0.20);
+  --fg-7:         rgba(255, 255, 255, 0.10);
+
+  /* ---------- Lines / borders ---------- */
+  --line:           rgba(255, 255, 255, 0.09);
+  --line-strong:    rgba(255, 255, 255, 0.18);
+  --line-soft:      rgba(255, 255, 255, 0.05);
+  --line-hairline:  rgba(255, 255, 255, 0.03);
+
+  /* ---------- Semantic / Functional ---------- */
+  --color-accent:        #19C8FF;
+  --color-accent-hover:  #61D9FF;
+  --color-accent-rgb:    25, 200, 255;
+  --color-success:       #22C55E;
+  --color-success-2:     #24D18B;
+  --color-warning:       #F59E0B;
+  --color-warning-2:     #F7B84B;
+  --color-danger:        #EF4444;
+  --color-danger-2:      #FF5C7A;
+
+  /* ---------- Platform colors ---------- */
+  --color-tiktok:  #FE2C55;
+  --color-twitch:  #9146FF;
+  --color-youtube: #FF0000;
+  --color-kick:    #53FC18;
+  --color-discord: #5865F2;
+  --color-x:       #FFFFFF;
+
+  /* ---------- Glass / Blur ---------- */
+  --glass-bg:     rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur:   blur(12px);
+  --topbar-blur:  blur(18px);
+  --nav-blur:     saturate(160%) blur(14px);
+
+  /* ---------- Shadows ---------- */
+  --shadow-card:        0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 28px rgba(0,0,0,0.32);
+  --shadow-cta:         0 8px 28px rgba(37, 199, 255, 0.28);
+  --shadow-accent:      0 0 20px rgba(25, 200, 255, 0.30);
+  --shadow-rail:        0 4px 12px rgba(25, 200, 255, 0.15);
+  --shadow-inner-faint: 0 1px 0 rgba(255,255,255,0.04) inset;
+
+  /* ---------- Radii ---------- */
+  --radius-xs:    6px;
+  --radius-sm:    8px;
+  --radius-md:    10px;
+  --radius-lg:    12px;
+  --radius-xl:    14px;
+  --radius-2xl:   16px;
+  --radius-pill:  999px;
+
+  /* ---------- Typography ---------- */
+  --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, -apple-system,
+               BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Code", ui-monospace, "JetBrains Mono", "SF Mono", monospace;
+  --font-feat: "cv11", "ss01", "ss03";
+
+  --fs-hero:    clamp(2.6rem, 6vw, 5rem);
+  --fs-display: clamp(1.9rem, 3.4vw, 2.8rem);
+  --fs-h1:      30px;
+  --fs-h2:      22px;
+  --fs-h3:      18px;
+  --fs-title:   2.25rem;
+  --fs-body:    14px;
+  --fs-body-lg: 1.05rem;
+  --fs-sm:      13px;
+  --fs-xs:      11px;
+  --fs-micro:   10px;
+  --fs-nano:    9px;
+
+  --fw-regular: 450;
+  --fw-medium:  600;
+  --fw-semi:    700;
+  --fw-bold:    800;
+  --fw-black:   900;
+  --fw-ultra:   950;
+
+  --tr-display: -0.04em;
+  --tr-tight:   -0.025em;
+  --tr-snug:    -0.01em;
+  --tr-normal:  0;
+  --tr-loose:   0.05em;
+  --tr-wide:    0.12em;
+  --tr-widest:  0.2em;
+
+  /* ---------- Spacing ---------- */
+  --sp-0: 0;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --sp-9: 96px;
+
+  /* ---------- Heights ---------- */
+  --h-topbar:      54px;
+  --h-input:       38px;
+  --h-button:      38px;
+  --h-button-web:  44px;
+  --h-rail-icon:   44px;
+
+  /* ---------- Motion ---------- */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast:    120ms;
+  --dur-base:    200ms;
+  --dur-slow:    400ms;
+
+  /* ---------- Backwards-compat aliases ---------- */
+  --brand-gradient: var(--grad-brand);
+  --color-bg:       var(--bg);
+  --color-bg-glass: var(--bg-glass);
+  --color-text-primary:   var(--fg-1);
+  --color-text-secondary: var(--fg-2);
+
+  /* Legacy HSL primary/secondary (kept for .bg-primary utility) */
   --color-primary-h: 194;
   --color-primary-s: 100%;
   --color-primary-l: 55%;
-
   --color-secondary-h: 289;
   --color-secondary-s: 88%;
   --color-secondary-l: 58%;
 
-  --brand-gradient: linear-gradient(135deg, #19c8ff, #d035f1);
-
-  /* Background – dark mode with subtle glass effect */
-  --color-bg: hsl(0, 0%, 10%);
-  --color-bg-glass: rgba(255, 255, 255, 0.06);
-
-  /* Text colors */
-  --color-text-primary: hsl(0, 0%, 95%);
-  --color-text-secondary: hsl(0, 0%, 70%);
-
-  /* Border / shadow */
-  --shadow-elevation-low: none;
+  /* Legacy elevation (kept null for any holdouts) */
+  --shadow-elevation-low:    none;
   --shadow-elevation-medium: none;
-  --shadow-elevation-high: none;
+  --shadow-elevation-high:   none;
 }
 
-/* Utility classes for quick access */
-.bg-primary { background-color: hsl(var(--color-primary-h), var(--color-primary-s), var(--color-primary-l)); }
+/* Utility-style helpers (mirror @utility blocks in base.css for non-Tailwind callers) */
+.bg-primary {
+  background-color: hsl(var(--color-primary-h), var(--color-primary-s), var(--color-primary-l));
+}
 .text-primary { color: var(--color-text-primary); }
-.glass { background: var(--color-bg-glass); border-radius: 12px; }
+.glass        { background: var(--color-bg-glass); border-radius: var(--radius-lg); }
+
+::selection { background: rgba(37, 199, 255, 0.32); }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}

@@ -7,13 +7,15 @@ import { AnyPlatformConfig, Platform } from '../../platforms/types'
 import { randomUUID } from 'crypto'
 import { AnyStreamEvent, UserInfo } from '../../platforms/types'
 import type { AlertRuleEventType } from '../../../shared/alert-rules'
+import { TikTokChatSender } from '../../platforms/tiktok/tiktok-chat-sender'
 
 let hasRestoredPlatformConnections = false
 
 export function registerPlatformHandlers(
   platformManager: PlatformManager,
   chatRelayService: ChatRelayService,
-  db: Database
+  db: Database,
+  tiktokChatSender: TikTokChatSender
 ) {
   ipcMain.handle('platform:connect', async (_event, config: AnyPlatformConfig) => {
     await platformManager.connect(config)
@@ -82,6 +84,18 @@ export function registerPlatformHandlers(
 
   ipcMain.handle('tiktok:fix-stats', () => {
     db.fixTikTokStats()
+  })
+
+  ipcMain.handle('tiktok:open-sender', async () => {
+    await tiktokChatSender.openWindow()
+  })
+
+  ipcMain.handle('tiktok:close-sender', () => {
+    tiktokChatSender.closeWindow()
+  })
+
+  ipcMain.handle('tiktok:get-sender-status', () => {
+    return tiktokChatSender.getStatus()
   })
 }
 

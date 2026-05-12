@@ -249,7 +249,7 @@ export function resolveBrowserSourceUrl(layer: StudioLayer, overlayPort: number)
   if (layer.type === 'widget') {
     if (!layer.config?.widgetId) return ''
     const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(layer.config || {}))))
-    return `http://localhost:${overlayPort}/overlay/${layer.config.widgetId}?config=${encodedConfig}`
+    return `http://127.0.0.1:${overlayPort}/overlay/${layer.config.widgetId}?config=${encodedConfig}`
   }
 
   const url = String(layer.config?.url || '').trim()
@@ -316,3 +316,4 @@ export function softClip(value: number): number {
     return -(0.85 + (nx - 0.85) / (1 + Math.pow((nx - 0.85) / (1 - 0.85), 2)))
   }
 }
+

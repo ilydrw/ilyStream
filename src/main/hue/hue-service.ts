@@ -2,6 +2,9 @@ import { EventEmitter } from 'events'
 import log from 'electron-log'
 import { Database } from '../db/database'
 
+import { LightProvider } from '../services/lighting/lighting-manager'
+import { LightingDevice, LightPlatform } from '../../shared/lighting'
+
 export interface HueBridge {
   id: string
   internalipaddress: string
@@ -30,7 +33,8 @@ const CYBER_PURPLE: HueRgb = { r: 208, g: 53, b: 241 }
 const CYBER_STROBE_INTERVAL_MS = 350
 const SUPERFAN_CYBER_STROBE_INTERVAL_MS = 90
 
-export class HueService extends EventEmitter {
+export class HueService extends EventEmitter implements LightProvider {
+  public platform: LightPlatform = 'hue'
   private bridgeIp: string | null = null
   private username: string | null = null
   private isConnected = false
@@ -486,6 +490,63 @@ export class HueService extends EventEmitter {
       username: this.username,
       isSafetyLocked: this.isSafetyLocked,
       selectedLightIds: this.selectedLightIds
+    }
+  }
+
+  // --- LightProvider Implementation ---
+
+  public getDevices(): LightingDevice[] {
+    // This requires a cached list of lights with full state.
+    // For now, we'll return a minimal list based on selectedLightIds
+    // but in a full implementation, we'd cache the result of getLights().
+    return this.selectedLightIds.map(id => ({
+      id,
+      name: `Hue Light ${id}`,
+      platform: 'hue',
+      online: this.isConnected,
+      reachable: true,
+      brightness: 100,
+      on: true,
+      lastSeen: Date.now()
+    }))
+  }
+
+  public async scan(): Promise<void> {
+    await this.getLights()
+  }
+
+  public async setPower(deviceId: string, on: boolean): Promise<void> {
+    this.setLightState(deviceId, { on })
+  }
+
+  public async setBrightness(deviceId: string, brightness: number): Promise<void> {
+    // Hue brightness is 0-254
+    const hueBri = Math.round((brightness / 100) * 254)
+    this.setLightState(deviceId, { bri: hueBri })
+  }
+
+  public async setColor(deviceId: string, color: string): Promise<void> {
+    // Simplified: Parse hex color to XY
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    const xy = this.rgbToXy({ r, g, b })
+    this.setLightState(deviceId, { xy, on: true })
+  }
+
+  public async applyEffect(deviceId: string, effect: 'flash' | 'pulse', color?: string, duration?: number): Promise<void> {
+    if (effect === 'flash') {
+      let rgbColor: HueRgb | undefined
+      if (color) {
+        rgbColor = {
+          r: parseInt(color.slice(1, 3), 16),
+          g: parseInt(color.slice(3, 5), 16),
+          b: parseInt(color.slice(5, 7), 16)
+        }
+      }
+      await this.triggerFlash(rgbColor)
+    } else if (effect === 'pulse') {
+      await this.triggerStrobe(duration || 5000)
     }
   }
 }

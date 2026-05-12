@@ -1,24 +1,16 @@
-import { IconTerminal2 } from '@tabler/icons-react'
-import { ConsoleSection } from '../SettingsPage/components/ConsoleSection'
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useUIStore } from '../../stores/ui-store'
 
 export default function ConsolePage() {
-  return (
-    <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <IconTerminal2 size={32} className="text-accent" />
-          </div>
-          <div>
-            <h1>Console</h1>
-            <p className="app-page-intro">
-              Real-time application log viewer. Filter by severity, search messages, and export diagnostics.
-            </p>
-          </div>
-        </div>
-      </header>
+  const navigate = useNavigate()
+  const { setConsoleOpen } = useUIStore()
 
-      <ConsoleSection />
-    </div>
-  )
+  useEffect(() => {
+    // Redirect to home but open the console modal
+    navigate('/', { replace: true })
+    setConsoleOpen(true)
+  }, [navigate, setConsoleOpen])
+
+  return null
 }

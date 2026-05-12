@@ -6,6 +6,7 @@ import { SettingRow } from './SettingsShared'
 interface PersonalizationSectionProps {
   settings: AppSettings
   onUpdate: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
+  onUpdateMany: (updates: Partial<AppSettings>) => void
 }
 
 const THEME_OPTIONS: Array<{
@@ -18,15 +19,18 @@ const THEME_OPTIONS: Array<{
   { value: 'dark', label: 'Noir', hint: 'Default broadcast control room.', accent: '#19c8ff', secondary: '#d035f1' },
   { value: 'midnight', label: 'Midnight', hint: 'Cool blue focus mode.', accent: '#60a5fa', secondary: '#7c3aed' },
   { value: 'aurora', label: 'Aurora', hint: 'Teal and green live energy.', accent: '#2dd4bf', secondary: '#22c55e' },
-  { value: 'ember', label: 'Ember', hint: 'Warm alert-ready contrast.', accent: '#fb923c', secondary: '#f43f5e' }
+  { value: 'ember', label: 'Ember', hint: 'Warm alert-ready contrast.', accent: '#fb923c', secondary: '#f43f5e' },
+  { value: 'joker', label: 'Why So Serious?', hint: 'High-contrast chaos for the bold.', accent: '#1ddd33', secondary: '#ab5dce' }
 ]
 
 const ACCENT_OPTIONS = ['#19c8ff', '#a78bfa', '#2dd4bf', '#22c55e', '#fb923c', '#f43f5e']
 
-export function PersonalizationSection({ settings, onUpdate }: PersonalizationSectionProps) {
+export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: PersonalizationSectionProps) {
   const setTheme = (option: (typeof THEME_OPTIONS)[number]) => {
-    onUpdate('theme', option.value)
-    onUpdate('accentColor', option.accent)
+    onUpdateMany({
+      theme: option.value,
+      accentColor: option.accent
+    })
   }
 
   return (
@@ -85,7 +89,7 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
                   key={color}
                   onClick={() => onUpdate('accentColor', color)}
                   className={`h-9 w-9 rounded-lg border transition-all ${
-                    settings.accentColor.toLowerCase() === color
+                    (settings.accentColor || '').toLowerCase() === color.toLowerCase()
                       ? 'border-white scale-105'
                       : 'border-white/10 hover:border-white/30'
                   }`}
@@ -95,7 +99,7 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
               ))}
               <input
                 type="color"
-                value={settings.accentColor}
+                value={settings.ui.accentColor}
                 onChange={(event) => onUpdate('accentColor', event.target.value)}
                 className="h-9 w-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
                 title="Custom accent color"
@@ -146,3 +150,4 @@ export function PersonalizationSection({ settings, onUpdate }: PersonalizationSe
     </section>
   )
 }
+

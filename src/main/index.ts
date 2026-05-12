@@ -8,6 +8,7 @@ import { ServiceRegistry } from './services/service-registry'
 import { registerIpcHandlers } from './ipc/handlers'
 import { setupEventForwarding } from './ipc/events'
 import { setupLogger } from './lib/logger'
+import { setupAutoUpdates, disposeAutoUpdates } from './services/update-service'
 
 // Global logger setup
 setupLogger()
@@ -18,7 +19,8 @@ app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 
 // Global service registry
-const services = new ServiceRegistry()
+let services: ServiceRegistry
+let initPromise: Promise<void>
 
 // Register asset scheme as privileged before app is ready
 protocol.registerSchemesAsPrivileged([
@@ -131,8 +133,7 @@ function createWindow(): void {
     mainWindow?.show()
 
     console.log('[main] UI visible. Initializing services in background...')
-    void services.initialize()
-      .then(() => {
+    initPromise.then(() => {
         console.log('[main] Services initialized successfully.')
         // Start health watchdog after services are up
         startHealthWatchdog()
@@ -304,6 +305,7 @@ function registerAssetProtocol(): void {
 }
 
 app.whenReady().then(async () => {
+  services = new ServiceRegistry(); initPromise = services.initialize();
   electronApp.setAppUserModelId('com.ilystream.app')
 
   app.on('browser-window-created', (_, window) => {
@@ -322,6 +324,10 @@ app.whenReady().then(async () => {
   createTray()
   console.log('[main] Creating main window...')
   createWindow()
+  
+  // Initialize auto-updates (handled in background)
+  setupAutoUpdates(() => mainWindow)
+  
   console.log('[main] Application ready.')
 
   app.on('activate', function () {
@@ -333,7 +339,7 @@ app.whenReady().then(async () => {
 
 function startHistoryPrune(): void {
   if (historyPruneTimer) return
-  historyPruneTimer = setInterval(() => services.db.pruneEventHistory(), 60 * 60 * 1000)
+  historyPruneTimer = setInterval(() => services?.db?.pruneEventHistory(), 60 * 60 * 1000)
 }
 
 function startHealthWatchdog(): void {
@@ -370,11 +376,17 @@ app.on('before-quit', (event) => {
   isQuitting = true
   event.preventDefault()
   stopBackgroundTimers()
+  disposeAutoUpdates()
   void (async () => {
     try {
-      await services.dispose()
+      if (services) await services.dispose()
     } finally {
       app.exit(0)
     }
   })()
 })
+
+
+
+
+

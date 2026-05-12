@@ -241,7 +241,7 @@ export default function GoveePage() {
                     onClick={refreshDevices}
                     className="text-[10px] font-black text-accent uppercase tracking-widest hover:underline"
                   >
-                    Sync Device IconList
+                    Sync Devices
                   </button>
                 </div>
               )}
@@ -319,7 +319,7 @@ export default function GoveePage() {
           )}
         </div>
 
-        {/* Right Column: Device IconList */}
+        {/* Right Column: Device List */}
         <div className="lg:col-span-7">
           <section className="app-section-card glass h-full flex flex-col min-h-[400px]">
             <div className="app-section-head">

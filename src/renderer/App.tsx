@@ -13,6 +13,7 @@ import { useTTS } from './hooks/useTTS'
 import { useSettingsSync } from './hooks/useSettingsSync'
 import { useSoundPlayback } from './hooks/useSoundPlayback'
 import { useLogInterception } from './hooks/useLogInterception'
+import { useUpdateSync } from './hooks/useUpdateSync'
 import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
 
@@ -68,6 +69,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+import { ConsoleModal } from './components/ui/ConsoleModal'
+
 export default function App() {
   const [isMounted, setIsMounted] = useState(false)
   const [keepBroadcastMounted, setKeepBroadcastMounted] = useState(() => window.location.pathname === '/broadcast')
@@ -83,6 +86,7 @@ export default function App() {
   useTTS(isMounted)
   useSoundPlayback()
   useLogInterception()
+  useUpdateSync()
   
   const location = useLocation()
   const searchParams = new URLSearchParams(location.search || window.location.search)
@@ -168,6 +172,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <MountingDiagnostics />
+      <ConsoleModal />
       <DashboardLayout>
         <ToastContainer />
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">

@@ -9,5 +9,8 @@ export interface OBSRuntimeStatus {
   obsWebSocketVersion: string | null
   obsVersion: string | null
   virtualCameraActive: boolean | null
+  recordingActive: boolean | null
+  streamActive: boolean | null
+  scenes: string[]
   updatedAt: string | null
 }

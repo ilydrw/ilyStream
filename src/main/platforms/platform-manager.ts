@@ -13,24 +13,28 @@ import { TwitchConnector } from './twitch/twitch-connector'
 import { YouTubeConnector } from './youtube/youtube-connector'
 import { KickConnector } from './kick/kick-connector'
 import { Database } from '../db/database'
+import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
 
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
 
-  constructor(private db: Database) {
+  constructor(private db: Database, private tiktokChatSender: TikTokChatSender) {
     super()
     this.setMaxListeners(100)
 
     // Initialize all connectors
     const platforms: BaseConnector[] = [
-      new TikTokConnector(this.db),
+      new TikTokConnector(this.db, this.tiktokChatSender),
       new TwitchConnector(this.db),
       new YouTubeConnector(),
       new KickConnector()
     ]
 
+    const autoReconnect = !!this.db.getSetting('platformAutoReconnect')
+    
     for (const connector of platforms) {
       this.connectors.set(connector.platform, connector)
+      connector.setAutoReconnect(autoReconnect)
 
       connector.on('event', (event: AnyStreamEvent) => {
         this.emit('event', event)
@@ -52,6 +56,12 @@ export class PlatformManager extends EventEmitter {
       connector.on('reconnecting', (data: unknown) => {
         this.emit('reconnecting', data)
       })
+    }
+  }
+
+  setAutoReconnect(enabled: boolean): void {
+    for (const connector of this.connectors.values()) {
+      connector.setAutoReconnect(enabled)
     }
   }
 

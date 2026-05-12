@@ -95,7 +95,7 @@ const navigationGroups: NavigationGroup[] = [
 
 export function Sidebar() {
   const location = useLocation()
-  const { sidebarCollapsed, toggleSidebar, isPageDirty } = useUIStore()
+  const { sidebarCollapsed, toggleSidebar, isPageDirty, setConsoleOpen } = useUIStore()
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   
   const activeGroup =
@@ -106,7 +106,13 @@ export function Sidebar() {
       })
     ) ?? navigationGroups[0]
 
-  const handleNavClick = (e: React.MouseEvent) => {
+  const handleNavClick = (e: React.MouseEvent, path: string) => {
+    if (path === '/console') {
+      e.preventDefault()
+      setConsoleOpen(true)
+      return
+    }
+
     console.log('[nav] Click detected. isPageDirty:', isPageDirty);
     if (isPageDirty) {
       console.warn('[nav] Navigation blocked because page is dirty.');
@@ -150,7 +156,7 @@ export function Sidebar() {
               <NavLink
                 key={group.id}
                 to={targetPath}
-                onClick={handleNavClick}
+                onClick={(e) => handleNavClick(e, targetPath)}
                 className={`app-rail-item ${isActive ? 'is-active' : ''} ${isPageDirty ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 <div className="app-rail-icon-wrapper">
@@ -249,7 +255,7 @@ export function Sidebar() {
                           key={item.path}
                           to={item.path}
                           end={item.path === '/' || item.path === '/connections'}
-                          onClick={handleNavClick}
+                          onClick={(e) => handleNavClick(e, item.path)}
                           className={({ isActive }) =>
                             `app-drawer-item ${isActive ? 'is-active' : ''} ${isPageDirty ? 'cursor-not-allowed opacity-50' : ''}`
                           }

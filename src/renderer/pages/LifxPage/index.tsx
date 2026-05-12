@@ -8,7 +8,7 @@ export default function LifxPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <LifxIcon size={48} branded />
+            <LifxIcon size={48} />
           </div>
           <div>
             <h1>LIFX Smart Lighting</h1>

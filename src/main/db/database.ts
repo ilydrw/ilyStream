@@ -1,6 +1,7 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { app } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
+import { mkdirSync, existsSync } from 'fs'
 import { AnyPlatformConfig, Platform } from '../platforms/types'
 import { StatsRepository } from './repositories/StatsRepository'
 import { GiftsRepository } from './repositories/GiftsRepository'
@@ -62,7 +63,10 @@ export class Database {
   public readonly gifts: GiftsRepository
 
   constructor() {
-    const dbPath = join(app.getPath('userData'), 'ilystream.db')
+    const userDataPath = app.getPath('userData')
+    if (!existsSync(userDataPath)) mkdirSync(userDataPath, { recursive: true })
+
+    const dbPath = join(userDataPath, 'ilystream.db')
     this.db = new BetterSqlite3(dbPath)
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('synchronous = NORMAL')
@@ -329,3 +333,5 @@ export class Database {
     return row.next
   }
 }
+
+

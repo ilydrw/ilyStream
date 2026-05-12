@@ -94,12 +94,8 @@ export class VirtualCameraService extends EventEmitter {
     if (this.state === 'inactive') return
     
     try {
-      this.streamingService.stopStream() // In a real multi-output system, we'd stop just our outputId
-      // Wait, startStream with outputId actually uses startStreamOutput
-      // Let's check streaming-service.ts again.
-      // Yes, startStream(config) calls startStreamOutput if config.outputId is set.
-      // But stopStream() stops ALL. I should probably add a stopStreamOutput to StreamingService public API.
-      
+      // Use the specific output session stopping method
+      this.streamingService.stopStreamOutput(this.outputId)
       this.setState('inactive')
     } catch (err: any) {
       this.setState('error', err.message)

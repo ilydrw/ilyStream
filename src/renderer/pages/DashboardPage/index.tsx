@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <MetricCard 
           icon={<IconUsers size={20} />} 
           label="Combined Audience" 
-          value={totalViewers.toLocaleString()} 
+          value={(totalViewers || 0).toLocaleString()} 
           subValue="Active Concurrents"
           trend="neutral"
         />
@@ -121,7 +121,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="text-right flex flex-col items-end">
-                    <div className="text-lg font-black text-white tabular-nums leading-none translate-x-1 pr-0">{row.viewers.toLocaleString()}</div>
+                    <div className="text-lg font-black text-white tabular-nums leading-none translate-x-1 pr-0">{(row.viewers || 0).toLocaleString()}</div>
                     <div className="text-[9px] font-black tracking-widest text-white/20 mt-1 pr-0">Viewers</div>
                   </div>
                 </Link>
@@ -243,4 +243,5 @@ export default function DashboardPage() {
     </div>
   )
 }
+
 

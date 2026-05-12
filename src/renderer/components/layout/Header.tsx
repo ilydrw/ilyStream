@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getNavigationItem } from './navigation'
 import { Logo } from '../ui/Logo'
+import { UpdateBadge } from '../ui/UpdateBadge'
+import { Tooltip } from '../ui/Tooltip'
 
 export function Header() {
   const location = useLocation()
@@ -15,7 +17,7 @@ export function Header() {
         <span className="app-topbar-logo">
           <Logo size={28} />
         </span>
-        <span className="app-topbar-wordmark !font-black !tracking-tight !text-[16px] bg-clip-text text-transparent bg-brand-gradient">ilyStream</span>
+        <span className="app-topbar-wordmark !font-black !tracking-tight !text-[16px] text-white">ilyStream</span>
         <span className="app-topbar-version !bg-white/[0.05] !border-white/5 !text-white/20 !px-2.5 !py-0.5 !h-auto !rounded-md !font-black !text-[8px] !tracking-widest uppercase ml-2">Internal Alpha</span>
       </div>
 
@@ -26,18 +28,26 @@ export function Header() {
         <span>{activeRoute.label}</span>
       </div>
 
-      <div className="app-topbar-spacer" />
+      <div className="app-topbar-spacer">
+        <UpdateBadge />
+      </div>
 
       <div className="app-window-controls titlebar-no-drag">
-        <WindowButton label="Minimize" onClick={() => window.api?.window?.minimize()}>
-          <IconMinus size={15} />
-        </WindowButton>
-        <WindowButton label="Maximize" onClick={() => window.api?.window?.maximize()}>
-          <IconMaximize size={14} />
-        </WindowButton>
-        <WindowButton label="Close" danger onClick={() => window.api?.window?.close()}>
-          <IconX size={16} />
-        </WindowButton>
+        <Tooltip content="Minimize" position="bottom">
+          <WindowButton label="Minimize" onClick={() => window.api?.window?.minimize()}>
+            <IconMinus size={15} />
+          </WindowButton>
+        </Tooltip>
+        <Tooltip content="Maximize / Restore" position="bottom">
+          <WindowButton label="Maximize" onClick={() => window.api?.window?.maximize()}>
+            <IconMaximize size={14} />
+          </WindowButton>
+        </Tooltip>
+        <Tooltip content="Close to Tray" position="bottom">
+          <WindowButton label="Close" danger onClick={() => window.api?.window?.close()}>
+            <IconX size={16} />
+          </WindowButton>
+        </Tooltip>
       </div>
     </header>
   )

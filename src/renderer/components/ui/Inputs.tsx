@@ -50,7 +50,7 @@ export function NumberInput({
       min={min}
       max={max}
       step={step}
-      className={`app-input font-mono text-sm ${className}`}
+      className={`app-input font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }
@@ -74,7 +74,7 @@ export function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={`app-input text-sm ${className}`}
+      className={`app-input text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }

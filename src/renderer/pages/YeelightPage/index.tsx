@@ -8,7 +8,7 @@ export default function YeelightPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <YeelightIcon size={48} branded />
+            <YeelightIcon size={48} />
           </div>
           <div>
             <h1>Yeelight Smart Lighting</h1>

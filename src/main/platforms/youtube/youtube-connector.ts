@@ -62,14 +62,9 @@ export class YouTubeConnector extends BaseConnector {
     }
 
     // Use provided liveChatId or discover from active broadcast
-    this.liveChatId = ytConfig.liveChatId || (await this.findActiveLiveChatId())
+    this.liveChatId = ytConfig.liveChatId || (await this.findActiveLiveChatId(ytConfig))
 
-    if (!this.liveChatId) {
-      throw new Error(
-        'No active live stream found. Either provide a Live Chat ID or ensure you are streaming.'
-      )
-    }
-
+    // Start polling - it will handle auto-discovery if liveChatId is missing
     this.startPolling()
   }
 
@@ -82,18 +77,105 @@ export class YouTubeConnector extends BaseConnector {
     this.consecutiveErrors = 0
   }
 
-  private async findActiveLiveChatId(): Promise<string | null> {
+  private async findActiveLiveChatId(config: YouTubeConfig): Promise<string | null> {
     try {
-      const response = await this.youtube.liveBroadcasts.list({
+      const params: any = {
         part: ['snippet'],
-        broadcastStatus: 'active',
         broadcastType: 'all'
-      })
+      }
 
-      const broadcast = response.data.items?.[0]
-      return broadcast?.snippet?.liveChatId || null
+      // If we have OAuth, we can look at "mine"
+      if (config.accessToken) {
+        params.mine = true
+        // Try active first, then upcoming
+        const activeResponse = await this.youtube.liveBroadcasts.list({ ...params, broadcastStatus: 'active' })
+        let chatId = activeResponse.data.items?.[0]?.snippet?.liveChatId
+        
+        if (!chatId) {
+          const upcomingResponse = await this.youtube.liveBroadcasts.list({ ...params, broadcastStatus: 'upcoming' })
+          chatId = upcomingResponse.data.items?.[0]?.snippet?.liveChatId
+        }
+        
+        return chatId || null
+      } else if (config.channelId) {
+        let input = config.channelId.trim()
+        let videoId: string | null = null
+        let channelId: string | null = null
+
+        // 1. Try to parse as a YouTube URL
+        try {
+          if (input.includes('youtube.com/') || input.includes('youtu.be/')) {
+            const url = new URL(input.startsWith('http') ? input : `https://${input}`)
+            
+            if (url.searchParams.has('v')) {
+              videoId = url.searchParams.get('v')
+            } else if (url.hostname === 'youtu.be') {
+              videoId = url.pathname.slice(1)
+            }
+            
+            if (!videoId) {
+              if (url.pathname.startsWith('/channel/')) {
+                channelId = url.pathname.split('/')[2]
+              } else if (url.pathname.startsWith('/@')) {
+                input = url.pathname.split('/')[1]
+              }
+            }
+          }
+        } catch (e) {}
+
+        if (videoId) {
+          const videoRes = await this.youtube.videos.list({
+            part: ['liveStreamingDetails'],
+            id: [videoId]
+          })
+          return videoRes.data.items?.[0]?.liveStreamingDetails?.liveChatId || null
+        }
+
+        if (!channelId) {
+          if (input.startsWith('@') || !input.startsWith('UC')) {
+            const handle = input.startsWith('@') ? input : `@${input}`
+            const channelRes = await this.youtube.channels.list({
+              part: ['id'],
+              forHandle: handle
+            })
+            channelId = channelRes.data.items?.[0]?.id || null
+          } else {
+            channelId = input
+          }
+        }
+
+        if (!channelId) return null
+
+        // 4. Search for either LIVE or UPCOMING videos
+        // We try 'live' first, then 'upcoming'
+        const searchForEvent = async (type: 'live' | 'upcoming') => {
+          const res = await this.youtube.search.list({
+            part: ['id'],
+            channelId: channelId,
+            eventType: type,
+            type: 'video',
+            maxResults: 1
+          })
+          return res.data.items?.[0]?.id?.videoId
+        }
+
+        let foundVideoId = await searchForEvent('live')
+        if (!foundVideoId) {
+          foundVideoId = await searchForEvent('upcoming')
+        }
+
+        if (!foundVideoId) return null
+
+        const videoRes = await this.youtube.videos.list({
+          part: ['liveStreamingDetails'],
+          id: [foundVideoId]
+        })
+
+        return videoRes.data.items?.[0]?.liveStreamingDetails?.liveChatId || null
+      }
+      return null
     } catch (error) {
-      console.warn('[youtube] Could not find active broadcast:', error)
+      console.warn('[youtube] Discovery error:', error)
       return null
     }
   }
@@ -167,13 +249,31 @@ export class YouTubeConnector extends BaseConnector {
   }
 
   private async poll(): Promise<void> {
-    // Guard against overlapping polls
-    if (this.isPolling || !this.youtube || !this.liveChatId) return
+    if (this.isPolling || !this.youtube) return
     this.isPolling = true
 
     try {
+      // 1. If we don't have a liveChatId, try to find one
+      if (!this.liveChatId && this.currentConfig) {
+        const config = this.currentConfig as YouTubeConfig
+        this.liveChatId = await this.findActiveLiveChatId(config)
+        
+        if (!this.liveChatId) {
+          // Still no stream? Wait and try again later
+          this.pollIntervalMs = 15_000 // Slow down discovery to save quota
+          this.isPolling = false
+          this.pollTimer = setTimeout(() => this.poll(), this.pollIntervalMs)
+          return
+        }
+        
+        // Found it! Reset interval for chat polling
+        this.pollIntervalMs = 5000
+        this.consecutiveErrors = 0
+      }
+
+      // 2. Poll the chat messages
       const response = await this.youtube.liveChatMessages.list({
-        liveChatId: this.liveChatId,
+        liveChatId: this.liveChatId!,
         part: ['snippet', 'authorDetails'],
         pageToken: this.nextPageToken
       })
@@ -194,7 +294,6 @@ export class YouTubeConnector extends BaseConnector {
       const message = error?.message || String(error)
 
       if (status === 401 || status === 403) {
-        // Auth error or quota exceeded - not recoverable without new key
         console.error(`[youtube] Auth/quota error (${status}): ${message}`)
         this.isPolling = false
         this.handleError(error, 'poll-auth', false)
@@ -202,11 +301,10 @@ export class YouTubeConnector extends BaseConnector {
       }
 
       if (status === 404) {
-        // Live chat ended
-        console.warn('[youtube] Live chat not found (stream may have ended)')
-        this.isPolling = false
-        this.handleError(new Error('Live chat ended'), 'poll-ended', false)
-        return
+        // Live chat ended or ID became invalid
+        console.warn('[youtube] Live chat not found or ended')
+        this.liveChatId = null // Trigger re-discovery
+        this.nextPageToken = undefined
       }
 
       console.warn(`[youtube] Poll error (attempt ${this.consecutiveErrors}): ${message}`)
@@ -217,13 +315,10 @@ export class YouTubeConnector extends BaseConnector {
         return
       }
 
-      // Back off on errors
       this.pollIntervalMs = Math.min(this.pollIntervalMs * 1.5, 30_000)
     }
 
     this.isPolling = false
-
-    // Schedule next poll
     this.pollTimer = setTimeout(() => this.poll(), this.pollIntervalMs)
   }
 

@@ -3,7 +3,8 @@ import { OBSWebSocket } from 'obs-websocket-js'
 import type {
   OBSSetSceneAction,
   OBSSetSourceVisibilityAction,
-  OBSToggleSourceVisibilityAction
+  OBSToggleSourceVisibilityAction,
+  OBSSaveReplayBufferAction
 } from '../triggers/trigger-types'
 import type { AppSettings } from '../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../shared/obs'
@@ -12,14 +13,15 @@ type OBSAction =
   | OBSSetSceneAction
   | OBSSetSourceVisibilityAction
   | OBSToggleSourceVisibilityAction
+  | OBSSaveReplayBufferAction
 
-type OBSSettings = Pick<AppSettings, 'obsEnabled' | 'obsHost' | 'obsPort' | 'obsPassword'>
+type OBSSettings = AppSettings['integrations']['obs']
 
 const DEFAULT_OBS_SETTINGS: OBSSettings = {
-  obsEnabled: false,
-  obsHost: '127.0.0.1',
-  obsPort: 4455,
-  obsPassword: ''
+  enabled: false,
+  host: '127.0.0.1',
+  port: 4455,
+  password: ''
 }
 
 export class OBSService extends EventEmitter {
@@ -30,13 +32,16 @@ export class OBSService extends EventEmitter {
     enabled: false,
     connecting: false,
     connected: false,
-    host: DEFAULT_OBS_SETTINGS.obsHost,
-    port: DEFAULT_OBS_SETTINGS.obsPort,
+    host: DEFAULT_OBS_SETTINGS.host,
+    port: DEFAULT_OBS_SETTINGS.port,
     currentSceneName: null,
     lastError: null,
     obsWebSocketVersion: null,
     obsVersion: null,
     virtualCameraActive: null,
+    recordingActive: false,
+    streamActive: false,
+    scenes: [],
     updatedAt: null
   }
 
@@ -70,6 +75,24 @@ export class OBSService extends EventEmitter {
       this.status.updatedAt = new Date().toISOString()
       this.emitStatus()
     })
+
+    this.client.on('StreamStateChanged', (data) => {
+      this.status.streamActive = data.outputActive
+      this.status.updatedAt = new Date().toISOString()
+      this.emitStatus()
+    })
+
+    this.client.on('RecordStateChanged', (data) => {
+      this.status.recordingActive = data.outputActive
+      this.status.updatedAt = new Date().toISOString()
+      this.emitStatus()
+    })
+
+    this.client.on('SceneListChanged', (data) => {
+      this.status.scenes = data.scenes.map((s: any) => s.sceneName)
+      this.status.updatedAt = new Date().toISOString()
+      this.emitStatus()
+    })
   }
 
   getStatus(): OBSRuntimeStatus {
@@ -78,29 +101,29 @@ export class OBSService extends EventEmitter {
 
   async applySettings(settings: OBSSettings): Promise<OBSRuntimeStatus> {
     const nextSettings = {
-      obsEnabled: settings.obsEnabled,
-      obsHost: settings.obsHost.trim() || DEFAULT_OBS_SETTINGS.obsHost,
-      obsPort: settings.obsPort,
-      obsPassword: settings.obsPassword
+      enabled: settings.enabled,
+      host: (settings.host || '').trim() || DEFAULT_OBS_SETTINGS.host,
+      port: settings.port,
+      password: settings.password
     }
 
     const changed =
-      nextSettings.obsEnabled !== this.settings.obsEnabled ||
-      nextSettings.obsHost !== this.settings.obsHost ||
-      nextSettings.obsPort !== this.settings.obsPort ||
-      nextSettings.obsPassword !== this.settings.obsPassword
+      nextSettings.enabled !== this.settings.enabled ||
+      nextSettings.host !== this.settings.host ||
+      nextSettings.port !== this.settings.port ||
+      nextSettings.password !== this.settings.password
 
     this.settings = nextSettings
-    this.status.enabled = nextSettings.obsEnabled
-    this.status.host = nextSettings.obsHost
-    this.status.port = nextSettings.obsPort
+    this.status.enabled = nextSettings.enabled
+    this.status.host = nextSettings.host
+    this.status.port = nextSettings.port
 
-    if (!nextSettings.obsEnabled) {
+    if (!nextSettings.enabled) {
       await this.disconnect()
       return this.getStatus()
     }
 
-    if (!this.status.connected || changed) {
+    if (changed) {
       await this.reconnect()
     } else {
       this.emitStatus()
@@ -112,7 +135,7 @@ export class OBSService extends EventEmitter {
   async reconnect(): Promise<OBSRuntimeStatus> {
     await this.disconnect()
 
-    if (!this.settings.obsEnabled) {
+    if (!this.settings.enabled) {
       return this.getStatus()
     }
 
@@ -122,15 +145,15 @@ export class OBSService extends EventEmitter {
     this.emitStatus()
 
     try {
-      const { obsVersion, obsWebSocketVersion } = await this.client.connect(
+      const response = await this.client.connect(
         this.getAddress(),
-        this.settings.obsPassword || undefined
+        this.settings.password || undefined
       )
 
       this.status.connected = true
       this.status.connecting = false
-      this.status.obsVersion = obsVersion ?? null
-      this.status.obsWebSocketVersion = obsWebSocketVersion ?? null
+      this.status.obsVersion = (response as any).obsVersion ?? null
+      this.status.obsWebSocketVersion = (response as any).obsWebSocketVersion ?? null
       this.status.lastError = null
       this.status.updatedAt = new Date().toISOString()
       await this.refreshSceneState()
@@ -257,10 +280,16 @@ export class OBSService extends EventEmitter {
     if (!this.status.connected) return
 
     try {
-      const response = await this.client.call('GetSceneList') as {
-        currentProgramSceneName?: string
-      }
-      this.status.currentSceneName = response.currentProgramSceneName ?? null
+      const sceneList = await this.client.call('GetSceneList')
+      this.status.currentSceneName = sceneList.currentProgramSceneName ?? null
+      this.status.scenes = sceneList.scenes.map((s: any) => s.sceneName)
+
+      const streamStatus = await this.client.call('GetStreamStatus')
+      this.status.streamActive = streamStatus.outputActive
+
+      const recordStatus = await this.client.call('GetRecordStatus')
+      this.status.recordingActive = recordStatus.outputActive
+
       await this.refreshVirtualCameraState()
       this.status.updatedAt = new Date().toISOString()
     } catch (error) {
@@ -292,10 +321,12 @@ export class OBSService extends EventEmitter {
   }
 
   private getAddress(): string {
-    return `ws://${this.settings.obsHost}:${this.settings.obsPort}`
+    return `ws://${this.settings.host}:${this.settings.port}`
   }
 
   private emitStatus(): void {
     this.emit('status', this.getStatus())
   }
 }
+
+

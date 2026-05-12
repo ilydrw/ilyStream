@@ -1,6 +1,17 @@
 // Unified event types - all platform connectors map to these
 
-export type Platform = 'tiktok' | 'twitch' | 'youtube' | 'kick'
+export type Platform =
+  | 'tiktok'
+  | 'twitch'
+  | 'youtube'
+  | 'kick'
+  | 'x'
+  | 'discord'
+  | 'facebook'
+  | 'instagram'
+  | 'restream'
+  | 'linkedin'
+  | 'telegram'
 
 export type EventType =
   | 'chat'
@@ -198,6 +209,7 @@ export interface TwitchConfig extends PlatformConfig {
 export interface YouTubeConfig extends PlatformConfig {
   platform: 'youtube'
   apiKey: string
+  channelId?: string
   liveChatId?: string
   accessToken?: string
   refreshToken?: string
@@ -210,4 +222,57 @@ export interface KickConfig extends PlatformConfig {
   streamKey?: string
 }
 
-export type AnyPlatformConfig = TikTokConfig | TwitchConfig | YouTubeConfig | KickConfig
+export interface XConfig extends PlatformConfig {
+  platform: 'x'
+  apiKey: string
+  apiSecret: string
+  bearerToken: string
+  username: string
+}
+
+export interface DiscordConfig extends PlatformConfig {
+  platform: 'discord'
+  webhookUrl: string
+  botToken?: string
+  clientId?: string
+}
+
+export interface FacebookConfig extends PlatformConfig {
+  platform: 'facebook'
+  pageId: string
+  accessToken?: string
+}
+
+export interface InstagramConfig extends PlatformConfig {
+  platform: 'instagram'
+  username: string
+}
+
+export interface RestreamConfig extends PlatformConfig {
+  platform: 'restream'
+  apiKey?: string
+}
+
+export interface LinkedinConfig extends PlatformConfig {
+  platform: 'linkedin'
+  profileId: string
+}
+
+export interface TelegramConfig extends PlatformConfig {
+  platform: 'telegram'
+  botToken: string
+  chatId: string
+}
+
+export type AnyPlatformConfig =
+  | TikTokConfig
+  | TwitchConfig
+  | YouTubeConfig
+  | KickConfig
+  | XConfig
+  | DiscordConfig
+  | FacebookConfig
+  | InstagramConfig
+  | RestreamConfig
+  | LinkedinConfig
+  | TelegramConfig

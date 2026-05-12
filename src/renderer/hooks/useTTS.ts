@@ -70,7 +70,7 @@ export function useTTS(isMounted: boolean) {
         const { id, text, voice } = data
         
         const settings = await window.api.settings.getAll()
-        const modifiers = settings.voiceModifiers || { radioFilter: false, speedRamping: false, pitchShifting: 'normal' }
+        const modifiers = settings.tts.modifiers || { radioFilter: false, speedRamping: false, pitchShifting: 'normal' }
         
         setCurrentlySpeaking(text)
 
@@ -256,7 +256,7 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
   }
 
   const overrides = Array.isArray(settings?.ttsUserVoiceOverrides)
-    ? (settings.ttsUserVoiceOverrides as TTSUserVoiceOverride[])
+    ? (settings.tts.userVoiceOverrides as TTSUserVoiceOverride[])
     : []
   for (const override of overrides.slice(0, 8)) {
     if (!override.enabled) continue
@@ -326,3 +326,5 @@ function getAvailableVoices(): Promise<SpeechSynthesisVoice[]> {
     window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged)
   })
 }
+
+

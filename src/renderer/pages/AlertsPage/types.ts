@@ -69,3 +69,5 @@ export function pickEventSoundSettings(settings: AppSettings): EventSoundSetting
 
 export const defaultEventSoundSettings: EventSoundSettings =
   pickEventSoundSettings(DEFAULT_APP_SETTINGS)
+
+
