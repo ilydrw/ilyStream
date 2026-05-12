@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.6';
+const latestVersion = '0.0.7';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,11 +46,11 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Visual Premium release with high-impact kicker & title-main typography',
-  'Studio-grade glassmorphism and refined navigation architecture',
-  'High-performance architectural routing with page lazy-loading',
-  'Synchronized DeskThing v0.0.6 companion app release',
-  'Enhanced Broadcast Studio sidebars and dashboard layouts',
+  'Full DeskThing telemetry integration (OBS, Viewers, Alerts, Now Playing)',
+  'Real-time Audio Visualizers and Metering on companion surfaces',
+  '"Why So Serious?" theme hardening with premium gradient synchronization',
+  'Optimized settings engine preventing redundant OBS service reconnections',
+  'Dynamic theme parity between main studio and companion displays',
 ];
 
 const docPreviews = [
