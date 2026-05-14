@@ -1,30 +1,64 @@
 # ilyStream
 
-Multi-platform livestream control center for chat, TTS, overlays, alerts, broadcast audio, and smart-light integrations.
+[![Website](https://img.shields.io/badge/website-ilydrw.github.io%2FilyStream-blue)](https://ilydrw.github.io/ilyStream/)
+[![Version](https://img.shields.io/badge/version-0.0.8-green)](https://github.com/ilydrw/ilyStream/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows-brightgreen)](https://ilydrw.github.io/ilyStream/download/)
 
-## Version
+**ilyStream** is a focused Windows broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place. No browser tabs, no complex terminal setups—just a native control room built for the live workflow.
 
-`0.0.2`
+## 🚀 Key Features
 
-## Development
+*   **Broadcast Studio**: Manage scenes, capture sources, and stream output from a single native interface.
+*   **High-Fidelity Recording**: VBR/CRF encoding optimized for NVENC, QSV, and AMF hardware encoders.
+*   **Audio Engine**: Integrated TTS, soundboards, and Voice FX that route directly into your broadcast mix.
+*   **Smart-Light Automation**: Native support for Philips Hue and Govee LAN control for chat-reactive lighting.
+*   **DeskThing Companion**: Pair a Car Thing or DeskThing client to keep controls and status checks on a physical second screen.
+*   **Unified Chat & Alerts**: Consolidated event pipeline for Twitch and TikTok with customizable overlay widgets.
 
-```bash
-npm install
-npm run dev
-```
+## 📦 Getting Started
 
-## Build
+### Users
+The easiest way to get started is to download the Windows installer:
+*   **[Download the Latest Release](https://ilydrw.github.io/ilyStream/download/)**
+*   **[Read the Quick Start Guide](https://ilydrw.github.io/ilyStream/docs/getting-started/)**
 
-```bash
-npm run build
-```
+### Developers
+ilyStream is built with Electron, React, and TypeScript.
 
-## Test
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/ilydrw/ilyStream.git
+    cd ilyStream
+    ```
 
-```bash
-npm test
-```
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
 
-## Notes
+3.  **Run in development mode**:
+    ```bash
+    npm run dev
+    ```
 
-Runtime credentials, app databases, local logs, generated builds, and scratch/debug artifacts are intentionally excluded from git.
+4.  **Build production artifacts**:
+    ```bash
+    npm run package
+    ```
+
+## 🛠 Tech Stack
+
+*   **Framework**: Electron + Vite
+*   **UI**: React + Tailwind CSS
+*   **State**: Zustand
+*   **Database**: SQLite (via better-sqlite3)
+*   **Audio/Video**: FFmpeg (via ffmpeg-static)
+*   **Platform Integrations**: Twurple (Twitch), TikTok Live Connector, Philips Hue API, OBS WebSocket
+
+## 📝 Notes
+
+*   **Data Storage**: Application databases, local logs, and generated builds are stored in `%APPDATA%/ilyStream`.
+*   **Security**: Runtime credentials and API keys are intentionally excluded from git and stored securely on your local machine.
+
+---
+Made for creators who would rather be live than fighting their tools.
