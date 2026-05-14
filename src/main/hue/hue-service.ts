@@ -124,7 +124,7 @@ export class HueService extends EventEmitter implements LightProvider {
     for (const id of this.selectedLightIds) {
       try {
         const response = await fetch(`http://${this.bridgeIp}/api/${this.username}/lights/${id}`)
-        const data = await response.json()
+        const data = await response.json() as any
         if (data && data.state) {
           const { on, bri, hue, sat, xy, ct, colormode } = data.state
           statesToRestore[id] = { on, bri, hue, sat, xy, ct, colormode, alert: 'none' }
@@ -165,7 +165,8 @@ export class HueService extends EventEmitter implements LightProvider {
     }
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
+    this.isConnected = false
     this.clearActiveEffect()
     this.removeAllListeners()
   }
@@ -216,7 +217,7 @@ export class HueService extends EventEmitter implements LightProvider {
         log.warn(`[Hue] Discovery service returned status: ${response.status}`)
         return []
       }
-      const bridges = await response.json()
+      const bridges = await response.json() as HueBridge[]
       log.info(`[Hue] Discovery complete. Found ${bridges.length} bridges.`)
       return bridges
     } catch (error) {
@@ -278,7 +279,7 @@ export class HueService extends EventEmitter implements LightProvider {
     try {
       const response = await fetch(`http://${this.bridgeIp}/api/${this.username}/lights`)
       if (!response.ok) return []
-      const data = await response.json()
+      const data = (await response.json()) as Record<string, any>
       
       return Object.entries(data).map(([id, light]: [string, any]) => {
         let color: string | undefined;
@@ -315,7 +316,7 @@ export class HueService extends EventEmitter implements LightProvider {
     try {
       const response = await fetch(`http://${this.bridgeIp}/api/${this.username}/groups`)
       if (!response.ok) return []
-      const data = await response.json()
+      const data = (await response.json()) as Record<string, any>
       
       return Object.entries(data).map(([id, group]: [string, any]) => ({
         id,

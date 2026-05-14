@@ -47,19 +47,19 @@ export class SpotifyMapper {
 
   mapNowPlaying(state: SpotifyPlaybackState): NowPlayingPayload {
     return {
-      track: state.trackId ? {
-        id: state.trackId,
-        name: state.trackName,
-        artist: state.artists.join(', '),
-        album: state.albumName,
-        albumArt: state.albumArtUrl || '',
-        durationMs: state.durationMs,
-        uri: '' // URI not needed for widget
-      } : null,
       isPlaying: state.isPlaying,
+      trackId: state.trackId,
+      trackName: state.trackName,
+      artists: state.artists,
+      albumName: state.albumName,
+      albumArtUrl: state.albumArtUrl,
+      durationMs: state.durationMs,
       progressMs: state.progressMs,
-      status: state.status === 'no-device' ? 'no-device' : (state.trackId ? 'playing' : 'idle'),
-      source: 'spotify'
+      requestedBy: null,
+      requesterPlatform: null,
+      queue: [],
+      status: state.status,
+      isRefreshing: false
     }
   }
 }

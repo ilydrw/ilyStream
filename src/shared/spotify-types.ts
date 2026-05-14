@@ -28,3 +28,15 @@ export interface SpotifyStatus {
   error?: string | null
   isActiveDevice?: boolean
 }
+
+export interface SpotifyPlaybackState {
+  isPlaying: boolean
+  trackId: string | null
+  trackName: string
+  artists: string[]
+  albumName: string
+  albumArtUrl: string | null
+  durationMs: number
+  progressMs: number
+  status: 'ok' | 'no-content' | 'no-device' | 'unauthorized' | 'forbidden' | 'error'
+}

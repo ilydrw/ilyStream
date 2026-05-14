@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ConnectorError } from './base-connector'
 import { PlatformManager } from './platform-manager'
 
 describe('PlatformManager', () => {
   it('re-emits connector validation failures without triggering an unhandled error event', async () => {
-    const manager = new PlatformManager()
+    const db = { getSetting: vi.fn().mockReturnValue(false) } as any
+    const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
+    const manager = new PlatformManager(db, tiktokChatSender)
     const errors: ConnectorError[] = []
 
     manager.on('connector-error', (error) => {

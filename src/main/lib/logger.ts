@@ -13,6 +13,9 @@ const Colors = {
 };
 
 import { EventEmitter } from 'events'
+import { inspect } from 'util'
+
+let isLogging = false;
 
 class LogEmitter extends EventEmitter {}
 export const logEmitter = new LogEmitter()
@@ -79,10 +82,28 @@ function sanitizeForConsole(text: any): any {
     .replace(/[\u2013\u2014]/g, '-') // En/Em dashes
     .replace(/\u2026/g, '...')      // Ellipsis
     .replace(/[^\x00-\x7F]/g, (char) => {
-      // Keep emojis if possible, but they often break too.
-      // For now, we just let them through and only fix the common "smart" punctuation.
       return char;
     });
+}
+
+function prepareForRenderer(args: any[]): any[] {
+  return args.map(arg => {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof Error) {
+      return {
+        ...arg,
+        message: arg.message,
+        stack: arg.stack,
+        name: arg.name
+      };
+    }
+    try {
+      // Use inspect to handle circular references and limit depth for the renderer
+      return inspect(arg, { depth: 3, colors: false, breakLength: Infinity });
+    } catch (e) {
+      return `[Uninspectable Object: ${typeof arg}]`;
+    }
+  });
 }
 
 export function setupLogger() {
@@ -109,7 +130,14 @@ export function setupLogger() {
       }
     }
     originalLog(...sanitizedArgs);
-    logEmitter.emit('log', { level: 'info', args: sanitizedArgs });
+
+    if (isLogging) return;
+    isLogging = true;
+    try {
+      logEmitter.emit('log', { level: 'info', args: prepareForRenderer(args) });
+    } finally {
+      isLogging = false;
+    }
   };
 
   console.warn = (...args: any[]) => {
@@ -124,7 +152,14 @@ export function setupLogger() {
       }
     }
     originalWarn(...sanitizedArgs);
-    logEmitter.emit('log', { level: 'warn', args: sanitizedArgs });
+
+    if (isLogging) return;
+    isLogging = true;
+    try {
+      logEmitter.emit('log', { level: 'warn', args: prepareForRenderer(args) });
+    } finally {
+      isLogging = false;
+    }
   };
 
   console.error = (...args: any[]) => {
@@ -139,6 +174,13 @@ export function setupLogger() {
       }
     }
     originalError(...sanitizedArgs);
-    logEmitter.emit('log', { level: 'error', args: sanitizedArgs });
+
+    if (isLogging) return;
+    isLogging = true;
+    try {
+      logEmitter.emit('log', { level: 'error', args: prepareForRenderer(args) });
+    } finally {
+      isLogging = false;
+    }
   };
 }

@@ -60,27 +60,38 @@ export function preloadKokoroModel(): void {
 }
 
 function loadKokoroModel(): Promise<KokoroInstance> {
-  modelPromise ??= (async () => {
-    const { KokoroTTS } = await import('kokoro-js')
+  if (modelPromise) return modelPromise
 
-    // Audio quality beats speed for stream TTS. WebGPU can be faster, but on
-    // some Windows GPU/driver combos it produces buzzy/revving artifacts.
+  modelPromise = (async () => {
     try {
-      const model = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-        dtype: 'fp32',
+      const { KokoroTTS } = await import('kokoro-js')
+
+      // Audio quality beats speed for stream TTS. WebGPU can be faster, but on
+      // some Windows GPU/driver combos it produces buzzy/revving artifacts.
+      try {
+        console.info('[kokoro] Attempting to load fp32 model...')
+        const model = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
+          dtype: 'fp32',
+          device: 'wasm'
+        })
+        console.info('[kokoro] Model loaded successfully (fp32)')
+        return model
+      } catch (error) {
+        console.warn('[kokoro] WASM fp32 failed, falling back to WASM q8:', error)
+      }
+
+      console.info('[kokoro] Attempting to load q8 fallback model...')
+      const fallback = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
+        dtype: 'q8',
         device: 'wasm'
       })
-      console.info('[kokoro] Model loaded successfully (fp32)')
-      return model
+      console.info('[kokoro] Fallback model loaded successfully (q8)')
+      return fallback
     } catch (error) {
-      console.warn('[kokoro] WASM fp32 failed, falling back to WASM q8:', error)
+      console.error('[kokoro] Critical failure loading model:', error)
+      modelPromise = null // Clear for retry
+      throw error
     }
-
-    const fallback = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-      dtype: 'q8',
-      device: 'wasm'
-    })
-    return fallback
   })()
 
   return modelPromise
@@ -207,8 +218,8 @@ async function generateKokoroAudio(
     .replace(/([.?!])\s+/g, '$1  ') // Double space after sentence ends for longer pauses
     .replace(/([,;:])\s+/g, '$1 ')   // Normal space after commas
 
-  const rawAudio = await tts.generate(pacedText, {
-    voice: voice as Parameters<KokoroInstance['generate']>[1]['voice'],
+  const rawAudio = await (tts as any).generate(pacedText, {
+    voice,
     speed: resolveKokoroGenerationSpeed(profile)
   })
 
@@ -269,7 +280,7 @@ async function playKokoroAudio(
     } : {})
   }
 
-  lastNode = applyVoiceEffects(context, lastNode, effectiveModifiers, audio.text || '')
+  lastNode = applyVoiceEffects(context, lastNode, effectiveModifiers)
 
   lastNode.connect(gain)
   
@@ -447,14 +458,14 @@ async function resampleToContextRate(
   const targetRate = context.sampleRate
   if (audio.sampleRate === targetRate || !audio.samples.length) {
     const buf = context.createBuffer(1, Math.max(1, audio.samples.length), audio.sampleRate)
-    if (audio.samples.length) buf.copyToChannel(audio.samples, 0)
+    if (audio.samples.length) buf.copyToChannel(audio.samples as any, 0)
     return buf
   }
 
   const targetLength = Math.max(1, Math.ceil(audio.samples.length * targetRate / audio.sampleRate))
   const offlineCtx = new OfflineAudioContext(1, targetLength, targetRate)
   const srcBuffer = offlineCtx.createBuffer(1, audio.samples.length, audio.sampleRate)
-  srcBuffer.copyToChannel(audio.samples, 0)
+  srcBuffer.copyToChannel(audio.samples as any, 0)
   const offlineSrc = offlineCtx.createBufferSource()
   offlineSrc.buffer = srcBuffer
   offlineSrc.connect(offlineCtx.destination)

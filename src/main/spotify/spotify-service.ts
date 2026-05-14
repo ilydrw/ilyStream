@@ -1,12 +1,13 @@
 import { EventEmitter } from 'events'
 import { join } from 'path'
+import log from 'electron-log'
 import { app } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import type { Database } from '../db/database'
 import type { PlatformManager } from '../platforms/platform-manager'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
-import { initiateSpotifyAuth, refreshSpotifyTokens } from './spotify-auth'
+import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
 import { SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
 import { SpotifyMapper } from './mappers/spotify-mapper'
 import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
@@ -20,6 +21,8 @@ export class SpotifyService extends EventEmitter {
   private currentNowPlaying: NowPlayingPayload = { ...EMPTY_NOW_PLAYING }
   private client = new SpotifyClient()
   private mapper = new SpotifyMapper()
+  private accessToken: string | null = null
+  private refreshToken: string | null = null
 
   constructor(private db: Database, private platformManager: PlatformManager) {
     super()
@@ -41,12 +44,20 @@ export class SpotifyService extends EventEmitter {
 
   async connect(): Promise<void> {
     const settings = this.db.getAllSettings()
-    if (!settings.spotifyAccessToken) {
-      await initiateSpotifyAuth()
+    const token = settings.spotifyAccessToken as string | undefined
+    if (!token) {
+      const tokens = await initiateSpotifyAuth(DEFAULT_SPOTIFY_CLIENT_ID)
+      this.accessToken = tokens.accessToken
+      this.refreshToken = tokens.refreshToken
+      this.db.setSetting('spotifyAccessToken', tokens.accessToken)
+      this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
+      this.client.setAccessToken(tokens.accessToken)
       return
     }
 
-    this.client.setAccessToken(settings.spotifyAccessToken)
+    this.accessToken = token
+    this.refreshToken = settings.spotifyRefreshToken as string | undefined || null
+    this.client.setAccessToken(token)
     try {
       this.profile = await this.client.getProfile()
       this.connected = true
@@ -87,9 +98,10 @@ export class SpotifyService extends EventEmitter {
       await this.client.enqueue(track.uri)
 
       const request: SpotifySongRequest = { 
-        id: Math.random().toString(36).substr(2, 9), 
+        id: Math.random().toString(36).substring(2, 11), 
         track, 
-        username, 
+        requestedBy: username,
+        platform: 'all', // Default platform for manual sr
         requestedAt: Date.now(), 
         status: 'queued' 
       }
@@ -121,8 +133,8 @@ export class SpotifyService extends EventEmitter {
   }
 
   async likeCurrent(): Promise<void> {
-    if (this.currentNowPlaying.track?.id) {
-      await this.client.saveTrack(this.currentNowPlaying.track.id)
+    if (this.currentNowPlaying.trackId) {
+      await this.client.saveTrack(this.currentNowPlaying.trackId)
     }
   }
 
@@ -162,6 +174,37 @@ export class SpotifyService extends EventEmitter {
         this.requestQueue = JSON.parse(readFileSync(path, 'utf-8')).filter((r: any) => r.requestedAt > Date.now() - 86400000)
       } catch {}
     }
+  }
+
+  async restoreSession(): Promise<void> {
+    const settings = this.db.getAllSettings()
+    this.accessToken = settings.spotifyAccessToken as string | null
+    this.refreshToken = settings.spotifyRefreshToken as string | null
+    
+    if (this.refreshToken) {
+      await this.refreshAccessToken()
+    }
+  }
+
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken) return
+    try {
+      const tokens = await refreshSpotifyTokens(DEFAULT_SPOTIFY_CLIENT_ID, this.refreshToken)
+      this.accessToken = tokens.accessToken
+      this.refreshToken = tokens.refreshToken
+      this.db.setSetting('spotifyAccessToken', tokens.accessToken)
+      this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
+      this.client.setAccessToken(tokens.accessToken)
+      log.info('[Spotify] Access token refreshed')
+    } catch (err) {
+      log.error('[Spotify] Token refresh failed:', err)
+      this.handleAuthError()
+    }
+  }
+
+  async dispose(): Promise<void> {
+    if (this.pollTimer) clearInterval(this.pollTimer)
+    this.accessToken = null
   }
 }
 

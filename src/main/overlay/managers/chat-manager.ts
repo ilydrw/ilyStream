@@ -7,9 +7,14 @@ import type { SSEManager } from '../sse-manager'
 export class ChatManager {
   private history: OverlayFeedItem[] = []
   private sse: SSEManager
+  private deviceApi: any | null = null
 
   constructor(sse: SSEManager) {
     this.sse = sse
+  }
+
+  setDeviceApi(deviceApi: any): void {
+    this.deviceApi = deviceApi
   }
 
   getHistory(): OverlayFeedItem[] {
@@ -23,9 +28,20 @@ export class ChatManager {
     // FILTER: Only allow chat, gift, follow, subscription, and raid in the main feed
     const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid']
     if (allowedKinds.includes(feedItem.kind)) {
+      // DEBUG: Write to file
+      try {
+        const fs = require('fs')
+        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
+        const logLine = `[${new Date().toISOString()}] CHAT_MANAGER_HANDLE: ${feedItem.kind} from ${feedItem.displayName}\n`
+        fs.appendFileSync(debugPath, logLine)
+      } catch (e) {}
+
       this.history = limitHistory([...this.history, feedItem], CHAT_HISTORY_LIMIT)
       this.sse.broadcast('chat', { type: 'append', payload: feedItem })
       this.sse.broadcast('chat-unified', { type: 'append', payload: feedItem })
+      
+      // RELAY to DeskThing / LAN devices
+      this.deviceApi?.appendChatItem(feedItem)
     }
   }
 

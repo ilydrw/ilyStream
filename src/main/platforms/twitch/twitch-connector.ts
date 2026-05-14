@@ -73,28 +73,66 @@ export class TwitchConnector extends BaseConnector {
     this.apiClient = new ApiClient({ authProvider: this.authProvider })
     this.chatClient = new ChatClient({ authProvider: this.authProvider, channels: [twitchConfig.channel] })
 
-    this.chatClient.onMessage((channel: string, user: string, message: string, msg: any) => this.emitEnriched(this.mapper.mapChat(user, message, msg, this.isFollowerCached(user))))
     this.chatClient.onSub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
     this.chatClient.onResub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
     this.chatClient.onSubGift((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(subInfo.userName, subInfo, true)))
     this.chatClient.onRaid((channel: string, user: string, raidInfo: any) => this.emitEnriched(this.mapper.mapRaid(user, raidInfo)))
     this.chatClient.on('bits', (channel: string, user: string, message: string, msg: any) => this.emitEnriched(this.mapper.mapGiftEvent(user, msg, this.isFollowerCached(user))))
     
-    this.chatClient.onDisconnect((manually: boolean) => { if (!manually) this.onUnexpectedDisconnect('Twitch IRC disconnected') })
+    this.chatClient.onMessage((channel: string, user: string, message: string, msg: any) => {
+      console.log(`[twitch-connector] RECEIVED MESSAGE: [${channel}] ${user}: ${message}`)
+      this.emitEnriched(this.mapper.mapChat(user, message, msg, this.isFollowerCached(user)))
+    })
+
+    this.chatClient.onDisconnect((manually: boolean) => { 
+      console.warn(`[twitch-connector] ChatClient disconnected (manually: ${manually})`)
+      if (!manually) this.onUnexpectedDisconnect('Twitch IRC disconnected') 
+    })
+
+    this.chatClient.onConnect(() => {
+      console.log(`[twitch-connector] ChatClient CONNECTED to channels: ${twitchConfig.channel}`)
+      this.setStatus('connected')
+    })
+
     this.chatClient.onAuthenticationFailure((msg: string) => this.handleError(new Error(msg), 'authentication', false))
 
-    await this.chatClient.connect()
+    try {
+      console.log(`[twitch-connector] Connecting ChatClient...`)
+      await this.chatClient.connect()
+      console.log(`[twitch-connector] ChatClient connection attempt finished.`)
+    } catch (err) {
+      console.error(`[twitch-connector] ChatClient connection FAILED:`, err)
+      throw err
+    }
 
     try {
+      console.log(`[twitch-connector] Fetching broadcaster ID for: ${twitchConfig.channel}`)
       const user = await this.apiClient.users.getUserByName(twitchConfig.channel)
       this.broadcasterId = user?.id ?? ''
-    } catch {}
+      console.log(`[twitch-connector] Broadcaster ID: ${this.broadcasterId}`)
+      
+      // Authoritative follower count for Stats growth tracking
+      if (this.broadcasterId) {
+        const followers = await this.apiClient.channels.getChannelFollowers(this.broadcasterId)
+        this.emitEvent({
+          id: randomUUID(),
+          platform: 'twitch',
+          timestamp: new Date(),
+          type: 'follower-count',
+          count: followers.total || 0,
+          raw: followers
+        } as any)
+      }
+    } catch (err) {
+      console.error(`[twitch-connector] FAILED to fetch broadcaster ID:`, err)
+    }
 
     if (this.broadcasterId) {
       this.startStreamPolling()
       await this.tryStartEventSubTelemetry()
       if (this.hasTokenScope(FOLLOW_EVENTSUB_SCOPE)) void this.backfillFollowers()
     }
+    console.log(`[twitch-connector] doConnect COMPLETED for channel: ${twitchConfig.channel}`)
   }
 
   protected async doDisconnect(): Promise<void> { await this.cleanup() }
@@ -116,26 +154,44 @@ export class TwitchConnector extends BaseConnector {
   }
 
   private async emitEnriched(event: AnyStreamEvent): Promise<void> {
-    const e = event as any
-    if (e.user) e.user = await this.enrichUser(e.user)
-    this.emitEvent(event)
+    console.log(`[twitch-connector] ENRICHING ${event.type} event from ${event.platform}...`)
+    try {
+      const enriched = await this.enrichEventWithTwitchProfile(event as any)
+      console.log(`[twitch-connector] EMITTING enriched ${event.type} event`)
+      this.emitEvent(enriched)
+    } catch (err) {
+      console.error(`[twitch-connector] FAILED to enrich event:`, err)
+      this.emitEvent(event)
+    }
   }
 
-  private async enrichUser(user: any): Promise<any> {
-    const cached = this.userCache.get('twitch', user.id, user.username)
-    if (cached) return { ...user, ...cached, isFollower: user.isFollower || cached.isFollower }
+  private async enrichEventWithTwitchProfile(event: any): Promise<any> {
+    if (!event.user) return event
     
-    if (this.apiClient && (user.id || user.username)) {
+    const user = event.user
+    const cached = this.userCache.get('twitch', user.id, user.username)
+    
+    // 1. Check local DB cache (if available)
+    if (this.db && !user.isFollower) {
+      const stats: any = this.db.getUserStat?.('twitch', user.username)
+      if (stats && stats.total_follows > 0) {
+        user.isFollower = true
+      }
+    }
+
+    // 2. Check Helix if permitted and not already known
+    if (!user.isFollower && this.apiClient && this.broadcasterId && this.hasTokenScope(FOLLOW_EVENTSUB_SCOPE)) {
       try {
-        const helixUser = user.id ? await this.apiClient.users.getUserById(user.id) : await this.apiClient.users.getUserByName(user.username)
-        if (helixUser) {
-          const enriched = { ...user, displayName: helixUser.displayName, profilePictureUrl: helixUser.profilePictureUrl }
-          this.userCache.set('twitch', enriched)
-          return enriched
+        const followData = await this.apiClient.channels.getChannelFollowers(this.broadcasterId, user.id)
+        if (followData.data.length > 0) {
+          user.isFollower = true
         }
       } catch {}
     }
-    return user
+
+    // 3. Cache results
+    this.userCache.set('twitch', { ...user, ...cached })
+    return event
   }
 
   private isFollowerCached(username: string): boolean {
@@ -161,6 +217,7 @@ export class TwitchConnector extends BaseConnector {
   }
 
   private async tryStartEventSubTelemetry(): Promise<void> {
+    if (!this.apiClient || !this.broadcasterId) return
     const { EventSubWsListener } = await import('@twurple/eventsub-ws')
     this.eventSub = new EventSubWsListener({ apiClient: this.apiClient })
     this.eventSub.start()
@@ -187,8 +244,11 @@ export class TwitchConnector extends BaseConnector {
   private async loadTokenScopes(token: string): Promise<string[]> {
     try {
       const res = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: `OAuth ${token}` } })
-      const data = await res.json()
+      const data: any = await res.json()
       return data.scopes || data.scope || []
-    } catch { return [] }
+    } catch (err) { 
+      console.error(`[twitch-connector] FAILED to load token scopes:`, err)
+      return [] 
+    }
   }
 }

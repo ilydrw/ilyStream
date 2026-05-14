@@ -12,7 +12,7 @@ export const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS voice_profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'system',
+    provider TEXT NOT NULL DEFAULT 'kokoro',
     voice_name TEXT NOT NULL DEFAULT '',
     kokoro_voice TEXT NOT NULL DEFAULT 'af_heart',
     lang TEXT NOT NULL DEFAULT 'en-US',

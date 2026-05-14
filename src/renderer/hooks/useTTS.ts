@@ -54,7 +54,7 @@ export function useTTS(isMounted: boolean) {
       console.log('[useTTS] Starting background preloading (Kokoro)...')
       preloadKokoroModel()
       void warmConfiguredKokoroProfiles()
-    }, 15000)
+    }, 3000)
 
     const cleanups: (() => void)[] = []
 
@@ -89,13 +89,11 @@ export function useTTS(isMounted: boolean) {
               console.info('[tts] System voices cannot be routed into the studio mixer; using Kokoro for stream-routed TTS.')
             }
             await speakWithKokoro(id, text, shouldUseMixerFallback ? toMixerRoutableVoice(voice) : voice)
+            return // Successfully spoke with Kokoro
           } catch (error) {
-            console.error('[tts] Kokoro speech failed:', error)
-          } finally {
-            setCurrentlySpeaking(null)
-            window.api.tts.notifySpeechComplete()
+            console.error('[tts] Kokoro speech failed, falling back to system voice:', error)
+            // Continue to system fallback below
           }
-          return
         }
 
         if (provider === 'elevenlabs') {
@@ -277,12 +275,16 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
     id: 'ai-cohost-voice',
     name: 'AI Co-Host',
     provider: 'kokoro',
+    voiceName: '',
     kokoroVoice: 'af_sky',
     lang: 'en-US',
     pitch: 1.1,
     rate: 1.05,
     volume: 1.0,
-    effects: ['radio', 'distortion'],
+    effects: [
+      { type: 'robot', enabled: true, params: {} },
+      { type: 'reverb', enabled: true, params: { roomSize: 0.5 } }
+    ],
     isDefault: false
   })
 }

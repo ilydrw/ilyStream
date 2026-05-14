@@ -20,6 +20,7 @@ export type OverlayChannel =
   | 'physics'
   | 'deck'
   | 'leaderboard'
+  | 'timer'
   | 'likes'
 
 export type SseClient = ServerResponse<IncomingMessage>

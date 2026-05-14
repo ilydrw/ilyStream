@@ -37,35 +37,49 @@ export class StreamingEncoderResolver {
     const args = ['-c:v', encoder]
 
     if (encoder === 'libx264') {
-      args.push('-preset', mode === 'stream' ? 'veryfast' : 'faster', '-tune', 'zerolatency')
+      args.push('-preset', mode === 'stream' ? 'veryfast' : 'medium')
       if (mode === 'stream') {
-        args.push('-profile:v', 'high', '-bf', '0', '-x264-params', 'nal-hrd=cbr:scenecut=0')
+        args.push('-tune', 'zerolatency', '-profile:v', 'high', '-bf', '0', '-x264-params', 'nal-hrd=cbr:scenecut=0')
+      } else {
+        args.push('-crf', '18') // High quality for recording
       }
     } else if (encoder === 'h264_nvenc') {
-      args.push('-preset', mode === 'stream' ? 'p4' : 'p5', '-tune', 'll')
+      args.push('-preset', mode === 'stream' ? 'p4' : 'p6')
       if (mode === 'stream') {
-        args.push('-profile:v', 'high', '-rc', 'cbr', '-bf', '0', '-zerolatency', '1')
+        args.push('-tune', 'll', '-profile:v', 'high', '-rc', 'cbr', '-bf', '0', '-zerolatency', '1')
+      } else {
+        args.push('-tune', 'hq', '-rc', 'vbr', '-cq', '20')
       }
     } else if (encoder === 'h264_amf') {
-      args.push('-quality', mode === 'stream' ? 'speed' : 'balanced', '-usage', mode === 'stream' ? 'lowlatency' : 'transcoding')
+      args.push('-quality', mode === 'stream' ? 'speed' : 'quality', '-usage', mode === 'stream' ? 'lowlatency' : 'transcoding')
       if (mode === 'stream') {
         args.push('-rc', 'cbr', '-profile:v', 'high', '-bf', '0', '-max_b_frames', '0', '-enforce_hrd', '1')
+      } else {
+        args.push('-rc', 'vbr_latency')
       }
     } else if (encoder === 'h264_qsv') {
       args.push('-preset', mode === 'stream' ? 'veryfast' : 'faster')
       if (mode === 'stream') {
         args.push('-profile:v', 'high', '-bf', '0', '-look_ahead', '0')
+      } else {
+        args.push('-global_quality', '20', '-look_ahead', '1')
       }
     }
 
-    const cbrBufsize = config.bitrateKbps
+    if (mode === 'stream') {
+      args.push(
+        '-b:v', `${config.bitrateKbps}k`,
+        '-maxrate', `${config.bitrateKbps}k`,
+        '-minrate', `${config.bitrateKbps}k`,
+        '-bufsize', `${config.bitrateKbps}k`
+      )
+    } else if (!args.includes('-crf') && !args.includes('-cq') && !args.includes('-global_quality')) {
+      // Fallback for QSV or others if no quality-based rate control was set above
+      args.push('-b:v', `${Math.max(config.bitrateKbps * 1.5, 8000)}k`)
+    }
 
     args.push(
       '-pix_fmt', 'yuv420p',
-      '-b:v', `${config.bitrateKbps}k`,
-      '-maxrate', `${config.bitrateKbps}k`,
-      '-minrate', `${config.bitrateKbps}k`,
-      '-bufsize', `${cbrBufsize}k`,
       '-g', `${config.fps * 2}`,
       '-keyint_min', `${config.fps * 2}`,
       '-level:v', '4.2'

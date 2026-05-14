@@ -21,6 +21,7 @@ export function usePlatformEvents(isMounted: boolean) {
     // Listen for stream events
     cleanups.push(
       window.api.on('event:stream', (event: any) => {
+        console.log(`[usePlatformEvents] Received ${event.type} event from ${event.platform}:`, event)
         if (event.type === 'gift' && event.isCombo) return
 
         addEventDiagnostic({
@@ -32,8 +33,9 @@ export function usePlatformEvents(isMounted: boolean) {
         })
 
         if (event.type === 'chat') {
-          addMessage({
-            id: event.id || `msg-${event.platform}-${event.user.username}-${Date.now()}`,
+          // Map Platform ChatEvent to Renderer ChatMessage
+          const chatMsg = {
+            id: event.id,
             platform: event.platform,
             username: event.user.username,
             displayName: event.user.displayName,
@@ -43,7 +45,9 @@ export function usePlatformEvents(isMounted: boolean) {
             isFanClub: event.user.isFanClubMember,
             timestamp: new Date(event.timestamp),
             profilePictureUrl: event.user.profilePictureUrl
-          })
+          }
+          console.log('[usePlatformEvents] Adding chat message to store:', chatMsg)
+          addMessage(chatMsg)
         }
 
         if (event.type === 'viewer-count') {
@@ -90,7 +94,7 @@ export function usePlatformEvents(isMounted: boolean) {
       if (!active) return
 
       for (const [platform, message] of Object.entries(errors)) {
-        setError(platform as Parameters<typeof setError>[0], message)
+        setError(platform as Parameters<typeof setError>[0], message as string | null)
       }
     })
 

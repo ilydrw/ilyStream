@@ -22,6 +22,7 @@ export class OverlayServer extends EventEmitter {
   private deviceApi: any | null = null
   private obsService: any | null = null
   private platformManager: any | null = null
+  private soundboardService: any | null = null
   private server: Server | null = null
 
   private sse: SSEManager
@@ -85,6 +86,7 @@ export class OverlayServer extends EventEmitter {
   setSoundboardService(soundboardService: any): void { this.soundboardService = soundboardService }
   setDeviceApi(deviceApi: any): void {
     this.deviceApi = deviceApi
+    this.chat.setDeviceApi(deviceApi)
     this.goals.setDeviceApi(deviceApi)
     this.nowPlaying.setDeviceApi(deviceApi)
   }
@@ -141,6 +143,34 @@ export class OverlayServer extends EventEmitter {
     this.sse.broadcast('node-network', { type: 'speech-state', isSpeaking, isAI })
     this.deviceApi?.broadcast('ttsState', { isSpeaking, isAI })
   }
+  
+  broadcastRecordingState(isRecording: boolean, path?: string): void {
+    this.deviceApi?.broadcast('recordingState', { isRecording, path })
+  }
+
+  broadcast(channel: any, payload: any): void {
+    console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
+    
+    // DEBUG
+    try {
+      const fs = require('fs')
+      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
+      const logLine = `[${new Date().toISOString()}] BROADCAST:${channel} - ${JSON.stringify(payload).slice(0, 500)}\n`
+      fs.appendFileSync(debugPath, logLine)
+    } catch (e) {}
+
+    this.sse.broadcast(channel, payload)
+  }
+
+  broadcastPhysicsSpawn(payload: any): void {
+    console.log(`[OverlayServer] Broadcasting physics spawn`)
+    this.sse.broadcast('physics', { type: 'spawn', payload })
+  }
+
+  broadcastDeckNotification(message: string, level: 'info' | 'error' = 'info'): void {
+    console.log(`[OverlayServer] Deck notification (${level}): ${message}`)
+    this.sse.broadcast('deck', { type: 'notification', message, level })
+  }
 
   broadcastRelayMessage(payload: any): void {
     this.chat.broadcastRelay(payload)
@@ -151,14 +181,29 @@ export class OverlayServer extends EventEmitter {
   }
 
   handleStreamEvent(event: AnyStreamEvent): void {
+    // DEBUG
+    try {
+      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
+      const username = ('user' in event && event.user) ? event.user.username : 'unknown'
+      const logLine = `[${new Date().toISOString()}] OVERLAY_SERVER_HANDLE: ${event.type} from ${username}\n`
+      require('fs').appendFileSync(debugPath, logLine)
+    } catch (e) {}
+
     this.chat.handleEvent(event)
     this.goals.handleEvent(event)
 
     if (event.type === 'like') {
-      const feedItem = (event as any)._feedItem // Assuming it might be pre-processed or we do it here
-      if (feedItem) {
-        this.likes.updateState(event as any, feedItem)
+      const like = event as any
+      const feedItem = like._feedItem || {
+        id: like.id,
+        type: 'like',
+        displayName: like.user?.displayName || like.user?.username || 'Fan',
+        profilePictureUrl: like.user?.profilePictureUrl,
+        amount: like.likeCount || 1,
+        totalLikes: like.totalLikes,
+        timestamp: like.timestamp || new Date()
       }
+      this.likes.updateState(like, feedItem)
     }
   }
 

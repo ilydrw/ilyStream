@@ -167,6 +167,18 @@ export class TTSEngine extends EventEmitter {
     return { ok: true }
   }
 
+  /** Simple speak wrapper for urgent/system announcements */
+  speak(text: string, voiceProfileId?: string): void {
+    this.enqueue({
+      text,
+      username: 'System',
+      platform: 'local',
+      priority: 'urgent',
+      voiceProfileId,
+      eventType: 'system'
+    })
+  }
+
   /** Skip the currently playing item */
   skip(): void {
     if (this.currentItem) {

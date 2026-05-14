@@ -178,13 +178,15 @@ export class OverlayRouter {
       const channel = (url.searchParams.get('channel') as OverlayChannel) || 'chat'
       this.sse.attachClient(channel, request, response)
 
-      const snapshot = channel === 'chat' ? this.chat.getHistory() :
+      const snapshot = (channel === 'chat' || channel === 'chat-unified') ? this.chat.getHistory() :
                       channel === 'alerts' ? [] :
                       channel === 'goals' ? this.goals.getState() :
                       channel === 'likes' ? this.likes.getSnapshot() :
                       this.nowPlaying.getState()
 
-      response.write(`data: ${JSON.stringify({ type: 'snapshot', payload: snapshot })}\n\n`)
+      const snapshotPayload = { type: 'snapshot', payload: snapshot }
+      console.log(`[overlay] SSE Snapshot for channel ${channel}:`, JSON.stringify(snapshotPayload))
+      response.write(`data: ${JSON.stringify(snapshotPayload)}\n\n`)
       return
     }
 

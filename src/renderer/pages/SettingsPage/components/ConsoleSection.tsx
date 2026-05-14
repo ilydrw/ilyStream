@@ -184,16 +184,27 @@ export function ConsoleSection() {
   }
 
   const exportLog = () => {
-    const text = filteredEntries.map(e => 
-      `[${new Date(e.timestamp).toISOString()}] [${e.level.toUpperCase()}] [${e.category}:${e.source}] ${e.args}`
-    ).join('\n')
+    const text = filteredEntries.map(e => `[${formatTime(e.timestamp)}] [${e.level.toUpperCase()}] ${e.source}: ${e.args}`).join('\n')
     const blob = new Blob([text], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `ilystream-console-${new Date().toISOString().replace(/[:.]/g, '-')}.log`
+    a.download = `ilystream-console-${new Date().toISOString().slice(0, 10)}.log`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const simulateChat = async () => {
+    try {
+      console.log('[Console] Requesting chat simulation...')
+      await window.api.events.simulateChat({
+        platform: 'tiktok',
+        message: 'This is a test message from the Console!',
+        username: 'ilyStreamTest'
+      })
+    } catch (err) {
+      console.error('[Console] Simulation failed:', err)
+    }
   }
 
   // Filter entries
@@ -346,6 +357,15 @@ export function ConsoleSection() {
                 <IconSearch size={14} />
               </button>
 
+              <button
+                onClick={simulateChat}
+                className="h-8 px-3 rounded-lg ring-1 ring-accent/30 bg-accent/5 text-accent hover:bg-accent/10 flex items-center gap-2 transition-all"
+                title="Simulate incoming chat event"
+              >
+                <IconTerminal2 size={14} />
+                <span className="text-[9px] font-black uppercase tracking-widest">Simulate</span>
+              </button>
+
               <div className="w-px h-4 bg-white/5 mx-1" />
 
               <button
@@ -471,7 +491,7 @@ export function ConsoleSection() {
             </div>
             <span className="text-[9px] font-bold text-white/10 uppercase tracking-widest">System Architecture</span>
           </div>
-          <span className="text-[9px] font-black text-white/15 uppercase tracking-widest">ilyStream v0.0.5 Console</span>
+          <span className="text-[9px] font-black text-white/15 uppercase tracking-widest">ilyStream v0.0.7 Console</span>
         </div>
       </div>
     </section>

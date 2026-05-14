@@ -123,6 +123,7 @@ export abstract class BaseConnector extends EventEmitter {
   }
 
   protected emitEvent(event: AnyStreamEvent): void {
+    console.log(`[connector:${this.platform}] Emitting ${event.type} event...`)
     this.emit('event', event)
     this.emit(event.type, event)
   }

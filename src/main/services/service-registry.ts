@@ -120,7 +120,8 @@ export class ServiceRegistry {
       this.economyService,
       this.statsService,
       this.goveeService,
-      this.lightingManager
+      this.lightingManager,
+      this.streamingService
     )
 
     this.overlayServer.setDatabase(this.db)
@@ -138,6 +139,11 @@ export class ServiceRegistry {
       (action) => this.overlayServer.emit('deck-action', action)
     )
     this.overlayServer.setDeviceApi(this.deviceApi)
+    
+    // Broadcast recording state to DeskThing / Overlays
+    this.streamingService.on('status', (status) => {
+      this.overlayServer.broadcastRecordingState(status.recording, this.streamingService.getRecordingOutputPath() || undefined)
+    })
   }
 
   async initialize(): Promise<void> {
@@ -190,11 +196,11 @@ export class ServiceRegistry {
     const settings = resolveAppSettings(this.db.getAllSettings())
     
     this.ttsEngine.applySettings(settings.tts)
-    this.eventSoundService.applySettings(settings.alerts)
     this.aiService.applySettings(settings.ai)
     this.coHostService.applySettings(settings.ai)
-    this.voicemodService.applySettings(settings.integrations.voicemod)
-    this.vtubeService.applySettings(settings.integrations.vtube)
+    this.eventSoundService.applySettings(settings)
+    this.voicemodService.applySettings(settings)
+    this.vtubeService.applySettings(settings)
     this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())
     
     this.eventOrchestrator.init()

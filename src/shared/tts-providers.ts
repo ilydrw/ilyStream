@@ -1,6 +1,6 @@
 export type TTSVoiceProvider = 'system' | 'kokoro' | 'elevenlabs'
 
-export const DEFAULT_TTS_PROVIDER: TTSVoiceProvider = 'system'
+export const DEFAULT_TTS_PROVIDER: TTSVoiceProvider = 'kokoro'
 export const DEFAULT_KOKORO_VOICE = 'af_heart'
 
 // ─── ElevenLabs ───────────────────────────────────────────────────────────────

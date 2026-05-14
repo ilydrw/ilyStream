@@ -14,6 +14,9 @@ import { EconomyService } from '../economy/economy-service'
 import { StatsService } from '../stats/stats-service'
 import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
+import { StreamingService } from './streaming-service'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
@@ -34,11 +37,23 @@ export class EventOrchestrator {
     private economyService: EconomyService,
     private statsService: StatsService,
     private goveeService: GoveeService,
-    private lightingManager: LightingManagerService
+    private lightingManager: LightingManagerService,
+    private streamingService: StreamingService
   ) {}
 
   init(): void {
     this.platformManager.on('event', (event) => {
+      console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
+      
+      // DEBUG: Write to a file in the workspace so I can see it
+      try {
+        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
+        const logLine = `[${new Date().toISOString()}] ${event.platform}:${event.type} - ${JSON.stringify(event).slice(0, 500)}\n`
+        fs.appendFileSync(debugPath, logLine)
+      } catch (e) {
+        // Ignore errors
+      }
+      
       // 1. Log to DB
       this.db.addEvent(
         event.platform,
@@ -48,6 +63,7 @@ export class EventOrchestrator {
       )
 
       // 2. Broadcast to Overlay
+      console.log(`[orchestrator] Broadcasting to overlays...`)
       this.overlayServer.handleStreamEvent(event)
 
       // 3. Play Sounds
@@ -58,6 +74,7 @@ export class EventOrchestrator {
       
       // 5. TTS (only if not a spotify command or if configured)
       if (!handledBySpotify) {
+        console.log(`[orchestrator] Sending to TTS engine...`)
         this.ttsEngine.processEvent(event)
       }
 
@@ -65,6 +82,7 @@ export class EventOrchestrator {
       this.handleHardwareAlerts(event)
 
       // 7. Automation Triggers
+      console.log(`[orchestrator] Processing triggers...`)
       this.triggerEngine.evaluate(event)
 
       // 8. System Automation (Direct Mapping)
@@ -101,19 +119,36 @@ export class EventOrchestrator {
 
     // Listen to Economy Events
     this.economyService.on('leaderboard-update', (data) => {
-      this.overlayServer.broadcast('deck', { type: 'leaderboard', data })
-      this.overlayServer.broadcast('leaderboard', { type: 'update', data })
+      console.log(`[orchestrator] Economy leaderboard-update received. overlayServer types:`, {
+        exists: !!this.overlayServer,
+        hasBroadcast: typeof (this.overlayServer as any).broadcast === 'function',
+        constructor: this.overlayServer?.constructor?.name
+      })
+      if (typeof (this.overlayServer as any).broadcast === 'function') {
+        this.overlayServer.broadcast('deck', { type: 'leaderboard', data })
+        this.overlayServer.broadcast('leaderboard', { type: 'update', data })
+      } else {
+        console.error('[orchestrator] CRITICAL: overlayServer.broadcast is MISSING at runtime!')
+      }
     })
     this.economyService.on('timer-update', (endTime) => {
-      this.overlayServer.broadcast('deck', { type: 'timer', endTime })
-      this.overlayServer.broadcast('timer', { type: 'update', endTime })
+      if (typeof (this.overlayServer as any).broadcast === 'function') {
+        this.overlayServer.broadcast('deck', { type: 'timer', endTime })
+        this.overlayServer.broadcast('timer', { type: 'update', endTime })
+      }
     })
     this.economyService.on('points-drop-start', (data) => {
-      this.overlayServer.broadcast('deck', { type: 'points-drop', data })
+      if (typeof (this.overlayServer as any).broadcast === 'function') {
+        this.overlayServer.broadcast('deck', { type: 'points-drop', data })
+      }
       // Trigger visual physics drop too
       this.handlePhysicsAction({ amount: 10 }, { user: { username: 'Economy', displayName: 'Points Drop', profilePictureUrl: 'asset://resources/icon.png' } })
     })
-    this.economyService.on('points-drop-claimed', (data) => this.overlayServer.broadcast('deck', { type: 'points-claimed', data }))
+    this.economyService.on('points-drop-claimed', (data) => {
+      if (typeof (this.overlayServer as any).broadcast === 'function') {
+        this.overlayServer.broadcast('deck', { type: 'points-claimed', data })
+      }
+    })
 
     // 12. Spotify -> Overlay Bridge
     this.spotifyService.on('now-playing', (payload) => {
@@ -336,6 +371,17 @@ export class EventOrchestrator {
         if (action.payload?.soundId) {
           this.eventSoundService.playSound(action.payload.soundId, action.payload.volume || 1)
         }
+        break
+
+      case 'START_RECORDING':
+        this.streamingService.startRecording(action.payload || {}).catch((err: any) => {
+          console.error('[Deck] Start Recording failed:', err)
+          this.overlayServer.broadcastDeckNotification(err?.message || 'Unknown recording error', 'error')
+        })
+        break
+
+      case 'STOP_RECORDING':
+        this.streamingService.stopRecording()
         break
 
       default:

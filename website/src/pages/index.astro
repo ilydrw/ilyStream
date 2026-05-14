@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.7';
+const latestVersion = '0.0.8';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,11 +46,11 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Full DeskThing telemetry integration (OBS, Viewers, Alerts, Now Playing)',
-  'Real-time Audio Visualizers and Metering on companion surfaces',
-  '"Why So Serious?" theme hardening with premium gradient synchronization',
-  'Optimized settings engine preventing redundant OBS service reconnections',
-  'Dynamic theme parity between main studio and companion displays',
+  'High-Fidelity Recording: Local VBR/CRF encoding optimized for NVENC, QSV, and AMF.',
+  'DeskThing Control: Start and stop recording sessions directly from your Car Thing deck.',
+  'FFmpeg Hardening: Clean "q" command shutdown and production ASAR path resolution.',
+  'Native Audio Reliability: Hardened installation routines for native audio engine components.',
+  'System Integrity: Robust directory management and power-save blocking for long sessions.',
 ];
 
 const docPreviews = [

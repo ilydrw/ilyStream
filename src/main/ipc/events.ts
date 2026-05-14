@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron'
+import { AnyStreamEvent, Platform, ConnectionStatus } from '../platforms/types'
 import { ServiceRegistry } from '../services/service-registry'
 import { ConnectorError } from '../platforms/base-connector'
 import { logEmitter } from '../lib/logger'
@@ -14,8 +15,11 @@ export function setupEventForwarding(
 
   // Forward all stream events to renderer
   platformManager.on('event', (event: AnyStreamEvent) => {
+    console.log(`[ipc:events] Forwarding ${event.type} to renderer...`)
     if (!window.isDestroyed()) {
       window.webContents.send('event:stream', toRendererStreamEvent(event))
+    } else {
+      console.warn('[ipc:events] Cannot forward event: window is destroyed')
     }
   })
 

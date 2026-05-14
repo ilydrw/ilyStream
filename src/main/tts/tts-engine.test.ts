@@ -8,8 +8,8 @@ describe('TTSEngine settings', () => {
     const engine = new TTSEngine()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsEnabled: false
+      ...DEFAULT_APP_SETTINGS.tts,
+      enabled: false
     })
 
     const added = engine.enqueue({
@@ -28,10 +28,10 @@ describe('TTSEngine settings', () => {
     const engine = new TTSEngine()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsMaxLength: 5,
-      ttsDuplicateWindow: 30,
-      ttsPerUserLimit: 1
+      ...DEFAULT_APP_SETTINGS.tts,
+      maxLength: 5,
+      duplicateWindow: 30,
+      perUserLimit: 1
     })
     engine.pause()
 
@@ -163,9 +163,9 @@ describe('TTSEngine settings', () => {
       isDefault: false
     })
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsChatVoiceProfileId: 'default',
-      ttsUserVoiceOverrides: [
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
         {
           id: 'alice',
           platform: 'tiktok',
@@ -213,9 +213,9 @@ describe('TTSEngine settings', () => {
     const speakListener = vi.fn()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsChatVoiceProfileId: 'default',
-      ttsUserVoiceOverrides: [
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
         {
           id: 'alice-direct',
           platform: 'all',
@@ -256,7 +256,7 @@ describe('TTSEngine settings', () => {
           voiceName: 'Alice direct voice',
           pitch: 1.7,
           rate: 1.4,
-          volume: 0.55 * DEFAULT_APP_SETTINGS.ttsVolume
+          volume: 0.55 * DEFAULT_APP_SETTINGS.tts.volume
         })
       })
     )
@@ -267,9 +267,9 @@ describe('TTSEngine settings', () => {
     const speakListener = vi.fn()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsChatVoiceProfileId: 'default',
-      ttsUserVoiceOverrides: [
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
         {
           id: 'bob-eleven',
           platform: 'tiktok',
@@ -311,7 +311,7 @@ describe('TTSEngine settings', () => {
           elevenlabsStability: 0.35,
           elevenlabsSimilarity: 0.9,
           elevenlabsStyle: 0.15,
-          volume: 0.8 * DEFAULT_APP_SETTINGS.ttsVolume
+          volume: 0.8 * DEFAULT_APP_SETTINGS.tts.volume
         })
       })
     )
@@ -321,9 +321,9 @@ describe('TTSEngine settings', () => {
     const engine = new TTSEngine()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsRequireCommand: true,
-      ttsCommandPrefixes: ['!']
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: true,
+      commandPrefixes: ['!']
     })
     engine.pause()
 
@@ -354,9 +354,9 @@ describe('TTSEngine settings', () => {
     const engine = new TTSEngine()
 
     engine.applySettings({
-      ...DEFAULT_APP_SETTINGS,
-      ttsAllowedRoles: ['followers', 'subscribers'],
-      ttsRequireCommand: false
+      ...DEFAULT_APP_SETTINGS.tts,
+      allowedRoles: ['followers', 'subscribers'],
+      requireCommand: false
     })
     engine.pause()
 

@@ -36,10 +36,10 @@ describe('OBSService', () => {
 
     const service = new OBSService()
     const status = await service.applySettings({
-      obsEnabled: true,
-      obsHost: '127.0.0.1',
-      obsPort: 4455,
-      obsPassword: ''
+      enabled: true,
+      host: '127.0.0.1',
+      port: 4455,
+      password: ''
     })
 
     expect(connectMock).toHaveBeenCalledWith('ws://127.0.0.1:4455', undefined)
@@ -62,10 +62,10 @@ describe('OBSService', () => {
 
     const service = new OBSService()
     await service.applySettings({
-      obsEnabled: true,
-      obsHost: '127.0.0.1',
-      obsPort: 4455,
-      obsPassword: ''
+      enabled: true,
+      host: '127.0.0.1',
+      port: 4455,
+      password: ''
     })
 
     callMock.mockReset()

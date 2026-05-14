@@ -28,6 +28,7 @@ export type DeviceEventType =
   | 'goals'
   | 'chatAppend'
   | 'chatBacklog'
+  | 'recordingState'
 
 interface DeviceEventEnvelope {
   type: DeviceEventType

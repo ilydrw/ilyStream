@@ -3,6 +3,11 @@ import { EventEmitter } from 'events'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname, join } from 'path'
 import { app, powerSaveBlocker } from 'electron'
+
+// Fix for packaged apps: ffmpeg-static path might point into app.asar
+// We must use the asar-unpacked version for the binary to be executable.
+const resolvedFfmpegPath = (ffmpegPath || 'ffmpeg').replace('app.asar', 'app.asar.unpacked')
+
 import { StreamingEncoderResolver } from './streaming/encoder-resolver'
 import type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
 export type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
@@ -22,7 +27,7 @@ export class StreamingService extends EventEmitter {
   private recordingManager = new FFmpegProcessManager('recording')
   private pumper = new MediaPumper()
   private streamOutputs = new Map<string, StreamSession>()
-  private encoderResolver = new StreamingEncoderResolver(ffmpegPath || 'ffmpeg')
+  private encoderResolver = new StreamingEncoderResolver(resolvedFfmpegPath)
   private argsBuilder = new FFmpegArgsBuilder(this.encoderResolver)
 
   private streamAudioEnabled = false
@@ -80,13 +85,10 @@ export class StreamingService extends EventEmitter {
     if (!this.isRecording) this.pumper.resetSamples()
     this.ensurePowerSave()
 
-    if (!ffmpegPath) throw new Error('FFmpeg binary not found')
+    if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
 
     const rtmpUrl = this.normalizeRtmpUrl(config.rtmpUrl)
     let finalKey = config.streamKey
-    if (rtmpUrl.includes('twitch') && (!finalKey || finalKey.includes('bandwidthtest'))) {
-      finalKey = 'live_169921707_6iXRiD5gu6gUe9st0UVECHBR8EoBsw'
-    }
     const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
     const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
     const inputFormat = config.inputFormat || 'mjpeg'
@@ -100,7 +102,7 @@ export class StreamingService extends EventEmitter {
     console.log(`[Streaming] Starting ${inputFormat} stream to ${redactedFullUrl}`)
 
     this.streamAudioEnabled = audioFormat === 'f32le'
-    this.streamManager.start(ffmpegPath, args, this.streamAudioEnabled, redact)
+    this.streamManager.start(resolvedFfmpegPath, args, this.streamAudioEnabled, redact)
 
     if (inputFormat === 'mjpeg') {
       this.pumper.startVideoPump(config.fps, (frame) => {
@@ -140,7 +142,7 @@ export class StreamingService extends EventEmitter {
     if (!this.isStreaming) this.pumper.resetSamples()
     this.ensurePowerSave()
 
-    if (!ffmpegPath) throw new Error('FFmpeg binary not found')
+    if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
 
     const inputFormat = config.inputFormat || 'mjpeg'
     const bestEncoder = await this.encoderResolver.getBestEncoder()
@@ -154,7 +156,7 @@ export class StreamingService extends EventEmitter {
     this.recordingAudioEnabled = config.audioFormat === 'f32le'
     this.activeRecordingPath = outputPath
 
-    this.recordingManager.start(ffmpegPath, args, this.recordingAudioEnabled)
+    this.recordingManager.start(resolvedFfmpegPath, args, this.recordingAudioEnabled)
 
     if (inputFormat === 'mjpeg') {
       this.pumper.startVideoPump(config.fps, (frame) => {
@@ -237,14 +239,11 @@ export class StreamingService extends EventEmitter {
 
   private async startStreamOutput(id: string, config: StreamConfig): Promise<void> {
     if (this.streamOutputs.has(id)) this.stopStreamOutput(id)
-    if (!ffmpegPath) throw new Error('FFmpeg binary not found')
+    if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
 
     this.ensurePowerSave()
     const rtmpUrl = this.normalizeRtmpUrl(config.rtmpUrl)
     let finalKey = config.streamKey
-    if (rtmpUrl.includes('twitch') && (!finalKey || finalKey.includes('bandwidthtest'))) {
-      finalKey = 'live_169921707_6iXRiD5gu6gUe9st0UVECHBR8EoBsw'
-    }
     const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
     const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
     const inputFormat = config.inputFormat || 'mjpeg'
@@ -258,7 +257,7 @@ export class StreamingService extends EventEmitter {
     const session = new StreamSession({
       id,
       name: config.outputName || id,
-      ffmpegPath,
+      ffmpegPath: resolvedFfmpegPath,
       args,
       inputFormat,
       audioEnabled: audioFormat === 'f32le',

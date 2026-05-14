@@ -1,4 +1,4 @@
-import type { SpotifyTrack } from '../../shared/spotify-types'
+import type { SpotifyTrack, SpotifyPlaybackState } from '../../shared/spotify-types'
 
 const API_BASE = 'https://api.spotify.com/v1'
 
@@ -105,21 +105,6 @@ export async function skipSpotifyTrack(accessToken: string): Promise<void> {
   }
 }
 
-/**
- * Detailed playback state including potential error indicators.
- */
-export interface SpotifyPlaybackState {
-  isPlaying: boolean
-  trackId: string | null
-  trackName: string
-  artists: string[]
-  albumName: string
-  albumArtUrl: string | null
-  durationMs: number
-  progressMs: number
-  status: 'ok' | 'no-content' | 'no-device' | 'unauthorized' | 'forbidden' | 'error'
-}
-
 export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyPlaybackState> {
   try {
     const response = await apiFetch('/me/player/currently-playing', accessToken)
@@ -131,7 +116,7 @@ export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyP
     
     if (!response.ok) return { ...EMPTY_PLAYBACK_STATE, status: 'error' }
 
-    const data = await response.json()
+    const data = await response.json() as any
     const item = data?.item
 
     if (!item) return { ...EMPTY_PLAYBACK_STATE, status: 'no-content' }

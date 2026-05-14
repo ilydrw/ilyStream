@@ -37,6 +37,16 @@ export class PlatformManager extends EventEmitter {
       connector.setAutoReconnect(autoReconnect)
 
       connector.on('event', (event: AnyStreamEvent) => {
+        console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
+        
+        // DEBUG: Write to file
+        try {
+          const fs = require('fs')
+          const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
+          const logLine = `[${new Date().toISOString()}] PLATFORM_MANAGER_RELAY: ${event.platform} ${event.type}\n`
+          fs.appendFileSync(debugPath, logLine)
+        } catch (e) {}
+        
         this.emit('event', event)
         this.emit(event.type, event)
       })
@@ -69,11 +79,6 @@ export class PlatformManager extends EventEmitter {
     const connector = this.connectors.get(config.platform)
     if (!connector) throw new Error(`Unknown platform: ${config.platform}`)
     await connector.connect(config)
-  }
-
-  emitTestEvent(event: AnyStreamEvent): void {
-    this.emit('event', event)
-    this.emit(event.type, event)
   }
 
   async disconnect(platform: Platform): Promise<void> {
@@ -144,5 +149,11 @@ export class PlatformManager extends EventEmitter {
     )
 
     return results
+  }
+
+  emitTestEvent(event: AnyStreamEvent): void {
+    console.log(`[platform-manager] Emitting test event: ${event.type}`)
+    this.emit('event', event)
+    this.emit(event.type, event)
   }
 }

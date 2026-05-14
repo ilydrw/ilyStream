@@ -63,7 +63,16 @@ export class FFmpegProcessManager extends EventEmitter {
 
   stop(): void {
     if (this.process) {
-      this.process.kill('SIGINT')
+      // Send 'q' to FFmpeg for a clean shutdown (important for MP4 finalization)
+      try {
+        if (this.process.stdin && this.process.stdin.writable) {
+          this.process.stdin.write('q\n')
+        } else {
+          this.process.kill('SIGINT')
+        }
+      } catch (err) {
+        this.process.kill('SIGINT')
+      }
       this.process = null
     }
     this.videoBuffer?.detach()

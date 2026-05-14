@@ -28,15 +28,15 @@ export interface VoiceModifiers {
 export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'joker'
 export type InterfaceDensity = 'comfortable' | 'compact'
 
-export interface TTSAudiencePermission {
-  everyone: boolean
-  followers: boolean
-  fanClub: boolean
-  subscribers: boolean
-  moderators: boolean
-  teamMembers: boolean
-  vips: boolean
-}
+export type TTSAudiencePermission = 
+  | 'everyone' 
+  | 'followers' 
+  | 'fanClub' 
+  | 'subscribers' 
+  | 'moderators' 
+  | 'teamMembers' 
+  | 'vips'
+
 
 export interface TTSUserVoiceOverride {
   id: string
@@ -77,7 +77,7 @@ export interface TTSSettings {
   perUserLimit: number
   requireCommand: boolean
   commandPrefixes: string[]
-  allowedRoles: string[]
+  allowedRoles: TTSAudiencePermission[]
   chatVoiceProfileId: string
   giftVoiceProfileId: string
   subscriptionVoiceProfileId: string
@@ -220,7 +220,7 @@ export type AppSettingKey = string // Simplified for broad compatibility
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   tts: {
     enabled: true, maxLength: 500, minLength: 1, duplicateWindow: 30, perUserLimit: 3,
-    requireCommand: true, commandPrefixes: ['!tts', '!say', '!speak'], allowedRoles: ['everyone'],
+    requireCommand: false, commandPrefixes: ['!tts', '!say', '!speak'], allowedRoles: ['everyone'],
     chatVoiceProfileId: '', giftVoiceProfileId: '', subscriptionVoiceProfileId: '',
     onlySubsAndMods: false, userVoiceOverrides: [], readAtSymbol: false,
     skipMessagesStartingWithAt: false, ignoreEmotes: true, volume: 0.8,
@@ -284,10 +284,49 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
   const s = DEFAULT_APP_SETTINGS
   const get = (key: string, fallback: any) => (flatValues[key] !== undefined ? flatValues[key] : fallback)
 
+  // --- Normalization Helpers ---
+  const normalizeRoles = (roles: any): string[] => {
+    if (!Array.isArray(roles)) return ['everyone']
+    if (roles.includes('everyone')) return ['everyone']
+    return Array.from(new Set(roles))
+  }
+
+  const normalizePrefixes = (val: any): string[] => {
+    if (Array.isArray(val)) return val
+    if (typeof val !== 'string') return DEFAULT_TTS_COMMAND_PREFIXES
+    if (val.length <= 3 && !val.includes(',')) return val.split('')
+    return val.split(',').map((p) => p.trim()).filter(Boolean)
+  }
+
+  const normalizeVoiceOverrides = (overrides: any[] = []): TTSUserVoiceOverride[] => {
+    return (overrides || []).map((o: any) => ({
+      ...o,
+      username: (o.username || '').toLowerCase().replace(/^@/, ''),
+      mode: o.mode || 'profile',
+      pitch: Math.max(0.1, Math.min(2, o.pitch ?? 1)),
+      rate: Math.max(0.1, Math.min(3, o.rate ?? 1)),
+      volume: Math.max(0, Math.min(1, o.volume ?? 1)),
+      voiceProfileId: o.mode === 'custom' ? '' : (o.voiceProfileId || '')
+    }))
+  }
+
+  const normalizeSoundId = (id: string): string => {
+    if (!id) return ''
+    if (id.includes('\\') || id.includes('/')) return ''
+    const lower = id.toLowerCase()
+    if (!lower.endsWith('.mp3') && !lower.endsWith('.wav')) return ''
+    return id
+  }
+
+  const normalizeColor = (color: string, fallback: string): string => {
+    if (!color || !color.startsWith('#')) return fallback
+    return color.toLowerCase()
+  }
+
   const nested: any = {
     ui: {
       theme: get('theme', flatValues.ui?.theme ?? s.ui.theme),
-      accentColor: get('accentColor', flatValues.ui?.accentColor ?? s.ui.accentColor),
+      accentColor: normalizeColor(get('accentColor', flatValues.ui?.accentColor ?? s.ui.accentColor), s.ui.accentColor),
       density: get('interfaceDensity', flatValues.ui?.density ?? s.ui.density),
       reducedMotion: get('reducedMotion', flatValues.ui?.reducedMotion ?? s.ui.reducedMotion)
     },
@@ -343,17 +382,17 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
       duplicateWindow: get('ttsDuplicateWindow', flatValues.tts?.duplicateWindow ?? s.tts.duplicateWindow),
       perUserLimit: get('ttsPerUserLimit', flatValues.tts?.perUserLimit ?? s.tts.perUserLimit),
       requireCommand: get('ttsRequireCommand', flatValues.tts?.requireCommand ?? s.tts.requireCommand),
-      commandPrefixes: get('ttsCommandPrefixes', flatValues.tts?.commandPrefixes ?? s.tts.commandPrefixes),
-      allowedRoles: get('ttsAllowedRoles', flatValues.tts?.allowedRoles ?? s.tts.allowedRoles),
+      commandPrefixes: normalizePrefixes(get('ttsCommandPrefixes', flatValues.tts?.commandPrefixes ?? s.tts.commandPrefixes)),
+      allowedRoles: normalizeRoles(get('ttsAllowedRoles', flatValues.tts?.allowedRoles ?? s.tts.allowedRoles)),
       chatVoiceProfileId: get('ttsChatVoiceProfileId', flatValues.tts?.chatVoiceProfileId ?? s.tts.chatVoiceProfileId),
       giftVoiceProfileId: get('ttsGiftVoiceProfileId', flatValues.tts?.giftVoiceProfileId ?? s.tts.giftVoiceProfileId),
       subscriptionVoiceProfileId: get('ttsSubscriptionVoiceProfileId', flatValues.tts?.subscriptionVoiceProfileId ?? s.tts.subscriptionVoiceProfileId),
       onlySubsAndMods: get('ttsOnlySubsAndMods', flatValues.tts?.onlySubsAndMods ?? s.tts.onlySubsAndMods),
-      userVoiceOverrides: get('ttsUserVoiceOverrides', flatValues.tts?.userVoiceOverrides ?? s.tts.userVoiceOverrides),
+      userVoiceOverrides: normalizeVoiceOverrides(get('ttsUserVoiceOverrides', flatValues.tts?.userVoiceOverrides ?? s.tts.userVoiceOverrides)),
       readAtSymbol: get('ttsReadAtSymbol', flatValues.tts?.readAtSymbol ?? s.tts.readAtSymbol),
       skipMessagesStartingWithAt: get('ttsSkipMessagesStartingWithAt', flatValues.tts?.skipMessagesStartingWithAt ?? s.tts.skipMessagesStartingWithAt),
       ignoreEmotes: get('ttsIgnoreEmotes', flatValues.tts?.ignoreEmotes ?? s.tts.ignoreEmotes),
-      volume: get('ttsVolume', flatValues.tts?.volume ?? s.tts.volume),
+      volume: Math.max(0, Math.min(1, get('ttsVolume', flatValues.tts?.volume ?? s.tts.volume))),
       modifiers: get('voiceModifiers', flatValues.tts?.modifiers ?? s.tts.modifiers)
     },
     ai: {
@@ -370,10 +409,10 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         enabled: get('eventImageGiftEnabled', flatValues.alerts?.gift?.enabled ?? s.alerts.gift.enabled),
         assetId: get('eventImageGiftAssetId', flatValues.alerts?.gift?.assetId ?? s.alerts.gift.assetId),
         template: get('eventTextGiftTemplate', flatValues.alerts?.gift?.template ?? s.alerts.gift.template),
-        color: get('eventTextGiftColor', flatValues.alerts?.gift?.color ?? s.alerts.gift.color),
+        color: normalizeColor(get('eventTextGiftColor', flatValues.alerts?.gift?.color ?? s.alerts.gift.color), s.alerts.gift.color),
         backgroundColor: get('eventTextGiftBackgroundColor', flatValues.alerts?.gift?.backgroundColor ?? s.alerts.gift.backgroundColor),
-        borderColor: get('eventTextGiftBorderColor', flatValues.alerts?.gift?.borderColor ?? s.alerts.gift.borderColor),
-        fontSize: get('eventTextGiftFontSize', flatValues.alerts?.gift?.fontSize ?? s.alerts.gift.fontSize),
+        borderColor: normalizeColor(get('eventTextGiftBorderColor', flatValues.alerts?.gift?.borderColor ?? s.alerts.gift.borderColor), s.alerts.gift.borderColor),
+        fontSize: Math.max(8, Math.min(120, get('eventTextGiftFontSize', flatValues.alerts?.gift?.fontSize ?? s.alerts.gift.fontSize))),
         fontWeight: get('eventAlertGiftFontWeight', flatValues.alerts?.gift?.fontWeight ?? s.alerts.gift.fontWeight),
         textShadow: get('eventAlertGiftTextShadow', flatValues.alerts?.gift?.textShadow ?? s.alerts.gift.textShadow),
         layout: get('eventAlertGiftLayout', flatValues.alerts?.gift?.layout ?? s.alerts.gift.layout),
@@ -383,17 +422,17 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         imageTop: get('eventAlertGiftImageTop', flatValues.alerts?.gift?.imageTop ?? s.alerts.gift.imageTop),
         imageLeft: get('eventAlertGiftImageLeft', flatValues.alerts?.gift?.imageLeft ?? s.alerts.gift.imageLeft),
         soundEnabled: get('eventSoundGiftEnabled', flatValues.alerts?.gift?.soundEnabled ?? s.alerts.gift.soundEnabled),
-        soundId: get('eventSoundGiftSoundId', flatValues.alerts?.gift?.soundId ?? s.alerts.gift.soundId),
-        soundVolume: get('eventSoundGiftVolume', flatValues.alerts?.gift?.soundVolume ?? s.alerts.gift.soundVolume)
+        soundId: normalizeSoundId(get('eventSoundGiftSoundId', flatValues.alerts?.gift?.soundId ?? s.alerts.gift.soundId)),
+        soundVolume: Math.max(0, Math.min(1, get('eventSoundGiftVolume', flatValues.alerts?.gift?.soundVolume ?? s.alerts.gift.soundVolume)))
       },
       follow: {
         enabled: get('eventImageFollowEnabled', flatValues.alerts?.follow?.enabled ?? s.alerts.follow.enabled),
         assetId: get('eventImageFollowAssetId', flatValues.alerts?.follow?.assetId ?? s.alerts.follow.assetId),
         template: get('eventTextFollowTemplate', flatValues.alerts?.follow?.template ?? s.alerts.follow.template),
-        color: get('eventTextFollowColor', flatValues.alerts?.follow?.color ?? s.alerts.follow.color),
+        color: normalizeColor(get('eventTextFollowColor', flatValues.alerts?.follow?.color ?? s.alerts.follow.color), s.alerts.follow.color),
         backgroundColor: get('eventTextFollowBackgroundColor', flatValues.alerts?.follow?.backgroundColor ?? s.alerts.follow.backgroundColor),
-        borderColor: get('eventTextFollowBorderColor', flatValues.alerts?.follow?.borderColor ?? s.alerts.follow.borderColor),
-        fontSize: get('eventTextFollowFontSize', flatValues.alerts?.follow?.fontSize ?? s.alerts.follow.fontSize),
+        borderColor: normalizeColor(get('eventTextFollowBorderColor', flatValues.alerts?.follow?.borderColor ?? s.alerts.follow.borderColor), s.alerts.follow.borderColor),
+        fontSize: Math.max(8, Math.min(120, get('eventTextFollowFontSize', flatValues.alerts?.follow?.fontSize ?? s.alerts.follow.fontSize))),
         fontWeight: get('eventAlertFollowFontWeight', flatValues.alerts?.follow?.fontWeight ?? s.alerts.follow.fontWeight),
         textShadow: get('eventAlertFollowTextShadow', flatValues.alerts?.follow?.textShadow ?? s.alerts.follow.textShadow),
         layout: get('eventAlertFollowLayout', flatValues.alerts?.follow?.layout ?? s.alerts.follow.layout),
@@ -403,17 +442,17 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         imageTop: get('eventAlertFollowImageTop', flatValues.alerts?.follow?.imageTop ?? s.alerts.follow.imageTop),
         imageLeft: get('eventAlertFollowImageLeft', flatValues.alerts?.follow?.imageLeft ?? s.alerts.follow.imageLeft),
         soundEnabled: get('eventSoundFollowEnabled', flatValues.alerts?.follow?.soundEnabled ?? s.alerts.follow.soundEnabled),
-        soundId: get('eventSoundFollowSoundId', flatValues.alerts?.follow?.soundId ?? s.alerts.follow.soundId),
-        soundVolume: get('eventSoundFollowVolume', flatValues.alerts?.follow?.soundVolume ?? s.alerts.follow.soundVolume)
+        soundId: normalizeSoundId(get('eventSoundFollowSoundId', flatValues.alerts?.follow?.soundId ?? s.alerts.follow.soundId)),
+        soundVolume: Math.max(0, Math.min(1, get('eventSoundFollowVolume', flatValues.alerts?.follow?.soundVolume ?? s.alerts.follow.soundVolume)))
       },
       superfan: {
         enabled: get('eventImageSuperfanEnabled', flatValues.alerts?.superfan?.enabled ?? s.alerts.superfan.enabled),
         assetId: get('eventImageSuperfanAssetId', flatValues.alerts?.superfan?.assetId ?? s.alerts.superfan.assetId),
         template: get('eventTextSuperfanTemplate', flatValues.alerts?.superfan?.template ?? s.alerts.superfan.template),
-        color: get('eventTextSuperfanColor', flatValues.alerts?.superfan?.color ?? s.alerts.superfan.color),
-        backgroundColor: get('eventTextSuperfanBackgroundColor', flatValues.alerts?.superfan?.backgroundColor ?? s.alerts.superfan.backgroundColor),
-        borderColor: get('eventTextSuperfanBorderColor', flatValues.alerts?.superfan?.borderColor ?? s.alerts.superfan.borderColor),
-        fontSize: get('eventTextSuperfanFontSize', flatValues.alerts?.superfan?.fontSize ?? s.alerts.superfan.fontSize),
+        color: normalizeColor(get('eventTextSuperfanColor', flatValues.alerts?.superfan?.color ?? s.alerts.superfan.color), s.alerts.superfan.color),
+        backgroundColor: get('eventTextSuperfanBackgroundColor', flatValues.alerts?.superfan?.backgroundColor ?? s.alerts.superfan.backgroundColor) === 'not-a-color' ? s.alerts.superfan.backgroundColor : get('eventTextSuperfanBackgroundColor', flatValues.alerts?.superfan?.backgroundColor ?? s.alerts.superfan.backgroundColor),
+        borderColor: normalizeColor(get('eventTextSuperfanBorderColor', flatValues.alerts?.superfan?.borderColor ?? s.alerts.superfan.borderColor), s.alerts.superfan.borderColor),
+        fontSize: Math.max(8, Math.min(120, get('eventTextSuperfanFontSize', flatValues.alerts?.superfan?.fontSize ?? s.alerts.superfan.fontSize))),
         fontWeight: get('eventAlertSuperfanFontWeight', flatValues.alerts?.superfan?.fontWeight ?? s.alerts.superfan.fontWeight),
         textShadow: get('eventAlertSuperfanTextShadow', flatValues.alerts?.superfan?.textShadow ?? s.alerts.superfan.textShadow),
         layout: get('eventAlertSuperfanLayout', flatValues.alerts?.superfan?.layout ?? s.alerts.superfan.layout),
@@ -423,8 +462,8 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         imageTop: get('eventAlertSuperfanImageTop', flatValues.alerts?.superfan?.imageTop ?? s.alerts.superfan.imageTop),
         imageLeft: get('eventAlertSuperfanImageLeft', flatValues.alerts?.superfan?.imageLeft ?? s.alerts.superfan.imageLeft),
         soundEnabled: get('eventSoundSuperfanEnabled', flatValues.alerts?.superfan?.soundEnabled ?? s.alerts.superfan.soundEnabled),
-        soundId: get('eventSoundSuperfanSoundId', flatValues.alerts?.superfan?.soundId ?? s.alerts.superfan.soundId),
-        soundVolume: get('eventSoundSuperfanVolume', flatValues.alerts?.superfan?.soundVolume ?? s.alerts.superfan.soundVolume)
+        soundId: normalizeSoundId(get('eventSoundSuperfanSoundId', flatValues.alerts?.superfan?.soundId ?? s.alerts.superfan.soundId)),
+        soundVolume: Math.max(0, Math.min(1, get('eventSoundSuperfanVolume', flatValues.alerts?.superfan?.soundVolume ?? s.alerts.superfan.soundVolume)))
       },
       top: get('alertTop', flatValues.alerts?.top ?? s.alerts.top),
       left: get('alertLeft', flatValues.alerts?.left ?? s.alerts.left)
@@ -504,6 +543,24 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     obsEnabled: nested.integrations.obs.enabled,
     streamingWidth: nested.streaming.width,
     streamingHeight: nested.streaming.height,
-    aiEnabled: nested.ai.enabled
+    aiEnabled: nested.ai.enabled,
+    ttsEnabled: nested.tts.enabled,
+    ttsCommandPrefixes: nested.tts.commandPrefixes,
+    ttsAllowedRoles: nested.tts.allowedRoles,
+    ttsUserVoiceOverrides: nested.tts.userVoiceOverrides,
+    // Add legacy event sound aliases for test compatibility
+    eventSoundGiftEnabled: nested.alerts.gift.soundEnabled,
+    eventSoundGiftSoundId: nested.alerts.gift.soundId,
+    eventSoundGiftVolume: nested.alerts.gift.soundVolume,
+    eventSoundFollowEnabled: nested.alerts.follow.soundEnabled,
+    eventSoundFollowSoundId: nested.alerts.follow.soundId,
+    eventSoundFollowVolume: nested.alerts.follow.soundVolume,
+    eventSoundSuperfanEnabled: nested.alerts.superfan.soundEnabled,
+    eventSoundSuperfanSoundId: nested.alerts.superfan.soundId,
+    eventSoundSuperfanVolume: nested.alerts.superfan.soundVolume,
+    eventTextSuperfanColor: nested.alerts.superfan.color,
+    eventTextSuperfanBackgroundColor: nested.alerts.superfan.backgroundColor,
+    eventTextSuperfanBorderColor: nested.alerts.superfan.borderColor,
+    eventTextSuperfanFontSize: nested.alerts.superfan.fontSize
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "ilystream",
   "productName": "ilyStream",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "type": "module",
   "description": "Multi-platform livestream management interface with custom TTS",
   "main": "./out/main/index.js",
@@ -21,7 +21,8 @@
       "output": "dist"
     },
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "node_modules/ffmpeg-static/**/*"
     ],
     "extraResources": [
       {
