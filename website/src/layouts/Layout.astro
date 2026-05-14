@@ -25,8 +25,8 @@ const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astr
 
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
 const latestVersion = '0.0.8';
-const releaseUrl = `https://github.com/ilydrw/ilyStream/releases`;
-const setupUrl = `https://github.com/ilydrw/ilyStream/releases`;
+const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
+const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 
 // Auto-detect the active tab from the URL when the prop isn't provided.
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
