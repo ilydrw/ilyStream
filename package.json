@@ -11,7 +11,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build:native-audio && npm run build && electron-builder --win",
+    "package": "npm run build:native-audio && npm run build && electron-builder --win --publish never",
     "release": "npm run build:native-audio && npm run build && electron-builder --win --publish always",
     "lint": "tsc --noEmit",
     "test": "vitest run"
