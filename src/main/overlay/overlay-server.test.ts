@@ -95,15 +95,18 @@ describe('OverlayServer', () => {
       })
     )
 
-    const likesResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=likes`)
-    const likesStream = await readStreamUntil(likesResponse, '"snapshot"')
+    const likesController = new AbortController()
+    const likesResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=likes`, {
+      signal: likesController.signal
+    })
+    const likesStream = await readStreamUntil(likesResponse, '"snapshot"', likesController)
     expect(likesStream).toContain('"totalLikes":400')
     expect(likesStream).toContain('"displayName":"Fan"')
     expect(likesStream).toContain('"count":25')
   })
 })
 
-async function readStreamUntil(response: Response, needle: string): Promise<string> {
+async function readStreamUntil(response: Response, needle: string, controller: AbortController): Promise<string> {
   const reader = response.body?.getReader()
   if (!reader) return ''
 
@@ -112,12 +115,18 @@ async function readStreamUntil(response: Response, needle: string): Promise<stri
 
   try {
     for (let i = 0; i < 5 && !text.includes(needle); i++) {
-      const result = await reader.read()
+      const result = await Promise.race([
+        reader.read(),
+        new Promise<ReadableStreamReadResult<Uint8Array>>((resolve) => {
+          setTimeout(() => resolve({ done: true, value: undefined }), 1000)
+        })
+      ])
       if (result.done) break
       text += decoder.decode(result.value, { stream: true })
     }
   } finally {
-    await reader.cancel().catch(() => {})
+    controller.abort()
+    void reader.cancel().catch(() => {})
   }
 
   return text
