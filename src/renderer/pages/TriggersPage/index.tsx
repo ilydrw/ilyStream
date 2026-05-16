@@ -126,18 +126,18 @@ export default function TriggersPage() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center bg-white/[0.03] border border-white/5 rounded-xl p-1 h-12">
-            <button 
+            <button
               onClick={() => setActiveTab('commander')}
               className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'commander' ? 'bg-accent text-black' : 'text-white/40 hover:text-white'
+                activeTab === 'commander' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
               }`}
             >
               Command Center
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('rules')}
               className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'rules' ? 'bg-accent text-black' : 'text-white/40 hover:text-white'
+                activeTab === 'rules' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
               }`}
             >
               Rules Manager

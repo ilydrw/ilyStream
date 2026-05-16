@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function LikesTrackerConfigEditor({
   draft,
@@ -59,7 +60,7 @@ export function LikesTrackerConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -71,10 +72,12 @@ export function LikesTrackerConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', Number(e.currentTarget.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

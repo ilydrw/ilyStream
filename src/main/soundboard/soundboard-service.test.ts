@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -41,6 +41,14 @@ describe('SoundboardService', () => {
     expect(service.getSoundPath('../secret.mp3')).toBeNull()
     expect(service.getSoundPath('alerts/../secret.mp3')).toBeNull()
     expect(service.getSoundPath('alerts/sound.ogg')).toBeNull()
+  })
+
+  it('rejects upload sources that are not files', () => {
+    const service = new SoundboardService(makeDb())
+    const directoryPath = join(userDataDir, 'not-a-file.mp3')
+    mkdirSync(directoryPath)
+
+    expect(() => service.uploadSound(directoryPath)).toThrow('Sound file was not found.')
   })
 })
 

@@ -3,6 +3,7 @@ import { URL } from 'url'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { join, extname } from 'path'
+import { randomBytes } from 'crypto'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { buildDeckHtml } from './templates/deck'
 import { buildCompanionHtml } from './templates/companion'
@@ -25,6 +26,31 @@ import type { LikesTracker } from './managers/likes-tracker'
 import type { DeviceApi } from './device-api'
 import type { OverlayChannel } from './types'
 
+const ALLOWED_OVERLAY_CHANNELS = new Set<OverlayChannel>([
+  'chat',
+  'chat-unified',
+  'alerts',
+  'goals',
+  'now-playing',
+  'follower-goal',
+  'socials',
+  'screen-border',
+  'event-particles',
+  'falling-roses',
+  'gift-overlays',
+  'particles',
+  'discord-promo',
+  'node-network',
+  'latest-gifter',
+  'physics',
+  'deck',
+  'leaderboard',
+  'timer',
+  'likes'
+])
+
+const TEST_ENDPOINTS_ENABLED = process.env.ILYSTREAM_ENABLE_TEST_ENDPOINTS === '1'
+
 const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,6 +70,7 @@ const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
 export class OverlayRouter {
   private dualVerticalClients = new Set<ServerResponse>()
   private dualVerticalLastFrame: Buffer | null = null
+  private deckCsrfToken = randomBytes(32).toString('base64url')
 
   constructor(
     private getDb: () => Database | null,
@@ -60,7 +87,8 @@ export class OverlayRouter {
     private getStatus: () => any,
     private getObsStatus: () => any,
     private getViewerCounts: () => Record<string, number>,
-    private handleStreamEvent: (event: any) => void
+    private handleStreamEvent: (event: any) => void,
+    private emitDeckAction: (action: { type: string; payload?: unknown }) => void
   ) {}
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -68,13 +96,13 @@ export class OverlayRouter {
     const pathname = url.pathname
 
     if (request.method === 'OPTIONS') {
-      this.writeCorsHeaders(response, 204)
+      this.writeCorsHeaders(response, 204, 'application/json', request)
       response.end()
       return
     }
 
     if (request.method === 'HEAD') {
-      this.writeCorsHeaders(response, 200, 'text/html')
+      this.writeCorsHeaders(response, 200, 'text/html', request)
       response.end()
       return
     }
@@ -87,11 +115,16 @@ export class OverlayRouter {
 
     if (pathname === '/overlay/deck') {
       const sounds = this.getSoundboardService()?.getAllSounds('board') || []
-      this.writeHtml(response, buildDeckHtml(sounds))
+      const actions = this.getDb()?.getAllDeckActions() || []
+      this.writeHtml(response, buildDeckHtml(sounds, actions, this.deckCsrfToken), 200, request)
       return
     }
 
     if (pathname === '/test/alert') {
+      if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
+        this.writeJson(response, { error: 'Unauthorized' }, 401, request)
+        return
+      }
       const type = url.searchParams.get('type') || 'follow'
       const label = type === 'gift' ? 'Test User sent 1x Rose!' :
                    type === 'subscription' || type === 'superfan' ? 'Test User just subscribed!' :
@@ -112,11 +145,15 @@ export class OverlayRouter {
         textShadow: '0 4px 15px rgba(0,0,0,0.6)',
         layout: 'text-only'
       }, 'tiktok')
-      this.writeJson(response, { success: true, message: 'Test alert sent' })
+      this.writeJson(response, { success: true, message: 'Test alert sent' }, 200, request)
       return
     }
 
     if (pathname === '/test/like') {
+      if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
+        this.writeJson(response, { error: 'Unauthorized' }, 401, request)
+        return
+      }
       this.handleStreamEvent({
         id: 'test-' + Date.now(),
         platform: 'tiktok',
@@ -127,7 +164,7 @@ export class OverlayRouter {
         totalLikes: 5000,
         raw: {}
       })
-      this.writeJson(response, { success: true, message: 'Test like sent' })
+      this.writeJson(response, { success: true, message: 'Test like sent' }, 200, request)
       return
     }
 
@@ -143,12 +180,12 @@ export class OverlayRouter {
           alerts: this.sse.getClientCount('alerts'),
           goals: this.sse.getClientCount('goals')
         }
-      })
+      }, 200, request)
       return
     }
 
     if (pathname === '/overlay/health' || pathname === '/health') {
-      this.writeJson(response, pathname === '/health' ? 'OK' : this.getStatus())
+      this.writeJson(response, pathname === '/health' ? 'OK' : this.getStatus(), 200, request)
       return
     }
 
@@ -158,31 +195,36 @@ export class OverlayRouter {
       const filtered = Number.isFinite(since) && since > 0
         ? alertHistory.filter((alert) => Date.parse(alert.createdAt) > since)
         : alertHistory
-      this.writeJson(response, filtered)
+      this.writeJson(response, filtered, 200, request)
       return
     }
-
     const stateMap: Record<string, any> = {
       '/overlay/chat/state': this.chat.getHistory(),
       '/overlay/goals/state': this.goals.getState(),
       '/overlay/now-playing/state': this.nowPlaying.getState(),
-      '/overlay/state/latest-gifter': (this.getStatus() as any).lastGifter // Last gifter still in server for now
+      '/overlay/state/latest-gifter': this.getLatestGifter()
     }
 
     if (stateMap[pathname]) {
-      this.writeJson(response, stateMap[pathname])
+      this.writeJson(response, stateMap[pathname], 200, request)
       return
     }
 
     if (pathname === '/overlay/events') {
-      const channel = (url.searchParams.get('channel') as OverlayChannel) || 'chat'
+      const channel = this.parseOverlayChannel(url.searchParams.get('channel') || 'chat')
+      if (!channel) {
+        this.writeJson(response, { error: 'Invalid overlay channel' }, 400, request)
+        return
+      }
       this.sse.attachClient(channel, request, response)
 
       const snapshot = (channel === 'chat' || channel === 'chat-unified') ? this.chat.getHistory() :
                       channel === 'alerts' ? [] :
                       channel === 'goals' ? this.goals.getState() :
                       channel === 'likes' ? this.likes.getSnapshot() :
-                      this.nowPlaying.getState()
+                      channel === 'latest-gifter' ? this.getLatestGifter() :
+                      channel === 'now-playing' ? this.nowPlaying.getState() :
+                      null
 
       const snapshotPayload = { type: 'snapshot', payload: snapshot }
       console.log(`[overlay] SSE Snapshot for channel ${channel}:`, JSON.stringify(snapshotPayload))
@@ -196,14 +238,14 @@ export class OverlayRouter {
     }
 
     if (pathname === '/overlay/dual-vertical.html' || pathname === '/overlay/dual-vertical') {
-      this.writeHtml(response, DUAL_VERTICAL_VIEWER_HTML)
+      this.writeHtml(response, DUAL_VERTICAL_VIEWER_HTML, 200, request)
       return
     }
 
     if (pathname === '/overlay/companion.html' || pathname === '/overlay/companion') {
       const db = this.getDb()
       const settings = db ? resolveAppSettings(db.getAllSettings()) : null
-      
+
       const html = buildCompanionHtml({
         obsStatus: this.getObsStatus(),
         viewerCounts: this.getViewerCounts(),
@@ -211,7 +253,7 @@ export class OverlayRouter {
         nowPlaying: this.nowPlaying.getState(),
         ui: settings?.ui || null
       })
-      this.writeHtml(response, html)
+      this.writeHtml(response, html, 200, request)
       return
     }
 
@@ -221,7 +263,7 @@ export class OverlayRouter {
     }
 
     if (pathname.startsWith('/assets/') || pathname.startsWith('/sounds/')) {
-      await this.serveAsset(pathname, response)
+      await this.serveAsset(pathname, request, response)
       return
     }
 
@@ -230,7 +272,7 @@ export class OverlayRouter {
       if (handled) return
     }
 
-    this.writeJson(response, { error: 'Overlay route not found.' }, 404)
+    this.writeJson(response, { error: 'Overlay route not found.' }, 404, request)
   }
 
   setDualVerticalFrame(frame: Buffer): void {
@@ -250,6 +292,17 @@ export class OverlayRouter {
     return this.dualVerticalClients.size
   }
 
+  private getLatestGifter(): any {
+    const db = this.getDb()
+    if (!db) return null
+    try {
+      const saved = db.getSetting('last_gifter_v1')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  }
+
   closeAllClients(): void {
     for (const client of this.dualVerticalClients) {
       try { client.end() } catch {}
@@ -259,13 +312,8 @@ export class OverlayRouter {
   }
 
   private async handleDeckAction(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
-    const token = url.searchParams.get('token')
-    const isLocal = request.socket.remoteAddress === '::1' ||
-                   request.socket.remoteAddress === '127.0.0.1' ||
-                   request.socket.remoteAddress === '::ffff:127.0.0.1'
-
-    if (!isLocal && (!token || !this.getAuthService()?.verifyToken(token))) {
-      this.writeJson(response, { error: 'Unauthorized' }, 401)
+    if (!this.authorizeDeckAction(request, url)) {
+      this.writeJson(response, { error: 'Unauthorized' }, 401, request)
       return
     }
 
@@ -274,16 +322,19 @@ export class OverlayRouter {
     request.on('end', () => {
       try {
         const action = JSON.parse(body)
-        this.chat.broadcastFeature({ type: 'deck-action', action }) // Reusing chat for deck action broadcast if needed
-        // The actual emission happens in OverlayServer for now to avoid circular deps
-        this.writeJson(response, { success: true })
+        if (!action || typeof action.type !== 'string' || !action.type.trim()) {
+          this.writeJson(response, { error: 'Invalid action' }, 400, request)
+          return
+        }
+        this.emitDeckAction({ type: action.type.trim(), payload: action.payload })
+        this.writeJson(response, { success: true }, 200, request)
       } catch (e) {
-        this.writeJson(response, { error: 'Invalid body' }, 400)
+        this.writeJson(response, { error: 'Invalid body' }, 400, request)
       }
     })
   }
 
-  private async serveAsset(pathname: string, response: ServerResponse): Promise<void> {
+  private async serveAsset(pathname: string, request: IncomingMessage, response: ServerResponse): Promise<void> {
     const isSound = pathname.startsWith('/sounds/')
     const segments = pathname.split('/')
     const fileName = decodeURIComponent(segments.pop() || '')
@@ -309,14 +360,14 @@ export class OverlayRouter {
         response.writeHead(200, {
           'Content-Type': mimeTypes[ext] || 'application/octet-stream',
           'Content-Length': data.length,
-          'Access-Control-Allow-Origin': '*',
+          ...this.corsHeaders(request),
           'Cache-Control': 'public, max-age=3600'
         })
         response.end(data)
         return
       } catch {}
     }
-    this.writeJson(response, { error: 'Asset not found' }, 404)
+    this.writeJson(response, { error: 'Asset not found' }, 404, request)
   }
 
   private async serveOverlay(pathname: string, url: URL, response: ServerResponse): Promise<boolean> {
@@ -333,9 +384,9 @@ export class OverlayRouter {
 
     const applyOverride = (widget: Widget | undefined): Widget | undefined => {
       if (!widget || !configOverride) return widget
-      return { 
-        ...widget, 
-        config: { ...(widget.config as any), ...(configOverride as any) } 
+      return {
+        ...widget,
+        config: { ...(widget.config as any), ...(configOverride as any) }
       } as Widget
     }
 
@@ -375,7 +426,7 @@ export class OverlayRouter {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       Pragma: 'no-cache',
       Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+      ...this.corsHeaders(request)
     })
 
     this.dualVerticalClients.add(response)
@@ -394,24 +445,83 @@ export class OverlayRouter {
     })
   }
 
-  private writeCorsHeaders(response: ServerResponse, statusCode: number, contentType = 'application/json'): void {
+  private authorizeDeckAction(request: IncomingMessage, url: URL): boolean {
+    const deckToken = request.headers['x-ilystream-deck-token']
+    if (deckToken === this.deckCsrfToken && this.isSameOriginRequest(request)) return true
+    return this.authorizeRemoteControl(request, url)
+  }
+
+  private authorizeRemoteControl(request: IncomingMessage, url: URL): boolean {
+    const queryToken = url.searchParams.get('token')
+    if (queryToken && this.getAuthService()?.verifyToken(queryToken)) return true
+
+    const header = request.headers.authorization
+    const bearer =
+      typeof header === 'string' && header.startsWith('Bearer ')
+        ? header.slice('Bearer '.length).trim()
+        : null
+
+    return !!bearer && !!this.getAuthService()?.verifyToken(bearer)
+  }
+
+  private isSameOriginRequest(request: IncomingMessage): boolean {
+    const origin = request.headers.origin
+    if (!origin) return true
+    const host = request.headers.host
+    if (!host) return false
+    try {
+      const parsed = new URL(origin)
+      return parsed.host === host && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+    } catch {
+      return false
+    }
+  }
+
+  private parseOverlayChannel(value: string): OverlayChannel | null {
+    const channel = value.split(',')[0]?.trim() as OverlayChannel
+    return ALLOWED_OVERLAY_CHANNELS.has(channel) ? channel : null
+  }
+
+  private writeCorsHeaders(response: ServerResponse, statusCode: number, contentType = 'application/json', request?: IncomingMessage): void {
     response.writeHead(statusCode, {
       'Content-Type': contentType,
-      'Access-Control-Allow-Origin': '*',
+      ...this.corsHeaders(request),
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-ilyStream-Deck-Token',
       'Access-Control-Max-Age': '86400'
     })
   }
 
-  private writeJson(response: ServerResponse, data: any, statusCode = 200): void {
+  private writeJson(response: ServerResponse, data: any, statusCode = 200, request?: IncomingMessage): void {
     const json = JSON.stringify(data)
-    this.writeCorsHeaders(response, statusCode)
+    this.writeCorsHeaders(response, statusCode, 'application/json', request)
     response.end(json)
   }
 
-  private writeHtml(response: ServerResponse, html: string, statusCode = 200): void {
-    this.writeCorsHeaders(response, statusCode, 'text/html; charset=utf-8')
+  private writeHtml(response: ServerResponse, html: string, statusCode = 200, request?: IncomingMessage): void {
+    this.writeCorsHeaders(response, statusCode, 'text/html; charset=utf-8', request)
     response.end(html)
+  }
+
+  private corsHeaders(request?: IncomingMessage): Record<string, string> {
+    if (!request) return {}
+    const origin = request.headers.origin
+    if (typeof origin !== 'string' || !this.isAllowedLocalOrigin(origin)) return {}
+    return {
+      'Access-Control-Allow-Origin': origin,
+      Vary: 'Origin'
+    }
+  }
+
+  private isAllowedLocalOrigin(origin: string): boolean {
+    try {
+      const parsed = new URL(origin)
+      return (
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(parsed.hostname)
+      )
+    } catch {
+      return false
+    }
   }
 }

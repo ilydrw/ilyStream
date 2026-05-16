@@ -24,7 +24,7 @@ export function WidgetCard({
     <section className="app-section-card glass overflow-hidden flex flex-col">
       <div className="p-5 border-b border-white/[0.05] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-accent shrink-0">
+          <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#d035f1] shrink-0">
             <Icon size={18} />
           </div>
           <div className="min-w-0">
@@ -72,8 +72,8 @@ export function WidgetCard({
                   src={`${url}?preview=1`}
                   title={`${widget.name} preview`}
                   className="absolute top-0 left-0 w-[400%] h-[400%] border-none"
-                  style={{ 
-                    transform: 'scale(0.25)', 
+                  style={{
+                    transform: 'scale(0.25)',
                     transformOrigin: '0 0',
                     background: 'transparent'
                   }}
@@ -84,8 +84,8 @@ export function WidgetCard({
                 <span>Preview Offline</span>
               </div>
             )}
-            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest ${url ? 'text-accent' : 'text-white/25'}`}>
-               <div className={`w-1 h-1 rounded-full ${url ? 'bg-accent animate-pulse' : 'bg-white/20'}`} />
+            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
+               <div className={`w-1 h-1 rounded-full ${url ? 'bg-[#d035f1] animate-pulse' : 'bg-white/20'}`} />
                {url ? 'Preview' : 'Offline'}
             </div>
             {/* Click to configure overlay */}
@@ -94,7 +94,7 @@ export function WidgetCard({
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onConfigure} className="flex-1 app-button !h-10 text-xs font-bold">
+          <button onClick={onConfigure} className="flex-1 app-button-primary !h-10 text-xs font-bold">
             <IconSettings size={14} className="mr-2 opacity-60" />
             Configure
           </button>

@@ -238,7 +238,8 @@ function createSimulatedUser(): UserInfo {
     isSubscriber: false,
     isVip: false,
     isFollower: true,
-    badges: []
+    badges: [],
+    profilePictureUrl: 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/7060293123849551105~tplv-obj.png'
   }
 }
 

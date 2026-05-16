@@ -1,3 +1,5 @@
+import { getAnimationCss } from './animation-utils'
+
 export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
   // Simple multi-goal display that uses the OverlayGoalState from /overlay/goals/state
   return `<!doctype html>
@@ -30,8 +32,8 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
         align-items: center;
         gap: 12px;
         min-width: 180px;
-        animation: slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
       }
+      ${getAnimationCss({ style: widget?.config?.animationStyle || 'slide', duration: widget?.config?.animationDuration || 500 }, '.goal-item')}
       .goal-icon {
         width: 32px;
         height: 32px;
@@ -57,10 +59,6 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
         font-weight: 800;
         margin-top: -2px;
       }
-      @keyframes slide-in {
-        from { opacity: 0; transform: translateX(20px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
     </style>
   </head>
   <body>
@@ -70,7 +68,7 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
 
       function render(state) {
         container.innerHTML = '';
-        
+
         const metrics = [
           { label: 'Followers', value: state.totalFollows, icon: '👤' },
           { label: 'Likes', value: state.totalLikes, icon: '❤️' },
@@ -82,14 +80,19 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
           div.className = 'goal-item';
           div.style.animationDelay = (i * 0.1) + 's';
           div.innerHTML = \`
-            <div class="goal-icon">\${m.icon}</div>
+              <div class="goal-icon">\${m.icon}</div>
             <div class="goal-info">
               <div class="goal-label">\${m.label}</div>
-              <div class="goal-value">\${m.value.toLocaleString()}</div>
+              <div class="goal-value">\${formatNumber(m.value)}</div>
             </div>
           \`;
           container.appendChild(div);
         });
+      }
+
+      function formatNumber(value) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
       }
 
       function hydrate() {

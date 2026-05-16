@@ -5,6 +5,7 @@ import {
   type Widget
 } from '../../../../../shared/widgets'
 import { Section, Field, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function DiscordPromoConfigEditor({
   draft,
@@ -54,7 +55,7 @@ export function DiscordPromoConfigEditor({
           <ColorRow label="Text" value={config.textColor} onChange={(v) => update('textColor', v)} />
           <ColorRow label="Icon" value={config.iconColor} onChange={(v) => update('iconColor', v)} />
         </div>
-        
+
         <Field label={`Scale — ${Math.round(config.scale * 100)}%`}>
           <input
             type="range"
@@ -63,7 +64,7 @@ export function DiscordPromoConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -75,7 +76,7 @@ export function DiscordPromoConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -112,6 +113,8 @@ export function DiscordPromoConfigEditor({
           </button>
         </div>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

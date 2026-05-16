@@ -1,4 +1,5 @@
 import { LatestGifterConfig, DEFAULT_LATEST_GIFTER_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
   const cfg: LatestGifterConfig = { ...DEFAULT_LATEST_GIFTER_CONFIG, ...(widget?.config || {}) }
@@ -21,7 +22,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: 'Outfit', sans-serif;
+      font-family: "${cfg.fontFamily || 'Outfit'}", sans-serif;
     }
 
     .widget-container {
@@ -42,15 +43,22 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
     .gifter-pill {
       display: flex;
       align-items: center;
-      background: rgba(0, 0, 0, 0.85);
-      border-radius: 50px;
+      background: rgba(10, 12, 18, ${0.4 + (cfg.glassIntensity ?? 0.5) * 0.45});
+      backdrop-filter: blur(${(cfg.glassIntensity ?? 0.5) * 40}px);
+      -webkit-backdrop-filter: blur(${(cfg.glassIntensity ?? 0.5) * 40}px);
+      border-radius: ${cfg.borderRadius ?? 50}px;
       padding: 4px 24px 4px 6px;
       gap: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       box-shadow: 0 10px 30px rgba(0,0,0,0.5);
       position: relative;
       min-width: 200px;
     }
+
+    ${getAnimationCss({
+      style: cfg.animationStyle || 'slide',
+      duration: cfg.animationDuration || 600
+    }, '.gifter-pill')}
 
     /* Liquid Gradient Border */
     .gifter-pill::after {
@@ -59,7 +67,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
       inset: -1px;
       background: linear-gradient(90deg, ${cfg.primaryColor}, ${cfg.secondaryColor}, ${cfg.primaryColor});
       background-size: 200% 100%;
-      border-radius: 50px;
+      border-radius: ${cfg.borderRadius ?? 50}px;
       z-index: -1;
       animation: gradient-flow 3s linear infinite;
     }
@@ -142,9 +150,9 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
     function updateGifter(name, avatar) {
       if (name) nameEl.innerText = name;
       if (avatar) avatarEl.src = avatar;
-      
+
       widgetEl.classList.remove('update-anim');
-      void widgetEl.offsetWidth; 
+      void widgetEl.offsetWidth;
       widgetEl.classList.add('update-anim');
     }
 

@@ -15,8 +15,7 @@ import { StatsService } from '../stats/stats-service'
 import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { StreamingService } from './streaming-service'
-import * as fs from 'fs'
-import * as path from 'path'
+import { BrowserWindow } from 'electron'
 
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
@@ -44,16 +43,7 @@ export class EventOrchestrator {
   init(): void {
     this.platformManager.on('event', (event) => {
       console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
-      
-      // DEBUG: Write to a file in the workspace so I can see it
-      try {
-        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-        const logLine = `[${new Date().toISOString()}] ${event.platform}:${event.type} - ${JSON.stringify(event).slice(0, 500)}\n`
-        fs.appendFileSync(debugPath, logLine)
-      } catch (e) {
-        // Ignore errors
-      }
-      
+
       // 1. Log to DB
       this.db.addEvent(
         event.platform,
@@ -71,7 +61,7 @@ export class EventOrchestrator {
 
       // 4. Spotify Integration (Song Requests, etc)
       const handledBySpotify = this.spotifyService.processEvent(event)
-      
+
       // 5. TTS (only if not a spotify command or if configured)
       if (!handledBySpotify) {
         console.log(`[orchestrator] Sending to TTS engine...`)
@@ -113,7 +103,7 @@ export class EventOrchestrator {
     this.triggerEngine.on('action:play-sound', (action) => {
       this.eventSoundService.playSound(action.soundId, action.volume || 1)
     })
-    
+
     // Listen to Deck Actions
     this.overlayServer.on('deck-action', (action) => this.handleDeckAction(action))
 
@@ -166,7 +156,7 @@ export class EventOrchestrator {
 
   private recordSongRequested(request: any): void {
     if (!request || typeof request.id !== 'string') return
-    
+
     // We de-dupe to ensure we don't count the same request multiple times if events overlap
     if (this.countedSongRequestIds.has(request.id)) return
     this.countedSongRequestIds.add(request.id)
@@ -294,7 +284,7 @@ export class EventOrchestrator {
     }
   }
 
-  private handleDeckAction(action: { type: string; payload?: any }): void {
+  public handleDeckAction(action: { type: string; payload?: any }): void {
     console.log(`[EventOrchestrator] Executing Deck Action: ${action.type}`)
 
     switch (action.type) {
@@ -364,7 +354,18 @@ export class EventOrchestrator {
         break
 
       case 'FEATURE_MESSAGE':
-        this.overlayServer.broadcast('alerts', { type: 'featured-message', payload: action.payload })
+        this.overlayServer.broadcastFeatureMessage(action.payload)
+        break
+
+      case 'SET_SCENE':
+        if (action.payload?.sceneId) {
+          console.log(`[EventOrchestrator] Triggering Scene Change: ${action.payload.sceneId}`)
+          BrowserWindow.getAllWindows().forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('studio:active-scene-changed', action.payload.sceneId)
+            }
+          })
+        }
         break
 
       case 'PLAY_SOUND':

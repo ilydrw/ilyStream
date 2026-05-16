@@ -106,10 +106,10 @@ export function generateOverlayHtml(
 ): string | null {
   const type = widget.type === ('gift-overlays' as any) ? 'event-particles' : widget.type
   const config = type === 'alerts'
-    ? { ...widget.config, ...context.settings }
+    ? { ...(widget.config as any), ...(context.settings as any) }
     : widget.config
 
-  switch (type) {
+  switch (type as any) {
     case 'chat': return buildChatOverlayHtml(widget, isPreview)
     case 'alerts': return buildAlertsOverlayHtml({ ...widget, config }, isPreview)
     case 'goal': return buildGoalsOverlayHtml(widget, isPreview)
@@ -124,8 +124,8 @@ export function generateOverlayHtml(
     case 'node-network': return buildNodeNetworkHtml(widget, isPreview)
     case 'latest-gifter': return buildLatestGifterHtml(widget, isPreview)
     case 'physics': return buildPhysicsOverlayHtml(widget, isPreview)
-    case 'deck': return buildDeckHtml(context.boardSounds, context.deckActions)
-    case 'leaderboard': return buildLeaderboardHtml()
+    case 'deck': return buildDeckHtml(context.boardSounds as any, context.deckActions as any)
+    case 'leaderboard': return buildLeaderboardHtml(widget, isPreview)
     case 'chat-unified': return buildChatWidgetHtml(widget, isPreview)
     case 'likes-tracker': return buildLikesTrackerHtml(widget, isPreview)
     default: return null

@@ -1,4 +1,5 @@
 import { SocialsConfig, DEFAULT_SOCIALS_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 const OVERLAY_POSITION_MAP: Record<string, string> = {
   'bottom-left':   'align-items:flex-end;justify-content:flex-start',
@@ -18,7 +19,12 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: SocialsConfig = { ...DEFAULT_SOCIALS_CONFIG, ...(widget?.config || {}) }
-  const bgRgba = isPreview ? 'transparent' : hexToRgba(cfg.backgroundColor, cfg.backgroundOpacity)
+  const glassIntensity = cfg.glassIntensity ?? 0.5
+  const bgOpacity = (0.35 + (glassIntensity * 0.55))
+  const blur = glassIntensity * 45
+  const borderRadius = cfg.borderRadius ?? 20
+  const fontFamily = cfg.fontFamily || 'Outfit'
+  const bgRgba = isPreview ? 'transparent' : hexToRgba(cfg.backgroundColor, bgOpacity)
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] || OVERLAY_POSITION_MAP['bottom-left']
 
   const platformIcons: Record<string, string> = {
@@ -42,7 +48,9 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         --accent: ${cfg.accentColor || '#38bdf8'};
         --width: ${cfg.width || 280}px;
         --bg: ${bgRgba || 'rgba(10,10,10,0.8)'};
-        --blur: ${cfg.blur ?? 12}px;
+        --blur: ${blur}px;
+        --radius: ${borderRadius}px;
+        --font-main: '${fontFamily}', 'Outfit', sans-serif;
       }
       * {
         box-sizing: border-box;
@@ -59,15 +67,15 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         background-color: transparent !important;
         overflow: hidden;
       }
-      
+
       body {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Outfit', sans-serif;
+        font-family: var(--font-main);
         color: #FFFFFF;
       }
-      
+
       .card {
         width: fit-content;
         height: fit-content;
@@ -78,18 +86,19 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         gap: 2vh;
         z-index: 1;
       }
-      
+      ${getAnimationCss({ style: (cfg as any).animationStyle || 'slide', duration: (cfg as any).animationDuration || 800 }, '.card')}
+
       .card-bg {
         position: absolute;
         inset: 0;
-        background: rgba(10, 12, 18, 0.45) !important;
-        backdrop-filter: blur(40px) saturate(250%);
-        -webkit-backdrop-filter: blur(40px) saturate(250%);
-        border: 1px solid rgba(255,255,255,0.15);
-        box-shadow: 
+        background: var(--bg) !important;
+        backdrop-filter: blur(var(--blur)) saturate(250%);
+        -webkit-backdrop-filter: blur(var(--blur)) saturate(250%);
+        border: 1px solid rgba(255,255,255,${0.05 + (glassIntensity * 0.15)});
+        box-shadow:
             0 20px 50px rgba(0,0,0,0.5),
             inset 0 0 20px rgba(255,255,255,0.05);
-        border-radius: 2vh;
+        border-radius: var(--radius);
         z-index: -1;
       }
 
@@ -171,19 +180,19 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         justify-content: center;
         flex-shrink: 0;
       }
-      .icon-box svg { 
-        width: 100%; 
-        height: 100%; 
+      .icon-box svg {
+        width: 100%;
+        height: 100%;
         filter: drop-shadow(0 0.5vh 1vh rgba(0,0,0,0.3));
       }
- 
+
       .info {
         display: flex;
         flex-direction: column;
         justify-content: center;
         overflow: hidden;
       }
- 
+
       .platform-name {
         font-size: 2.8vh;
         font-weight: 900;
@@ -217,11 +226,11 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       .anim-out-roll { transform: translateY(-40px); opacity: 0; }
       .anim-out-fade { opacity: 0; }
       .anim-out-slide { transform: translateX(-40px); opacity: 0; }
-      
+
       .anim-in-roll { transform: translateY(40px); opacity: 0; }
       .anim-in-fade { opacity: 0; }
       .anim-in-slide { transform: translateX(40px); opacity: 0; }
-      
+
       .anim-active { transform: translate(0, 0); opacity: 1; }
 
     </style>
@@ -247,13 +256,13 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       const ACCOUNTS = ${JSON.stringify(cfg.accounts?.length > 0 ? cfg.accounts : [{ id: 'p1', platform: 'twitter', username: '@Username' }])};
       const INTERVAL_MS = ${(cfg.interval || 8) * 1000};
       const ANIMATION_TYPE = '${cfg.animation || 'roll'}';
-      
+
       const elContent = document.getElementById('content');
       const elIcon = document.getElementById('icon');
       const elPlatform = document.getElementById('platform');
       const elUsername = document.getElementById('username');
       const elProgress = document.getElementById('progress');
-      
+
       const ICONS = ${JSON.stringify(platformIcons)};
       const PLATFORM_COLORS = {
         twitter: '#1DA1F2',
@@ -265,14 +274,14 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         kick: '#53FC18',
         custom: 'var(--accent)'
       };
-      
+
       let currentIndex = 0;
       let progressAnimation;
 
       function renderAccount(index) {
         const acc = ACCOUNTS[index];
         if (!acc) return;
-        
+
         const BRAND_NAMES = {
           twitter: 'Twitter',
           youtube: 'YouTube',
@@ -309,7 +318,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         });
 
         if (progressAnimation) progressAnimation.cancel();
-        
+
         await exitAnim.finished;
 
         renderAccount(nextIndex);
@@ -341,7 +350,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       // Initial state
       renderAccount(0);
       elContent.style.opacity = '1';
-      
+
       if (ACCOUNTS.length > 1) {
         progressAnimation = elProgress.animate([
           { width: '0%', opacity: 0.5 },

@@ -15,6 +15,17 @@ import { NowPlayingManager } from './managers/now-playing-manager'
 import { LikesTracker } from './managers/likes-tracker'
 import { DEFAULT_PORT } from './types'
 
+const DEFAULT_LISTEN_HOST = '127.0.0.1'
+const ALLOWED_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+
+function resolveListenHost(): string {
+  const requested = (process.env.ILYSTREAM_OVERLAY_HOST || DEFAULT_LISTEN_HOST).trim()
+  if (!requested) return DEFAULT_LISTEN_HOST
+  if (ALLOWED_LISTEN_HOSTS.has(requested)) return requested
+  console.warn(`[OverlayServer] Using non-loopback overlay host from ILYSTREAM_OVERLAY_HOST: ${requested}`)
+  return requested
+}
+
 export class OverlayServer extends EventEmitter {
   private db: Database | null = null
   private assetService: AssetService | null = null
@@ -24,6 +35,7 @@ export class OverlayServer extends EventEmitter {
   private platformManager: any | null = null
   private soundboardService: any | null = null
   private server: Server | null = null
+  private listenHost = DEFAULT_LISTEN_HOST
 
   private sse: SSEManager
   private router: OverlayRouter
@@ -76,7 +88,8 @@ export class OverlayServer extends EventEmitter {
       () => this.getStatus(),
       () => this.obsService?.getStatus() || null,
       () => this.platformManager?.getViewerCounts() || {},
-      (event) => this.handleStreamEvent(event)
+      (event) => this.handleStreamEvent(event),
+      (action) => this.emit('deck-action', action)
     )
   }
 
@@ -143,22 +156,13 @@ export class OverlayServer extends EventEmitter {
     this.sse.broadcast('node-network', { type: 'speech-state', isSpeaking, isAI })
     this.deviceApi?.broadcast('ttsState', { isSpeaking, isAI })
   }
-  
+
   broadcastRecordingState(isRecording: boolean, path?: string): void {
     this.deviceApi?.broadcast('recordingState', { isRecording, path })
   }
 
   broadcast(channel: any, payload: any): void {
     console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
-    
-    // DEBUG
-    try {
-      const fs = require('fs')
-      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-      const logLine = `[${new Date().toISOString()}] BROADCAST:${channel} - ${JSON.stringify(payload).slice(0, 500)}\n`
-      fs.appendFileSync(debugPath, logLine)
-    } catch (e) {}
-
     this.sse.broadcast(channel, payload)
   }
 
@@ -181,16 +185,26 @@ export class OverlayServer extends EventEmitter {
   }
 
   handleStreamEvent(event: AnyStreamEvent): void {
-    // DEBUG
-    try {
-      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-      const username = ('user' in event && event.user) ? event.user.username : 'unknown'
-      const logLine = `[${new Date().toISOString()}] OVERLAY_SERVER_HANDLE: ${event.type} from ${username}\n`
-      require('fs').appendFileSync(debugPath, logLine)
-    } catch (e) {}
-
     this.chat.handleEvent(event)
     this.goals.handleEvent(event)
+
+    // Broadcast to specific widget channels for reactive updates
+    this.sse.broadcast('particles', { type: 'event', payload: event })
+    this.sse.broadcast('event-particles', { type: 'event', payload: event })
+
+    if (event.type === 'gift') {
+      const gift = event as any
+      const gifterData = {
+        username: gift.user?.displayName || gift.user?.username || 'Anonymous',
+        avatarUrl: gift.user?.profilePictureUrl
+      }
+      this.sse.broadcast('latest-gifter', { type: 'update', data: gifterData })
+
+      // Persist to DB for initial load of the widget
+      if (this.db) {
+        this.db.setSetting('last_gifter_v1', JSON.stringify(gifterData))
+      }
+    }
 
     if (event.type === 'like') {
       const like = event as any
@@ -203,7 +217,17 @@ export class OverlayServer extends EventEmitter {
         totalLikes: like.totalLikes,
         timestamp: like.timestamp || new Date()
       }
-      this.likes.updateState(like, feedItem)
+      const updatedState = this.likes.updateState(like, feedItem)
+      this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
+    }
+
+    if (event.type === 'viewer-count') {
+      const viewerCounts = this.platformManager?.getViewerCounts() || {}
+      const total = Object.values(viewerCounts).reduce((a, b) => (a as number) + (b as number), 0)
+      this.sse.broadcast('node-network', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
+      // For DeskThing's direct event listener which seems to listen to all channels but expects 'viewer-count' type
+      this.sse.broadcast('deck', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
+      this.deviceApi?.broadcast('viewerCount', { total, breakdown: viewerCounts })
     }
   }
 
@@ -237,9 +261,10 @@ export class OverlayServer extends EventEmitter {
   private async startInternal(port: number): Promise<void> {
     this.status.requestedPort = port
     try {
+      this.listenHost = resolveListenHost()
       this.server = createServer((req, res) => this.router.handleRequest(req, res))
       await new Promise<void>((resolve, reject) => {
-        this.server?.listen(port, () => resolve())
+        this.server?.listen(port, this.listenHost, () => resolve())
         this.server?.once('error', reject)
       })
       const addr = this.server?.address()
@@ -283,5 +308,3 @@ export class OverlayServer extends EventEmitter {
     this.emit('status', this.getStatus())
   }
 }
-
-

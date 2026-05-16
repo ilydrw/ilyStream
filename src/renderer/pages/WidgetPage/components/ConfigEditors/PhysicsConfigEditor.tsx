@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function PhysicsConfigEditor({
   draft,
@@ -34,7 +35,7 @@ export function PhysicsConfigEditor({
             step={0.1}
             value={config.gravity}
             onChange={(e) => update('gravity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -46,7 +47,7 @@ export function PhysicsConfigEditor({
             step={0.05}
             value={config.restitution}
             onChange={(e) => update('restitution', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -58,7 +59,7 @@ export function PhysicsConfigEditor({
             step={0.01}
             value={config.friction}
             onChange={(e) => update('friction', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -101,7 +102,7 @@ export function PhysicsConfigEditor({
                 onClick={() => update('aspectRatio', r)}
                 className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
                   config.aspectRatio === r
-                    ? 'bg-white text-black border-white'
+                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -118,6 +119,8 @@ export function PhysicsConfigEditor({
           onChange={(v) => update('forceTikTokDimensions', v)}
         />
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

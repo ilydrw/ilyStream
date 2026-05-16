@@ -1,6 +1,6 @@
 import {IconChartBar} from '@tabler/icons-react'
-import type { GlobalStats } from '../../../shared/stats'
-import type { Platform } from '../../../main/platforms/types'
+import type { GlobalStats } from '../../../../shared/stats'
+import type { Platform } from '../../../../main/platforms/types'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { formatCurrency, formatRelativeTime } from '../utils'
 
@@ -9,7 +9,14 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   tiktok: 'TikTok',
   twitch: 'Twitch',
   youtube: 'YouTube',
-  kick: 'Kick'
+  kick: 'Kick',
+  x: 'X (Twitter)',
+  discord: 'Discord',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  restream: 'Restream',
+  linkedin: 'LinkedIn',
+  telegram: 'Telegram'
 }
 
 interface PlatformTelemetryProps {
@@ -46,12 +53,12 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
             </p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-1.5 p-1.5 bg-white/[0.03] border border-white/5 rounded-2xl">
           <button
             onClick={() => onTabChange('all')}
             className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-              activePlatformTab === 'all' ? 'bg-accent text-white shadow-lg' : 'text-white/40 hover:text-white/70'
+              activePlatformTab === 'all' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white/70'
             }`}
           >
             All Platforms
@@ -61,7 +68,7 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
               key={p}
               onClick={() => onTabChange(p)}
               className={`p-2 rounded-xl transition-all flex items-center justify-center min-w-[44px] ${
-                activePlatformTab === p ? 'bg-white/10 ring-1 ring-white/20' : 'opacity-40 hover:opacity-80'
+                activePlatformTab === p ? 'bg-brand-gradient text-white shadow-glow' : 'opacity-40 hover:opacity-80'
               }`}
               title={PLATFORM_LABELS[p]}
             >

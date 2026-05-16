@@ -145,19 +145,8 @@ export function shouldBroadcastParticleEvent(event: AnyStreamEvent): boolean {
 }
 
 export function sanitizeOverlayHtml(html: string): string {
-  return (
-    html
-      // Remove <script> blocks (including multiline)
-      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-      // Remove dangerous tags wholesale: iframe, object, embed, form, meta, link, base
-      .replace(/<\/?(iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*>/gi, '')
-      // Remove event handler attributes — allow optional whitespace around the =
-      .replace(/\s+on[a-z]+\s*=\s*(['"])[\s\S]*?\1/gi, '')
-      .replace(/\s+on[a-z]+\s*=\s*[^\s>]*/gi, '')
-      // Remove dangerous URI schemes (javascript:, vbscript:, data: in href/src/action)
-      .replace(/\b(javascript|vbscript):/gi, '')
-      .replace(/([\s"'=])(data:)/gi, '$1data-blocked:')
-  )
+  return escapeHtml(String(html || ''))
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br />')
 }
 
 export function createOverlayAlertItem(
@@ -217,4 +206,13 @@ function clampNumber(value: unknown, min: number, max: number): number | undefin
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return undefined
   return Math.min(max, Math.max(min, numeric))
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }

@@ -1,8 +1,9 @@
 import { RoseConfig, DEFAULT_ROSE_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildRoseOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: RoseConfig = { ...DEFAULT_ROSE_CONFIG, ...(widget?.config || {}) }
-  
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,6 +20,7 @@ export function buildRoseOverlayHtml(widget?: any, isPreview = false): string {
             background-color: transparent;
             position: relative;
         }
+        ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 800 }, 'body')}
 
         #rose-overlay-canvas {
             display: block;

@@ -91,31 +91,33 @@ export function useAudioMixerLogic(
 
   const addFx = (source: AudioSource, preset: FxPreset) => {
     const nextFx = {
-      id: crypto.randomUUID(),
-      type: preset.type,
+      id: crypto.randomUUID() as string,
+      type: preset.type as any,
       params: preset.params,
       enabled: true
     }
-    updateSource(source.id, { fxChain: [...(source.fxChain || []), nextFx] })
+    updateSource(source.id, { filters: [...(source.filters || []), nextFx] })
   }
+
 
   const updateFx = (source: AudioSource, fxId: string, updates: Record<string, unknown>) => {
     updateSource(source.id, {
-      fxChain: (source.fxChain || []).map(fx => fx.id === fxId ? { ...fx, ...updates } : fx)
+      filters: (source.filters || []).map(fx => fx.id === fxId ? { ...fx, ...updates } : fx)
     })
   }
 
   const updateFxParam = (source: AudioSource, fxId: string, key: string, value: number) => {
     updateSource(source.id, {
-      fxChain: (source.fxChain || []).map(fx =>
+      filters: (source.filters || []).map(fx =>
         fx.id === fxId ? { ...fx, params: { ...(fx.params || {}), [key]: value } } : fx
       )
     })
   }
 
   const removeFx = (source: AudioSource, fxId: string) => {
-    updateSource(source.id, { fxChain: (source.fxChain || []).filter(fx => fx.id !== fxId) })
+    updateSource(source.id, { filters: (source.filters || []).filter(fx => fx.id !== fxId) })
   }
+
 
   const removeMixerTrack = (source: AudioSource) => {
     if (source.id === 'master') return
@@ -265,9 +267,10 @@ export function useAudioMixerLogic(
         id: 'clear-fx',
         label: 'Clear Inserts',
         icon: <IconSparkles size={16} />,
-        disabled: !(source.fxChain || []).length,
-        onClick: () => updateSource(source.id, { fxChain: [] })
+        disabled: !(source.filters || []).length,
+        onClick: () => updateSource(source.id, { filters: [] })
       },
+
       { id: 'divider-2', label: '', divider: true },
       {
         id: 'delete',

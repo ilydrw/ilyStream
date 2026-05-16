@@ -1,4 +1,5 @@
 import { DiscordPromoConfig, DEFAULT_DISCORD_PROMO_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildDiscordPromoHtml(widget?: any, isPreview = false): string {
   const cfg: DiscordPromoConfig = { ...DEFAULT_DISCORD_PROMO_CONFIG, ...(widget?.config || {}) }
@@ -43,6 +44,7 @@ export function buildDiscordPromoHtml(widget?: any, isPreview = false): string {
       gap: 16px;
       overflow: hidden;
     }
+    ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 800 }, '.promo-pill')}
 
     /* Subtle Accent Glow */
     .promo-pill::before {

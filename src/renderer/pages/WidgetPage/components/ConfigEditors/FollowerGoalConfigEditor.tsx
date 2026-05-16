@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function FollowerGoalConfigEditor({
   draft,
@@ -35,7 +36,55 @@ export function FollowerGoalConfigEditor({
   return (
     <div className="flex flex-col gap-6">
       <Section label="Goal">
-        <Field label="Starting follower count">
+        <Field label="Goal type">
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { id: 'follows', label: 'Followers' },
+              { id: 'likes', label: 'Likes' },
+              { id: 'gifts', label: 'Gifts' },
+              { id: 'subs', label: 'Subs' },
+              { id: 'shares', label: 'Shares' },
+              { id: 'raids', label: 'Raids' },
+              { id: 'viewers', label: 'Viewers' }
+            ] as const).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => update('goalType', t.id as any)}
+                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
+                  config.goalType === t.id
+                    ? 'bg-white text-black border-white'
+                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Platform">
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { id: 'all', label: 'All' },
+              { id: 'twitch', label: 'Twitch' },
+              { id: 'tiktok', label: 'TikTok' }
+            ] as const).map((p) => (
+              <button
+                key={p.id}
+                onClick={() => update('platform', p.id as any)}
+                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
+                  config.platform === p.id
+                    ? 'bg-white text-black border-white'
+                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label={`Starting ${config.goalType} count`}>
           <NumberInput
             value={config.startCount}
             onChange={(v) => update('startCount', v)}
@@ -46,7 +95,7 @@ export function FollowerGoalConfigEditor({
           />
         </Field>
 
-        <Field label="Target follower count">
+        <Field label={`Target ${config.goalType} count`}>
           <NumberInput
             value={config.goal}
             onChange={(v) => update('goal', v)}
@@ -63,7 +112,7 @@ export function FollowerGoalConfigEditor({
             value={config.label}
             onChange={(e) => update('label', e.currentTarget.value)}
             className="app-input !h-9 !text-xs !px-3"
-            placeholder="Follower Goal"
+            placeholder={`${config.goalType.charAt(0).toUpperCase() + config.goalType.slice(1)} Goal`}
           />
         </Field>
       </Section>
@@ -121,7 +170,7 @@ export function FollowerGoalConfigEditor({
         <Field label="Accent color">
           <div className="flex flex-col gap-3">
             <ColorRow label="Base color" value={config.accentColor.startsWith('#') ? config.accentColor : '#ff7a45'} onChange={(v) => update('accentColor', v)} />
-            
+
             <div className="pt-2 border-t border-white/5">
               <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-2 block">Special Effects</span>
               <div className="grid grid-cols-2 gap-2">
@@ -149,31 +198,37 @@ export function FollowerGoalConfigEditor({
             </div>
           </div>
         </Field>
-
-        <Field label={`Background opacity — ${Math.round(config.backgroundOpacity * 100)}%`}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.backgroundOpacity}
-            onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
-
-        <Field label={`Blur — ${config.blur}px`}>
-          <input
-            type="range"
-            min={0}
-            max={40}
-            step={1}
-            value={config.blur}
-            onChange={(e) => update('blur', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
       </Section>
+
+      <Section label="Celebration">
+        <SwitchRow
+          label="Milestone Celebration"
+          hint="Trigger a burst of particles when the goal is reached."
+          value={!!config.celebrateAt100}
+          onChange={(v) => update('celebrateAt100', v)}
+        />
+        {config.celebrateAt100 && (
+          <Field label="Effect type">
+            <div className="grid grid-cols-3 gap-2">
+              {(['confetti', 'fireworks', 'hearts'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => update('celebrationType', t)}
+                  className={`h-9 rounded-lg text-[10px] font-bold border transition-all capitalize ${
+                    config.celebrationType === t
+                      ? 'bg-white text-black border-white'
+                      : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+      </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

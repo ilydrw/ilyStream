@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http'
+import { randomInt } from 'crypto'
 import type { Database } from '../db/database'
 import type { SoundboardService } from '../soundboard/soundboard-service'
 import type { RemoteAuthService } from '../services/remote-auth-service'
@@ -14,6 +15,8 @@ const PAIR_CODE_TTL_MS = 5 * 60_000 // 5 minutes (increased from 60s)
 const SERVER_VERSION = '1'
 const MAX_BODY_BYTES = 64 * 1024
 const SSE_PING_INTERVAL_MS = 25_000
+const PAIR_RATE_LIMIT_WINDOW_MS = 5 * 60_000
+const PAIR_RATE_LIMIT_MAX_ATTEMPTS = 10
 
 interface PendingPairCode {
   code: string
@@ -29,6 +32,8 @@ export type DeviceEventType =
   | 'chatAppend'
   | 'chatBacklog'
   | 'recordingState'
+  | 'viewerCount'
+  | 'likes'
 
 interface DeviceEventEnvelope {
   type: DeviceEventType
@@ -50,6 +55,7 @@ export class DeviceApi {
    * usually be 0 or 1 active codes at a time.
    */
   private pendingCodes: PendingPairCode[] = []
+  private pairAttempts = new Map<string, { count: number; resetAt: number }>()
 
   /** SSE subscribers for `/api/v1/events`. */
   private eventClients = new Set<ServerResponse<IncomingMessage>>()
@@ -231,8 +237,14 @@ export class DeviceApi {
     const body = await readJsonBody<{ code?: string | number; label?: string }>(request)
     const code = String(body.code ?? '').trim().padStart(6, '0')
     const label = (body.label || 'DeskThing').trim().slice(0, 64)
+    const attemptKey = this.getRateLimitKey(request)
 
-    console.log(`[device-api] Attempting to pair with code: "${code}" (label: "${label}")`)
+    if (this.isPairRateLimited(attemptKey)) {
+      writeJson(response, { error: 'Too many pairing attempts' }, 429)
+      return
+    }
+
+    console.log(`[device-api] Attempting to pair device label: "${label}"`)
 
     if (!code) {
       writeJson(response, { error: 'Missing code' }, 400)
@@ -240,18 +252,17 @@ export class DeviceApi {
     }
 
     this.pruneCodes()
-    
-    // Debug: log active codes
-    console.log(`[device-api] Active codes: ${JSON.stringify(this.pendingCodes.map(c => c.code))}`)
 
     const idx = this.pendingCodes.findIndex((c) => c.code === code)
     if (idx === -1) {
-      console.warn(`[device-api] Pair failed: Code "${code}" not found or expired.`)
+      this.recordPairFailure(attemptKey)
+      console.warn('[device-api] Pair failed: invalid or expired code.')
       writeJson(response, { error: 'Invalid or expired code' }, 401)
       return
     }
     // Single-use: drop the code as soon as it's consumed.
     this.pendingCodes.splice(idx, 1)
+    this.pairAttempts.delete(attemptKey)
 
     const token = this.authService.generateToken(`deskthing:${label}`)
     writeJson(response, { token })
@@ -310,8 +321,7 @@ export class DeviceApi {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+      Connection: 'keep-alive'
     })
     response.write(': connected\n\n')
 
@@ -368,12 +378,6 @@ export class DeviceApi {
   // --- Auth ---
 
   private authorize(request: IncomingMessage): boolean {
-    // Loopback bypass — desktop UI may call these too if it's ever convenient.
-    const remote = request.socket.remoteAddress
-    if (remote === '::1' || remote === '127.0.0.1' || remote === '::ffff:127.0.0.1') {
-      return true
-    }
-
     const header = request.headers['authorization']
     const token =
       typeof header === 'string' && header.startsWith('Bearer ')
@@ -381,6 +385,27 @@ export class DeviceApi {
         : null
 
     return !!token && this.authService.verifyToken(token)
+  }
+
+  private getRateLimitKey(request: IncomingMessage): string {
+    return request.socket.remoteAddress || 'unknown'
+  }
+
+  private isPairRateLimited(key: string): boolean {
+    const now = Date.now()
+    const entry = this.pairAttempts.get(key)
+    if (!entry || entry.resetAt <= now) return false
+    return entry.count >= PAIR_RATE_LIMIT_MAX_ATTEMPTS
+  }
+
+  private recordPairFailure(key: string): void {
+    const now = Date.now()
+    const entry = this.pairAttempts.get(key)
+    if (!entry || entry.resetAt <= now) {
+      this.pairAttempts.set(key, { count: 1, resetAt: now + PAIR_RATE_LIMIT_WINDOW_MS })
+      return
+    }
+    entry.count += 1
   }
 
   private pruneCodes(): void {
@@ -392,8 +417,7 @@ export class DeviceApi {
 // --- Helpers ---
 
 function generatePairCode(): string {
-  // 6-digit zero-padded code; 1M space is fine for 60s LAN-only pairing.
-  return Math.floor(Math.random() * 1_000_000)
+  return randomInt(0, 1_000_000)
     .toString()
     .padStart(6, '0')
 }
@@ -408,7 +432,6 @@ function writeJson(
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(json),
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization'
   })

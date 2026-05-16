@@ -7,9 +7,9 @@ export function Toggle({ value, onChange, disabled = false }: { value: boolean; 
       disabled={disabled}
       role="switch"
       aria-checked={value}
-      className={`relative h-6 w-11 rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      className={`relative h-6 w-11 rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         value
-          ? 'bg-white/40'
+          ? 'bg-brand-gradient shadow-glow'
           : 'bg-white/10 shadow-inner'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
     >
@@ -50,7 +50,7 @@ export function NumberInput({
       min={min}
       max={max}
       step={step}
-      className={`app-input font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
+      className={`app-input font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }
@@ -74,7 +74,7 @@ export function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={`app-input text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
+      className={`app-input text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }

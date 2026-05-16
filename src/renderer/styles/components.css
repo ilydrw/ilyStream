@@ -194,8 +194,9 @@
 }
 
 .fader-vertical-new::-webkit-slider-thumb:active {
-  background: #2a2a2a;
-  border-color: rgb(var(--accent-rgb));
+  background: var(--brand-gradient);
+  border-color: transparent;
+  box-shadow: var(--shadow-glow);
 }
 
 .voice-fx-console {
@@ -580,10 +581,12 @@
   transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
 }
 
-.widget-template-chip:hover {
-  border-color: rgba(25, 200, 255, 0.28);
-  background: rgba(25, 200, 255, 0.08);
+.widget-template-chip:hover,
+.widget-template-chip.is-active {
+  background: var(--brand-gradient);
+  border-color: transparent;
   color: #fff;
+  box-shadow: var(--shadow-glow);
 }
 
 .widget-card-grid {

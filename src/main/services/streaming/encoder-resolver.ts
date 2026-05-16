@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import type { StreamConfig } from '../streaming-types'
+import type { StreamConfig, RecordingConfig } from '../streaming-types'
 
 type EncoderMode = 'stream' | 'record'
 
@@ -31,24 +31,25 @@ export class StreamingEncoderResolver {
 
   getEncoderArgs(
     encoder: string,
-    config: Pick<StreamConfig, 'fps' | 'bitrateKbps'>,
+    config: Pick<RecordingConfig, 'fps' | 'bitrateKbps' | 'crf'>,
     mode: EncoderMode
   ): string[] {
     const args = ['-c:v', encoder]
 
     if (encoder === 'libx264') {
-      args.push('-preset', mode === 'stream' ? 'veryfast' : 'medium')
       if (mode === 'stream') {
+        args.push('-preset', 'veryfast')
         args.push('-tune', 'zerolatency', '-profile:v', 'high', '-bf', '0', '-x264-params', 'nal-hrd=cbr:scenecut=0')
       } else {
-        args.push('-crf', '18') // High quality for recording
+        args.push('-preset', 'medium')
+        args.push('-crf', config.crf?.toString() || '18')
       }
     } else if (encoder === 'h264_nvenc') {
       args.push('-preset', mode === 'stream' ? 'p4' : 'p6')
       if (mode === 'stream') {
         args.push('-tune', 'll', '-profile:v', 'high', '-rc', 'cbr', '-bf', '0', '-zerolatency', '1')
       } else {
-        args.push('-tune', 'hq', '-rc', 'vbr', '-cq', '20')
+        args.push('-tune', 'hq', '-rc', 'vbr', '-cq', config.crf?.toString() || '20')
       }
     } else if (encoder === 'h264_amf') {
       args.push('-quality', mode === 'stream' ? 'speed' : 'quality', '-usage', mode === 'stream' ? 'lowlatency' : 'transcoding')
@@ -62,7 +63,7 @@ export class StreamingEncoderResolver {
       if (mode === 'stream') {
         args.push('-profile:v', 'high', '-bf', '0', '-look_ahead', '0')
       } else {
-        args.push('-global_quality', '20', '-look_ahead', '1')
+        args.push('-global_quality', config.crf?.toString() || '20', '-look_ahead', '1')
       }
     }
 
@@ -74,7 +75,6 @@ export class StreamingEncoderResolver {
         '-bufsize', `${config.bitrateKbps}k`
       )
     } else if (!args.includes('-crf') && !args.includes('-cq') && !args.includes('-global_quality')) {
-      // Fallback for QSV or others if no quality-based rate control was set above
       args.push('-b:v', `${Math.max(config.bitrateKbps * 1.5, 8000)}k`)
     }
 
@@ -155,4 +155,3 @@ export class StreamingEncoderResolver {
     return ok
   }
 }
-

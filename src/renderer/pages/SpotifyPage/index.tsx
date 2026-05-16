@@ -1,4 +1,4 @@
-import {IconMusic, IconPlayerSkipForward, IconTrash, IconUser, IconList, IconPlayerPlay} from '@tabler/icons-react'
+import {IconMusic, IconPlayerSkipForward, IconTrash, IconUser, IconList, IconPlayerPlay, IconRefresh} from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import type { SpotifySongRequest, SpotifyStatus } from '../../../shared/spotify-types'
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../../shared/app-settings'
@@ -49,7 +49,7 @@ export default function SpotifyPage() {
         setStatus(s)
         setQueue(q)
         applySettings(allSettings)
-        setClientIdInput(allSettings.spotifyClientId)
+        setClientIdInput(allSettings.spotifyClientId || '')
       } catch (e) {
         console.error('Failed to load spotify data', e)
       }
@@ -98,10 +98,20 @@ export default function SpotifyPage() {
     try {
       const s = (await window.api.spotify.connect(clientIdInput.trim())) as SpotifyStatus
       setStatus(s)
+      if (s.error) setConnectError(s.error)
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Connection failed.')
     } finally {
       setConnecting(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    try {
+      const s = await window.api.spotify.getStatus()
+      setStatus(s)
+    } catch (err) {
+      console.error('Refresh failed', err)
     }
   }
 
@@ -118,7 +128,7 @@ export default function SpotifyPage() {
           <div>
             <h1>Spotify Management</h1>
             <p className="app-page-intro">
-              Synchronize your broadcast with Spotify. Viewers can request tracks directly via chat commands 
+              Synchronize your broadcast with Spotify. Viewers can request tracks directly via chat commands
               to build a dynamic, collaborative stream soundtrack.
             </p>
           </div>
@@ -147,8 +157,13 @@ export default function SpotifyPage() {
                 <p className="text-[10px] opacity-40">{status?.connected ? 'Authentication active' : 'Awaiting authorization'}</p>
               </div>
             </div>
-            
+
             <div className="p-4 pt-0">
+              {status?.error && (
+                <div className="mb-4 p-2 rounded bg-danger/10 border border-danger/20 text-[10px] text-danger font-bold text-center uppercase tracking-wider">
+                  {status.error}
+                </div>
+              )}
               {!status?.connected ? (
                 <div className="flex flex-col gap-4">
                   <div className="space-y-2">
@@ -167,9 +182,15 @@ export default function SpotifyPage() {
                   {connectError && <p className="text-[10px] text-danger font-bold uppercase tracking-widest text-center">{connectError}</p>}
                 </div>
               ) : (
-                <button onClick={() => window.api.spotify.disconnect()} className="app-button-danger w-full !h-10 text-[10px] font-black uppercase tracking-widest">
-                  Terminate Session
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => window.api.spotify.disconnect()} className="app-button-danger w-full !h-10 text-[10px] font-black uppercase tracking-widest">
+                    Terminate Session
+                  </button>
+                  <button onClick={handleRefresh} className="app-button w-full !h-9 text-[9px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity">
+                    <IconRefresh size={12} className="mr-1.5" />
+                    Refresh Connection
+                  </button>
+                </div>
               )}
             </div>
           </section>

@@ -1,10 +1,11 @@
 import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { Database } from '../../db/database'
-import { OverlayServer } from '../overlay/overlay-server'
+import { OverlayServer } from '../../overlay/overlay-server'
 import { BrowserSourceService, type BrowserSourceCaptureConfig } from '../../services/browser-source-service'
 
 let pendingDisplayMediaRequest: {
@@ -131,14 +132,14 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     }
 
     try {
-      const sources = await desktopCapturer.getSources({ 
-        types: ['screen', 'window'], 
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
         fetchWindowIcons: false,
         thumbnailSize: { width: 0, height: 0 } // Performance
       })
-      
+
       const source = sources.find(s => s.id === pending.sourceId)
-      
+
       let audioSource: 'loopback' | 'loopbackWithMute' | undefined
       if (pending.withAudio) {
         // We use loopbackWithMute to prevent the IlyStream application's own
@@ -146,7 +147,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
         // back into the desktop/app audio stream, which causes doubling and
         // feedback loops.
         audioSource = 'loopbackWithMute'
-        
+
         if (source && source.id.startsWith('window:')) {
           console.log(`[StudioHandlers] Using loopbackWithMute for isolated window capture: ${source.name}`)
         }
@@ -175,7 +176,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
   ipcMain.handle('studio:open-projector', async (event, payload: { monitorId: number, sceneId: string, aspectRatio?: string, layerId?: string }) => {
     console.log('[StudioHandlers] Opening Projector Payload:', payload)
     const { monitorId, sceneId, aspectRatio = '16:9', layerId } = payload
-    
+
     if (!sceneId) {
       console.error('[StudioHandlers] Cannot open projector: Missing sceneId')
       return false
@@ -201,7 +202,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       backgroundColor: '#000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false,
+        sandbox: true,
         contextIsolation: true,
         nodeIntegration: false
       }
@@ -209,7 +210,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
 
     projectorWindows.add(projectorWindow)
     projectorWindow.once('closed', () => projectorWindows.delete(projectorWindow))
-    
+
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (owner && !ownerCleanupHandlers.has(owner)) {
       const closeAllProjectors = () => {
@@ -227,7 +228,11 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
 
     const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
       ? `${process.env['ELECTRON_RENDERER_URL']}${query}`
-      : `file://${join(__dirname, '../renderer/index.html')}${query}`
+      : (() => {
+          const url = pathToFileURL(join(__dirname, '../renderer/index.html'))
+          url.search = query.slice(1)
+          return url.toString()
+        })()
 
     console.log('[StudioHandlers] Loading Projector URL:', loadUrl)
     await projectorWindow.loadURL(loadUrl)
@@ -289,6 +294,17 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
   ipcMain.handle('studio:load-state', () => {
     console.log('[StudioHandlers] Loading state from DB...')
     return db.getSetting('studio_state_v1')
+  })
+
+  ipcMain.handle('studio:set-active-scene', (_event, sceneId: string) => {
+    console.log(`[StudioHandlers] Global Scene Change requested: ${sceneId}`)
+    // Broadcast to all renderer windows so they can update their local stores
+    BrowserWindow.getAllWindows().forEach(win => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('studio:active-scene-changed', sceneId)
+      }
+    })
+    return true
   })
 }
 

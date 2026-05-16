@@ -158,10 +158,12 @@ export default function AlertsPage() {
     }
   }
 
+  const [activeTab, setActiveTab] = useState<'routes' | 'assets'>('routes')
+
   if (!draftSettings) {
     return (
       <div className="flex flex-col h-full bg-[#050505] items-center justify-center">
-        <div className="w-12 h-12 border-2 border-[#19c8ff] border-t-transparent rounded-full animate-spin" />
+        <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin" />
         <p className="text-[10px] text-white/20 mt-4 uppercase tracking-widest font-bold">Synchronizing Alert System...</p>
       </div>
     );
@@ -170,101 +172,129 @@ export default function AlertsPage() {
   return (
     <>
       <div className="app-page alerts-page">
-      <PageHeader
-        kicker="Event routing"
-        title="Live Alerts"
-        icon={IconBell}
-        description="Build platform-aware routes for chat, follows, gifts, subs, raids, likes, shares, joins, sound cues, and overlay visuals."
-        actions={
-          <>
-          {showSuccess && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-success/10 border border-success/20 text-success animate-in fade-in slide-in-from-right-4">
-              <IconCircleCheck size={14} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Saved</span>
+        <PageHeader
+          kicker="Event routing & delivery"
+          title="Live Alerts"
+          icon={IconBell}
+          description="Build platform-aware routes for chat, follows, gifts, subs, raids, likes, shares, joins, sound cues, and overlay visuals."
+          actions={
+            <>
+            {showSuccess && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-success/10 border border-success/20 text-success animate-in fade-in slide-in-from-right-4">
+                <IconCircleCheck size={14} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Saved</span>
+              </div>
+            )}
+
+            {isDirty && !isSaving && (
+              <button
+                onClick={() => {
+                  setDraftSettings(savedSettings);
+                  setIsDirty(false);
+                  isDirtyRef.current = false;
+                }}
+                className="app-button !bg-white/5 !text-white/40 hover:!text-white !px-6"
+              >
+                Discard
+              </button>
+            )}
+
+            {(isDirty || isSaving) && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`app-button !px-8 ${isSaving ? 'opacity-50 cursor-wait' : 'bg-brand-gradient'}`}
+              >
+                <IconDeviceFloppy size={14} className={isSaving ? 'animate-spin' : ''} />
+                {isSaving ? 'Synchronizing...' : 'Commit Changes'}
+              </button>
+            )}
+            </>
+          }
+        />
+
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
+            <button
+              onClick={() => setActiveTab('routes')}
+              className={`h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'routes' ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50'}`}
+            >
+              <div className="flex items-center gap-2">
+                <IconRoute size={14} />
+                Alert Routes
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('assets')}
+              className={`h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'assets' ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50'}`}
+            >
+              <div className="flex items-center gap-2">
+                <IconSparkles size={14} />
+                Asset Library
+              </div>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-8 px-6 py-2 rounded-2xl border border-white/[0.03] bg-white/[0.01]">
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Active Routes</span>
+              <span className="text-sm font-black text-accent">{(draftSettings.alertRules ?? []).filter(r => r.enabled).length}</span>
             </div>
-          )}
-
-          {isDirty && !isSaving && (
-            <button
-              onClick={() => {
-                setDraftSettings(savedSettings);
-                setIsDirty(false);
-                isDirtyRef.current = false;
-              }}
-              className="app-button !bg-white/5 !text-white/40 hover:!text-white !px-6"
-            >
-              Discard
-            </button>
-          )}
-
-          {(isDirty || isSaving) && (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={`app-button !px-8 ${isSaving ? 'opacity-50 cursor-wait' : 'bg-brand-gradient'}`}
-            >
-              <IconDeviceFloppy size={14} className={isSaving ? 'animate-spin' : ''} />
-              {isSaving ? 'Synchronizing...' : 'Commit Changes'}
-            </button>
-          )}
-          </>
-        }
-      />
-
-        <section className="alerts-command-strip">
-          <div>
-            <IconRoute size={17} />
-            <span>Routes</span>
-            <strong>{(draftSettings.alertRules ?? []).length}</strong>
+            <div className="h-4 w-px bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Audio Pool</span>
+              <span className="text-sm font-black text-white/80">{sounds.length}</span>
+            </div>
+            <div className="h-4 w-px bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Visual Pool</span>
+              <span className="text-sm font-black text-white/80">{images.length}</span>
+            </div>
           </div>
-          <div>
-            <IconVolume size={17} />
-            <span>Audio assets</span>
-            <strong>{sounds.length}</strong>
-          </div>
-          <div>
-            <IconSparkles size={17} />
-            <span>Visual assets</span>
-            <strong>{images.length}</strong>
-          </div>
-        </section>
+        </div>
 
-        <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_460px]">
+        <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_400px]">
           <div className="flex flex-col gap-10">
-            <AlertRuleSection
-              rules={draftSettings.alertRules ?? []}
-              sounds={sounds}
-              images={images}
-              onChange={handleRulesChange}
-              onUploadSound={handleSoundUpload}
-              onUploadImage={handleImageUpload}
-            />
-
-            <section className="app-section-card glass !p-8">
-              <div className="app-section-head !p-0 border-none mb-6">
-                <div className="flex items-center gap-4">
-                  <h2>Alert Asset Library</h2>
+            {activeTab === 'routes' ? (
+              <AlertRuleSection
+                rules={draftSettings.alertRules ?? []}
+                sounds={sounds}
+                images={images}
+                onChange={handleRulesChange}
+                onUploadSound={handleSoundUpload}
+                onUploadImage={handleImageUpload}
+              />
+            ) : (
+              <section className="app-section-card glass !p-8 animate-in fade-in zoom-in-95 duration-300">
+                <div className="grid grid-cols-1 gap-10 xl:grid-cols-2">
+                  <SoundLibrary
+                    sounds={sounds}
+                    onUpload={handleSoundUpload}
+                    onPlay={(id) => window.api.sound.play(id, 1.0)}
+                    onDelete={(sound) => confirm(`Delete ${sound.name}?`) && deleteSound(sound.id)}
+                    onEditEmoji={handleEditEmoji}
+                  />
+                  <ImageLibrary
+                    images={images}
+                    onUpload={handleImageUpload}
+                    onDelete={(image) => confirm(`Delete ${image.name}?`) && deleteImage(image.id)}
+                  />
                 </div>
-              </div>
-              <div className="grid grid-cols-1 gap-10 xl:grid-cols-2">
-                <SoundLibrary
-                  sounds={sounds}
-                  onUpload={handleSoundUpload}
-                  onPlay={(id) => window.api.sound.play(id, 1.0)}
-                  onDelete={(sound) => confirm(`Delete ${sound.name}?`) && deleteSound(sound.id)}
-                  onEditEmoji={handleEditEmoji}
-                />
-                <ImageLibrary
-                  images={images}
-                  onUpload={handleImageUpload}
-                  onDelete={(image) => confirm(`Delete ${image.name}?`) && deleteImage(image.id)}
-                />
-              </div>
-            </section>
+              </section>
+            )}
           </div>
 
           <div className="flex flex-col gap-6 2xl:sticky 2xl:top-6 2xl:self-start">
             <OverlayUrlCard />
+
+            <div className="p-6 rounded-3xl border border-white/[0.05] bg-white/[0.02] space-y-4">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30">System Status</h4>
+              <div className="space-y-3">
+                <StatusRow label="Event Orchestrator" active />
+                <StatusRow label="Sound Engine" active />
+                <StatusRow label="Visual Buffer" active />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -286,5 +316,17 @@ export default function AlertsPage() {
         setActiveCategory={setActiveEmojiCategory}
       />
     </>
+  )
+}
+
+function StatusRow({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] font-bold text-white/50">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className={`h-1 w-1 rounded-full ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
+        <span className="text-[9px] font-black uppercase tracking-widest text-white/20">{active ? 'Live' : 'Off'}</span>
+      </div>
+    </div>
   )
 }

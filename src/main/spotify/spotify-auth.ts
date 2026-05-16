@@ -8,9 +8,9 @@ export const SPOTIFY_REDIRECT_PORT = 8789
 const REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_REDIRECT_PORT}/callback`
 const AUTH_URL = 'https://accounts.spotify.com/authorize'
 const TOKEN_URL = 'https://accounts.spotify.com/api/token'
- 
+
 /**
- * Default Client ID for ilyStream. 
+ * Default Client ID for ilyStream.
  * Users can still override this in settings if they want their own app.
  */
 export const DEFAULT_SPOTIFY_CLIENT_ID = '' // Placeholder: in a real app this would be the app's registered ID
@@ -41,6 +41,7 @@ function generateCodeChallenge(verifier: string): string {
 export async function initiateSpotifyAuth(clientId: string): Promise<SpotifyTokens> {
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = generateCodeChallenge(codeVerifier)
+  const state = randomBytes(32).toString('base64url')
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -48,16 +49,17 @@ export async function initiateSpotifyAuth(clientId: string): Promise<SpotifyToke
     redirect_uri: REDIRECT_URI,
     code_challenge_method: 'S256',
     code_challenge: codeChallenge,
-    scope: SCOPES
+    scope: SCOPES,
+    state
   })
 
   await shell.openExternal(`${AUTH_URL}?${params.toString()}`)
 
-  const code = await waitForCallback()
+  const code = await waitForCallback(state)
   return exchangeCodeForTokens(clientId, code, codeVerifier)
 }
 
-function waitForCallback(): Promise<string> {
+function waitForCallback(expectedState: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       server.close()
@@ -75,8 +77,10 @@ function waitForCallback(): Promise<string> {
 
         const code = url.searchParams.get('code')
         const error = url.searchParams.get('error')
+        const state = url.searchParams.get('state')
+        const validState = state === expectedState
 
-        const html = code
+        const html = code && validState
           ? `<!DOCTYPE html><html><head><meta charset="utf-8"><title>ilyStream — Spotify</title><style>body{font-family:system-ui,sans-serif;background:#0b0d10;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:40px 48px;max-width:400px}</style></head><body><div class="card"><h1 style="color:#1DB954;margin:0 0 12px">✓ Connected!</h1><p style="margin:0;opacity:.7">You can close this tab and return to ilyStream.</p></div></body></html>`
           : `<!DOCTYPE html><html><head><meta charset="utf-8"><title>ilyStream — Spotify</title><style>body{font-family:system-ui,sans-serif;background:#0b0d10;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:40px 48px;max-width:400px}</style></head><body><div class="card"><h1 style="color:#ef4444;margin:0 0 12px">✗ Auth failed</h1><p style="margin:0;opacity:.7">Close this tab and try again in ilyStream.</p></div></body></html>`
 
@@ -86,8 +90,10 @@ function waitForCallback(): Promise<string> {
         clearTimeout(timeout)
         server.close()
 
-        if (code) {
+        if (code && validState) {
           resolve(code)
+        } else if (!validState) {
+          reject(new Error('Spotify auth state mismatch. Try connecting again.'))
         } else {
           reject(new Error(`Spotify auth denied: ${error ?? 'unknown'}`))
         }
@@ -100,7 +106,7 @@ function waitForCallback(): Promise<string> {
       }
     })
 
-    server.listen(SPOTIFY_REDIRECT_PORT, () => {
+    server.listen(SPOTIFY_REDIRECT_PORT, '127.0.0.1', () => {
       console.log(`[spotify-auth] Callback server listening on port ${SPOTIFY_REDIRECT_PORT}`)
     })
 

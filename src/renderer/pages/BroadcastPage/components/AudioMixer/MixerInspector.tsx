@@ -111,16 +111,17 @@ export function MixerInspector({
               onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
             />
             <InspectorToggle
-              active={(selectedSource.fxChain || []).some((fx: any) => fx.enabled)}
+              active={(selectedSource.filters || []).some((fx: any) => fx.enabled)}
               label="Inserts"
               icon={IconSparkles}
               onClick={() => {
-                const hasActive = (selectedSource.fxChain || []).some((fx: any) => fx.enabled)
+                const hasActive = (selectedSource.filters || []).some((fx: any) => fx.enabled)
                 updateSource(selectedSource.id, {
-                  fxChain: (selectedSource.fxChain || []).map((fx: any) => ({ ...fx, enabled: !hasActive }))
+                  filters: (selectedSource.filters || []).map((fx: any) => ({ ...fx, enabled: !hasActive }))
                 })
               }}
             />
+
           </div>
           {selectedSource.id !== 'master' && (
             <button
@@ -149,7 +150,7 @@ export function MixerInspector({
                     onClick={() => updateSource(selectedSource.id, { channelMode: mode })}
                     className={`h-9 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
                       sanitizeChannelMode(selectedSource.channelMode, selectedSource.type === 'mic' ? 'mono' : 'stereo') === mode
-                        ? 'bg-accent/15 text-accent ring-1 ring-accent/30'
+                        ? 'bg-brand-gradient text-white shadow-glow'
                         : 'text-white/28 hover:bg-white/[0.035] hover:text-white/55'
                     }`}
                   >
@@ -198,13 +199,13 @@ export function MixerInspector({
             </div>
 
             <div className="space-y-3">
-              {(selectedSource.fxChain || []).length === 0 ? (
+              {(selectedSource.filters || []).length === 0 ? (
                 <div className="h-28 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.015] flex flex-col items-center justify-center gap-2 text-white/20">
                   <IconPlus size={18} />
                   <span className="text-xs font-black uppercase tracking-[0.22em]">No inserts loaded</span>
                 </div>
               ) : (
-                (selectedSource.fxChain || []).map((fx: any, index: number) => (
+                (selectedSource.filters || []).map((fx: any, index: number) => (
                   <FxCard
                     key={fx.id}
                     index={index}
@@ -216,6 +217,7 @@ export function MixerInspector({
                 ))
               )}
             </div>
+
           </section>
 
           <section>
@@ -239,8 +241,8 @@ function InspectorToggle({ active, label, icon: Icon, onClick }: {
       onClick={onClick}
       className={`group relative flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border transition-all duration-300 ${
         active
-          ? 'bg-accent/15 border-accent/30 text-accent shadow-lg shadow-accent/5'
-          : 'bg-white/[0.02] border-white/[0.05] text-white/25 hover:bg-white/[0.04] hover:border-white/10 hover:text-white/40'
+          ? 'bg-brand-gradient border-transparent text-white shadow-glow'
+          : 'bg-white/0.02] border-white/[0.05] text-white/25 hover:bg-white/[0.04] hover:border-white/10 hover:text-white/40'
       }`}
     >
       <div className={`p-2 rounded-xl transition-colors ${active ? 'bg-accent/10' : 'bg-white/5 group-hover:bg-white/10'}`}>

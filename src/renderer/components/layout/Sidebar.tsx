@@ -39,7 +39,7 @@ const navigationGroups: NavigationGroup[] = [
     label: 'Live',
     drawerTitle: 'Live Operations',
     icon: IconActivity,
-    items: [itemByPath('/'), itemByPath('/broadcast'), itemByPath('/stats'), itemByPath('/chat')]
+    items: [itemByPath('/'), itemByPath('/broadcast'), itemByPath('/recordings'), itemByPath('/stats'), itemByPath('/chat')]
   },
   {
     id: 'studio',
@@ -97,7 +97,7 @@ export function Sidebar() {
   const location = useLocation()
   const { sidebarCollapsed, toggleSidebar, isPageDirty, setConsoleOpen } = useUIStore()
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
-  
+
   const activeGroup =
     navigationGroups.find((group) =>
       group.items.some((node) => {
@@ -142,6 +142,7 @@ export function Sidebar() {
     setExpandedSections((prev) => ({ ...prev, [label]: !prev[label] }))
   }
 
+
   return (
     <aside className={`app-sidebar titlebar-drag hidden md:flex h-full overflow-hidden ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
       {/* Primary Rail */}
@@ -176,7 +177,7 @@ export function Sidebar() {
               event.stopPropagation()
               toggleSidebar()
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-accent/20 hover:border-accent/30 transition-all active:scale-95 shadow-lg"
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-brand-gradient hover:border-transparent transition-all active:scale-95 shadow-lg shadow-glow"
             title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
@@ -228,7 +229,7 @@ export function Sidebar() {
                         <span className="kicker opacity-100">{section.header.label}</span>
                         <div className="h-px flex-1 bg-white/[0.03]" />
                       </div>
-                      {section.items.length > 4 && (
+                      {section.items.length > 6 && (
                         <button
                           type="button"
                           onClick={() => toggleSection(headerLabel)}
@@ -242,10 +243,10 @@ export function Sidebar() {
                       )}
                     </div>
                   )}
-                  
+
                   <div className={`flex flex-col transition-all duration-200 ease-out ${
-                    section.items.length > 4 
-                      ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[180px] overflow-y-auto custom-scrollbar-slim') 
+                    section.items.length > 6
+                      ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[220px] overflow-y-auto custom-scrollbar-slim')
                       : ''
                   }`}>
                     {section.items.map((item) => {

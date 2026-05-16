@@ -14,9 +14,9 @@
   --color-card: rgba(255, 255, 255, 0.04);
   --color-border: rgba(255, 255, 255, 0.08);
   --color-muted: rgba(255, 255, 255, 0.4);
-  --color-accent: #19c8ff;
-  --color-accent-hover: #61d9ff;
-  --color-accent-rgb: 25, 200, 255;
+  --color-accent: #d035f1;
+  --color-accent-hover: #e066ff;
+  --color-accent-rgb: 208, 53, 241;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
@@ -30,7 +30,7 @@
   --radius-xl: 12px;
   --radius-2xl: 14px;
   --radius-3xl: 16px;
-  --bg-brand-gradient: linear-gradient(135deg, #19c8ff, #d035f1);
+  --brand-gradient: linear-gradient(135deg, #19c8ff, #d035f1);
   --glass-blur: blur(12px);
   --glass-bg: rgba(255, 255, 255, 0.03);
   --glass-border: rgba(255, 255, 255, 0.08);
@@ -125,7 +125,7 @@ html[data-reduced-motion="true"] *::after {
 }
 
 .bg-brand-gradient {
-  background: var(--bg-brand-gradient);
+  background: var(--brand-gradient);
 }
 
 * {

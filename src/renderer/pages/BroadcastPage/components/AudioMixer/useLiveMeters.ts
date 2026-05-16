@@ -19,6 +19,7 @@ export function useLiveMeters(
   const [meters, setMeters] = useState<Record<string, MeterFrame>>({})
   const lastUpdateRef = useRef(0)
   const nodesRef = useRef(new Map<string, LiveMeterNode>())
+  const peaksRef = useRef<Record<string, { value: number; lastAt: number }>>({})
   const micStreams = useRef<Record<string, MediaStream>>({})
   const pendingMics = useRef<Set<string>>(new Set())
 
@@ -221,12 +222,15 @@ export function useLiveMeters(
           node.lastMode = currentMode
         }
 
-        if (node.lastFxHash !== (source.fxChain || [])) {
+        const filterRef = source.filters || []
+        if (node.lastFxHash !== filterRef) {
           const fxState = { input: node.fxInput, output: node.fxOutput, nodes: node.fxNodes }
-          reconcileFxChain(node.context, fxState, source.fxChain || [])
+          reconcileFxChain(node.context, fxState, filterRef)
           node.fxNodes = fxState.nodes
-          node.lastFxHash = source.fxChain || []
+          node.lastFxHash = filterRef
         }
+
+
 
         node.fxOutput.gain.setTargetAtTime(source.volume, node.context.currentTime, 0.01)
 
@@ -258,7 +262,18 @@ export function useLiveMeters(
           right: Math.min(1, rmsR),
           peak: Math.min(1, peakTotal)
         }
-        next[source.id] = meter
+
+        // Peak Hold Logic
+        const nowMs = performance.now()
+        const currentPeak = peaksRef.current[source.id] || { value: 0, lastAt: 0 }
+        if (meter.peak >= currentPeak.value) {
+          peaksRef.current[source.id] = { value: meter.peak, lastAt: nowMs }
+        } else if (nowMs - currentPeak.lastAt > 1500) {
+          // Decay peak
+          peaksRef.current[source.id] = { value: meter.peak, lastAt: nowMs }
+        }
+
+        next[source.id] = { ...meter, holdPeak: peaksRef.current[source.id].value }
 
         masterL += meter.left
         masterR += meter.right
@@ -266,11 +281,21 @@ export function useLiveMeters(
         activeCount++
       }
 
-      next.master = {
+      const masterMeter = {
         left: activeCount > 0 ? Math.min(1, masterL / Math.sqrt(activeCount)) : 0,
         right: activeCount > 0 ? Math.min(1, masterR / Math.sqrt(activeCount)) : 0,
         peak: masterPeak
       }
+
+      const nowMs = performance.now()
+      const masterHold = peaksRef.current.master || { value: 0, lastAt: 0 }
+      if (masterMeter.peak >= masterHold.value) {
+        peaksRef.current.master = { value: masterMeter.peak, lastAt: nowMs }
+      } else if (nowMs - masterHold.lastAt > 1500) {
+        peaksRef.current.master = { value: masterMeter.peak, lastAt: nowMs }
+      }
+
+      next.master = { ...masterMeter, holdPeak: peaksRef.current.master.value }
 
       Object.entries(next).forEach(([id, data]) => {
         let elements: any = null
@@ -316,6 +341,31 @@ export function useLiveMeters(
 
         elements.clipL.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipL} 0 0 0)` })
         elements.clipR.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipR} 0 0 0)` })
+
+        // Peak Hold DOM update
+        const peakHoldPos = `${100 - ((data.holdPeak || 0) * 100)}%`
+        const holdL = Array.from(document.querySelectorAll(`.meter-hold-l-${id}`)) as HTMLElement[]
+        const holdR = Array.from(document.querySelectorAll(`.meter-hold-r-${id}`)) as HTMLElement[]
+        holdL.forEach(el => { el.style.top = peakHoldPos })
+        holdR.forEach(el => { el.style.top = peakHoldPos })
+
+        // Clip indicator with sticky hold (1 second)
+        const clipLIndicator = Array.from(document.querySelectorAll(`.meter-clip-indicator-l-${id}`)) as HTMLElement[]
+        const clipRIndicator = Array.from(document.querySelectorAll(`.meter-clip-indicator-r-${id}`)) as HTMLElement[]
+
+        if (!(window as any).__ilyClipHistory) (window as any).__ilyClipHistory = {}
+        const history = (window as any).__ilyClipHistory
+
+        const now = Date.now()
+        if (data.left > 0.98) history[`${id}-l`] = now
+        if (data.right > 0.98) history[`${id}-r`] = now
+
+        const isClippingL = now - (history[`${id}-l`] || 0) < 1000
+        const isClippingR = now - (history[`${id}-r`] || 0) < 1000
+
+        clipLIndicator.forEach(el => { el.style.opacity = isClippingL ? '1' : '0' })
+        clipRIndicator.forEach(el => { el.style.opacity = isClippingR ? '1' : '0' })
+
 
         const canvas = elements.spectrum
         if (canvas && data.spectrum) {

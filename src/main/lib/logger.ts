@@ -20,6 +20,8 @@ let isLogging = false;
 class LogEmitter extends EventEmitter {}
 export const logEmitter = new LogEmitter()
 
+const SECRET_KEY_PATTERN = /(api[-_]?key|access[-_]?token|refresh[-_]?token|stream[-_]?key|client[-_]?secret|password|webhook[-_]?url|bot[-_]?token|session[-_]?id|authorization|bearer)/i;
+
 const PrefixColors: Record<string, string> = {
   'main': Colors.FgYellow,
   'services': Colors.FgYellow,
@@ -57,7 +59,7 @@ const PrefixColors: Record<string, string> = {
 function getPrefixColor(prefix: string): string {
   // Direct match
   if (PrefixColors[prefix]) return PrefixColors[prefix];
-  
+
   // Case-insensitive match
   const lower = prefix.toLowerCase();
   for (const [key, color] of Object.entries(PrefixColors)) {
@@ -86,20 +88,51 @@ function sanitizeForConsole(text: any): any {
     });
 }
 
+function redactString(text: string): string {
+  return text
+    .replace(/("(?:api[-_]?key|access[-_]?token|refresh[-_]?token|stream[-_]?key|client[-_]?secret|password|webhook[-_]?url|bot[-_]?token|session[-_]?id|authorization)"\s*:\s*)"[^"]*"/gi, '$1"[REDACTED]"')
+    .replace(/((?:api[-_]?key|access[-_]?token|refresh[-_]?token|stream[-_]?key|client[-_]?secret|password|webhook[-_]?url|bot[-_]?token|session[-_]?id|authorization)\s*[=:]\s*)[^\s,;]+/gi, '$1[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+}
+
+function redactValue(value: any, seen = new WeakSet<object>()): any {
+  if (typeof value === 'string') return redactString(value)
+  if (!value || typeof value !== 'object') return value
+  if (value instanceof Error) {
+    const copy = new Error(redactString(value.message))
+    copy.name = value.name
+    copy.stack = value.stack ? redactString(value.stack) : value.stack
+    return copy
+  }
+  if (seen.has(value)) return '[Circular]'
+  seen.add(value)
+  if (Array.isArray(value)) return value.map(item => redactValue(item, seen))
+
+  const out: Record<string, any> = {}
+  for (const [key, val] of Object.entries(value)) {
+    out[key] = SECRET_KEY_PATTERN.test(key) ? '[REDACTED]' : redactValue(val, seen)
+  }
+  return out
+}
+
+function redactArgs(args: any[]): any[] {
+  return args.map(arg => redactValue(arg))
+}
+
 function prepareForRenderer(args: any[]): any[] {
   return args.map(arg => {
-    if (typeof arg === 'string') return arg;
+    if (typeof arg === 'string') return redactString(arg);
     if (arg instanceof Error) {
       return {
         ...arg,
-        message: arg.message,
-        stack: arg.stack,
+        message: redactString(arg.message),
+        stack: arg.stack ? redactString(arg.stack) : arg.stack,
         name: arg.name
       };
     }
     try {
       // Use inspect to handle circular references and limit depth for the renderer
-      return inspect(arg, { depth: 3, colors: false, breakLength: Infinity });
+      return redactString(inspect(arg, { depth: 3, colors: false, breakLength: Infinity }));
     } catch (e) {
       return `[Uninspectable Object: ${typeof arg}]`;
     }
@@ -118,7 +151,8 @@ export function setupLogger() {
   const originalError = console.error;
 
   console.log = (...args: any[]) => {
-    const sanitizedArgs = args.map(sanitizeForConsole);
+    const redactedArgs = redactArgs(args);
+    const sanitizedArgs = redactedArgs.map(sanitizeForConsole);
     if (typeof sanitizedArgs[0] === 'string') {
       const match = sanitizedArgs[0].match(/^\[(.*?)\]/);
       if (match) {
@@ -134,14 +168,15 @@ export function setupLogger() {
     if (isLogging) return;
     isLogging = true;
     try {
-      logEmitter.emit('log', { level: 'info', args: prepareForRenderer(args) });
+      logEmitter.emit('log', { level: 'info', args: prepareForRenderer(redactedArgs) });
     } finally {
       isLogging = false;
     }
   };
 
   console.warn = (...args: any[]) => {
-    const sanitizedArgs = args.map(sanitizeForConsole);
+    const redactedArgs = redactArgs(args);
+    const sanitizedArgs = redactedArgs.map(sanitizeForConsole);
     if (typeof sanitizedArgs[0] === 'string') {
       const match = sanitizedArgs[0].match(/^\[(.*?)\]/);
       if (match) {
@@ -156,14 +191,15 @@ export function setupLogger() {
     if (isLogging) return;
     isLogging = true;
     try {
-      logEmitter.emit('log', { level: 'warn', args: prepareForRenderer(args) });
+      logEmitter.emit('log', { level: 'warn', args: prepareForRenderer(redactedArgs) });
     } finally {
       isLogging = false;
     }
   };
 
   console.error = (...args: any[]) => {
-    const sanitizedArgs = args.map(sanitizeForConsole);
+    const redactedArgs = redactArgs(args);
+    const sanitizedArgs = redactedArgs.map(sanitizeForConsole);
     if (typeof sanitizedArgs[0] === 'string') {
       const match = sanitizedArgs[0].match(/^\[(.*?)\]/);
       if (match) {
@@ -178,7 +214,7 @@ export function setupLogger() {
     if (isLogging) return;
     isLogging = true;
     try {
-      logEmitter.emit('log', { level: 'error', args: prepareForRenderer(args) });
+      logEmitter.emit('log', { level: 'error', args: prepareForRenderer(redactedArgs) });
     } finally {
       isLogging = false;
     }

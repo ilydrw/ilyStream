@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function RoseConfigEditor({
   draft,
@@ -32,7 +33,7 @@ export function RoseConfigEditor({
           value={config.eventDriven}
           onChange={(v) => update('eventDriven', v)}
         />
-        
+
         <Field label="Rose count" hint="Number of roses to spawn in a burst.">
           <NumberInput
             value={config.count}
@@ -58,7 +59,7 @@ export function RoseConfigEditor({
             step={0.1}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -70,10 +71,12 @@ export function RoseConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

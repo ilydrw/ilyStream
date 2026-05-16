@@ -13,7 +13,8 @@ import {
   IconBolt,
   IconRadio,
   IconActivity,
-  IconTerminal2
+  IconTerminal2,
+  IconVideo
 } from '@tabler/icons-react'
 
 import AICoHostIconFile from './assets/ai-co-host.svg'
@@ -44,18 +45,18 @@ const TwitchIcon = ({ size, className }: { size?: number; className?: string }) 
   <div className={className}><PlatformLogo platform="twitch" size={size} /></div>
 )
 const YouTubeIcon = ({ size, className }: { size?: number; className?: string }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
     className={`youtube-icon ${className}`}
     style={{ display: 'inline-block', verticalAlign: 'middle' }}
   >
-    <path 
-      className="yt-bg" 
-      fill="#FF0000" 
-      fillRule="evenodd" 
-      d="M23.498 6.186a3.02 3.02 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.02 3.02 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.02 3.02 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.02 3.02 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814 M9.545 15.568V8.432L15.818 12z" 
+    <path
+      className="yt-bg"
+      fill="#FF0000"
+      fillRule="evenodd"
+      d="M23.498 6.186a3.02 3.02 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.02 3.02 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.02 3.02 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.02 3.02 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814 M9.545 15.568V8.432L15.818 12z"
     />
     <path className="yt-play" fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12z"/>
   </svg>
@@ -72,6 +73,7 @@ const DiscordIcon = ({ size, className }: { size?: number; className?: string })
 const AICoHostNavIcon = ({ size, className }: { size?: number; className?: string }) => (
   <img src={AICoHostIconFile} width={size} height={size} className={`object-contain ${className}`} alt="" />
 )
+const BroadcastRoutePlaceholder = lazy(() => Promise.resolve({ default: () => null }))
 
 // --- Route Definition ---
 export interface AppRoute {
@@ -102,11 +104,19 @@ export const routes: AppRoute[] = [
   },
   {
     path: '/broadcast',
-    label: 'Broadcast',
-    description: 'Go live directly from ilyStream. Composite your camera and overlays into a professional broadcast.',
+    label: 'Live Broadcast',
+    description: 'Control your live scene, monitor stream health, and manage sources in real-time.',
     section: 'operate',
     icon: IconRadio,
-    component: lazy(() => import('./pages/BroadcastPage'))
+    component: BroadcastRoutePlaceholder
+  },
+  {
+    path: '/recordings',
+    label: 'Recordings',
+    description: 'Manage your past broadcasts and high-quality captures.',
+    section: 'operate',
+    icon: IconVideo,
+    component: lazy(() => import('./pages/RecordingsPage'))
   },
   {
     path: '/chat',

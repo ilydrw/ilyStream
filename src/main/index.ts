@@ -13,6 +13,20 @@ import { setupAutoUpdates, disposeAutoUpdates } from './services/update-service'
 // Global logger setup
 setupLogger()
 
+// Single instance lock
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  console.log('[main] Another instance is already running. Quitting...')
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
@@ -24,14 +38,14 @@ let initPromise: Promise<void>
 
 // Register asset scheme as privileged before app is ready
 protocol.registerSchemesAsPrivileged([
-  { 
-    scheme: 'asset', 
-    privileges: { 
-      secure: true, 
-      standard: true, 
-      supportFetchAPI: true, 
-      stream: true 
-    } 
+  {
+    scheme: 'asset',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      stream: true
+    }
   }
 ])
 
@@ -186,7 +200,7 @@ function createWindow(): void {
     console.log('[main] Window finished loading content.')
   })
 
-  const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL'] 
+  const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
     ? (process.env['ELECTRON_RENDERER_URL'].endsWith('/') ? process.env['ELECTRON_RENDERER_URL'] : process.env['ELECTRON_RENDERER_URL'] + '/')
     : join(__dirname, '../renderer/index.html')
 
@@ -207,7 +221,7 @@ function createWindow(): void {
   })
 
   console.log(`[main] Loading URL: ${loadUrl}`)
-  
+
   // Set up IPC and events using the registry
   registerIpcHandlers(mainWindow, services)
   setupEventForwarding(mainWindow, services)
@@ -324,10 +338,10 @@ app.whenReady().then(async () => {
   createTray()
   console.log('[main] Creating main window...')
   createWindow()
-  
+
   // Initialize auto-updates (handled in background)
   setupAutoUpdates(() => mainWindow)
-  
+
   console.log('[main] Application ready.')
 
   app.on('activate', function () {
@@ -348,7 +362,7 @@ function startHealthWatchdog(): void {
   healthWatchdogTimer = setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('system:ping')
-      
+
       // We don't wait for a response here to avoid blocking main
       // but we can log the attempt.
       console.log('[watchdog] Sent ping to renderer.')
@@ -385,8 +399,3 @@ app.on('before-quit', (event) => {
     }
   })()
 })
-
-
-
-
-

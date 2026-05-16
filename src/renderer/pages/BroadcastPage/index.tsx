@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import {IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconPencil, IconCopy, IconTrash, IconCast, IconSparkles} from '@tabler/icons-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconPencil, IconCopy, IconTrash, IconCast, IconSparkles, IconVideo, IconKeyboard, IconX} from '@tabler/icons-react'
+
 import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
 import type { LayerType, StudioLayer } from '../../../shared/studio'
@@ -12,10 +14,13 @@ import { resolveWidgetStudioPreset } from './utils/widget-placement'
 
 // Modular Components & Hooks
 import { BroadcastHeader } from './components/BroadcastHeader'
+import { MultiViewModal } from './components/MultiViewModal'
 import { DualVerticalOverlayBar } from './components/DualVerticalOverlayBar'
 import { SceneSidebar } from './components/SceneSidebar'
 import { SourceSidebar } from './components/SourceSidebar'
 import { MixerContainer } from './components/MixerContainer'
+import { RecordingSettingsModal } from './components/RecordingSettingsModal'
+
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
 import { usePageVisibility } from '../../hooks/usePageVisibility'
@@ -28,6 +33,16 @@ function formatDuration(totalSeconds: number): string {
   return hours > 0
     ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
     : `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+type ProjectorAspectRatio = '16:9' | '9:16'
+
+interface SourceContextMenuState {
+  x: number
+  y: number
+  layer: StudioLayer | null
+  sceneId: string
+  aspectRatio: ProjectorAspectRatio
 }
 
 export default function BroadcastPage() {
@@ -50,27 +65,36 @@ export default function BroadcastPage() {
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [customStreamKey, setCustomStreamKey] = useState('')
   const [showSourceModal, setShowSourceModal] = useState(false)
-  const [sourceContextMenu, setSourceContextMenu] = useState<{ x: number, y: number, layer: StudioLayer | null } | null>(null)
+  const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenuState | null>(null)
   const [sceneContextMenu, setSceneContextMenu] = useState<{ x: number, y: number, sceneId: string } | null>(null)
   const [captureInputFormat, setCaptureInputFormat] = useState<'h264' | 'mjpeg'>('h264')
   const [outputConfig, setOutputConfig] = useState({ fps: 30, bitrateKbps: 6000 })
   const [layoutInputFormats, setLayoutInputFormats] = useState<Record<BroadcastLayoutId, 'h264' | 'mjpeg'>>({ horizontal: 'h264', vertical: 'h264' })
   const [showLeftSidebar, setShowLeftSidebar] = useState(true)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
-  const [showEnhanceModal, setShowEnhanceModal] = useState(false)
+  const [showMultiView, setShowMultiView] = useState(false)
   const [dualVerticalOverlayEnabled, setDualVerticalOverlayEnabled] = useState(false)
   const isDualLayoutMode = broadcastLayoutMode === 'dual' || broadcastLayoutMode === 'dual-portrait' || broadcastLayoutMode === 'dual-horizontal'
   const effectiveDualVerticalOverlay = isDualLayoutMode && dualVerticalOverlayEnabled
   useEffect(() => {
     if (!isDualLayoutMode && dualVerticalOverlayEnabled) setDualVerticalOverlayEnabled(false)
   }, [isDualLayoutMode, dualVerticalOverlayEnabled])
+
   const activeScene = useMemo(() => {
     const scene = store.scenes.find(s => s.id === store.activeSceneId) || store.scenes[0]
-    console.log('[BroadcastPage] Resolved activeScene:', scene?.name, 'for sceneId:', store.activeSceneId)
     return scene
   }, [store.scenes, store.activeSceneId])
-  const [enhancingLayerId, setEnhancingLayerId] = useState<string | null>(null)
-  const enhancingLayer = useMemo(() => activeScene.layers.find(l => l.id === enhancingLayerId) || null, [activeScene.layers, enhancingLayerId])
+
+  const previewScene = useMemo(() => {
+    const scene = store.scenes.find(s => s.id === store.previewSceneId) || store.scenes[0]
+    return scene
+  }, [store.scenes, store.previewSceneId])
+  const enhancingLayer = useMemo(() => {
+    // Try to find in active scene, then in preview scene if studio mode is on
+    const layerId = store.enhancingLayerId
+    if (!layerId) return null
+    return activeScene.layers.find(l => l.id === layerId) || previewScene.layers.find(l => l.id === layerId) || null
+  }, [activeScene.layers, previewScene.layers, store.enhancingLayerId])
   const [mixerHeight, setMixerHeight] = useState(280)
   const [isMixerCollapsed, setIsMixerCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(320)
@@ -78,12 +102,25 @@ export default function BroadcastPage() {
   const [editingSceneName, setEditingSceneName] = useState('')
   const [isResizingMixer, setIsResizingMixer] = useState(false)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
-  const [selectionContext, setSelectionContext] = useState<'16:9' | '9:16'>('16:9')
+  const [selectionContext, setSelectionContext] = useState<ProjectorAspectRatio>(() => store.aspectRatio)
   const isPageVisible = usePageVisibility()
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const canvasRef = useRef<CanvasEditorHandle>(null)
   const activeLayoutAssignments = useMemo(() => broadcastLayoutMode === 'horizontal' ? { horizontal: layoutAssignments.horizontal, vertical: [] } : broadcastLayoutMode === 'vertical' ? { horizontal: [], vertical: layoutAssignments.vertical } : layoutAssignments, [broadcastLayoutMode, layoutAssignments])
+  const [showStingerConfig, setShowStingerConfig] = useState(false)
+  const [showHotkeys, setShowHotkeys] = useState(false)
+  const [showRecordingSettings, setShowRecordingSettings] = useState(false)
+
+  useEffect(() => {
+    if (!isDualLayoutMode) {
+      setSelectionContext(store.aspectRatio)
+    }
+  }, [isDualLayoutMode, store.aspectRatio])
+
+
   const activeCanvasStreamOutputs = useMemo(() => {
+
+
     const outputs = [
       { id: 'horizontal' as const, active: isStreaming && activeLayoutAssignments.horizontal.length > 0, width: 1920, height: 1080, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.horizontal, codec: pickAvcCodecString(1920, 1080, outputConfig.fps) },
       { id: 'vertical' as const, active: isStreaming && activeLayoutAssignments.vertical.length > 0, width: 1080, height: 1920, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.vertical, codec: pickAvcCodecString(1080, 1920, outputConfig.fps) }
@@ -106,8 +143,8 @@ export default function BroadcastPage() {
   }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, virtualCameraInfo, store.aspectRatio])
 
   const { streamReady, forceRefreshMedia } = useMediaManagement({
-    activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs, 
-    updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource, 
+    activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
+    updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources
   })
 
@@ -224,22 +261,58 @@ export default function BroadcastPage() {
   // Keyboard Shortcuts (Undo/Redo)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input, textarea, or contentEditable
+      const target = e.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        target.closest('.no-hotkeys')
+      ) return
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) {
-          store.redo()
-        } else {
-          store.undo()
-        }
+        if (e.shiftKey) store.redo()
+        else store.undo()
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
         store.redo()
+      }
+
+      // Production Hotkeys
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (store.studioMode) store.transition('fade')
+      } else if (e.key.toLowerCase() === 'f') {
+        if (store.studioMode) store.transition('fade')
+      } else if (e.key.toLowerCase() === 'c') {
+        if (store.studioMode) store.transition('cut')
+      } else if (e.key.toLowerCase() === 't') {
+        if (store.studioMode && store.stingerSettings.path) store.transition('stinger')
+      } else if (e.key.toLowerCase() === 's') {
+        store.toggleStudioMode()
+      } else if (e.key.toLowerCase() === 'r') {
+        if (isRecording) stopRecording()
+        else startRecording()
+      } else if (e.key.toLowerCase() === 'b') {
+        if (isStreaming) stopBroadcast()
+        else startBroadcast()
+      } else if (e.key.toLowerCase() === 'm') {
+        setShowMultiView(!showMultiView)
+      } else if (/^[1-9]$/.test(e.key)) {
+        const index = parseInt(e.key) - 1
+        if (store.scenes[index]) {
+          if (store.studioMode) store.setPreviewScene(store.scenes[index].id)
+          else store.setActiveScene(store.scenes[index].id)
+        }
+      } else if (e.key === 'Escape') {
+        setShowMultiView(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [store.undo, store.redo])
+  }, [store, isRecording, isStreaming, showMultiView])
 
   const addSource = useCallback((type: LayerType, config: Record<string, any>, sourceName?: string) => {
-    if (!activeScene) return
+    const targetScene = store.studioMode ? previewScene : activeScene
+    if (!targetScene) return
 
     const name = sourceName?.trim() || {
       camera: 'Video Capture',
@@ -271,7 +344,7 @@ export default function BroadcastPage() {
           ? fit(960, 160, 0.58)
           : fit(1280, 720)
 
-    store.addLayer(activeScene.id, {
+    store.addLayer(targetScene.id, {
       type,
       name,
       config,
@@ -290,7 +363,7 @@ export default function BroadcastPage() {
     const destinations = (['horizontal', 'vertical'] as BroadcastLayoutId[]).flatMap(l => activeLayoutAssignments[l].map(pId => ({ layout: l, platform: platforms.find(p => p.id === pId) })))
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
-    
+
     const fps = 30; setOutputConfig({ fps, bitrateKbps: 6000 })
     const hIn = await getOptimizedCaptureInputFormat(1920, 1080, fps, 6000000); setCaptureInputFormat(hIn)
     const vIn = await getOptimizedCaptureInputFormat(1080, 1920, fps, 6000000)
@@ -309,7 +382,7 @@ export default function BroadcastPage() {
   const startRecording = async () => {
     setStreamError(null)
     const fps = Math.max(1, Math.min(60, Math.round(outputConfig.fps || 30)))
-    const bitrateKbps = Math.max(500, Math.round(outputConfig.bitrateKbps || 6000))
+    const bitrateKbps = store.recordingSettings.bitrateKbps || 12000
     const inputFormat = await getOptimizedCaptureInputFormat(store.canvasWidth, store.canvasHeight, fps, bitrateKbps * 1000)
     setCaptureInputFormat(inputFormat)
     setOutputConfig({ fps, bitrateKbps })
@@ -318,10 +391,10 @@ export default function BroadcastPage() {
     if (context.state === 'suspended') await context.resume().catch(() => {})
 
     const result = await window.api.streaming.startRecording({
+      ...store.recordingSettings,
       width: store.canvasWidth,
       height: store.canvasHeight,
       fps,
-      bitrateKbps,
       inputFormat,
       audioFormat: 'f32le',
       audioSampleRate: context.sampleRate
@@ -335,6 +408,7 @@ export default function BroadcastPage() {
       setStreamError(result?.error || 'Failed to start recording')
     }
   }
+
 
   const stopRecording = async () => {
     const result = await window.api.streaming.stopRecording()
@@ -373,31 +447,92 @@ export default function BroadcastPage() {
     setObsStatus(await window.api.obs.getStatus())
   }
 
+  const getSceneIdForLayer = (layer: StudioLayer | null): string => {
+    if (!layer) return activeScene.id
+    if (store.studioMode && previewScene.layers.some(l => l.id === layer.id)) return previewScene.id
+    if (activeScene.layers.some(l => l.id === layer.id)) return activeScene.id
+    return activeScene.id
+  }
+
+  const buildProjectorStateSnapshot = () => ({
+    scenes: store.scenes,
+    activeSceneId: store.activeSceneId,
+    canvasWidth: store.canvasWidth,
+    canvasHeight: store.canvasHeight,
+    aspectRatio: store.aspectRatio,
+    snapToGrid: store.snapToGrid,
+    gridSize: store.gridSize,
+    audioSources: store.audioSources,
+    masterBus: store.masterBus,
+    routing: store.routing,
+    mixerSidebarWidth: store.mixerSidebarWidth,
+    studioMode: store.studioMode,
+    previewSceneId: store.previewSceneId
+  })
+
+  const openProjector = async (payload: { monitorId: number; sceneId: string; aspectRatio: ProjectorAspectRatio; layerId?: string }) => {
+    if (payload.monitorId === undefined || payload.monitorId === null || !payload.sceneId) return false
+
+    try {
+      await window.api.studio.saveState(buildProjectorStateSnapshot())
+    } catch (err) {
+      console.warn('[Projector] Failed to persist latest studio state before opening:', err)
+    }
+
+    return window.api.studio.openProjector(payload)
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-black relative">
-      <BroadcastHeader 
+      <BroadcastHeader
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
         showLeftSidebar={showLeftSidebar} onToggleLeftSidebar={() => setShowLeftSidebar(!showLeftSidebar)} showRightSidebar={showRightSidebar} onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
-        broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={m => { 
-          setBroadcastLayoutMode(m as any); 
-          store.setAspectRatio(m === 'vertical' || m === 'dual-portrait' ? '9:16' : '16:9') 
+        broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={m => {
+          setBroadcastLayoutMode(m as any);
+          store.setAspectRatio(m === 'vertical' || m === 'dual-portrait' ? '9:16' : '16:9')
         }}
         undo={store.undo} redo={store.redo} canUndo={store.past.length > 0} canRedo={store.future.length > 0}
         onTakeScreenshot={() => canvasRef.current?.takeScreenshot()} onStartRecording={startRecording} onStopRecording={stopRecording}
         onForceRefreshMedia={forceRefreshMedia} monitors={monitors} selectedMonitorId={selectedMonitorId} onSetSelectedMonitorId={setSelectedMonitorId}
+        studioMode={store.studioMode} onToggleStudioMode={store.toggleStudioMode}
+        onToggleHotkeys={() => setShowHotkeys(!showHotkeys)} showHotkeys={showHotkeys}
+        onOpenRecordingSettings={() => setShowRecordingSettings(true)}
         onOpenProjector={() => {
+
+
           console.log('[Projector] Opening via Toolbar. Context:', selectionContext)
-          ;(window.api.studio.openProjector as any)({ 
-            monitorId: selectedMonitorId!, 
-            sceneId: activeScene.id,
-            aspectRatio: selectionContext
-          })
-        }} 
+          if (selectedMonitorId !== null) {
+            void openProjector({
+              monitorId: selectedMonitorId,
+              sceneId: activeScene.id,
+              aspectRatio: selectionContext
+            })
+          }
+        }}
         obsStatus={obsStatus} onToggleObsVirtualCamera={toggleObsVirtualCamera}
         virtualCameraInfo={virtualCameraInfo} onToggleVirtualCamera={toggleVirtualCamera}
-        platforms={platforms} layoutAssignments={layoutAssignments} onToggleLayoutAssignment={(l, id) => setLayoutAssignments(curr => ({ ...curr, [l]: (curr[l as any] as any).includes(id) ? (curr[l as any] as any).filter((i: any) => i !== id) : [...(curr[l as any] as any), id] }))} onRemoveLayoutAssignment={(l, id) => setLayoutAssignments(curr => ({ ...curr, [l]: (curr[l as any] as any).filter((i: any) => i !== id) }))}
+        platforms={platforms} layoutAssignments={layoutAssignments}
+        onToggleLayoutAssignment={(l, id) => {
+          const layoutKey = l as any;
+          const currAssignments = (layoutAssignments as any)[layoutKey] || [];
+          setLayoutAssignments(curr => ({
+            ...curr,
+            [layoutKey]: currAssignments.includes(id)
+              ? currAssignments.filter((i: string) => i !== id)
+              : [...currAssignments, id]
+          }))
+        }}
+        onRemoveLayoutAssignment={(l, id) => {
+          const layoutKey = l as any;
+          const currAssignments = (layoutAssignments as any)[layoutKey] || [];
+          setLayoutAssignments(curr => ({
+            ...curr,
+            [layoutKey]: currAssignments.filter((i: string) => i !== id)
+          }))
+        }}
         customRtmpUrl={customRtmpUrl} onCustomRtmpUrlChange={setCustomRtmpUrl} customStreamKey={customStreamKey} onCustomStreamKeyChange={setCustomStreamKey}
         onStartBroadcast={startBroadcast} onStopBroadcast={stopBroadcast}
+        onShowMultiView={() => setShowMultiView(true)}
       />
 
       {isDualLayoutMode && (
@@ -408,69 +543,344 @@ export default function BroadcastPage() {
       )}
 
       <div className="flex-1 flex min-h-0 bg-black">
-        {showLeftSidebar && <SceneSidebar scenes={store.scenes} activeSceneId={store.activeSceneId} onSelectScene={store.setActiveScene} onAddScene={store.addScene} onRenameScene={store.renameScene} onDuplicateScene={store.duplicateScene} onRemoveScene={store.removeScene} editingSceneId={editingSceneId} setEditingSceneId={setEditingSceneId} editingSceneName={editingSceneName} setEditingSceneName={setEditingSceneName} onContextMenu={(e, id) => setSceneContextMenu({ x: e.clientX, y: e.clientY, sceneId: id })} />}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#080808] p-6 overflow-hidden">
-          <CanvasEditor 
-            activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording} 
-            captureInputFormat={captureInputFormat} outputFps={outputConfig.fps} 
-            outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs} 
-            isVisible={isPageVisible}
-            streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs} 
-            previewMode={broadcastLayoutMode} selectionContext={selectionContext}
-            dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
-            onSelectionContextChange={setSelectionContext}
-            onContextMenu={(e, l, ctx) => {
-              setSelectionContext(ctx)
-              setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l })
-            }}
-            ref={canvasRef} 
+        {showLeftSidebar && (
+          <SceneSidebar
+            scenes={store.scenes}
+            activeSceneId={store.studioMode ? store.previewSceneId : store.activeSceneId}
+            onSelectScene={store.setActiveScene}
+            onAddScene={store.addScene}
+            onRenameScene={store.renameScene}
+            onDuplicateScene={store.duplicateScene}
+            onRemoveScene={store.removeScene}
+            editingSceneId={editingSceneId}
+            setEditingSceneId={setEditingSceneId}
+            editingSceneName={editingSceneName}
+            setEditingSceneName={setEditingSceneName}
+            onContextMenu={(e, id) => setSceneContextMenu({ x: e.clientX, y: e.clientY, sceneId: id })}
           />
+        )}
+        <div className="flex-1 flex min-w-0 min-h-0 bg-[#080808] overflow-hidden relative">
+          {store.studioMode ? (
+            <div className="flex-1 flex min-w-0 h-full gap-4 p-4">
+              {/* Preview Canvas (Left) */}
+              <div className="flex-1 flex flex-col min-w-0 border border-white/5 bg-black/20 rounded-2xl overflow-hidden relative group">
+                <div className="absolute top-4 left-4 z-10 px-3 py-1 bg-accent/80 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">Preview</div>
+                <CanvasEditor
+                  activeScene={previewScene} isStreaming={isStreaming} isRecording={isRecording}
+                  captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
+                  outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                  isVisible={isPageVisible} isPreview={true}
+                  streamReady={streamReady} streamOutputs={[]}
+                  previewMode="single" selectionContext={selectionContext}
+                  onSelectionContextChange={setSelectionContext}
+                  onContextMenu={(e, l, ctx) => {
+                    setSelectionContext(ctx)
+                    setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: previewScene.id, aspectRatio: ctx })
+                  }}
+                />
+              </div>
+
+              {/* Transition Controls */}
+              <div className="flex flex-col justify-center items-center gap-4 px-3">
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => store.transition('fade')}
+                    className="w-16 h-16 rounded-2xl bg-brand-gradient text-white flex flex-col items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-accent/20 border border-white/10 group shadow-glow"
+                  >
+                    <IconArrowsMove size={24} className="group-hover:rotate-180 transition-transform duration-500" />
+                    <span className="text-[10px] font-black uppercase tracking-tighter">Fade</span>
+                  </button>
+                  <div className="flex flex-col items-center gap-0.5 mt-1">
+                    <input
+                      type="number"
+                      value={store.transitionDuration}
+                      onChange={(e) => store.setTransitionDuration(Number(e.target.value))}
+                      className="w-12 bg-white/5 border border-white/10 rounded text-[9px] font-bold text-center text-white/50 focus:text-accent focus:border-accent/50 outline-none transition-all"
+                      title="Transition Duration (ms)"
+                    />
+                    <span className="text-[7px] font-black uppercase tracking-widest text-white/20">ms</span>
+                  </div>
+                </div>
+
+                <div className="h-px w-10 bg-white/10" />
+
+                <button
+                  onClick={() => store.transition('cut')}
+                  className="w-16 py-3 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 text-[9px] font-black uppercase tracking-widest transition-all border border-white/5"
+                >
+                  Cut
+                </button>
+
+                <div className="h-px w-10 bg-white/10" />
+
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => {
+                      if (!store.stingerSettings.path) setShowStingerConfig(true)
+                      else store.transition('stinger')
+                    }}
+                    className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all border border-white/10 group ${
+                      store.stingerSettings.path
+                        ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:brightness-110'
+                        : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40'
+                    }`}
+                  >
+                    <IconVideo size={24} />
+                    <span className="text-[10px] font-black uppercase tracking-tighter">Stinger</span>
+                  </button>
+                  <button
+                    onClick={() => setShowStingerConfig(true)}
+                    className="text-[8px] font-black uppercase tracking-widest text-white/20 hover:text-white/60 transition-colors"
+                  >
+                    Setup
+                  </button>
+                </div>
+              </div>
+
+
+              {/* Program Canvas (Right) */}
+              <div className="flex-1 flex flex-col min-w-0 border border-red-500/20 bg-black/20 rounded-2xl overflow-hidden relative group">
+                <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">Live</div>
+                <CanvasEditor
+                  activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
+                  captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
+                  outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                  isVisible={isPageVisible}
+                  streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
+                  previewMode="single" selectionContext={selectionContext}
+                  dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
+                  onSelectionContextChange={setSelectionContext}
+                  onContextMenu={(e, l, ctx) => {
+                    setSelectionContext(ctx)
+                    setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: activeScene.id, aspectRatio: ctx })
+                  }}
+                  ref={canvasRef}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 p-6">
+              <CanvasEditor
+                activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
+                captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
+                outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                isVisible={isPageVisible}
+                streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
+                previewMode={broadcastLayoutMode} selectionContext={selectionContext}
+                dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
+                onSelectionContextChange={setSelectionContext}
+                onContextMenu={(e, l, ctx) => {
+                  setSelectionContext(ctx)
+                  setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: activeScene.id, aspectRatio: ctx })
+                }}
+                ref={canvasRef}
+              />
+            </div>
+          )}
         </div>
         {showRightSidebar && (
-          <SourceSidebar 
-            activeScene={activeScene} 
-            selectedLayerId={store.selectedLayerId} 
-            onSelectLayer={store.setSelectedLayer} 
-            onUpdateLayer={(id, u) => store.updateLayer(activeScene.id, id, u)} 
-            onReorderLayer={(id, i) => store.reorderLayer(activeScene.id, id, i)} 
-            onShowSourceModal={() => setShowSourceModal(true)} 
-            onContextMenu={(e, l) => setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l })} 
-            aspectRatio={store.aspectRatio} 
-            broadcastLayoutMode={broadcastLayoutMode} 
-            widgets={widgets} 
-            devices={devices} 
-            sidebarWidth={sidebarWidth} 
-            onSidebarResizeStart={() => setIsResizingSidebar(true)} 
+          <SourceSidebar
+            activeScene={store.studioMode ? previewScene : activeScene}
+            selectedLayerId={store.selectedLayerId}
+            onSelectLayer={store.setSelectedLayer}
+            onUpdateLayer={(id, u) => store.updateLayer(store.studioMode ? previewScene.id : activeScene.id, id, u)}
+            onReorderLayer={(id, i) => store.reorderLayer(store.studioMode ? previewScene.id : activeScene.id, id, i)}
+            onShowSourceModal={() => setShowSourceModal(true)}
+            onContextMenu={(e, l, ctx) => {
+              setSelectionContext(ctx)
+              setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: getSceneIdForLayer(l), aspectRatio: ctx })
+            }}
+            aspectRatio={store.aspectRatio}
+            broadcastLayoutMode={broadcastLayoutMode}
+            widgets={widgets}
+            devices={devices}
+            sidebarWidth={sidebarWidth}
+            onSidebarResizeStart={() => setIsResizingSidebar(true)}
             selectionContext={selectionContext}
             onSelectionContextChange={setSelectionContext}
           />
         )}
       </div>
- 
+
       <MixerContainer isCollapsed={isMixerCollapsed} onToggleCollapse={() => setIsMixerCollapsed(!isMixerCollapsed)} mixerHeight={mixerHeight} onResizeStart={() => setIsResizingMixer(true)} activeScene={activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
       <AddSourceModal open={showSourceModal} onClose={() => setShowSourceModal(false)} onAdd={addSource} widgets={widgets} devices={devices} />
-      <EnhancementModal open={showEnhanceModal} onClose={() => setShowEnhanceModal(false)} layer={enhancingLayer} onUpdate={(id, u) => store.updateLayer(activeScene.id, id, u)} videoRefs={videoRefs} aspectContext={selectionContext} />
+      <EnhancementModal
+        open={store.showEnhancementModal}
+        onClose={() => store.setShowEnhancementModal(false)}
+        layer={enhancingLayer}
+        onUpdate={(id, u) => store.updateLayer(store.studioMode && previewScene.layers.find(l => l.id === id) ? previewScene.id : activeScene.id, id, u)}
+        videoRefs={videoRefs}
+        aspectContext={selectionContext}
+      />
+      <MultiViewModal
+        open={showMultiView}
+        onClose={() => setShowMultiView(false)}
+        videoRefs={videoRefs}
+      />
+
+      {/* Stinger Config Modal */}
+      {showStingerConfig && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+          <div className="w-[400px] bg-[#0c0c0e] rounded-3xl border border-white/10 shadow-2xl p-8 flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-black uppercase tracking-tighter text-white">Stinger Setup</h2>
+              <button onClick={() => setShowStingerConfig(false)} className="text-white/20 hover:text-white">Close</button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Video File (.webm / .mp4)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={store.stingerSettings.path}
+                    readOnly
+                    placeholder="No file selected..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none"
+                  />
+                  <button
+                    onClick={async () => {
+                      const res = await (window as any).api.assets.pickFile({ filters: [{ name: 'Videos', extensions: ['webm', 'mp4', 'mov'] }] })
+                      if (res) store.setStingerPath(res)
+                    }}
+                    className="px-4 bg-brand-gradient text-white rounded-xl font-bold text-xs shadow-glow"
+                  >
+                    Pick
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Total Duration (ms)</label>
+                  <input
+                    type="number"
+                    value={store.stingerSettings.duration}
+                    onChange={(e) => store.setStingerDuration(Number(e.target.value))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Cut Point (ms)</label>
+                  <input
+                    type="number"
+                    value={store.stingerSettings.cutPoint}
+                    onChange={(e) => store.setStingerCutPoint(Number(e.target.value))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl flex gap-3 items-center">
+              <IconSparkles className="text-purple-400" size={20} />
+              <p className="text-[10px] leading-relaxed text-purple-200/60 font-medium">
+                The <span className="text-purple-300 font-bold">Cut Point</span> is when the actual scene switch happens. Set it to when the stinger video completely covers the screen.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowStingerConfig(false)}
+              className="w-full py-4 bg-brand-gradient text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-accent/20 hover:brightness-110 active:scale-95 transition-all shadow-glow"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hotkey Legend Overlay */}
+      <AnimatePresence>
+        {showHotkeys && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-[#0c0c0e]/90 backdrop-blur-xl border border-white/10 rounded-[32px] p-10 shadow-2xl shadow-black/50 w-[800px]"
+          >
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-purple-500/20 text-purple-400">
+                  <IconKeyboard size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-tighter text-white">Production Shortcuts</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mt-1">Master your broadcast with global keys</p>
+                </div>
+              </div>
+              <button onClick={() => setShowHotkeys(false)} className="p-3 rounded-xl bg-white/5 text-white/20 hover:text-white transition-all">
+                <IconX size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+              {[
+                { key: 'S', label: 'Toggle Studio Mode', desc: 'Preview vs Program' },
+                { key: 'F / Space', label: 'Fade Transition', desc: 'Smooth cross-fade' },
+                { key: 'C', label: 'Cut Transition', desc: 'Hard cut switch' },
+                { key: 'T', label: 'Stinger Transition', desc: 'Professional video overlay' },
+                { key: 'M', label: 'Toggle Multi-View', desc: 'Browse all scenes' },
+                { key: 'R', label: 'Start/Stop Recording', desc: 'Local capture' },
+                { key: 'B', label: 'Start/Stop Broadcast', desc: 'Live output' },
+                { key: '1-9', label: 'Select Scene', desc: 'Direct scene jumping' },
+                { key: 'Ctrl+Z', label: 'Undo Action', desc: 'Revert last change' },
+                { key: 'Ctrl+Y', label: 'Redo Action', desc: 'Apply reverted change' },
+                { key: 'ESC', label: 'Close Overlays', desc: 'Clear active modals' },
+              ].map(hk => (
+                <div key={hk.key} className="flex items-center justify-between py-3 border-b border-white/5 group hover:border-white/10 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="min-w-[60px] h-8 flex items-center justify-center bg-white/10 rounded-lg border border-white/10 text-[11px] font-black font-mono text-accent">
+                      {hk.key}
+                    </div>
+                    <div>
+                      <p className="text-[12px] font-black uppercase tracking-tight text-white/80">{hk.label}</p>
+                      <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest mt-0.5">{hk.desc}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-10 p-5 rounded-2xl bg-purple-500/5 border border-purple-500/10 flex items-center gap-4">
+              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                <IconSparkles size={18} />
+              </div>
+              <p className="text-[11px] text-purple-200/40 font-medium leading-relaxed italic">
+                Pro Tip: Use <span className="text-purple-400 font-bold">Studio Mode</span> to prepare your next shot in Preview before transitioning it to the Live Program.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <RecordingSettingsModal
+        isOpen={showRecordingSettings}
+        onClose={() => setShowRecordingSettings(false)}
+      />
+
+
+
 
       {sourceContextMenu && (
-        <ContextMenu 
-          x={sourceContextMenu.x} y={sourceContextMenu.y} 
-          onClose={() => setSourceContextMenu(null)} 
+        <ContextMenu
+          x={sourceContextMenu.x} y={sourceContextMenu.y}
+          onClose={() => setSourceContextMenu(null)}
           items={sourceContextMenu.layer ? [
-            { 
-              id: 'fit', 
-              label: `Fit to Screen (${selectionContext === '9:16' ? 'Vertical' : 'Horizontal'})`, 
-              icon: <IconMaximize size={18} />, 
+            {
+              id: 'fit',
+              label: `Fit to Screen (${sourceContextMenu.aspectRatio === '9:16' ? 'Vertical' : 'Horizontal'})`,
+              icon: <IconMaximize size={18} />,
               onClick: () => {
-                const isPortrait = selectionContext === '9:16'
+                const isPortrait = sourceContextMenu.aspectRatio === '9:16'
                 const layer = sourceContextMenu.layer!
                 const targetW = isPortrait ? 1080 : 1920
                 const targetH = isPortrait ? 1920 : 1080
-                
+
                 // Try to get native dimensions from videoRefs if it's a camera/media
                 const video = videoRefs.current[layer.id]
                 let nativeW = video?.videoWidth || (isPortrait ? (layer.portraitWidth ?? layer.width) : layer.width)
                 let nativeH = video?.videoHeight || (isPortrait ? (layer.portraitHeight ?? layer.height) : layer.height)
-                
+
                 // If we have no valid dimensions, default to 16:9
                 if (!nativeW || !nativeH) { nativeW = 16; nativeH = 9 }
 
@@ -481,24 +891,26 @@ export default function BroadcastPage() {
                 const finalY = Math.round((targetH - finalH) / 2)
 
                 if (isPortrait) {
-                  store.updateLayer(activeScene.id, layer.id, { 
-                    portraitX: finalX, portraitY: finalY, portraitWidth: finalW, portraitHeight: finalH, 
-                    portraitCrop: { top: 0, right: 0, bottom: 0, left: 0 } 
+                  store.updateLayer(sourceContextMenu.sceneId, layer.id, {
+                    portraitX: finalX, portraitY: finalY, portraitWidth: finalW, portraitHeight: finalH,
+                    portraitCrop: { top: 0, right: 0, bottom: 0, left: 0 }
                   })
                 } else {
-                  store.updateLayer(activeScene.id, layer.id, { 
-                    x: finalX, y: finalY, width: finalW, height: finalH, 
-                    crop: { top: 0, right: 0, bottom: 0, left: 0 } 
+                  store.updateLayer(sourceContextMenu.sceneId, layer.id, {
+                    x: finalX, y: finalY, width: finalW, height: finalH,
+                    crop: { top: 0, right: 0, bottom: 0, left: 0 }
                   })
                 }
-              } 
-            }, 
+              }
+            },
             {
               id: 'enhance',
               label: 'Enhance',
               icon: <IconSparkles size={18} />,
               disabled: !(sourceContextMenu.layer!.type === 'camera' || sourceContextMenu.layer!.type === 'display' || sourceContextMenu.layer!.type === 'image'),
-              onClick: () => { setEnhancingLayerId(sourceContextMenu.layer?.id || null); setShowEnhanceModal(true) }
+              onClick: () => {
+                store.setShowEnhancementModal(true, sourceContextMenu.layer?.id || null)
+              }
             },
             {
               id: 'project',
@@ -507,15 +919,15 @@ export default function BroadcastPage() {
               submenu: monitors.length > 0 ? monitors.map(m => ({
                 id: `monitor-${m.id}`,
                 label: m.label,
-                onClick: () => (window.api.studio.openProjector as any)({ 
-                  monitorId: m.id, 
-                  sceneId: activeScene.id,
+                onClick: () => void openProjector({
+                  monitorId: m.id,
+                  sceneId: sourceContextMenu.sceneId,
                   layerId: sourceContextMenu.layer!.id,
-                  aspectRatio: selectionContext 
+                  aspectRatio: sourceContextMenu.aspectRatio
                 })
               })) : [{ id: 'no-monitors', label: 'No Monitors Detected', disabled: true }]
             },
-            { id: 'delete', label: 'Delete', icon: <IconTrash size={18} />, danger: true, onClick: () => store.removeLayer(activeScene.id, sourceContextMenu.layer!.id) }
+            { id: 'delete', label: 'Delete', icon: <IconTrash size={18} />, danger: true, onClick: () => store.removeLayer(sourceContextMenu.sceneId, sourceContextMenu.layer!.id) }
           ] : [
             {
               id: 'project',
@@ -524,14 +936,14 @@ export default function BroadcastPage() {
               submenu: monitors.length > 0 ? monitors.map(m => ({
                 id: `monitor-${m.id}`,
                 label: m.label,
-                onClick: () => (window.api.studio.openProjector as any)({ 
-                  monitorId: m.id, 
-                  sceneId: activeScene.id,
-                  aspectRatio: selectionContext 
+                onClick: () => void openProjector({
+                  monitorId: m.id,
+                  sceneId: sourceContextMenu.sceneId,
+                  aspectRatio: sourceContextMenu.aspectRatio
                 })
               })) : [{ id: 'no-monitors', label: 'No Monitors Detected', disabled: true }]
             }
-          ]} 
+          ]}
         />
       )}
       {sceneContextMenu && <ContextMenu x={sceneContextMenu.x} y={sceneContextMenu.y} onClose={() => setSceneContextMenu(null)} items={[{ id: 'rename', label: 'Rename', icon: <IconPencil size={18} />, onClick: () => { setEditingSceneId(sceneContextMenu.sceneId); setEditingSceneName(store.scenes.find(s => s.id === sceneContextMenu.sceneId)?.name || '') } }, { id: 'delete', label: 'Delete', icon: <IconTrash size={18} />, danger: true, onClick: () => store.removeScene(sceneContextMenu.sceneId) }]} />}

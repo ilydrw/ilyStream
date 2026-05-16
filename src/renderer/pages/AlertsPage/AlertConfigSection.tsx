@@ -72,10 +72,8 @@ export function AlertConfigSection({
   }
 
   const simulate = () => {
-    playCurrentSound(true)
     void window.api?.events?.simulate?.({
-      type: (type === 'Superfan' ? 'superfan' : type.toLowerCase()) as any,
-      suppressSound: true
+      type: (type === 'Superfan' ? 'superfan' : type.toLowerCase()) as any
     })
   }
 

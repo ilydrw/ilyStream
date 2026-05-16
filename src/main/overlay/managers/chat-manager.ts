@@ -18,28 +18,20 @@ export class ChatManager {
   }
 
   getHistory(): OverlayFeedItem[] {
-    return this.history.filter(i => !['like', 'share'].includes(i.kind))
+    return this.history
   }
 
   handleEvent(event: AnyStreamEvent): void {
     const feedItem = eventToOverlayFeedItem(event)
     if (!feedItem) return
 
-    // FILTER: Only allow chat, gift, follow, subscription, and raid in the main feed
-    const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid']
+    // FILTER: Allow common stream events in the main feed
+    const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid', 'like', 'share']
     if (allowedKinds.includes(feedItem.kind)) {
-      // DEBUG: Write to file
-      try {
-        const fs = require('fs')
-        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-        const logLine = `[${new Date().toISOString()}] CHAT_MANAGER_HANDLE: ${feedItem.kind} from ${feedItem.displayName}\n`
-        fs.appendFileSync(debugPath, logLine)
-      } catch (e) {}
-
       this.history = limitHistory([...this.history, feedItem], CHAT_HISTORY_LIMIT)
       this.sse.broadcast('chat', { type: 'append', payload: feedItem })
       this.sse.broadcast('chat-unified', { type: 'append', payload: feedItem })
-      
+
       // RELAY to DeskThing / LAN devices
       this.deviceApi?.appendChatItem(feedItem)
     }

@@ -1,12 +1,13 @@
 import ffmpegPath from 'ffmpeg-static'
 import { EventEmitter } from 'events'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
-import { dirname, join } from 'path'
+import { join } from 'path'
 import { app, powerSaveBlocker } from 'electron'
 
 // Fix for packaged apps: ffmpeg-static path might point into app.asar
 // We must use the asar-unpacked version for the binary to be executable.
 const resolvedFfmpegPath = (ffmpegPath || 'ffmpeg').replace('app.asar', 'app.asar.unpacked')
+const RECORDING_CONTAINERS = new Set(['mkv', 'mp4', 'mov', 'flv'])
 
 import { StreamingEncoderResolver } from './streaming/encoder-resolver'
 import type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
@@ -52,6 +53,7 @@ export class StreamingService extends EventEmitter {
     this.recordingManager.on('error', (err) => this.handleManagerError('recording', err))
     this.recordingManager.on('close', (code, signal, summary) => {
       this.isRecording = false
+      this.activeRecordingPath = null
       this.checkPowerSave()
       this.stopSilentClockIfIdle()
       if (!this.isStreaming) this.pumper.stopWatchdog()
@@ -148,9 +150,8 @@ export class StreamingService extends EventEmitter {
     const bestEncoder = await this.encoderResolver.getBestEncoder()
     this.reserveInputFormat(inputFormat)
 
-    const outputPath = config.outputPath || this.createDefaultRecordingPath()
-    const dir = dirname(outputPath)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const outputPath = this.createRecordingPath(config)
+    this.ensureRecordingDirectory()
 
     const args = await this.argsBuilder.buildRecordArgs({ ...config, outputPath }, bestEncoder)
     this.recordingAudioEnabled = config.audioFormat === 'f32le'
@@ -179,6 +180,7 @@ export class StreamingService extends EventEmitter {
     this.recordingManager.stop()
     this.isRecording = false
     this.recordingAudioEnabled = false
+    this.activeRecordingPath = null
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
     if (!this.isStreaming) this.pumper.stopWatchdog()
@@ -344,8 +346,9 @@ export class StreamingService extends EventEmitter {
       .map(([, session]) => session)
   }
 
-  private createDefaultRecordingPath(): string {
-    const folder = join(app.getPath('videos'), 'ilyStream', 'Recordings')
+  private createRecordingPath(config: RecordingConfig): string {
+    const folder = this.getRecordingFolder()
+    const container = this.normalizeRecordingContainer(config.container)
     const now = new Date()
     const stamp = [
       now.getFullYear(),
@@ -356,7 +359,26 @@ export class StreamingService extends EventEmitter {
       String(now.getMinutes()).padStart(2, '0'),
       String(now.getSeconds()).padStart(2, '0')
     ].join('-')
-    return join(folder, `ilyStream_${stamp}.mp4`)
+    let candidate = join(folder, `ilyStream_${stamp}.${container}`)
+    let suffix = 1
+    while (existsSync(candidate)) {
+      candidate = join(folder, `ilyStream_${stamp}_${suffix}.${container}`)
+      suffix += 1
+    }
+    return candidate
+  }
+
+  private getRecordingFolder(): string {
+    return join(app.getPath('videos'), 'ilyStream', 'Recordings')
+  }
+
+  private ensureRecordingDirectory(): void {
+    const folder = this.getRecordingFolder()
+    if (!existsSync(folder)) mkdirSync(folder, { recursive: true })
+  }
+
+  private normalizeRecordingContainer(container?: string): 'mkv' | 'mp4' | 'mov' | 'flv' {
+    return RECORDING_CONTAINERS.has(container || '') ? container as 'mkv' | 'mp4' | 'mov' | 'flv' : 'mkv'
   }
 }
 

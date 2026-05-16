@@ -14,10 +14,10 @@ export function ChatMessageItem({ message, onRelay, onFeature }: ChatMessageItem
   return (
     <article className="group flex items-start gap-4 px-8 py-5 border-b border-white/[0.03] hover:bg-white/[0.015] transition-all duration-200 relative overflow-hidden">
       <div className="relative shrink-0">
-        <Avatar 
-          url={message.profilePictureUrl} 
-          name={message.displayName} 
-          size="lg" 
+        <Avatar
+          url={message.profilePictureUrl}
+          name={message.displayName}
+          size="lg"
           className="ring-2 ring-white/[0.05] group-hover:ring-accent/40 transition-all duration-300 shadow-xl"
         />
         <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#0a0a0a] border-2 border-[#0a0a0a] flex items-center justify-center">
@@ -46,7 +46,7 @@ export function ChatMessageItem({ message, onRelay, onFeature }: ChatMessageItem
       <div className="absolute top-4 right-8 opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
         <button
           onClick={() => onFeature(message)}
-          className="app-button !h-9 !px-4 text-xs font-black uppercase tracking-widest bg-accent/10 hover:bg-accent/20 border-accent/20"
+          className="app-button !h-9 !px-4 text-xs font-black uppercase tracking-widest hover:bg-brand-gradient hover:border-transparent hover:text-white transition-all shadow-glow"
         >
           Feature
         </button>

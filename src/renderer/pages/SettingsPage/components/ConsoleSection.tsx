@@ -95,9 +95,9 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   const parts = text.split(new RegExp(`(${query})`, 'gi'))
   return (
     <>
-      {parts.map((part, i) => 
-        part.toLowerCase() === query.toLowerCase() 
-          ? <span key={i} className="bg-accent/40 text-white rounded-[2px] px-0.5">{part}</span> 
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase()
+          ? <span key={i} className="bg-accent/40 text-white rounded-[2px] px-0.5">{part}</span>
           : part
       )}
     </>
@@ -177,7 +177,7 @@ export function ConsoleSection() {
   }
 
   const copyAll = () => {
-    const text = filteredEntries.map(e => 
+    const text = filteredEntries.map(e =>
       `[${new Date(e.timestamp).toLocaleTimeString()}] [${e.level.toUpperCase()}] [${e.category}:${e.source}] ${e.args}`
     ).join('\n')
     navigator.clipboard.writeText(text)
@@ -245,7 +245,7 @@ export function ConsoleSection() {
           </div>
           <div>
             <h2 className="flex items-center gap-2">
-              Console 
+              Console
               {paused && <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase tracking-widest border border-amber-500/20">Paused</span>}
             </h2>
             <p>Real-time application log feed with severity and module filtering.</p>
@@ -473,7 +473,7 @@ export function ConsoleSection() {
                     setAutoScroll(true)
                   }
                 }}
-                className="flex items-center gap-2 px-4 h-10 rounded-full bg-accent text-black font-black text-[10px] uppercase tracking-widest shadow-[0_8px_30px_rgba(var(--accent-rgb),0.4)] hover:scale-105 active:scale-95 transition-all"
+                className="flex items-center gap-2 px-4 h-10 rounded-full bg-brand-gradient text-white font-black text-[10px] uppercase tracking-widest shadow-glow hover:scale-105 active:scale-95 transition-all"
               >
                 <IconArrowDown size={14} />
                 New Events Below

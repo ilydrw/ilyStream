@@ -14,7 +14,18 @@ export interface Widget<TConfig = unknown> {
   type: WidgetType
   config: TConfig
 }
-// ... (skipping some code)
+export interface AlertsConfig {
+  accentColor: string
+  textColor: string
+  backgroundOpacity: number
+  blur: number
+  duration: number
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'slide' | 'fade' | 'zoom'
+  animationDuration?: number
+}
 // ----- Latest Gifter widget ----------------------------------------------
 
 export interface LatestGifterConfig {
@@ -27,6 +38,11 @@ export interface LatestGifterConfig {
   showAmount: boolean
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_LATEST_GIFTER_CONFIG: LatestGifterConfig = {
@@ -38,7 +54,25 @@ export const DEFAULT_LATEST_GIFTER_CONFIG: LatestGifterConfig = {
   scale: 1.0,
   showAmount: true,
   aspectRatio: 'auto',
-  forceTikTokDimensions: false
+  forceTikTokDimensions: false,
+  fontFamily: 'Outfit',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'slide',
+  animationDuration: 600
+}
+
+export const DEFAULT_ALERTS_CONFIG: AlertsConfig = {
+  accentColor: '#ff7a45',
+  textColor: '#ffffff',
+  backgroundOpacity: 0.5,
+  blur: 50,
+  duration: 5000,
+  fontFamily: 'Inter',
+  borderRadius: 40,
+  glassIntensity: 0.5,
+  animationStyle: 'fade',
+  animationDuration: 800
 }
 
 
@@ -59,6 +93,11 @@ export interface ChatConfig {
   fadeOutAfterSeconds: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'none' | 'zoom'
+  animationDuration?: number
 }
 
 export const DEFAULT_CHAT_CONFIG: ChatConfig = {
@@ -73,7 +112,12 @@ export const DEFAULT_CHAT_CONFIG: ChatConfig = {
   accentColor: '#ff7a45',
   fadeOutAfterSeconds: 0,
   aspectRatio: 'auto',
-  forceTikTokDimensions: false
+  forceTikTokDimensions: false,
+  fontFamily: 'Inter',
+  borderRadius: 12,
+  glassIntensity: 0.5,
+  animationStyle: 'slide',
+  animationDuration: 600
 }
 
 // ----- Follower goal widget ------------------------------------------------
@@ -82,6 +126,10 @@ export interface FollowerGoalConfig {
   goal: number
   startCount: number
   label: string
+  /** 'follows', 'likes', 'gifts', 'subs', etc. */
+  goalType: 'follows' | 'likes' | 'gifts' | 'subs' | 'shares' | 'raids' | 'viewers'
+  /** 'all', 'twitch', or 'tiktok' */
+  platform: 'all' | 'twitch' | 'tiktok'
   accentColor: string
   backgroundOpacity: number
   blur: number
@@ -91,12 +139,21 @@ export interface FollowerGoalConfig {
   width: number
   showBorder: boolean
   style: 'classic' | 'chroma' | 'cyber'
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
+  celebrateAt100?: boolean
+  celebrationType?: 'confetti' | 'fireworks' | 'hearts'
 }
 
 export const DEFAULT_FOLLOWER_GOAL_CONFIG: FollowerGoalConfig = {
   goal: 1000,
   startCount: 0,
   label: 'Follower Goal',
+  goalType: 'follows',
+  platform: 'all',
   accentColor: '#38bdf8',
   backgroundOpacity: 0.15,
   blur: 12,
@@ -105,7 +162,14 @@ export const DEFAULT_FOLLOWER_GOAL_CONFIG: FollowerGoalConfig = {
   position: 'bottom-left',
   width: 280,
   showBorder: true,
-  style: 'classic'
+  style: 'classic',
+  fontFamily: 'Outfit',
+  borderRadius: 50,
+  glassIntensity: 0.3,
+  animationStyle: 'slide',
+  animationDuration: 800,
+  celebrateAt100: true,
+  celebrationType: 'confetti'
 }
 
 // ----- Now Playing widget --------------------------------------------------
@@ -137,6 +201,11 @@ export interface NowPlayingConfig {
   borderWidth: number
   borderColor: string
   borderType: 'solid' | 'chroma' | 'cyber'
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'zoom' | 'none' | 'slide'
+  animationDuration?: number
 }
 
 export const DEFAULT_NOW_PLAYING_CONFIG: NowPlayingConfig = {
@@ -157,7 +226,12 @@ export const DEFAULT_NOW_PLAYING_CONFIG: NowPlayingConfig = {
   showBorder: true,
   borderWidth: 2,
   borderColor: '#1DB954',
-  borderType: 'solid'
+  borderType: 'solid',
+  fontFamily: 'Inter',
+  borderRadius: 16,
+  glassIntensity: 0.7,
+  animationStyle: 'fade',
+  animationDuration: 600
 }
 
 // ----- Spotify now-playing payload (broadcast over SSE) --------------------
@@ -223,6 +297,11 @@ export interface SocialsConfig {
   accentColor: string
   showBorder: boolean
   style: 'classic' | 'chroma' | 'cyber'
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_SOCIALS_CONFIG: SocialsConfig = {
@@ -239,7 +318,12 @@ export const DEFAULT_SOCIALS_CONFIG: SocialsConfig = {
   blur: 20,
   accentColor: '#ff7a45',
   showBorder: true,
-  style: 'classic'
+  style: 'classic',
+  fontFamily: 'Outfit',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'slide',
+  animationDuration: 800
 }
 
 // ----- Screen Border widget ------------------------------------------------
@@ -257,6 +341,8 @@ export interface BorderConfig {
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions?: boolean
   showPreviewBackground?: boolean
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_BORDER_CONFIG: BorderConfig = {
@@ -270,7 +356,9 @@ export const DEFAULT_BORDER_CONFIG: BorderConfig = {
   opacity: 1,
   aspectRatio: 'auto',
   forceTikTokDimensions: false,
-  showPreviewBackground: false
+  showPreviewBackground: false,
+  animationStyle: 'fade',
+  animationDuration: 1000
 }
 
 // ----- Event Particles widget ----------------------------------------------
@@ -286,6 +374,10 @@ export interface ParticleConfig {
   text: string
   /** If true, only spawn particles when an event occurs. If false, spawn continuously. */
   eventDriven: boolean
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
+  audioReactive?: boolean
+  audioThreshold?: number
 }
 
 export const DEFAULT_PARTICLE_CONFIG: ParticleConfig = {
@@ -297,7 +389,11 @@ export const DEFAULT_PARTICLE_CONFIG: ParticleConfig = {
   secondaryColor: '#19C8FF',
   textColor: '#FFFFFF',
   text: 'ily!',
-  eventDriven: false
+  eventDriven: false,
+  animationStyle: 'fade',
+  animationDuration: 800,
+  audioReactive: true,
+  audioThreshold: 0.05
 }
 
 // ----- Falling Roses widget ------------------------------------------------
@@ -308,8 +404,12 @@ export interface RoseConfig {
   scale: number
   primaryColor: string
   secondaryColor: string
-  /** If true, only spawn roses when a Rose gift occurs on TikTok. */
   eventDriven: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_ROSE_CONFIG: RoseConfig = {
@@ -318,7 +418,12 @@ export const DEFAULT_ROSE_CONFIG: RoseConfig = {
   scale: 1.0,
   primaryColor: '#D035F1',
   secondaryColor: '#19C8FF',
-  eventDriven: true
+  eventDriven: true,
+  fontFamily: 'Inter',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'fade',
+  animationDuration: 800
 }
 
 // ----- Unified Particles widget --------------------------------------------
@@ -332,6 +437,7 @@ export interface FollowerHeartsLayerConfig {
   secondaryColor: string
   textColor: string
   text: string
+  audioReactive?: boolean
 }
 
 export interface FallingRosesLayerConfig {
@@ -341,6 +447,7 @@ export interface FallingRosesLayerConfig {
   scale: number
   primaryColor: string
   secondaryColor: string
+  audioReactive?: boolean
 }
 
 export interface GalaxyLayerConfig {
@@ -351,6 +458,7 @@ export interface GalaxyLayerConfig {
   primaryColor: string
   secondaryColor: string
   triggerOn: 'galaxyGift'
+  audioReactive?: boolean
 }
 
 export interface GGsLayerConfig {
@@ -361,6 +469,7 @@ export interface GGsLayerConfig {
   color: string
   text: string
   triggerOn: 'ggGift'
+  audioReactive?: boolean
 }
 
 export interface HeartMeLayerConfig {
@@ -370,6 +479,7 @@ export interface HeartMeLayerConfig {
   scale: number
   primaryColor: string
   secondaryColor: string
+  audioReactive?: boolean
 }
 
 export interface ParticlesWidgetConfig {
@@ -378,6 +488,9 @@ export interface ParticlesWidgetConfig {
   galaxy: GalaxyLayerConfig
   ggs: GGsLayerConfig
   heartMe: HeartMeLayerConfig
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
+  audioThreshold?: number
 }
 
 // ----- Discord Promo widget ----------------------------------------------
@@ -393,6 +506,11 @@ export interface DiscordPromoConfig {
   scale: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_DISCORD_PROMO_CONFIG: DiscordPromoConfig = {
@@ -405,7 +523,12 @@ export const DEFAULT_DISCORD_PROMO_CONFIG: DiscordPromoConfig = {
   opacity: 1.0,
   scale: 0.7,
   aspectRatio: 'auto',
-  forceTikTokDimensions: false
+  forceTikTokDimensions: false,
+  fontFamily: 'Outfit',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'slide',
+  animationDuration: 800
 }
 
 // ----- Node Network widget ----------------------------------------------
@@ -419,6 +542,11 @@ export interface NodeNetworkConfig {
   opacity: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_NODE_NETWORK_CONFIG: NodeNetworkConfig = {
@@ -429,7 +557,12 @@ export const DEFAULT_NODE_NETWORK_CONFIG: NodeNetworkConfig = {
   secondaryColor: '#D035F1',
   opacity: 1.0,
   aspectRatio: 'auto',
-  forceTikTokDimensions: false
+  forceTikTokDimensions: false,
+  fontFamily: 'Inter',
+  borderRadius: 0,
+  glassIntensity: 0.5,
+  animationStyle: 'fade',
+  animationDuration: 1200
 }
 
 export const DEFAULT_PARTICLES_CONFIG: ParticlesWidgetConfig = {
@@ -476,7 +609,10 @@ export const DEFAULT_PARTICLES_CONFIG: ParticlesWidgetConfig = {
     scale: 0.8,
     primaryColor: '#FF6B9D',
     secondaryColor: '#FF1493'
-  }
+  },
+  animationStyle: 'fade',
+  animationDuration: 1000,
+  audioThreshold: 0.05
 }
 
 // ----- Physics widget ----------------------------------------------
@@ -490,6 +626,11 @@ export interface PhysicsConfig {
   maxObjects: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
   forceTikTokDimensions: boolean
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle?: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_PHYSICS_CONFIG: PhysicsConfig = {
@@ -500,7 +641,12 @@ export const DEFAULT_PHYSICS_CONFIG: PhysicsConfig = {
   particleLifeSec: 15,
   maxObjects: 50,
   aspectRatio: 'auto',
-  forceTikTokDimensions: false
+  forceTikTokDimensions: false,
+  fontFamily: 'Inter',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'fade',
+  animationDuration: 1000
 }
 
 // ----- Leaderboard widget ----------------------------------------------
@@ -509,13 +655,23 @@ export interface LeaderboardConfig {
   opacity: number
   scale: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_LEADERBOARD_CONFIG: LeaderboardConfig = {
   accentColor: '#FF00FF',
   opacity: 1.0,
   scale: 1.0,
-  aspectRatio: 'auto'
+  aspectRatio: 'auto',
+  fontFamily: 'Outfit',
+  borderRadius: 16,
+  glassIntensity: 0.6,
+  animationStyle: 'fade',
+  animationDuration: 600
 }
 
 // ----- Chat Unified widget ----------------------------------------------
@@ -526,6 +682,11 @@ export interface ChatUnifiedConfig {
   backgroundOpacity: number
   blur: number
   aspectRatio: 'auto' | 'tiktok' | 'landscape'
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
@@ -534,7 +695,12 @@ export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
   scale: 1.0,
   backgroundOpacity: 0.65,
   blur: 40,
-  aspectRatio: 'auto'
+  aspectRatio: 'auto',
+  fontFamily: 'Inter',
+  borderRadius: 12,
+  glassIntensity: 0.5,
+  animationStyle: 'slide',
+  animationDuration: 400
 }
 
 // ----- Likes Tracker widget ----------------------------------------------
@@ -544,6 +710,11 @@ export interface LikesTrackerConfig {
   accentColor: string
   opacity: number
   scale: number
+  fontFamily: string
+  borderRadius: number
+  glassIntensity: number
+  animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
+  animationDuration?: number
 }
 
 export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
@@ -551,5 +722,10 @@ export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
   showTotal: true,
   accentColor: '#FF3B5C',
   opacity: 1.0,
-  scale: 1.0
+  scale: 1.0,
+  fontFamily: 'Outfit',
+  borderRadius: 20,
+  glassIntensity: 0.5,
+  animationStyle: 'zoom',
+  animationDuration: 800
 }

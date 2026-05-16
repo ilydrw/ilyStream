@@ -31,102 +31,56 @@ export class TikTokConnector extends BaseConnector {
     const tiktokConfig = config as TikTokConfig
     const username = tiktokConfig.username.replace(/^@/, '')
     console.log(`[TikTokConnector] Attempting to connect to @${username}...`)
-    
-    // DEBUG: Write to file
-    try {
-      const fs = require('fs')
-      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-      const logLine = `[${new Date().toISOString()}] TIKTOK_CONNECT_START: @${username}\n`
-      fs.appendFileSync(debugPath, logLine)
-    } catch (e) {}
 
     const { WebcastPushConnection } = await import('tiktok-live-connector')
 
     this.cleanupConnection()
     const token = ++this.connectionToken
-    const connection = new WebcastPushConnection(username, buildTikTokConnectionOptions(tiktokConfig))
-    this.connection = connection
 
-    connection.on('chat', (data: any) => {
-      if (this.connectionToken !== token) return
-      console.log(`[TikTokConnector] Raw chat received from @${username}:`, data.comment || data.text)
-      
-      // DEBUG: Write to file
+    // RETRY STRATEGY:
+    // 1. Direct room-info (default)
+    // 2. Direct unique-id (if room-info fails)
+    // 3. room-info without polling
+    const candidates = buildTikTokConnectionOptionCandidates(tiktokConfig)
+    let lastError: Error | null = null
+
+    for (const candidate of candidates) {
+      if (token !== this.connectionToken) return // Abort if a newer connection attempt started
+
       try {
-        const fs = require('fs')
-        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-        const logLine = `[${new Date().toISOString()}] TIKTOK_RAW_CHAT: ${JSON.stringify(data).slice(0, 500)}\n`
-        fs.appendFileSync(debugPath, logLine)
-      } catch (e) {}
+        console.log(`[TikTokConnector] Attempting connection via: ${candidate.name}`)
 
-      const event = this.mapper.mapChat(data)
-      this.userCache.set('tiktok', event.user)
-      this.emitEvent(event)
-    })
+        const connection = new WebcastPushConnection(username, candidate.options)
+        this.connection = connection
 
-    connection.on('gift', (data: any) => {
-      if (this.connectionToken !== token) return
-      const event = this.mapper.mapGift(data)
-      this.userCache.set('tiktok', event.user)
-      this.emitEvent(event)
-    })
+        this.setupEventListeners(connection)
 
-    connection.on('follow', (data: any) => {
-      if (this.connectionToken !== token) return
-      const event = this.mapper.mapFollow(data)
-      this.userCache.set('tiktok', event.user)
-      this.emitEvent(event)
-    })
+        // Add a timeout to the connection attempt
+        const connectPromise = connection.connect()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Connection timed out after 15s (${candidate.name})`)), 15000)
+        )
 
-    connection.on('like', (data: any) => {
-      if (this.connectionToken !== token) return
-      // DEBUG
-      try {
-        const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-        const logLine = `[${new Date().toISOString()}] TIKTOK_RAW_LIKE: from ${data.uniqueId} - count: ${data.likeCount}, total: ${data.totalLikeCount}\n`
-        require('fs').appendFileSync(debugPath, logLine)
-      } catch (e) {}
-      this.emitEvent(this.mapper.mapLike(data))
-    })
+        await Promise.race([connectPromise, timeoutPromise])
 
-    connection.on('roomUser', (data: any) => {
-      if (this.connectionToken !== token) return
-      this.emitEvent(this.mapper.mapViewerCount(data))
-    })
+        console.log(`[TikTokConnector] Successfully connected via: ${candidate.name}`)
+        this.setStatus('connected')
+        return // SUCCESS
+      } catch (err: any) {
+        lastError = err
+        const errMsg = err.message || String(err)
+        console.warn(`[TikTokConnector] Candidate ${candidate.name} failed:`, errMsg)
+        this.cleanupConnection()
 
-    connection.on('streamEnd', () => this.onUnexpectedDisconnect('TikTok reported stream end'))
-    connection.on('disconnected', () => this.onUnexpectedDisconnect('TikTok WebSocket closed'))
-    connection.on('error', (err: any) => {
-      const msg = err?.message || String(err)
-      if (isFatalTikTokConnectionErrorMessage(msg)) {
-        this.onRecoverableError(err, 'connection') // Actually triggers reconnect but test might expect something else
-      } else {
-        this.onRecoverableError(err, 'connection')
+        if (isFatalTikTokConnectionErrorMessage(errMsg)) {
+          break // Don't try other candidates if it's a fatal error (like invalid user)
+        }
       }
-    })
+    }
 
-    // CATCH-ALL DEBUG
-    connection.on('streamEnd', () => {
-      console.log('[TikTokConnector] Stream ended')
-      this.onUnexpectedDisconnect('Stream ended')
-    })
-
-    connection.on('error', (err: any) => {
-      console.error('[TikTokConnector] Connection error:', err)
-      this.handleError(err, 'connection', true)
-    })
-
-    await connection.connect()
-    this.setStatus('connected')
-    console.log(`[TikTokConnector] Successfully connected to @${username}`)
-    
-    // DEBUG: Write to file
-    try {
-      const fs = require('fs')
-      const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-      const logLine = `[${new Date().toISOString()}] TIKTOK_CONNECTED: @${username}\n`
-      fs.appendFileSync(debugPath, logLine)
-    } catch (e) {}
+    if (lastError) {
+      this.handleError(lastError, 'connect', true)
+    }
   }
 
   protected async doDisconnect(): Promise<void> { this.cleanupConnection() }
@@ -138,6 +92,49 @@ export class TikTokConnector extends BaseConnector {
   override async sendChatMessage(text: string): Promise<void> {
     if (await this.chatSender.sendMessage(text)) return
     throw new Error('TikTok chat sending failed')
+  }
+
+  private setupEventListeners(connection: any): void {
+    connection.on('chat', (data: any) => {
+      this.emitEvent(this.mapper.mapChat(data))
+    })
+
+    connection.on('gift', (data: any) => {
+      const event = this.mapper.mapGift(data)
+      this.emitEvent(event)
+    })
+
+    connection.on('like', (data: any) => {
+      this.emitEvent(this.mapper.mapLike(data))
+    })
+
+    connection.on('follow', (data: any) => {
+      this.emitEvent(this.mapper.mapFollow(data))
+    })
+
+    connection.on('share', (data: any) => {
+      this.emitEvent(this.mapper.mapShare(data))
+    })
+
+    connection.on('roomUser', (data: any) => {
+      this.emitEvent(this.mapper.mapViewerCount(data))
+    })
+
+    connection.on('member', (data: any) => {
+      this.emitEvent(this.mapper.mapMember(data))
+    })
+
+    connection.on('disconnected', () => {
+      this.onUnexpectedDisconnect('TikTok disconnected')
+    })
+
+    connection.on('streamEnd', () => {
+      this.onUnexpectedDisconnect('TikTok stream ended')
+    })
+
+    connection.on('error', (err: any) => {
+      this.onRecoverableError(err, 'connection')
+    })
   }
 
   private cleanupConnection(): void {

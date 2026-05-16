@@ -26,7 +26,7 @@ export default function AICoHostPage() {
   const onUpdate = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     if (!settings) return
     setSettings((prev) => (prev ? { ...prev, [key]: value } : null))
-    window.api.settings.set(key, value)
+    window.api.settings.set(key as string, value)
   }
 
   const handleTestConnection = async () => {
@@ -34,7 +34,7 @@ export default function AICoHostPage() {
       toast.error('Endpoint URL is required')
       return
     }
-    
+
     setIsTesting(true)
     try {
       const response = await window.api.ai.testConnection()
@@ -74,7 +74,7 @@ export default function AICoHostPage() {
               toast.info(settings.ai.enabled ? 'AI Agent Standby' : 'AI Agent Activated')
             }}
             className={`app-button !h-12 !px-8 !text-[10px] font-black tracking-[0.2em] transition-all ${
-              settings.ai.enabled ? 'bg-accent text-white' : 'bg-white/5 text-white/40 border-white/10'
+              settings.ai.enabled ? 'bg-brand-gradient text-white shadow-glow' : 'bg-white/5 text-white/40 border-white/10'
             }`}
           >
             <IconPower size={16} />
@@ -89,7 +89,7 @@ export default function AICoHostPage() {
           <div className="app-section-card glass">
             <div className="app-section-head">
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-accent">
+                <div className="flex items-center justify-center text-[#d035f1]">
                   <IconWorld size={32} />
                 </div>
                 <div>
@@ -104,18 +104,18 @@ export default function AICoHostPage() {
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Endpoint URL</label>
                     <div className="flex gap-2">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={settings.ai.endpoint || ''}
                         onChange={(e) => onUpdate('aiEndpoint', e.target.value)}
                         placeholder="http://localhost:11434/"
-                        className="flex-1 h-12 bg-black/40 border border-white/5 rounded-2xl px-5 text-sm font-medium outline-none focus:border-accent/40 transition-all"
+                        className="flex-1 h-12 bg-black/40 border border-white/5 rounded-2xl px-5 text-sm font-medium outline-none focus:border-[#d035f1]/40 transition-all"
                       />
                       <button
                         onClick={handleTestConnection}
                         disabled={isTesting}
                         className={`h-12 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                          isTesting ? 'bg-white/5 text-white/20' : 'bg-accent/10 hover:bg-accent/20 text-accent'
+                          isTesting ? 'bg-white/5 text-white/20' : 'bg-brand-gradient text-white shadow-glow'
                         }`}
                       >
                         {isTesting ? 'TESTING' : 'PING'}
@@ -127,12 +127,12 @@ export default function AICoHostPage() {
                     <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Access Key</label>
                     <div className="relative">
                       <IconKey size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20" />
-                      <input 
-                        type="password" 
+                      <input
+                        type="password"
                         value={settings.ai.apiKey || ''}
                         onChange={(e) => onUpdate('aiApiKey', e.target.value)}
                         placeholder="••••••••••••••••"
-                        className="w-full h-12 bg-black/40 border border-white/5 rounded-2xl pl-12 pr-5 text-sm font-medium outline-none focus:border-accent/40 transition-all"
+                        className="w-full h-12 bg-black/40 border border-white/5 rounded-2xl pl-12 pr-5 text-sm font-medium outline-none focus:border-[#d035f1]/40 transition-all"
                       />
                     </div>
                   </div>
@@ -144,15 +144,15 @@ export default function AICoHostPage() {
                       <h3 className="text-sm font-bold text-white mb-1">Neural Persona</h3>
                     </div>
                     <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-                      <IconMessage size={14} className="text-accent" />
+                      <IconMessage size={14} className="text-[#d035f1]" />
                       <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Active Template: Custom</span>
                     </div>
                   </div>
-                  
+
                   <textarea
                     value={settings.ai.systemPrompt}
                     onChange={(e) => onUpdate('aiSystemPrompt', e.target.value)}
-                    className="w-full bg-black/40 border border-white/5 rounded-3xl p-8 text-sm leading-relaxed font-medium outline-none focus:border-accent/40 min-h-[280px] resize-none custom-scrollbar transition-all"
+                    className="w-full bg-black/40 border border-white/5 rounded-3xl p-8 text-sm leading-relaxed font-medium outline-none focus:border-[#d035f1]/40 min-h-[280px] resize-none custom-scrollbar transition-all"
                     placeholder="You are a witty AI co-host named ILY..."
                   />
                 </div>
@@ -166,7 +166,7 @@ export default function AICoHostPage() {
           <div className="app-section-card glass">
             <div className="app-section-head">
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-accent">
+                <div className="flex items-center justify-center text-[#d035f1]">
                   <IconCpu size={32} />
                 </div>
                 <div>
@@ -180,24 +180,24 @@ export default function AICoHostPage() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center px-1">
                     <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Response Depth</span>
-                    <span className="text-[10px] font-mono text-accent">{settings.ai.maxTokens} tokens</span>
+                    <span className="text-[10px] font-mono text-[#d035f1]">{settings.ai.maxTokens} tokens</span>
                   </div>
-                  <input 
-                    type="range" min="64" max="4096" step="64" 
+                  <input
+                    type="range" min="64" max="4096" step="64"
                     value={settings.ai.maxTokens}
                     onChange={(e) => onUpdate('aiMaxTokens', parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-accent"
+                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d035f1]"
                   />
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center px-1">
                     <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Temperature</span>
-                    <span className="text-[10px] font-mono text-accent">0.7</span>
+                    <span className="text-[10px] font-mono text-[#d035f1]">0.7</span>
                   </div>
-                  <input 
+                  <input
                     type="range" min="0" max="1" step="0.1" value="0.7"
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-accent"
+                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d035f1]"
                   />
                 </div>
               </div>
@@ -218,10 +218,10 @@ export default function AICoHostPage() {
             </div>
           </div>
 
-          <div className="app-section-card glass !bg-accent/5 !border-accent/10">
+          <div className="app-section-card glass !bg-[#d035f1]/5 !border-[#d035f1]/10">
             <div className="app-section-head">
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-accent">
+                <div className="flex items-center justify-center text-[#d035f1]">
                   <IconBolt size={32} />
                 </div>
                 <div>
@@ -229,7 +229,7 @@ export default function AICoHostPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="app-section-content">
               <p className="text-xs text-white/40 leading-relaxed font-medium mb-6">
                 AI will automatically respond to audience questions after 12 seconds of human silence.

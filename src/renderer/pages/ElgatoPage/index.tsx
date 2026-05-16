@@ -41,7 +41,7 @@ export default function ElgatoPage() {
           <div>
             <h1>Elgato Ecosystem</h1>
             <p className="app-page-intro">
-              Manage your Stream Deck, Key Lights, and Prompter. 
+              Manage your Stream Deck, Key Lights, and Prompter.
               Create unified studio scenes and automate your production hardware.
             </p>
           </div>
@@ -66,7 +66,7 @@ export default function ElgatoPage() {
                   {devices.length}
                 </span>
               </h2>
-              <button 
+              <button
                 onClick={handleDiscover}
                 disabled={isDiscovering}
                 className="flex items-center gap-2 !h-10 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
@@ -127,7 +127,7 @@ export default function ElgatoPage() {
               <p className="text-xs text-white/60 mb-6 leading-relaxed">
                 Create macros that control multiple Elgato devices at once. Sync your Key Lights with your Prompter script.
               </p>
-              <button className="w-full py-3 rounded-2xl bg-accent text-black font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-transform">
+              <button className="w-full py-3 rounded-2xl bg-brand-gradient text-white font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-all shadow-glow">
                 Configure Scenes
               </button>
             </div>

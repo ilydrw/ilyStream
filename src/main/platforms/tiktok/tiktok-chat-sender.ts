@@ -1,5 +1,6 @@
-import { BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
+import { BrowserWindow, shell } from 'electron'
+
+const TIKTOK_CHAT_URL = 'https://www.tiktok.com/live/creators/vi/live-center'
 
 export interface TikTokSenderStatus {
   isWindowOpen: boolean
@@ -40,7 +41,23 @@ export class TikTokChatSender {
       webPreferences: {
         partition: 'persist:tiktok-chat-sender',
         contextIsolation: true,
-        nodeIntegration: false
+        nodeIntegration: false,
+        sandbox: true
+      }
+    })
+
+    this.window.webContents.setWindowOpenHandler(({ url }) => {
+      if (isSafeNavigationUrl(url)) {
+        shell.openExternal(url).catch((err) => {
+          console.warn('[tiktok-sender] Failed to open external URL:', err)
+        })
+      }
+      return { action: 'deny' }
+    })
+
+    this.window.webContents.on('will-navigate', (event, url) => {
+      if (!isSafeNavigationUrl(url)) {
+        event.preventDefault()
       }
     })
 
@@ -50,7 +67,7 @@ export class TikTokChatSender {
     })
 
     // Load TikTok. User needs to login and navigate to their LIVE dashboard/chat.
-    await this.window.loadURL('https://www.tiktok.com/live/creators/vi/live-center')
+    await this.window.loadURL(TIKTOK_CHAT_URL)
 
     // Start a simple loop to detect if the chat box is present
     this.startDetectionLoop()
@@ -82,7 +99,7 @@ export class TikTokChatSender {
         if (!input) return false;
 
         input.focus();
-        
+
         // For contenteditable or standard inputs
         if (input.tagName === 'DIV') {
           input.innerText = ${JSON.stringify(text)};
@@ -148,11 +165,11 @@ export class TikTokChatSender {
 
       try {
         const isReady = await this.window.webContents.executeJavaScript(`
-          !!(document.querySelector('div[data-e2e="chat-input"]') || 
+          !!(document.querySelector('div[data-e2e="chat-input"]') ||
              document.querySelector('textarea[placeholder*="chat"]') ||
              document.querySelector('div[contenteditable="true"]'))
         `)
-        
+
         if (isReady !== this.isChatReady) {
           this.isChatReady = isReady
           console.log(`[tiktok-sender] Chat readiness changed: ${isReady}`)
@@ -165,5 +182,14 @@ export class TikTokChatSender {
     if (this.window) {
       this.window.close()
     }
+  }
+}
+
+function isSafeNavigationUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:'
+  } catch {
+    return false
   }
 }

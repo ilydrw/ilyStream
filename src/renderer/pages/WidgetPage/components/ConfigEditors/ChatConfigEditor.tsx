@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function ChatConfigEditor({
   draft,
@@ -137,37 +138,7 @@ export function ChatConfigEditor({
         />
       </Section>
 
-      <Section label="Glassmorphism">
-        <ColorRow
-          label="Fallback accent"
-          value={config.accentColor}
-          onChange={(v) => update('accentColor', v)}
-        />
-
-        <Field label={`Background opacity — ${Math.round(config.backgroundOpacity * 100)}%`}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.backgroundOpacity}
-            onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
-
-        <Field label={`Blur — ${config.blur}px`}>
-          <input
-            type="range"
-            min={0}
-            max={80}
-            step={1}
-            value={config.blur}
-            onChange={(e) => update('blur', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
-      </Section>
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

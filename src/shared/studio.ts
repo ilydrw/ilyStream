@@ -6,7 +6,7 @@ export interface StudioLayer {
   name: string
   zIndex: number
   opacity: number
-  
+
   // SHARED configuration (e.g. camera ID, text content)
   config: {
     deviceId?: string
@@ -50,14 +50,48 @@ export interface StudioLayer {
     beauty?: number     // 0-100 (Default: 0)
     temperature?: number // -100 to 100 (Default: 0)
     vignette?: number   // 0-100 (Default: 0)
+    blur?: number       // 0-100 (Default: 0)
     filterPreset?: string // 'none', 'bw', 'sepia', 'vintage', 'polaroid', etc.
     cornerRadius?: number // 0 to 100
-    shape?: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond' | {
-      type: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond'
+    chromaKey?: {
+      enabled: boolean
+      color: string
+      similarity: number // 1-100
+      smoothness: number // 0-100
+      spill: number // 0-100
+    }
+    virtualBackground?: {
+      enabled: boolean
+      type: 'image' | 'blur' | 'color'
+      value?: string // image path or hex color
+      blurStrength?: number // 0-100
+      opacity?: number // 0-100
+      scalingMode?: 'cover' | 'contain' | 'stretch'
+    }
+    shape?: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond' | 'none' | {
+      type: 'rect' | 'circle' | 'star' | 'heart' | 'hexagon' | 'diamond' | 'none'
       x: number // 0-100
       y: number // 0-100
       scale: number // 1-100
       scope: 'both' | '16:9' | '9:16'
+      captureX?: number // 0-100 (Offset within source)
+      captureY?: number // 0-100
+      border?: {
+        enabled: boolean
+        type: 'chroma' | 'cyber' | 'solid'
+        thickness: number // 1-20
+        color?: string
+        opacity?: number // 0-100
+        audioReactive?: boolean
+        reactivity?: number // 0-200 (Default: 100)
+      }
+      shadow?: {
+        enabled: boolean
+        color: string
+        blur: number // 0-100
+        offsetX: number // -50 to 50
+        offsetY: number // -50 to 50
+      }
     }
     focusCircle?: {
       enabled: boolean
@@ -88,7 +122,21 @@ export interface AudioSource {
   type: 'system' | 'mic' | 'media' | 'layer'
   channelMode: 'mono' | 'stereo'
   pan: number // -1 (left) to 1 (right)
-  fxChain: Array<{ id: string, type: string, params: any, enabled: boolean }>
+  filters?: Array<{
+    id: string
+    type: 'gate' | 'compressor' | 'limiter' | 'gain' | 'eq' | 'radio' | 'echo'
+    enabled: boolean
+    params: {
+      threshold?: number // dB
+      ratio?: number
+      attack?: number // ms
+      release?: number // ms
+      knee?: number
+      gain?: number // dB
+      frequency?: number // for EQ
+      q?: number // for EQ
+    }
+  }>
 }
 
 export interface StudioState {
@@ -102,7 +150,24 @@ export interface StudioState {
   audioSources: AudioSource[]
   masterBus?: AudioSource
   routing?: Record<string, string>
+  stingerSettings: {
+    path: string
+    cutPoint: number // ms
+    duration: number // ms
+  }
+  recordingSettings: {
+    container: 'mkv' | 'mp4' | 'flv' | 'mov'
+    encoder: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+    crf: number
+    audioBitrate: number
+    bitrateKbps: number
+  }
+  audioReactivity: {
+    smoothing: number
+  }
 }
+
+
 
 export interface ResolvedLayout {
   x: number
@@ -151,9 +216,24 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   snapToGrid: false,
   gridSize: 20,
   audioSources: [
-    { id: 'desktop-audio', name: 'Desktop Audio', volume: 0.8, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, fxChain: [] },
-    { id: 'mic-audio', name: 'Mic/Aux', volume: 0.8, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, fxChain: [] },
-    { id: 'soundboard', name: 'Soundboard', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true },
-    { id: 'tts-audio', name: 'TTS (Neural)', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, fxChain: [], locked: true }
-  ]
+    { id: 'desktop-audio', name: 'Desktop Audio', volume: 0.8, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, filters: [] },
+    { id: 'mic-audio', name: 'Mic/Aux', volume: 0.8, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, filters: [] },
+    { id: 'soundboard', name: 'Soundboard', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true },
+    { id: 'tts-audio', name: 'TTS (Neural)', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true }
+  ],
+  stingerSettings: {
+    path: '',
+    cutPoint: 1000,
+    duration: 2000
+  },
+  recordingSettings: {
+    container: 'mkv',
+    encoder: 'auto',
+    crf: 18,
+    audioBitrate: 192,
+    bitrateKbps: 12000
+  },
+  audioReactivity: {
+    smoothing: 0.6
+  }
 }

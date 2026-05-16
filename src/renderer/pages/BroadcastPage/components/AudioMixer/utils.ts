@@ -12,6 +12,7 @@ export interface MeterFrame {
   left: number
   right: number
   peak: number
+  holdPeak?: number
   spectrum?: number[]
 }
 
@@ -53,11 +54,12 @@ export function sanitizeAudioSourceUpdates(updates: Partial<AudioSource>): Parti
   const next = { ...updates }
   if ('volume' in next) next.volume = sanitizeVolume(next.volume)
   if ('pan' in next) next.pan = sanitizePan(next.pan)
-  if ('channelMode' in next) next.channelMode = sanitizeChannelMode(next.channelMode)
+  if ('channelMode' in next) next.channelMode = sanitizeChannelMode(next.channelMode, 'stereo')
   if ('color' in next) next.color = normalizeTrackColor(next.color)
-  if ('fxChain' in next && !Array.isArray(next.fxChain)) next.fxChain = []
+  if ('filters' in next && !Array.isArray(next.filters)) next.filters = []
   return next
 }
+
 
 export function normalizeTrackColor(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -98,12 +100,15 @@ export function getParamRange(key: string): { min: number; max: number; step: nu
   if (key === 'ratio') return { min: 1, max: 20, step: 0.5 }
   if (key === 'attack') return { min: 0.001, max: 0.1, step: 0.001 }
   if (key === 'release') return { min: 0.02, max: 1, step: 0.01 }
+  if (key === 'knee') return { min: 0, max: 40, step: 1 }
   if (key === 'low' || key === 'mid' || key === 'high') return { min: -24, max: 24, step: 0.5 }
   if (key === 'delay') return { min: 0.04, max: 1, step: 0.01 }
   if (key === 'feedback' || key === 'mix' || key === 'reduction') return { min: 0, max: 0.9, step: 0.01 }
+  if (key === 'gain') return { min: -24, max: 24, step: 0.1 }
   if (key === 'drive') return { min: 0, max: 60, step: 1 }
   return { min: 0, max: 1, step: 0.01 }
 }
+
 
 export function getStatusClasses(status?: AudioTrackStatus): string {
   if (!status?.hasStream) return 'bg-white/[0.03] border-white/[0.08] text-white/28'

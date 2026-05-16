@@ -26,7 +26,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
           </div>
         </div>
       </div>
-      
+
       <div className="app-section-content !p-0">
         <div className="flex flex-col gap-6 p-8">
           <SettingRow label="Automation Link" hint="Enable control over your OBS Studio instance.">
@@ -72,7 +72,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
             <button
               onClick={onConnect}
               disabled={!settings.integrations.obs.enabled}
-              className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-accent/5 hover:bg-accent/10 text-accent border-accent/20"
+              className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-brand-gradient text-white border-transparent shadow-glow"
             >
               {obsStatus?.connecting ? 'Linking...' : 'Save & Connect'}
             </button>

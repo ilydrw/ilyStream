@@ -8,12 +8,12 @@ import { GiftsRepository } from './repositories/GiftsRepository'
 import { SCHEMA_SQL, runMigrations } from './schema'
 import { seedTikTokGifts, seedActions, seedGlobalStats } from './seed'
 import { rebuildAllStatsFromHistory } from './migrations'
-import { 
-  encryptConfig, 
-  decryptConfig, 
-  decodeSettingValue, 
-  encodeSettingValue, 
-  parseJson 
+import {
+  encryptConfig,
+  decryptConfig,
+  decodeSettingValue,
+  encodeSettingValue,
+  parseJson
 } from './utils'
 import type { TikTokGiftInput, TikTokGiftRow } from './repositories/GiftsRepository'
 import { VoiceProfile } from '../tts/voice-profiles'
@@ -85,6 +85,7 @@ export class Database {
     seedTikTokGifts(this.db)
     seedActions(this.db)
     seedGlobalStats(this.db)
+    this.rewriteSettingsWithCurrentEncoding()
 
     // Retroactive Migrations
     try {
@@ -96,8 +97,8 @@ export class Database {
         }
         this.setSetting('migrated_stats_full_v12', 'true')
       }
-    } catch (err) { 
-      console.error('[db] Stats rebuild failed:', err) 
+    } catch (err) {
+      console.error('[db] Stats rebuild failed:', err)
     }
   }
 
@@ -294,10 +295,10 @@ export class Database {
       // Keep a deeper raw event safety net so stats can be audited/recovered
       // without letting the database grow forever.
       this.db.prepare(`
-        DELETE FROM event_history 
+        DELETE FROM event_history
         WHERE id NOT IN (
-          SELECT id FROM event_history 
-          ORDER BY created_at DESC 
+          SELECT id FROM event_history
+          ORDER BY created_at DESC
           LIMIT ?
         )
       `).run(EVENT_HISTORY_RETAIN_COUNT)
@@ -328,10 +329,20 @@ export class Database {
 
   close(): void { this.db.close() }
 
+  private rewriteSettingsWithCurrentEncoding(): void {
+    const rows = this.db.prepare('SELECT key, value_json FROM settings').all() as Array<{ key: string; value_json: string }>
+    const update = this.db.prepare('UPDATE settings SET value_json = ? WHERE key = ?')
+    const transaction = this.db.transaction(() => {
+      for (const row of rows) {
+        const decoded = decodeSettingValue(row.key, parseJson(row.value_json, undefined))
+        update.run(JSON.stringify(encodeSettingValue(row.key, decoded)), row.key)
+      }
+    })
+    transaction()
+  }
+
   private getNextDeckActionSortOrder(): number {
     const row = this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM deck_actions').get() as { next: number }
     return row.next
   }
 }
-
-

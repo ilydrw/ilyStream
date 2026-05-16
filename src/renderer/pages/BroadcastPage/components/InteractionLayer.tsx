@@ -23,9 +23,9 @@ const HANDLE_CURSORS: Record<HandleDir, string> = {
 }
 
 export function InteractionLayer(props: InteractionLayerProps) {
-  const { 
-    layers, selectedLayerId, canvasWidth, resolve, 
-    onMouseDown, onRotateStart, onResizeStart, onAutoCrop, isCropping, onContextMenu 
+  const {
+    layers, selectedLayerId, canvasWidth, resolve,
+    onMouseDown, onRotateStart, onResizeStart, onAutoCrop, isCropping, onContextMenu
   } = props
 
   return (
@@ -36,7 +36,7 @@ export function InteractionLayer(props: InteractionLayerProps) {
         const isSelected = selectedLayerId === layer.id
         const isLocked = Boolean(layout.locked)
         const cropping = isCropping(layer.id)
-        
+
         return (
           <div
             key={layer.id}
@@ -44,7 +44,7 @@ export function InteractionLayer(props: InteractionLayerProps) {
             onContextMenu={(e) => onContextMenu?.(e, layer, props.aspectRatio)}
             className={`absolute pointer-events-auto transition-shadow duration-300 ${isLocked ? 'cursor-default' : 'cursor-move'} ${
               isSelected || layer.id === props.highlightedLayerId
-                ? `${isLocked ? 'ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(251,191,36,0.22)]' : cropping ? 'ring-[6px] ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.7)]' : 'ring-[6px] ring-[#d035f1] shadow-[0_0_50px_rgba(208,53,241,0.8)]'} z-10` 
+                ? `${isLocked ? 'ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(251,191,36,0.22)]' : cropping ? 'ring-[6px] ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.7)]' : 'ring-[6px] ring-[#d035f1] shadow-[0_0_50px_rgba(208,53,241,0.8)]'} z-10`
                 : 'hover:ring-2 hover:ring-white/40'
             }`}
             style={{
@@ -58,12 +58,12 @@ export function InteractionLayer(props: InteractionLayerProps) {
           >
             {isSelected && (
               <>
-                <div className={`absolute left-1/2 top-0 h-9 w-px -translate-x-1/2 -translate-y-full pointer-events-none ${isLocked ? 'bg-amber-400/70' : 'bg-accent/70'}`} />
+                <div className={`absolute left-1/2 top-0 h-9 w-px -translate-x-1/2 -translate-y-full pointer-events-none ${isLocked ? 'bg-amber-400/70' : 'bg-[#d035f1]/70'}`} />
                 {!isLocked && (
                   <>
                     <button
                       onMouseDown={(e) => onRotateStart(e, layer, props.aspectRatio)}
-                      className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-accent bg-[#050505] text-accent shadow-lg hover:scale-110 hover:bg-accent hover:text-white transition-all pointer-events-auto z-40"
+                      className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-[#d035f1] bg-[#050505] text-[#d035f1] shadow-lg hover:scale-110 hover:bg-brand-gradient hover:border-transparent hover:text-white transition-all pointer-events-auto z-40 shadow-glow"
                     >
                       <IconRotateClockwise2 size={14} />
                     </button>
@@ -71,7 +71,7 @@ export function InteractionLayer(props: InteractionLayerProps) {
                       <div
                         key={dir}
                         onMouseDown={(e) => onResizeStart(e, layer, dir, props.aspectRatio)}
-                        className={`absolute ${dir.length === 1 ? 'w-5 h-2' : 'w-3.5 h-3.5'} bg-white border-2 ${cropping ? 'border-emerald-500 bg-emerald-50' : 'border-accent'} rounded-full -translate-x-1/2 -translate-y-1/2 shadow-lg hover:scale-125 transition-transform cursor-pointer pointer-events-auto z-30`}
+                        className={`absolute ${dir.length === 1 ? 'w-5 h-2' : 'w-3.5 h-3.5'} bg-white border-2 ${cropping ? 'border-emerald-500 bg-emerald-50' : 'border-[#d035f1]'} rounded-full -translate-x-1/2 -translate-y-1/2 shadow-lg hover:scale-125 transition-transform cursor-pointer pointer-events-auto z-30`}
                         style={{
                           left: dir.includes('e') ? '100%' : (dir.includes('w') ? '0%' : '50%'),
                           top: dir.includes('s') ? '100%' : (dir.includes('n') ? '0%' : '50%'),
@@ -84,7 +84,7 @@ export function InteractionLayer(props: InteractionLayerProps) {
                     ))}
                   </>
                 )}
-                <div 
+                <div
                   className="absolute flex items-center gap-1 z-20"
                   style={{
                     bottom: layout.y < 40 ? 'auto' : '100%',
@@ -96,13 +96,13 @@ export function InteractionLayer(props: InteractionLayerProps) {
                     width: 'max-content'
                   }}
                 >
-                  <div className={`px-2 py-1 ${cropping ? 'bg-emerald-500' : 'bg-accent'} text-white text-[9px] font-black rounded uppercase tracking-widest shadow-lg whitespace-nowrap`}>
+                  <div className={`px-2 py-1 ${cropping ? 'bg-emerald-500' : 'bg-brand-gradient'} text-white text-[9px] font-black rounded uppercase tracking-widest shadow-lg whitespace-nowrap shadow-glow`}>
                     {isLocked ? `Locked: ${layer.name}` : cropping ? `Cropping: ${layer.name}` : layer.name}
                   </div>
                   {!isLocked && (layer.type === 'widget' || layer.type === 'browser' || layer.type === 'image') && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onAutoCrop(layer) }}
-                      className="px-2 py-1 bg-white text-accent hover:bg-accent hover:text-white transition-colors text-[9px] font-black rounded uppercase tracking-widest shadow-lg pointer-events-auto"
+                      className="px-2 py-1 bg-white text-[#d035f1] hover:bg-brand-gradient hover:text-white transition-all text-[9px] font-black rounded uppercase tracking-widest shadow-lg pointer-events-auto shadow-glow"
                     >
                       Auto-Wrap
                     </button>

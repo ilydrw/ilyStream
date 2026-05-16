@@ -90,11 +90,21 @@ export class ConditionEvaluator {
   }
 
   private safeRegexTest(pattern: string, message: string, caseSensitive: boolean): boolean {
-    if (pattern.length > 500) return false
+    if (pattern.length > 200 || message.length > 2000) return false
+    if (!isSafeRegexPattern(pattern)) return false
     try {
       return new RegExp(pattern, caseSensitive ? '' : 'i').test(message)
     } catch {
       return false
     }
   }
+}
+
+function isSafeRegexPattern(pattern: string): boolean {
+  if (/\\[1-9]/.test(pattern)) return false
+  if (/\(\?<?[=!]/.test(pattern)) return false
+  if (/([+*?]|\{\d+,?\d*\})\s*([+*?]|\{)/.test(pattern)) return false
+  if (/\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,?\d*\})/.test(pattern)) return false
+  if (/\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,?\d*\})/.test(pattern)) return false
+  return true
 }

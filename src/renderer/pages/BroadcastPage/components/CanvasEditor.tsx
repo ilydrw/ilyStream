@@ -4,12 +4,12 @@ import { resolveLayerLayout, type StudioLayer } from '../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../components/ui/ContextMenu'
 import {IconRotate2} from '@tabler/icons-react'
 
-import { 
-  type CanvasEditorProps, 
-  type CanvasEditorHandle, 
-  type DragState, 
-  type ResizeState, 
-  type BrowserFrameSurface, 
+import {
+  type CanvasEditorProps,
+  type CanvasEditorHandle,
+  type DragState,
+  type ResizeState,
+  type BrowserFrameSurface,
   type CachedMediaFrame,
   type RotateState,
   type HandleDir
@@ -32,10 +32,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     activeScene, isStreaming, isRecording, captureInputFormat,
     outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
-    dualVerticalOverlayEnabled = false, isVisible = true,
+    dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
     onContextMenu, onSelectionContextChange
   } = props
-  
+
   const canvasWidth = useStudioStore(s => s.canvasWidth)
   const canvasHeight = useStudioStore(s => s.canvasHeight)
   const aspectRatio = useStudioStore(s => s.aspectRatio)
@@ -46,7 +46,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const selectedLayerId = useStudioStore(s => s.selectedLayerId)
   const undo = useStudioStore(s => s.undo)
   const redo = useStudioStore(s => s.redo)
-  
+
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const secondaryPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -58,22 +58,22 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const outputActive = isRecording || (isStreaming && !hasRoutedStreamOutputs)
   const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
   const [activeGuides, setActiveGuides] = useState<{ type: 'v' | 'h', pos: number, targetId?: string }[]>([])
-  const snapToGrid = useStudioStore(s => s.snapToGrid)
   const gridSize = useStudioStore(s => s.gridSize)
+  const previewSceneId = useStudioStore(s => s.previewSceneId)
+  const activeSceneId = useStudioStore(s => s.activeSceneId)
+  const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
 
   // IconVideo Encoders
-  const { workerRef: encoderWorkerRef } = useVideoEncoder(outputActive, {
+  const { workerRef: encoderWorkerRef } = useVideoEncoder(!isPreview && outputActive, {
     format: captureInputFormat, fps: outputFps, bitrate: outputBitrateKbps, width: canvasWidth, height: canvasHeight, codec: outputCodec
   }, () => { if (isStreaming) void window.api?.streaming?.stop?.() })
-
   const horizontalOutput = streamOutputs.find(output => output.id === 'horizontal')
-  const { workerRef: horizontalEncoderWorkerRef } = useVideoEncoder(Boolean(horizontalOutput?.active), {
-    outputId: 'horizontal', format: horizontalOutput?.inputFormat ?? captureInputFormat, fps: horizontalOutput?.fps ?? outputFps, 
+  const { workerRef: horizontalEncoderWorkerRef } = useVideoEncoder(!isPreview && Boolean(horizontalOutput?.active), {
+    outputId: 'horizontal', format: horizontalOutput?.inputFormat ?? captureInputFormat, fps: horizontalOutput?.fps ?? outputFps,
     bitrate: horizontalOutput?.bitrateKbps ?? outputBitrateKbps, width: horizontalOutput?.width ?? 1920, height: horizontalOutput?.height ?? 1080, codec: horizontalOutput?.codec
   }, () => { if (isStreaming) void window.api?.streaming?.stop?.() })
-
   const verticalOutput = streamOutputs.find(output => output.id === 'vertical')
-  const { workerRef: verticalEncoderWorkerRef } = useVideoEncoder(Boolean(verticalOutput?.active), {
+  const { workerRef: verticalEncoderWorkerRef } = useVideoEncoder(!isPreview && Boolean(verticalOutput?.active), {
     outputId: 'vertical', format: verticalOutput?.inputFormat ?? captureInputFormat, fps: verticalOutput?.fps ?? outputFps,
     bitrate: verticalOutput?.bitrateKbps ?? outputBitrateKbps, width: verticalOutput?.width ?? 1080, height: verticalOutput?.height ?? 1920, codec: verticalOutput?.codec
   }, () => { if (isStreaming) void window.api?.streaming?.stop?.() })
@@ -87,7 +87,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }, [outputActive])
 
   // Audio Engine
-  useBroadcastAudio(isStreaming || isRecording, videoRefs, streamReady)
+  useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady)
 
   // Browser Sources
   useBrowserSources({ layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache })
@@ -266,7 +266,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
     const handleNativeWheel = (e: WheelEvent) => {
       const target = e.target as HTMLElement
-      
+
       // Don't intercept if scrolling on a toolbar or UI element outside the canvas area
       if (!e.ctrlKey && !e.metaKey && !e.shiftKey && target.closest('.canvas-toolbar')) {
         return
@@ -384,7 +384,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         const d = dragRef.current
         let newX = d.origX + (e.clientX - d.startX) / scaleRef.current
         let newY = d.origY + (e.clientY - d.startY) / scaleRef.current
-        
+
         if (snapToGrid) {
           const snap = getSnappingResult(newX, newY, d.width, d.height, d.id)
           newX = snap.x
@@ -407,7 +407,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         const r = resizeRef.current
         const dx = (e.clientX - r.startX) / scaleRef.current
         const dy = (e.clientY - r.startY) / scaleRef.current
-        
+
         let finalX = r.handle.includes('w') ? r.origX + dx : r.origX
         let finalY = r.handle.includes('n') ? r.origY + dy : r.origY
         let finalW = r.handle.includes('e') ? Math.max(10, r.origW + dx) : (r.handle.includes('w') ? Math.max(10, r.origW - dx) : r.origW)
@@ -450,7 +450,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         const layer = activeScene.layers.find(l => l.id === r.id)
         const isMedia = layer?.type === 'camera' || layer?.type === 'image' || layer?.type === 'browser' || layer?.type === 'widget'
         const shouldLockAspect = isMedia || e.shiftKey
-        
+
         if (shouldLockAspect && r.origW > 0 && r.origH > 0) {
           const ratio = r.origW / r.origH
           if (r.handle.length === 1) { // n, s, e, w
@@ -485,22 +485,22 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         const isPortrait = selectionContext === '9:16'
         const angle = Math.atan2(e.clientY - r.centerY, e.clientX - r.centerX)
         const newRotation = r.origRotation + (angle - r.startAngle) * 180 / Math.PI
-        
+
         updateLayer(activeScene.id, r.id, isPortrait ? { portraitRotation: newRotation } : { rotation: newRotation })
       }
     }
-    
-    const onUp = () => { 
+
+    const onUp = () => {
       setIsPanning(false)
       dragRef.current = null
       resizeRef.current = null
-      rotateRef.current = null 
+      rotateRef.current = null
       setActiveGuides([])
     }
-    
+
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    return () => { 
+    return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -551,7 +551,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="block w-full h-full" />
                 <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} />
                 <InteractionLayer
-                  layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null} 
+                  layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null}
                   aspectRatio={aspectRatio} canvasWidth={canvasWidth}
                   highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
                   resolve={(l) => resolveLayerLayout(l, aspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
@@ -570,8 +570,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 {selectionContext === aspectRatio && activeGuides.length > 0 && (
                   <div className="absolute inset-0 pointer-events-none">
                     {activeGuides.map((g, i) => (
-                      <div 
-                        key={i} 
+                      <div
+                        key={i}
                         className="absolute bg-white ring-2 ring-accent shadow-glow z-context"
                         style={{
                           left: g.type === 'v' ? `${g.pos}px` : 0,
@@ -587,24 +587,24 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
 
                 <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
-                  Primary: {aspectRatio}
+                  {isPreview ? 'Preview' : 'Program'}: {aspectRatio}
                 </div>
               </div>
 
               {isDual && (
-                <div 
+                <div
                   className="relative group h-full flex items-center justify-center p-2"
                   onContextMenu={(e) => onContextMenu?.(e, null, secondaryPreviewAspectRatio)}
                   onClick={() => onContextMenu?.({ clientX: 0, clientY: 0 } as any, null, secondaryPreviewAspectRatio)}
                 >
-                  <canvas 
-                    ref={secondaryPreviewCanvasRef} 
+                  <canvas
+                    ref={secondaryPreviewCanvasRef}
                     width={secondaryNativeW}
                     height={secondaryNativeH}
-                    className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover:shadow-accent/10 border border-white/5" 
+                    className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover:shadow-accent/10 border border-white/5"
                   />
                   <InteractionLayer
-                    layers={activeScene.layers} selectedLayerId={selectionContext === secondaryAspectRatio ? selectedLayerId : null} 
+                    layers={activeScene.layers} selectedLayerId={selectionContext === secondaryAspectRatio ? selectedLayerId : null}
                     aspectRatio={secondaryAspectRatio} canvasWidth={secondaryNativeW}
                     highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
                     resolve={(l) => resolveLayerLayout(l, secondaryAspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
@@ -623,8 +623,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   {selectionContext === secondaryAspectRatio && activeGuides.length > 0 && (
                     <div className="absolute inset-0 pointer-events-none">
                       {activeGuides.map((g, i) => (
-                        <div 
-                          key={i} 
+                        <div
+                          key={i}
                           className="absolute bg-accent shadow-glow z-context"
                           style={{
                             left: g.type === 'v' ? `${g.pos}px` : 0,

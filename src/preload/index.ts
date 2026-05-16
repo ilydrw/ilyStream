@@ -39,7 +39,8 @@ const allowedEventChannels = new Set([
   'streaming:native-audio-clock',
   'system:log',
   'virtualcamera:status-changed',
-  'system:update-status'
+  'system:update-status',
+  'studio:active-scene-changed'
 ])
 
 const api = {
@@ -64,7 +65,8 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke('sound:delete', id),
     rename: (id: string, newName: string) => ipcRenderer.invoke('sound:rename', id, newName),
     setEmoji: (id: string, emoji: string | null) => ipcRenderer.invoke('sound:set-emoji', id, emoji),
-    play: (id: string, volume?: number) => ipcRenderer.invoke('sound:play', id, volume)
+    play: (id: string, volume?: number) => ipcRenderer.invoke('sound:play', id, volume),
+    stopAll: () => ipcRenderer.invoke('sound:stop-all')
   },
 
   // --- Assets (Images) ---
@@ -77,14 +79,14 @@ const api = {
       rename: (id: string, newName: string) => ipcRenderer.invoke('assets:images:rename', id, newName)
     }
   },
- 
+
   // --- Widgets ---
   widgets: {
     getAll: () => ipcRenderer.invoke('widgets:get-all'),
     save: (widget: any) => ipcRenderer.invoke('widgets:save', widget),
     delete: (id: string) => ipcRenderer.invoke('widgets:delete', id)
   },
- 
+
   // --- Platform ---
   platform: {
     connect: (config: any) => ipcRenderer.invoke('platform:connect', config),
@@ -161,7 +163,7 @@ const api = {
   overlay: {
     getStatus: () => ipcRenderer.invoke('overlay:get-status'),
     getGoalState: () => ipcRenderer.invoke('overlay:get-goal-state'),
-    sendDeckAction: (action: { type: string; payload: any }) =>
+    sendDeckAction: (action: { type: string; payload?: any }) =>
       ipcRenderer.invoke('overlay:send-deck-action', action),
     sendFeatureMessage: (payload: any) =>
       ipcRenderer.invoke('overlay:send-feature-message', payload),
@@ -226,7 +228,7 @@ const api = {
     findSpotifySource: () => ipcRenderer.invoke('studio:find-spotify-source'),
     prepareDisplayCapture: (request: { sourceId: string; withAudio?: boolean; audioOnly?: boolean }) =>
       ipcRenderer.invoke('studio:prepare-display-capture', request),
-    openProjector: (payload: { monitorId: number, sceneId: string, aspectRatio?: string }) => ipcRenderer.invoke('studio:open-projector', payload),
+    openProjector: (payload: { monitorId: number, sceneId: string, aspectRatio?: string, layerId?: string }) => ipcRenderer.invoke('studio:open-projector', payload),
     startBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:start', config),
     updateBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:update', config),
     reloadBrowserSource: (id: string) => ipcRenderer.invoke('studio:browser-source:reload', id),
@@ -269,6 +271,13 @@ const api = {
     takeScreenshot: (frameData: Uint8Array) => ipcRenderer.invoke('streaming:take-screenshot', frameData),
     feedFrame: (frameData: Uint8Array | VideoFramePayload) => ipcRenderer.send('streaming:feed-frame', frameData),
     feedAudio: (audioData: Uint8Array | AudioFramePayload) => ipcRenderer.send('streaming:feed-audio', audioData)
+  },
+  // --- Recordings Library ---
+  recordings: {
+    list: () => ipcRenderer.invoke('recordings:list'),
+    openFolder: () => ipcRenderer.invoke('recordings:open-folder'),
+    play: (path: string) => ipcRenderer.invoke('recordings:play', path),
+    delete: (path: string) => ipcRenderer.invoke('recordings:delete', path)
   },
   // --- Govee ---
   govee: {

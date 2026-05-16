@@ -159,7 +159,7 @@ export function ChannelStrip({
         <div className="h-10 px-1 border-t border-white/[0.035] bg-[#090909] flex items-center justify-center gap-1">
           <button
             onClick={event => { event.stopPropagation(); onUpdate({ monitoring: !source.monitoring }) }}
-            className={`flex-1 h-7 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent/15 ring-accent/35 text-accent' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
+            className={`flex-1 h-7 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-brand-gradient ring-transparent text-white shadow-glow' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
             title="Monitor"
           >
             <IconHeadphones size={12} />
@@ -230,7 +230,7 @@ export function ChannelStrip({
               }}
               className={`h-6 w-full rounded-md ring-1 text-[8px] font-black uppercase tracking-widest transition-all ${
                 sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo') === 'mono'
-                  ? 'bg-accent/12 ring-accent/25 text-accent'
+                  ? 'bg-brand-gradient ring-transparent text-white shadow-glow'
                   : 'bg-white/[0.03] ring-white/[0.06] text-white/28 hover:text-white/50'
               }`}
               title="Toggle mono/stereo"
@@ -288,7 +288,7 @@ export function ChannelStrip({
       <div className="h-12 px-3 border-t border-white/[0.035] bg-[#090909] flex items-center gap-2 relative z-10 shadow-[0_-4px_12px_rgba(0,0,0,0.5)]">
         <button
           onClick={event => { event.stopPropagation(); onUpdate({ monitoring: !source.monitoring }) }}
-          className={`flex-1 h-8 rounded-lg ring-1 ring-white/5 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent/15 ring-accent/35 text-accent' : 'bg-white/[0.03] text-white/20 hover:text-white/45'}`}
+          className={`flex-1 h-8 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-brand-gradient ring-transparent text-white shadow-glow' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
           title="Monitor"
         >
           <IconHeadphones size={14} />
@@ -307,30 +307,47 @@ export function ChannelStrip({
 
 function StereoMeter({ id, meter, muted }: { id: string; meter: MeterFrame; muted: boolean }) {
   return (
-    <div className="w-6 h-full flex gap-1 shrink-0" style={{ marginLeft: 8 }}>
-      {(['left', 'right'] as const).map((side, i) => {
-        const linearLevel = muted ? 0 : meter[side]
-        const db = linearLevel <= 0.001 ? -60 : 20 * Math.log10(linearLevel)
-        const percent = Math.max(0, (db + 60) / 60) * 100
+    <div className="w-8 h-full flex flex-col gap-1 shrink-0" style={{ marginLeft: 4 }}>
+      {/* Clip Indicators */}
+      <div className="h-1.5 flex gap-1 mb-1">
+        <div className={`flex-1 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.5)] opacity-0 transition-opacity duration-75 meter-clip-indicator-l-${id}`} />
+        <div className={`flex-1 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.5)] opacity-0 transition-opacity duration-75 meter-clip-indicator-r-${id}`} />
+      </div>
 
-        return (
-          <div key={side} className="flex-1 rounded-md bg-black/75 border border-white/[0.04] relative overflow-hidden">
-            <div
-              className={`absolute inset-0 bg-gradient-to-t from-emerald-500 via-lime-400 to-red-400 ${i === 0 ? `meter-clip-l-${id}` : `meter-clip-r-${id}`}`}
-              style={{ clipPath: `inset(${100 - percent}% 0 0 0)` }}
-            />
-            <div className="absolute inset-0 pointer-events-none">
-              {[-6, -12, -24].map(tick => (
-                <div
-                  key={tick}
-                  className="absolute inset-x-0 h-px bg-black/40"
-                  style={{ bottom: `${((tick + 60) / 60) * 100}%` }}
-                />
-              ))}
+      <div className="flex-1 flex gap-1">
+        {(['left', 'right'] as const).map((side, i) => {
+          const linearLevel = muted ? 0 : meter[side]
+          const db = linearLevel <= 0.001 ? -60 : 20 * Math.log10(linearLevel)
+          const percent = Math.max(0, (db + 60) / 60) * 100
+
+          return (
+            <div key={side} className="flex-1 rounded-sm bg-black/80 border border-white/[0.04] relative overflow-hidden group">
+              {/* Pro Gradient Meter */}
+              <div
+                className={`absolute inset-0 bg-gradient-to-t from-[#22c55e] from-60% via-[#eab308] via-85% to-[#ef4444] ${i === 0 ? `meter-clip-l-${id}` : `meter-clip-r-${id}`}`}
+                style={{ clipPath: `inset(${100 - percent}% 0 0 0)` }}
+              />
+
+              {/* Peak Hold Line */}
+              <div
+                className={`absolute inset-x-0 h-[2px] bg-white shadow-[0_0_4px_rgba(255,255,255,0.8)] z-10 transition-all duration-300 ease-out ${i === 0 ? `meter-hold-l-${id}` : `meter-hold-r-${id}`}`}
+                style={{ top: '100%' }}
+              />
+
+              {/* Scale Ticks */}
+              <div className="absolute inset-0 pointer-events-none">
+                {[-0, -3, -6, -9, -12, -18, -24, -36, -48].map(tick => (
+                  <div
+                    key={tick}
+                    className={`absolute inset-x-0 h-px ${tick >= -6 ? 'bg-black/60' : 'bg-black/30'}`}
+                    style={{ bottom: `${((tick + 60) / 60) * 100}%` }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import {
   GGsLayerConfig,
   HeartMeLayerConfig
 } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 function mergeConfig(widget: any): ParticlesWidgetConfig {
   const raw = widget?.config || {}
@@ -15,7 +16,10 @@ function mergeConfig(widget: any): ParticlesWidgetConfig {
     fallingRoses:   { ...DEFAULT_PARTICLES_CONFIG.fallingRoses,   ...(raw.fallingRoses   || {}) },
     galaxy:         { ...DEFAULT_PARTICLES_CONFIG.galaxy,         ...(raw.galaxy         || {}) },
     ggs:            { ...DEFAULT_PARTICLES_CONFIG.ggs,            ...(raw.ggs            || {}) },
-    heartMe:        { ...DEFAULT_PARTICLES_CONFIG.heartMe,        ...(raw.heartMe        || {}) }
+    heartMe:        { ...DEFAULT_PARTICLES_CONFIG.heartMe,        ...(raw.heartMe        || {}) },
+    animationStyle: raw.animationStyle || DEFAULT_PARTICLES_CONFIG.animationStyle,
+    animationDuration: raw.animationDuration || DEFAULT_PARTICLES_CONFIG.animationDuration,
+    audioThreshold: raw.audioThreshold ?? DEFAULT_PARTICLES_CONFIG.audioThreshold
   }
 }
 
@@ -128,7 +132,8 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, isPreview: bool
     count: ${h.count}, baseSpeed: ${h.speed},
     wobbleAmp: 30, wobbleFreq: 0.015,
     scaleMin: ${h.scale * 0.7}, scaleMax: ${h.scale * 1.2},
-    textColor: '${h.textColor}', text: '${safeText}'
+    textColor: '${h.textColor}', text: '${safeText}',
+    audioReactive: ${h.audioReactive === true}
   };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
@@ -159,7 +164,13 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, isPreview: bool
       var wx = Math.sin((p.age + p.wo) * cfg.wobbleFreq) * cfg.wobbleAmp / (10 + p.sc);
       var lf = Math.max(0, p.y) / 100;
       var op = lf < 0.2 ? Math.max(0, lf / 0.2) : 1;
-      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + p.sc + ')');
+      var volScale = 1;
+      if (cfg.audioReactive) {
+        var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+        if (vol < AUDIO_THRESHOLD) vol = 0;
+        volScale = 1 + (vol * 1.5);
+      }
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       p.dom.style.opacity = op;
       if (p.y < -20 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
@@ -183,7 +194,7 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, isPreview: boolean)
   var container = document.getElementById('rose-container');
   if (!container) return;
   var particles = [];
-  var cfg = { count: ${r.count}, baseSpeed: ${r.speed}, scale: ${r.scale}, wobbleAmp: 12, wobbleFreq: 0.015 };
+  var cfg = { count: ${r.count}, baseSpeed: ${r.speed}, scale: ${r.scale}, wobbleAmp: 12, wobbleFreq: 0.015, audioReactive: ${r.audioReactive === true} };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
   function mkParticle(x, startY) {
@@ -213,7 +224,13 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, isPreview: boolean)
       var wx = Math.sin((p.age + p.wo) * cfg.wobbleFreq) * (cfg.wobbleAmp / 10);
       var lf = p.y / 100;
       var op = lf > 0.85 ? Math.max(0, 1 - ((lf - 0.85) / 0.15)) : 1;
-      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + p.sc + ') rotate(' + p.rot + ') translate(-50,-50)');
+      var volScale = 1;
+      if (cfg.audioReactive) {
+        var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+        if (vol < AUDIO_THRESHOLD) vol = 0;
+        volScale = 1 + (vol * 1.5);
+      }
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ') rotate(' + p.rot + ') translate(-50,-50)');
       p.dom.style.opacity = op;
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
@@ -241,7 +258,7 @@ function buildGalaxyScript(g: GalaxyLayerConfig, isPreview: boolean): string {
   var container = document.getElementById('galaxy-container');
   if (!container) return;
   var particles = [];
-  var cfg = { count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale}, wobbleAmp: 20, wobbleFreq: 0.01 };
+  var cfg = { count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale}, wobbleAmp: 20, wobbleFreq: 0.01, audioReactive: ${g.audioReactive === true} };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
   function mkParticle(x, startY) {
@@ -262,7 +279,13 @@ function buildGalaxyScript(g: GalaxyLayerConfig, isPreview: boolean): string {
       var wx = Math.sin((p.age + p.wo) * cfg.wobbleFreq) * cfg.wobbleAmp / (10 + p.sc);
       var lf = p.y / 100;
       var op = lf > 0.85 ? Math.max(0, 1 - ((lf - 0.85) / 0.15)) : 1;
-      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + p.sc + ')');
+      var volScale = 1;
+      if (cfg.audioReactive) {
+        var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+        if (vol < AUDIO_THRESHOLD) vol = 0;
+        volScale = 1 + (vol * 1.5);
+      }
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       p.dom.style.opacity = op;
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
@@ -294,7 +317,8 @@ function buildGGsScript(g: GGsLayerConfig, isPreview: boolean): string {
   var cfg = {
     count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale},
     color: '${g.color}', text: '${safeText}',
-    wobbleAmp: 18, wobbleFreq: 0.014
+    wobbleAmp: 18, wobbleFreq: 0.014,
+    audioReactive: ${g.audioReactive === true}
   };
   var NS = 'http://www.w3.org/2000/svg';
   var sizes = ['48px','56px','64px','40px','52px'];
@@ -321,7 +345,13 @@ function buildGGsScript(g: GGsLayerConfig, isPreview: boolean): string {
       var wx = Math.sin((p.age + p.wo) * cfg.wobbleFreq) * cfg.wobbleAmp / (10 + p.sc);
       var lf = p.y / 100;
       var op = lf > 0.85 ? Math.max(0, 1 - ((lf - 0.85) / 0.15)) : 1;
-      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + p.sc + ')');
+      var volScale = 1;
+      if (cfg.audioReactive) {
+        var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+        if (vol < AUDIO_THRESHOLD) vol = 0;
+        volScale = 1 + (vol * 1.5);
+      }
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       p.dom.style.opacity = op;
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
@@ -352,7 +382,8 @@ function buildHeartMeScript(h: HeartMeLayerConfig, isPreview: boolean): string {
   var cfg = {
     burstSize: ${Math.min(h.count, 8)}, baseSpeed: ${h.speed},
     scaleMin: ${h.scale * 0.5}, scaleMax: ${h.scale * 0.9},
-    wobbleAmp: 22, wobbleFreq: 0.018
+    wobbleAmp: 22, wobbleFreq: 0.018,
+    audioReactive: ${h.audioReactive === true}
   };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
@@ -375,7 +406,13 @@ function buildHeartMeScript(h: HeartMeLayerConfig, isPreview: boolean): string {
       var wx = Math.sin((p.age + p.wo) * cfg.wobbleFreq) * cfg.wobbleAmp / (10 + p.sc);
       var lf = Math.max(0, p.y) / 100;
       var op = lf < 0.2 ? Math.max(0, lf / 0.2) : 1;
-      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + p.sc + ')');
+      var volScale = 1;
+      if (cfg.audioReactive) {
+        var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+        if (vol < AUDIO_THRESHOLD) vol = 0;
+        volScale = 1 + (vol * 1.5);
+      }
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       p.dom.style.opacity = op;
       if (p.y < -20 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
@@ -388,8 +425,8 @@ function buildHeartMeScript(h: HeartMeLayerConfig, isPreview: boolean): string {
       (function(idx) { setTimeout(function() { particles.push(mkParticle(rnd(15, 85))); }, idx * 60); })(i);
     }
   }
-  layers.push({ 
-    update: update, 
+  layers.push({
+    update: update,
     onEvent: function(ev) { if (ev.type === 'like') burst(); },
     trigger: burst
   });
@@ -425,6 +462,7 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
       background: transparent; }
     #canvas { display: block; width: 100vw; height: 100vh; pointer-events: none; }
+    ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 1000 }, '#canvas')}
     ${!hasAny && isPreview ? `.no-layers {
       position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
       color: rgba(255,255,255,0.3); font-family: Inter, sans-serif; font-size: 14px; }` : ''}
@@ -437,6 +475,7 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
     ${containers}
   </svg>
   <script>
+    var AUDIO_THRESHOLD = ${cfg.audioThreshold || 0.05};
     function rnd(a, b) { return Math.random() * (b - a) + a; }
     var layers = [];
     var isPreview = ${isPreview};

@@ -6,12 +6,12 @@ import { EmojiPickerModal } from '../../components/ui/EmojiPickerModal'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function SoundboardPage() {
-  const { sounds, playSound, uploadSound, deleteSound, refreshSounds } = useSoundboard('board')
+  const { sounds, playSound, stopAllSounds, uploadSound, deleteSound, refreshSounds } = useSoundboard('board')
   const { actions, saveAction, deleteAction } = useDeckActions()
   const [activeTab, setActiveTab] = useState<'sounds' | 'actions'>('sounds')
   const [isEditMode, setIsEditMode] = useState(false)
   const [pendingUploadPath, setPendingUploadPath] = useState<string | null>(null)
-  
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<{ id: string, name: string, emoji: string, type: 'sound' | 'action' } | null>(null)
@@ -21,16 +21,22 @@ export default function SoundboardPage() {
 
   const handleAction = (id: string) => {
     if (isEditMode) return
+    const action = actions.find(a => a.id === id)
+    if (!action) return
+
     if (window.api?.overlay?.sendDeckAction) {
-      window.api.overlay.sendDeckAction({ type: id })
+      window.api.overlay.sendDeckAction({
+        type: action.type,
+        payload: action.payload_json ? JSON.parse(action.payload_json) : {}
+      })
     }
   }
 
   const copyTriggerUrl = (soundId: string) => {
     const port = 8899
-    const url = `http://localhost:${port}/overlay/deck/action`
+    const url = `http://127.0.0.1:${port}/overlay/deck/action`
     const body = JSON.stringify({ type: 'PLAY_SOUND', payload: { soundId } })
-    const command = `curl -X POST "${url}" -H "Content-Type: application/json" -d '${body}'`
+    const command = `curl -X POST "${url}" -H "Content-Type: application/json" -H "Authorization: Bearer <remote-token>" -d '${body}'`
     navigator.clipboard.writeText(command)
   }
 
@@ -121,7 +127,7 @@ export default function SoundboardPage() {
           <div>
             <h1>Audio Deck</h1>
             <p className="app-page-intro">
-              Manage and trigger instant audio effects and system actions. 
+              Manage and trigger instant audio effects and system actions.
               Customize your layout for physical stream deck integration.
             </p>
           </div>
@@ -150,12 +156,22 @@ export default function SoundboardPage() {
           <button
             onClick={() => setIsEditMode(!isEditMode)}
             className={`app-button !h-12 !px-6 !text-[10px] font-black tracking-widest transition-all ${
-              isEditMode ? 'bg-accent/20 text-accent border-accent/40' : ''
+              isEditMode ? 'bg-brand-gradient border-transparent text-white shadow-glow' : ''
             }`}
           >
             {isEditMode ? <IconCheck size={14} /> : <IconSettings size={14} />}
             {isEditMode ? 'SAVE DECK' : 'CONFIGURE DECK'}
           </button>
+
+          {!isEditMode && (
+            <button
+              onClick={() => stopAllSounds()}
+              className="app-button !h-12 !px-6 !text-[10px] font-black tracking-widest bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
+            >
+              <IconX size={14} />
+              STOP ALL
+            </button>
+          )}
         </div>
       </header>
 
@@ -166,7 +182,7 @@ export default function SoundboardPage() {
             {isEditMode && (
               <div className="absolute inset-x-0 top-0 h-1 bg-accent/30 animate-pulse z-10" />
             )}
-            
+
             <div className="app-section-head">
               <div className="flex items-center gap-4">
                 <div className="flex items-center justify-center text-accent">
@@ -226,7 +242,7 @@ export default function SoundboardPage() {
                     />
                   ))
                 )}
-                
+
                 {/* Empty state fillers for that stream deck look */}
                 {Array.from({ length: Math.max(0, 15 - (activeTab === 'sounds' ? sounds.length : actions.length)) }).map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square rounded-3xl bg-white/[0.01] border border-white/[0.02] border-dashed" />
@@ -250,11 +266,11 @@ export default function SoundboardPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="app-section-content">
               <p className="text-xs text-white/40 leading-relaxed font-medium">
-              Every button in your soundboard can be triggered externally via HTTP requests. 
-              Use the <span className="text-white/80">Copy Trigger</span> button on any tile to get a 
+              Every button in your soundboard can be triggered externally via HTTP requests.
+              Use the <span className="text-white/80">Copy Trigger</span> button on any tile to get a
               ready-to-use curl command for your Elgato or Touch Portal.
             </p>
             <div className="mt-8 p-4 rounded-2xl bg-black/40 border border-white/5">
@@ -279,13 +295,13 @@ export default function SoundboardPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="app-section-content">
               <p className="text-xs text-white/40 leading-relaxed font-medium mb-6">
-              Access your soundboard from any browser or tablet by opening the deck overlay. 
+              Access your soundboard from any browser or tablet by opening the deck overlay.
               Perfect for secondary monitors.
             </p>
-            <button 
+            <button
               onClick={() => window.open('http://127.0.0.1:8899/overlay/deck', '_blank', 'noopener,noreferrer')}
               className="app-button !w-full !h-12 !text-[10px] font-black tracking-widest"
             >
@@ -312,19 +328,19 @@ export default function SoundboardPage() {
   )
 }
 
-function DeckButton({ 
-  label, 
-  icon, 
-  onClick, 
+function DeckButton({
+  label,
+  icon,
+  onClick,
   onCopy,
   onDelete,
   onEdit,
   isEditMode,
-  color = "bg-white/[0.03] text-white" 
-}: { 
-  label: string; 
-  icon: string; 
-  onClick: () => void; 
+  color = "bg-white/[0.03] text-white"
+}: {
+  label: string;
+  icon: string;
+  onClick: () => void;
   onCopy?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -345,11 +361,11 @@ function DeckButton({
           {label}
         </span>
       </div>
-      
+
       {/* Edit Mode Overlay */}
       <AnimatePresence>
         {isEditMode && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -378,14 +394,14 @@ function DeckButton({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {!isEditMode && onCopy && (
         <button
           onClick={(e) => {
             e.stopPropagation()
             onCopy()
           }}
-          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-accent/20 hover:border-accent/30"
+          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-brand-gradient hover:border-transparent hover:text-white shadow-glow"
         >
           <IconCopy size={12} className="text-white/60" />
         </button>

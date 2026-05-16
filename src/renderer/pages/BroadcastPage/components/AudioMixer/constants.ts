@@ -5,13 +5,16 @@ export type FxPreset = {
 }
 
 export const FX_PRESETS: FxPreset[] = [
-  { type: 'noise_gate', label: 'Noise Gate', params: { threshold: -48, reduction: 0.08 } },
-  { type: 'compressor', label: 'Compressor', params: { threshold: -24, ratio: 4, attack: 0.006, release: 0.18 } },
-  { type: 'eq', label: '3-Band EQ', params: { low: 0, mid: 0, high: 0 } },
-  { type: 'limiter', label: 'Limiter', params: { threshold: -3 } },
+  { type: 'gate', label: 'Noise Gate', params: { threshold: -48, ratio: 20, attack: 0.003, release: 0.1 } },
+  { type: 'compressor', label: 'Compressor', params: { threshold: -24, ratio: 4, attack: 0.005, release: 0.15, knee: 12 } },
+  { type: 'limiter', label: 'Limiter', params: { threshold: -1, attack: 0.001, release: 0.05 } },
+  { type: 'eq', label: 'Equalizer', params: { low: 0, mid: 0, high: 0 } },
+  { type: 'gain', label: 'Gain / Trim', params: { gain: 0 } },
   { type: 'radio', label: 'Radio Color', params: { drive: 12 } },
   { type: 'echo', label: 'Delay Send', params: { delay: 0.22, feedback: 0.28, mix: 0.22 } }
 ]
+
+
 
 export const TRACK_COLOR_PRESETS = [
   { id: 'blue', label: 'Blue', value: '#64c7ff' },

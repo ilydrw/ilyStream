@@ -9,7 +9,10 @@ const SENSITIVE_FIELDS = new Set([
   'streamKey',
   'apiKey',
   'password',
-  'obsPassword'
+  'obsPassword',
+  'webhookUrl',
+  'botToken',
+  'token'
 ])
 
 const SENSITIVE_SETTING_KEYS = new Set([
@@ -18,12 +21,20 @@ const SENSITIVE_SETTING_KEYS = new Set([
   'obsPassword',
   'spotifyAccessToken',
   'spotifyRefreshToken',
-  'streamingStreamKey'
+  'streamKey',
+  'streamingStreamKey',
+  'goveeApiKey',
+  'hueUsername',
+  'voicemodApiKey',
+  'vtubeToken',
+  'discordWebhookUrl',
+  'discordBotToken'
 ])
 
 const ENC_PREFIX = 'enc:v1:'
 
 export function encryptField(value: string): string {
+  if (value.startsWith(ENC_PREFIX)) return value
   if (!safeStorage.isEncryptionAvailable()) return value
   const encrypted = safeStorage.encryptString(value)
   return ENC_PREFIX + encrypted.toString('base64')
@@ -47,7 +58,7 @@ export function decryptField(value: string): string {
 export function encryptConfig(config: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(config)) {
-    out[key] = SENSITIVE_FIELDS.has(key) && typeof val === 'string' ? encryptField(val) : val
+    out[key] = encodeSensitiveValue(key, val, SENSITIVE_FIELDS)
   }
   return out
 }
@@ -55,19 +66,17 @@ export function encryptConfig(config: Record<string, unknown>): Record<string, u
 export function decryptConfig(config: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(config)) {
-    out[key] = SENSITIVE_FIELDS.has(key) && typeof val === 'string' ? decryptField(val) : val
+    out[key] = decodeSensitiveValue(key, val, SENSITIVE_FIELDS)
   }
   return out
 }
 
 export function encodeSettingValue(key: string, value: unknown): unknown {
-  if (SENSITIVE_SETTING_KEYS.has(key) && typeof value === 'string') return encryptField(value)
-  return value
+  return encodeSensitiveValue(key, value, SENSITIVE_SETTING_KEYS)
 }
 
 export function decodeSettingValue(key: string, value: unknown): unknown {
-  if (SENSITIVE_SETTING_KEYS.has(key) && typeof value === 'string') return decryptField(value)
-  return value
+  return decodeSensitiveValue(key, value, SENSITIVE_SETTING_KEYS)
 }
 
 export function parseJson<T>(json: string, fallback: T): T {
@@ -76,4 +85,42 @@ export function parseJson<T>(json: string, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+function encodeSensitiveValue(key: string, value: unknown, exactKeys: Set<string>): unknown {
+  if (typeof value === 'string') {
+    return isSensitiveKey(key, exactKeys) && value ? encryptField(value) : value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => encodeSensitiveValue(key, item, exactKeys))
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      out[childKey] = encodeSensitiveValue(childKey, childValue, exactKeys)
+    }
+    return out
+  }
+  return value
+}
+
+function decodeSensitiveValue(key: string, value: unknown, exactKeys: Set<string>): unknown {
+  if (typeof value === 'string') {
+    return isSensitiveKey(key, exactKeys) ? decryptField(value) : value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => decodeSensitiveValue(key, item, exactKeys))
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      out[childKey] = decodeSensitiveValue(childKey, childValue, exactKeys)
+    }
+    return out
+  }
+  return value
+}
+
+function isSensitiveKey(key: string, exactKeys: Set<string>): boolean {
+  return exactKeys.has(key) || /(?:apiKey|accessToken|refreshToken|streamKey|clientSecret|password|webhookUrl|botToken|sessionId)$/i.test(key)
 }

@@ -6,20 +6,23 @@ export function buildCompanionHtml(data: {
   ui: any;
 }): string {
   const { obsStatus, viewerCounts, latestAlerts, nowPlaying, ui } = data;
-  
+
   const totalViewers = Object.values(viewerCounts).reduce((a, b) => a + b, 0);
-  const currentScene = obsStatus?.currentSceneName || 'Disconnected';
+  const currentScene = String(obsStatus?.currentSceneName || 'Disconnected');
   const isRecording = obsStatus?.recordingActive || false;
   const isStreaming = obsStatus?.streamActive || false;
-  const scenes = obsStatus?.scenes || [];
+  const scenes = Array.isArray(obsStatus?.scenes) ? obsStatus.scenes.map(String) : [];
+  const currentSceneJson = jsonForScript(currentScene);
+  const currentSceneHtml = escapeHtml(currentScene);
+  const scenesJson = jsonForScript(scenes);
 
   // Theme logic
   const isJoker = ui?.theme === 'joker';
-  const accent = ui?.accentColor || (isJoker ? '#1ddd33' : '#19c8ff');
+  const accent = safeHexColor(ui?.accentColor, isJoker ? '#1ddd33' : '#19c8ff');
   const secondary = isJoker ? '#ab5dce' : '#d035f1';
   const background = isJoker ? '#0a050c' : '#0A0C10';
   const gradient = `linear-gradient(135deg, ${accent}, ${secondary})`;
-  
+
   return `
 <!doctype html>
 <html lang="en">
@@ -38,7 +41,7 @@ export function buildCompanionHtml(data: {
 
   *, *::before, *::after { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: #000; overflow: hidden; display: grid; place-items: center; }
-  
+
   .device {
     width: 800px; height: 480px;
     background:
@@ -57,13 +60,13 @@ export function buildCompanionHtml(data: {
   .bar { height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid rgba(255,255,255,.08); }
   .bar .logo { width: 22px; height: 22px; border-radius: 6px; }
   .bar .word { font-size: 16px; font-weight: 900; letter-spacing: -.01em; background: var(--grad-brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  
+
   .status-pills { display: flex; gap: 8px; }
   .pill { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
-  
+
   .pill.live { background: rgba(34,197,94,.16); border: 1px solid rgba(34,197,94,.36); color: #4ADE80; }
   .pill.live i { width: 9px; height: 9px; border-radius: 50%; background: #22C55E; box-shadow: 0 0 10px rgba(34,197,94,.8); }
-  
+
   .pill.off { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,0.4); }
   .pill.off i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.2); }
 
@@ -77,11 +80,11 @@ export function buildCompanionHtml(data: {
   .scene-card { border-radius: 14px; padding: 18px 20px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); box-shadow: var(--shadow-card); display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
   .scene-card .kicker { font-size: 12px; font-weight: 900; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.55); }
   .scene-card .title { font-size: 40px; font-weight: 950; letter-spacing: -.04em; line-height: .95; margin-top: 6px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  
+
   .rec-status { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,0.2); }
   .rec-status.active { color: #FF6B6B; }
   .rec-status i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
-  
+
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
   .stat { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 10px 12px; }
   .stat .k { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: rgba(255,255,255,.6); }
@@ -109,7 +112,7 @@ export function buildCompanionHtml(data: {
   .alerts .hero .av { width: 38px; height: 38px; border-radius: 50%; font: 900 16px var(--font-sans); display: grid; place-items: center; color: #fff; flex: 0 0 auto; }
   .alerts .hero .nm { font-size: 17px; font-weight: 900; color: #fff; letter-spacing: -.01em; line-height: 1.1; }
   .alerts .hero .what { font-size: 13px; color: rgba(255,255,255,.75); font-weight: 600; margin-top: 1px; }
-  
+
   .alerts .ticker { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); overflow: hidden; }
   .alerts .row { display: flex; align-items: center; gap: 8px; }
   .alerts .row .av { width: 22px; height: 22px; border-radius: 50%; font: 900 11px var(--font-sans); display: grid; place-items: center; color: #fff; flex: 0 0 auto; }
@@ -168,7 +171,7 @@ export function buildCompanionHtml(data: {
       <div class="scene-card">
         <div>
           <div class="kicker">Current scene</div>
-          <div class="title" id="scene-name">${currentScene}</div>
+          <div class="title" id="scene-name">${currentSceneHtml}</div>
           <div class="rec-status ${isRecording ? 'active' : ''}" id="rec-status-line"><i></i><span>${isRecording ? 'Recording' : 'Not recording'}</span></div>
         </div>
         <div class="stats">
@@ -216,19 +219,47 @@ export function buildCompanionHtml(data: {
   </div>
 
   <script>
-    let sceneList = ${JSON.stringify(scenes)};
-    let currentSceneName = "${currentScene}";
-    
+    let sceneList = ${scenesJson};
+    let currentSceneName = ${currentSceneJson};
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
+      ));
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+
+    function safeClass(value) {
+      return String(value || '').replace(/[^a-z0-9_-]/gi, '');
+    }
+
+    function safeImageUrl(value) {
+      if (typeof value !== 'string' || !value.trim()) return '';
+      try {
+        const url = new URL(value, window.location.origin);
+        return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+      } catch {
+        return '';
+      }
+    }
+
     function updateScenes(scenes, current) {
       const container = document.getElementById('scene-strip');
       if (!container) return;
-      
+
       container.innerHTML = scenes.slice(0, 4).map((s, i) => \`
-        <div class="scn \${s === current ? 'active' : ''}" onclick="setScene('\${s}')">
+        <div class="scn \${s === current ? 'active' : ''}" data-scene="\${escapeAttr(s)}">
           <span class="num">0\${i+1}</span>
-          <span class="name">\${s}</span>
+          <span class="name">\${escapeHtml(s)}</span>
         </div>
       \`).join('');
+
+      container.querySelectorAll('.scn').forEach((button) => {
+        button.addEventListener('click', () => setScene(button.dataset.scene || ''));
+      });
     }
 
     async function setScene(name) {
@@ -248,34 +279,34 @@ export function buildCompanionHtml(data: {
     function updateAlerts(alerts) {
       const container = document.getElementById('alerts-container');
       if (!container || !alerts || alerts.length === 0) return;
-      
+
       const latest = alerts[0];
       const ticker = alerts.slice(1, 3);
-      
+
       let html = \`
         <div class="hero">
-          <div class="av \${latest.platform}">\${latest.displayName[0]}</div>
+          <div class="av \${safeClass(latest.platform)}">\${escapeHtml((latest.displayName || '?')[0])}</div>
           <div>
-            <div class="nm">\${latest.displayName}</div>
-            <div class="what">\${latest.summary}</div>
+            <div class="nm">\${escapeHtml(latest.displayName || 'Unknown')}</div>
+            <div class="what">\${escapeHtml(latest.summary || '')}</div>
           </div>
         </div>
       \`;
-      
+
       if (ticker.length > 0) {
         html += \`<div class="ticker">\`;
         ticker.forEach(a => {
           html += \`
             <div class="row">
-              <div class="av \${a.platform}">\${a.displayName[0]}</div>
-              <span class="nm">\${a.displayName}</span>
-              <span class="what">\${a.summary}</span>
+              <div class="av \${safeClass(a.platform)}">\${escapeHtml((a.displayName || '?')[0])}</div>
+              <span class="nm">\${escapeHtml(a.displayName || 'Unknown')}</span>
+              <span class="what">\${escapeHtml(a.summary || '')}</span>
             </div>
           \`;
         });
         html += \`</div>\`;
       }
-      
+
       container.innerHTML = html;
     }
 
@@ -283,11 +314,11 @@ export function buildCompanionHtml(data: {
       const bars = document.getElementById('mic-bars').querySelectorAll('i');
       const db = rms > 0 ? Math.round(20 * Math.log10(rms)) : -100;
       document.getElementById('mic-db').textContent = db <= -90 ? '−∞ dB' : \`\${db} dB\`;
-      
+
       const count = bars.length;
       const activeCount = Math.round(rms * count);
       const peakIndex = Math.round(peak * count) - 1;
-      
+
       bars.forEach((b, i) => {
         b.className = '';
         if (i < activeCount) {
@@ -301,7 +332,7 @@ export function buildCompanionHtml(data: {
 
     function connectSSE() {
       const evs = new EventSource('/overlay/events?channel=chat,alerts,goals,now-playing,obs,node-network');
-      
+
       evs.onmessage = (event) => {
         const data = JSON.parse(event.data);
         const payload = data.payload;
@@ -317,7 +348,7 @@ export function buildCompanionHtml(data: {
               root.classList.remove('no-np');
               document.getElementById('np-name').textContent = payload.trackName;
               document.getElementById('np-artist').textContent = payload.artistName;
-              document.getElementById('np-art').src = payload.albumArtUrl || '';
+              document.getElementById('np-art').src = safeImageUrl(payload.albumArtUrl);
             } else {
               strip.style.display = 'none';
               root.classList.add('no-np');
@@ -328,25 +359,25 @@ export function buildCompanionHtml(data: {
             const recStatus = document.getElementById('rec-status-line');
             recStatus.className = 'rec-status ' + (payload.recordingActive ? 'active' : '');
             recStatus.querySelector('span').textContent = payload.recordingActive ? 'Recording' : 'Not recording';
-            
+
             document.getElementById('pill-live').className = 'pill ' + (payload.streamActive ? 'live' : 'off');
             document.getElementById('pill-rec').style.display = payload.recordingActive ? 'inline-flex' : 'none';
-            
+
             if (payload.scenes) {
               updateScenes(payload.scenes, payload.currentSceneName);
             }
           }
         }
-        
+
         if (data.type === 'audio-levels') {
           updateMic(payload.rms, payload.peak);
         }
-        
+
         if (data.type === 'viewer-count') {
           document.getElementById('viewer-count').textContent = payload.total.toLocaleString();
         }
       };
-      
+
       evs.onerror = () => {
         evs.close();
         setTimeout(connectSSE, 3000);
@@ -355,7 +386,7 @@ export function buildCompanionHtml(data: {
 
     updateScenes(sceneList, currentSceneName);
     connectSSE();
-    
+
     // Simple clock
     setInterval(() => {
       const now = new Date();
@@ -365,4 +396,27 @@ export function buildCompanionHtml(data: {
 </body>
 </html>
   `;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function safeHexColor(value: unknown, fallback: string): string {
+  const color = String(value || '').trim()
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback
+}
+
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }

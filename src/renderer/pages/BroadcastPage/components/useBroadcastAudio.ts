@@ -22,7 +22,13 @@ export function useBroadcastAudio(
 ) {
   const masterBus = useStudioStore(s => s.masterBus)
   const audioSources = useStudioStore(s => s.audioSources)
-  
+  const smoothingFactor = useStudioStore(s => s.audioReactivity?.smoothing ?? 0.6)
+  const smoothingRef = useRef(smoothingFactor)
+
+  useEffect(() => {
+    smoothingRef.current = smoothingFactor
+  }, [smoothingFactor])
+
   const audioCtxRef = useRef<AudioContext | null>(null)
   const masterInputRef = useRef<GainNode | null>(null)
   const broadcastLimiterRef = useRef<DynamicsCompressorNode | null>(null)
@@ -48,7 +54,7 @@ export function useBroadcastAudio(
 
     const broadcastHeadroom = ctx.createGain()
     broadcastHeadroom.gain.value = 0.82
-    
+
     // Broadcast safety limiter — sits at the end of the chain to catch true
     // peaks that would clip on Twitch's transcoder. DynamicsCompressorNode is
     // not a true look-ahead limiter, so the previous (-3 dB / ratio 20 / 2 ms)
@@ -73,18 +79,39 @@ export function useBroadcastAudio(
     const mainMixMonitorGain = ctx.createGain()
     mainMixMonitorGain.gain.value = 0 // Controls whether the ENTIRE MIX is in the headphones
 
-    // Setup Master FX Chain
     const mFxInput = ctx.createGain()
     const mFxOutput = ctx.createGain()
     masterInput.connect(mFxInput)
     mFxOutput.connect(broadcastHeadroom)
     broadcastHeadroom.connect(broadcastLimiter)
-    
+
+    // Setup Audio Analyzer for Reactivity
+    const masterAnalyzer = ctx.createAnalyser()
+    masterAnalyzer.fftSize = 256
+    mFxOutput.connect(masterAnalyzer)
+    const freqData = new Uint8Array(masterAnalyzer.frequencyBinCount)
+    let smoothedVolume = 0
+    let analyzeFrameId: number
+    const updateVolume = () => {
+      if (!audioCtxRef.current) return
+      const currentSmoothing = smoothingRef.current
+      masterAnalyzer.getByteFrequencyData(freqData)
+      let sum = 0
+      for (let i = 0; i < freqData.length; i++) sum += freqData[i]
+
+      const rawVolume = (sum / freqData.length) / 255.0
+      smoothedVolume = (smoothedVolume * currentSmoothing) + (rawVolume * (1 - currentSmoothing))
+
+      ;(window as any).__masterVolume = smoothedVolume
+      analyzeFrameId = requestAnimationFrame(updateVolume)
+    }
+    updateVolume()
+
     // Routing to Headphones
     broadcastLimiter.connect(mainMixMonitorGain)
     mainMixMonitorGain.connect(masterMonitorMixer)
     masterMonitorMixer.connect(ctx.destination)
-    
+
     masterFxRef.current = { input: mFxInput, output: mFxOutput, nodes: [] }
     broadcastLimiterRef.current = broadcastLimiter
     outputSilencerRef.current = outputSilencer
@@ -94,6 +121,7 @@ export function useBroadcastAudio(
     console.log('[useBroadcastAudio] Mixer graph ready.')
 
     return () => {
+      cancelAnimationFrame(analyzeFrameId)
       if (processorRef.current) {
         try { broadcastLimiterRef.current?.disconnect(processorRef.current) } catch {}
         try { processorRef.current.disconnect() } catch {}
@@ -192,23 +220,23 @@ export function useBroadcastAudio(
     // Update Master Bus
     const mVol = masterBus.muted ? 0 : masterBus.volume
     masterInput.gain.setTargetAtTime(mVol, ctx.currentTime, 0.01)
-    
+
     // Main Mix monitoring toggle (do we want to hear the whole mix in our headphones?)
     mainMixMonitorGainRef.current?.gain.setTargetAtTime(masterBus.monitoring ? 1 : 0, ctx.currentTime, 0.01)
-    
+
     if (masterFxRef.current) {
-      reconcileFxChain(ctx, masterFxRef.current, masterBus.fxChain || [])
+      reconcileFxChain(ctx, masterFxRef.current, masterBus.filters || [])
     }
 
     // Reconcile Tracks
     const currentIds = new Set(audioSources.map(s => s.id))
-    
+
     // Cleanup removed tracks
     for (const [id, nodes] of tracksRef.current.entries()) {
       if (!currentIds.has(id)) {
         if (nodes._sourceNode?.node) {
           try {
-            // For internal buses, only disconnect from THIS mixer stage to 
+            // For internal buses, only disconnect from THIS mixer stage to
             // avoid killing connections to meters or other destinations.
             nodes._sourceNode.node.disconnect(nodes.channelMode.input)
           } catch (e) {
@@ -240,11 +268,11 @@ export function useBroadcastAudio(
         channelMode.output.connect(panner)
         panner.connect(fxInput)
         fxInput.connect(fxOutput)
-        
+
         // Post-FX Branching
         fxOutput.connect(gain)
         fxOutput.connect(monitorGain)
-        
+
         gain.connect(masterInput)
         if (masterMonitorMixerRef.current) {
           monitorGain.connect(masterMonitorMixerRef.current)
@@ -259,7 +287,7 @@ export function useBroadcastAudio(
 
       // Re-attach stream or connect internal bus
       const existingSource = (nodes as any)._sourceNode
-      
+
       if (s.id === 'soundboard' || s.id === 'tts-audio') {
         const bus = s.id === 'soundboard' ? audioEngine.getSoundboardBus() : audioEngine.getTtsBus()
         if (existingSource?.node !== bus) {
@@ -291,7 +319,7 @@ export function useBroadcastAudio(
       }
 
       nodes.channelMode.setMode(sanitizeChannelMode(s.channelMode, s.type === 'mic' ? 'mono' : 'stereo'))
-      
+
       const targetGain = s.muted ? 0 : s.volume
       if (Math.abs(nodes.gain.gain.value - targetGain) > 0.001) {
         nodes.gain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.01)
@@ -306,10 +334,11 @@ export function useBroadcastAudio(
       }
 
       nodes.panner.pan.setTargetAtTime(s.pan || 0, ctx.currentTime, 0.01)
-      
+
       const fxState = { input: nodes.fxInput, output: nodes.fxOutput, nodes: nodes.fxNodes }
-      reconcileFxChain(ctx, fxState, s.fxChain || [])
+      reconcileFxChain(ctx, fxState, s.filters || [])
       nodes.fxNodes = fxState.nodes
+
     }
   }, [audioSources, masterBus, streamReady])
 }

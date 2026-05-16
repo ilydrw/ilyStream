@@ -1,4 +1,5 @@
 import { NodeNetworkConfig, DEFAULT_NODE_NETWORK_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
   const cfg: NodeNetworkConfig = { ...DEFAULT_NODE_NETWORK_CONFIG, ...(widget?.config || {}) }
@@ -24,7 +25,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             padding: 0;
             ${cfg.forceTikTokDimensions ? 'width: 1080px; height: 1920px;' : 'width: 100vw; height: 100vh;'}
             overflow: hidden;
-            background-color: transparent; 
+            background-color: transparent;
         }
 
         .canvas-container {
@@ -35,12 +36,13 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             )}
             opacity: ${cfg.opacity};
         }
+        ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 1200 }, '.canvas-container')}
 
         #node-canvas {
             display: block;
             width: 100%;
             height: 100%;
-            filter: drop-shadow(0px 0px 4px rgba(${primaryRgb}, 0.2)); 
+            filter: drop-shadow(0px 0px 4px rgba(${primaryRgb}, 0.2));
         }
     </style>
 </head>
@@ -63,7 +65,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
         let nodes = [];
         let w, h;
         let isAITalking = false;
-        
+
         // Scale factors based on resolution to keep look consistent
         let densityMultiplier = 1.0;
         let distanceMultiplier = 1.0;
@@ -72,15 +74,15 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             const ratio = window.devicePixelRatio || 1;
             w = canvas.width = window.innerWidth * ratio;
             h = canvas.height = window.innerHeight * ratio;
-            
+
             // Calculate multipliers based on a reference resolution of 800x600
             densityMultiplier = (w * h) / (800 * 600 * ratio * ratio);
             distanceMultiplier = Math.sqrt(w * h) / Math.sqrt(800 * 600 * ratio * ratio);
-            
+
             ctx.scale(ratio, ratio);
             w /= ratio;
             h /= ratio;
-            
+
             initNodes();
         }
 
@@ -101,7 +103,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
                 const multiplier = isAITalking ? 2.0 : 1.0;
                 this.x += this.vx * multiplier;
                 this.y += this.vy * multiplier;
-                
+
                 if (this.x < 0 || this.x > w) this.vx *= -1;
                 if (this.y < 0 || this.y > h) this.vy *= -1;
 
@@ -118,7 +120,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                
+
                 if (this.isPulsing) {
                     const alpha = this.pulseLife + 0.4;
                     ctx.fillStyle = 'rgba(' + config.secondary + ', ' + alpha + ')';
@@ -129,7 +131,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
                     ctx.shadowBlur = 6;
                     ctx.shadowColor = 'rgb(' + config.primary + ')';
                 }
-                
+
                 ctx.fill();
                 ctx.shadowBlur = 0;
             }
@@ -151,7 +153,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
 
         function animate() {
             ctx.clearRect(0, 0, w, h);
-            
+
             // Random neural bursts - much more frequent when talking
             if (isAITalking && Math.random() < 0.6) {
                 const flareCount = Math.floor(Math.random() * 4) + 1;
@@ -174,7 +176,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
                         ctx.moveTo(nodes[i].x, nodes[i].y);
                         ctx.lineTo(nodes[j].x, nodes[j].y);
                         let opacity = 1 - (distance / maxDist);
-                        
+
                         if (nodes[i].isPulsing || nodes[j].isPulsing) {
                             let pulseIntensity = Math.max(nodes[i].pulseLife || 0, nodes[j].pulseLife || 0);
                             ctx.strokeStyle = 'rgba(' + config.secondary + ', ' + (opacity * (pulseIntensity + 0.3)) + ')';

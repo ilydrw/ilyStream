@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function BorderConfigEditor({
   draft,
@@ -34,7 +35,7 @@ export function BorderConfigEditor({
                 onClick={() => update('style', s)}
                 className={`h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
                   config.style === s
-                    ? 'bg-white text-black border-white'
+                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -55,7 +56,7 @@ export function BorderConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -69,7 +70,7 @@ export function BorderConfigEditor({
                 onClick={() => update('aspectRatio', r)}
                 className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
                   config.aspectRatio === r
-                    ? 'bg-white text-black border-white'
+                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -109,7 +110,7 @@ export function BorderConfigEditor({
             step={0.1}
             value={config.glowIntensity}
             onChange={(e) => update('glowIntensity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -121,7 +122,7 @@ export function BorderConfigEditor({
             step={0.1}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
         <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
@@ -137,6 +138,7 @@ export function BorderConfigEditor({
           </button>
         </div>
       </Section>
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

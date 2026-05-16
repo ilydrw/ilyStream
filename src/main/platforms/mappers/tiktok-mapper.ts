@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto'
-import type { 
-  ChatEvent, 
-  GiftEvent, 
-  SubscriptionEvent, 
+import type {
+  ChatEvent,
+  GiftEvent,
+  SubscriptionEvent,
   UserInfo,
   FollowEvent,
   LikeEvent,
@@ -176,12 +176,18 @@ export class TikTokMapper {
   }
 
   mapViewerCount(data: any): ViewerCountEvent {
+    const count = this.firstNumber(
+      data.viewerCount,
+      data.count,
+      data.totalViewerCount,
+      data.roomInfo?.viewerCount
+    )
     return {
       id: randomUUID(),
       platform: 'tiktok',
       timestamp: new Date(),
       type: 'viewer-count',
-      count: data.viewerCount || 0,
+      count,
       raw: data
     }
   }

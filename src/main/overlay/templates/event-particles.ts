@@ -1,4 +1,5 @@
 import { ParticleConfig, DEFAULT_PARTICLE_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildParticleOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: ParticleConfig = { ...DEFAULT_PARTICLE_CONFIG, ...(widget?.config || {}) }
@@ -22,6 +23,7 @@ export function buildParticleOverlayHtml(widget?: any, isPreview = false): strin
             background-color: transparent;
             position: relative;
         }
+        ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 800 }, 'body')}
 
         :root {
             --primary-color: ${cfg.primaryColor};
@@ -78,7 +80,9 @@ export function buildParticleOverlayHtml(widget?: any, isPreview = false): strin
             font: "'Inter', sans-serif",
             textColor: "var(--text-color)",
             text: "${cfg.text}",
-            eventDriven: ${cfg.eventDriven}
+            eventDriven: ${cfg.eventDriven},
+            audioReactive: ${cfg.audioReactive === true},
+            audioThreshold: ${cfg.audioThreshold || 0.05}
         };
 
         const particles = [];
@@ -150,7 +154,13 @@ export function buildParticleOverlayHtml(widget?: any, isPreview = false): strin
                 const finalYCoord = p.yPercent * 10;
 
                 const baseTransform = \`translate(\${finalXCoord}, \${finalYCoord})\`;
-                const scaleTransform = \`scale(\${p.scale})\`;
+                let volScale = 1;
+                if (config.audioReactive) {
+                    let vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
+                    if (vol < config.audioThreshold) vol = 0;
+                    volScale = 1 + (vol * 1.5);
+                }
+                const scaleTransform = \`scale(\${p.scale * volScale})\`;
                 p.dom.setAttribute('transform', \`\${baseTransform} \${scaleTransform}\`);
                 p.dom.style.opacity = opacity;
 

@@ -13,9 +13,16 @@ export class GoalManager {
     totalShares: 0,
     totalRaids: 0,
     currentViewerCount: 0,
+    twitchFollows: 0,
+    twitchSubs: 0,
+    tiktokFollows: 0,
+    tiktokLikes: 0,
+    tiktokGifts: 0,
     lastUpdatedAt: null
   }
   private seenFollowKeys = new Set<string>()
+  private viewerCounts = new Map<string, number>()
+  private platformLikes = new Map<string, number>()
   private sse: SSEManager
   private deviceApi: DeviceApi | null = null
 
@@ -33,17 +40,33 @@ export class GoalManager {
   }
 
   handleEvent(event: AnyStreamEvent): void {
+    const platform = event.platform?.toLowerCase() || 'unknown'
+
     switch (event.type) {
       case 'like': {
         const platformTotal = Number.isFinite(event.totalLikes) && event.totalLikes > 0
           ? Math.floor(event.totalLikes)
           : null
+
+        const delta = Math.max(1, Math.floor(event.likeCount || 1))
+
         if (platformTotal !== null) {
-          if (platformTotal > this.state.totalLikes) {
-            this.state.totalLikes = platformTotal
-          }
+          // If we got an absolute total from the platform, just use it
+          this.platformLikes.set(platform, Math.max(this.platformLikes.get(platform) || 0, platformTotal))
         } else {
-          this.state.totalLikes += Math.max(1, Math.floor(event.likeCount || 1))
+          // Otherwise, accumulate the delta
+          this.platformLikes.set(platform, (this.platformLikes.get(platform) || 0) + delta)
+        }
+
+        let totalPlatformLikes = 0
+        for (const count of this.platformLikes.values()) {
+          totalPlatformLikes += count
+        }
+        this.state.totalLikes = totalPlatformLikes
+
+        if (platform === 'tiktok') {
+          // Just sync tiktokLikes to the platform specific counter
+          this.state.tiktokLikes = this.platformLikes.get('tiktok') || 0
         }
         break
       }
@@ -51,9 +74,15 @@ export class GoalManager {
         if (event.isCombo) return
         this.state.totalGiftCount += event.giftCount
         this.state.totalGiftValueCents += event.monetaryValue
+        if (platform === 'tiktok') {
+          this.state.tiktokGifts += event.giftCount
+        }
         break
       case 'subscription':
         this.state.totalSubscriptions += 1
+        if (platform === 'twitch') {
+          this.state.twitchSubs += 1
+        }
         break
       case 'follow': {
         const followKey = `${event.platform}:${(event.user?.username || event.user?.id || '').toLowerCase()}`
@@ -62,6 +91,9 @@ export class GoalManager {
         }
         if (!followKey.endsWith(':')) this.seenFollowKeys.add(followKey)
         this.state.totalFollows += 1
+
+        if (platform === 'twitch') this.state.twitchFollows += 1
+        if (platform === 'tiktok') this.state.tiktokFollows += 1
         break
       }
       case 'share':
@@ -71,7 +103,12 @@ export class GoalManager {
         this.state.totalRaids += 1
         break
       case 'viewer-count':
-        this.state.currentViewerCount = event.count
+        this.viewerCounts.set(platform, event.count)
+        let totalViewers = 0
+        for (const count of this.viewerCounts.values()) {
+          totalViewers += count
+        }
+        this.state.currentViewerCount = totalViewers
         break
       default:
         return
@@ -92,8 +129,15 @@ export class GoalManager {
       totalShares: 0,
       totalRaids: 0,
       currentViewerCount: 0,
+      twitchFollows: 0,
+      twitchSubs: 0,
+      tiktokFollows: 0,
+      tiktokLikes: 0,
+      tiktokGifts: 0,
       lastUpdatedAt: null
     }
     this.seenFollowKeys.clear()
+    this.viewerCounts.clear()
+    this.platformLikes.clear()
   }
 }

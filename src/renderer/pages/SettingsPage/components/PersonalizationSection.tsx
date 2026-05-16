@@ -99,7 +99,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
               ))}
               <input
                 type="color"
-                value={settings.ui.accentColor}
+                value={settings.ui.accentColor || settings.accentColor || '#000000'}
                 onChange={(event) => onUpdate('accentColor', event.target.value)}
                 className="h-9 w-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
                 title="Custom accent color"

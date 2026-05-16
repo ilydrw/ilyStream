@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function NodeNetworkConfigEditor({
   draft,
@@ -55,7 +56,7 @@ export function NodeNetworkConfigEditor({
             step={0.05}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -65,7 +66,7 @@ export function NodeNetworkConfigEditor({
           <ColorRow label="Primary" value={config.primaryColor} onChange={(v) => update('primaryColor', v)} />
           <ColorRow label="Secondary" value={config.secondaryColor} onChange={(v) => update('secondaryColor', v)} />
         </div>
-        
+
         <Field label={`Opacity — ${Math.round(config.opacity * 100)}%`}>
           <input
             type="range"
@@ -74,7 +75,7 @@ export function NodeNetworkConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -111,6 +112,8 @@ export function NodeNetworkConfigEditor({
           </button>
         </div>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

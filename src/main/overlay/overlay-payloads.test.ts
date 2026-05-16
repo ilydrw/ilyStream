@@ -75,7 +75,11 @@ describe('overlay payload helpers', () => {
   it('sanitizes alert html before it reaches the overlay', () => {
     expect(
       sanitizeOverlayHtml('<div onclick="hack()">Hi<script>alert(1)</script><a href="javascript:evil()">Go</a></div>')
-    ).toBe('<div>Hi<a href="evil()">Go</a></div>')
+    ).toBe('&lt;div onclick=&quot;hack()&quot;&gt;Hi&lt;script&gt;alert(1)&lt;/script&gt;&lt;a href=&quot;javascript:evil()&quot;&gt;Go&lt;/a&gt;&lt;/div&gt;')
+  })
+
+  it('preserves line breaks as the only alert html tag', () => {
+    expect(sanitizeOverlayHtml('hello<br />world')).toBe('hello<br />world')
   })
 
   it('suppresses particle bursts for in-progress gift streak updates', () => {
@@ -149,7 +153,7 @@ describe('overlay payload helpers', () => {
       expect.objectContaining({
         platform: 'tiktok',
         durationMs: 30000,
-        html: '<strong>Hi</strong>'
+        html: '&lt;strong&gt;Hi&lt;/strong&gt;'
       })
     )
   })

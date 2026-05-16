@@ -49,7 +49,7 @@ export function LayoutPlatformPicker({
           <button
             key={platform.id}
             onClick={() => onRemove(layout, platform.id)}
-            className="h-7 px-2 rounded-lg bg-accent/15 border border-accent/25 text-white flex items-center gap-1.5 shrink-0"
+            className="h-7 px-2 rounded-lg bg-brand-gradient border-transparent text-white shadow-glow flex items-center gap-1.5 shrink-0"
             title={`Remove ${platform.name} from ${label}`}
             disabled={isStreaming}
           >
@@ -78,7 +78,7 @@ export function LayoutPlatformPicker({
                   if (!isStreaming && !assignedElsewhere) onToggle(layout, platform.id)
                 }}
                 disabled={assignedElsewhere || isStreaming}
-                className={`w-full h-9 px-2 rounded-lg flex items-center gap-2 text-left transition-all disabled:opacity-30 disabled:cursor-not-allowed ${selectedHere ? 'bg-accent/20 text-white' : 'text-white/55 hover:text-white hover:bg-white/8'}`}
+                className={`w-full h-9 px-2 rounded-lg flex items-center gap-2 text-left transition-all disabled:opacity-30 disabled:cursor-not-allowed ${selectedHere ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/55 hover:text-white hover:bg-white/8'}`}
                 title={assignedElsewhere ? `${platform.name} is already assigned to the other layout` : platform.name}
               >
                 <PlatformLogo platform={platform.id} size={16} />

@@ -18,7 +18,7 @@ export function registerSettingsHandlers(
     return resolveAppSettings(db.getAllSettings())[key]
   })
   ipcMain.handle('settings:set', (_event, key: AppSettingKey, value) => {
-    console.log(`[ipc] settings:set key=${key} value=${JSON.stringify(value)}`)
+    console.log(`[ipc] settings:set key=${key}`)
     return updateSetting(key, value)
   })
   ipcMain.handle('settings:set-many', async (_event, settings: Record<string, any>) => {
@@ -26,7 +26,7 @@ export function registerSettingsHandlers(
     for (const [key, value] of Object.entries(settings)) {
       const k = key as AppSettingKey
       const resolved = resolveAppSetting(k, value);
-      console.log(`  [ipc] ${key} -> ${JSON.stringify(resolved)}`);
+      console.log(`  [ipc] setting updated: ${key}`);
       db.setSetting(k, resolved)
     }
     await applyRuntimeSettings()
@@ -34,11 +34,11 @@ export function registerSettingsHandlers(
     return true
   })
   ipcMain.handle('settings:get-all', () => resolveAppSettings(db.getAllSettings()))
-  
+
   ipcMain.on('settings:get-sync', (event, key: AppSettingKey) => {
     event.returnValue = resolveAppSettings(db.getAllSettings())[key]
   })
-  
+
   ipcMain.handle('obs:get-status', () => obsService.getStatus())
   ipcMain.handle('obs:reconnect', async () => {
     const status = await obsService.reconnect()

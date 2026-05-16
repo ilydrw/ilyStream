@@ -1,7 +1,9 @@
 # ilyStream
 
+![ilyStream Widget Editor](file:///C:/Users/Drew/.gemini/antigravity/brain/c80eb271-ef93-4791-9ff8-41637c8cfdf6/ilystream_widget_editor_preview_1778781203103.png)
+
 [![Website](https://img.shields.io/badge/website-ilydrw.github.io%2FilyStream-blue)](https://ilydrw.github.io/ilyStream/)
-[![Version](https://img.shields.io/badge/version-0.0.8-green)](https://github.com/ilydrw/ilyStream/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.0.9-green)](https://github.com/ilydrw/ilyStream/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows-brightgreen)](https://ilydrw.github.io/ilyStream/download/)
 
 **ilyStream** is a focused Windows broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place. No browser tabs, no complex terminal setups—just a native control room built for the live workflow.
@@ -9,6 +11,8 @@
 ## 🚀 Key Features
 
 *   **Broadcast Studio**: Manage scenes, capture sources, and stream output from a single native interface.
+*   **Unified Design System**: Professional-grade glassmorphism, customizable typography (Outfit, Inter, etc.), and smooth border-radius control across all overlay graphics.
+*   **Real-Time Customization**: Advanced widget editor with **Live Preview**—adjust aesthetics and behavior without refreshing your stream.
 *   **High-Fidelity Recording**: VBR/CRF encoding optimized for NVENC, QSV, and AMF hardware encoders.
 *   **Audio Engine**: Integrated TTS, soundboards, and Voice FX that route directly into your broadcast mix.
 *   **Smart-Light Automation**: Native support for Philips Hue and Govee LAN control for chat-reactive lighting.

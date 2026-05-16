@@ -11,7 +11,8 @@ import {
   type Widget
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
-import { Field, SwitchRow, ColorRow } from './Shared'
+import { Field, SwitchRow, ColorRow, Section } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 // ---- shared sub-components ------------------------------------------------
 
@@ -40,7 +41,7 @@ function LayerRow({
             type="checkbox"
             checked={enabled}
             onChange={(e) => onToggle(e.target.checked)}
-            className="w-4 h-4 accent-white flex-shrink-0"
+            className="w-4 h-4 accent-[#d035f1] flex-shrink-0"
           />
           <span className="text-lg leading-none">{emoji}</span>
           <div className="flex-1 min-w-0">
@@ -49,7 +50,7 @@ function LayerRow({
           </div>
         </label>
         {enabled && (
-          <span className="text-[10px] font-black uppercase tracking-widest text-green-400/80 flex-shrink-0">
+          <span className="text-[10px] font-black uppercase tracking-widest bg-brand-gradient bg-clip-text text-transparent flex-shrink-0">
             Active
           </span>
         )}
@@ -81,7 +82,7 @@ function PhysicsRow({ label, value, onChange, min = 0.1, max = 5, step = 0.1 }: 
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-white"
+        className="w-full accent-[#d035f1]"
       />
     </Field>
   )
@@ -112,6 +113,7 @@ function FollowerHeartsEditor({
       <ColorRow label="Primary color" value={cfg.primaryColor} onChange={(v) => set('primaryColor', v)} />
       <ColorRow label="Secondary color" value={cfg.secondaryColor} onChange={(v) => set('secondaryColor', v)} />
       <ColorRow label="Text color" value={cfg.textColor} onChange={(v) => set('textColor', v)} />
+      <SwitchRow label="Audio Reactive" hint="Particles pulse to stream audio" value={cfg.audioReactive || false} onChange={(v) => set('audioReactive', v)} />
     </>
   )
 }
@@ -131,6 +133,7 @@ function FallingRosesEditor({
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
       <ColorRow label="Primary color" value={cfg.primaryColor} onChange={(v) => set('primaryColor', v)} />
       <ColorRow label="Secondary color" value={cfg.secondaryColor} onChange={(v) => set('secondaryColor', v)} />
+      <SwitchRow label="Audio Reactive" hint="Particles pulse to stream audio" value={cfg.audioReactive || false} onChange={(v) => set('audioReactive', v)} />
     </>
   )
 }
@@ -151,6 +154,7 @@ function GalaxyEditor({
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
       <ColorRow label="Primary color" value={cfg.primaryColor} onChange={(v) => set('primaryColor', v)} />
       <ColorRow label="Secondary color" value={cfg.secondaryColor} onChange={(v) => set('secondaryColor', v)} />
+      <SwitchRow label="Audio Reactive" hint="Particles pulse to stream audio" value={cfg.audioReactive || false} onChange={(v) => set('audioReactive', v)} />
     </>
   )
 }
@@ -177,6 +181,7 @@ function GGsEditor({
       <PhysicsRow label="Speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
       <ColorRow label="Color" value={cfg.color} onChange={(v) => set('color', v)} />
+      <SwitchRow label="Audio Reactive" hint="Particles pulse to stream audio" value={cfg.audioReactive || false} onChange={(v) => set('audioReactive', v)} />
     </>
   )
 }
@@ -197,6 +202,7 @@ function HeartMeEditor({
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={2} />
       <ColorRow label="Primary color" value={cfg.primaryColor} onChange={(v) => set('primaryColor', v)} />
       <ColorRow label="Secondary color" value={cfg.secondaryColor} onChange={(v) => set('secondaryColor', v)} />
+      <SwitchRow label="Audio Reactive" hint="Particles pulse to stream audio" value={cfg.audioReactive || false} onChange={(v) => set('audioReactive', v)} />
     </>
   )
 }
@@ -217,7 +223,10 @@ export function ParticlesConfigEditor({
     fallingRoses:   { ...DEFAULT_PARTICLES_CONFIG.fallingRoses,   ...(draft.config as any)?.fallingRoses   },
     galaxy:         { ...DEFAULT_PARTICLES_CONFIG.galaxy,         ...(draft.config as any)?.galaxy         },
     ggs:            { ...DEFAULT_PARTICLES_CONFIG.ggs,            ...(draft.config as any)?.ggs            },
-    heartMe:        { ...DEFAULT_PARTICLES_CONFIG.heartMe,        ...(draft.config as any)?.heartMe        }
+    heartMe:        { ...DEFAULT_PARTICLES_CONFIG.heartMe,        ...(draft.config as any)?.heartMe        },
+    animationStyle: (draft.config as any)?.animationStyle || DEFAULT_PARTICLES_CONFIG.animationStyle,
+    animationDuration: (draft.config as any)?.animationDuration || DEFAULT_PARTICLES_CONFIG.animationDuration,
+    audioThreshold: (draft.config as any)?.audioThreshold ?? DEFAULT_PARTICLES_CONFIG.audioThreshold
   }), [draft.config])
 
   const update = (partial: Partial<ParticlesWidgetConfig>) =>
@@ -315,6 +324,24 @@ export function ParticlesConfigEditor({
           onChange={(next) => update({ heartMe: next })}
         />
       </LayerRow>
+
+      <Section label="Design & Animation">
+        <DesignSystemSection config={cfg as any} onUpdate={(key, value) => update({ [key]: value })} />
+
+        <Field label={`Audio Noise Gate — ${Math.round((cfg.audioThreshold || 0.05) * 100)}%`} hint="Ignore audio levels below this threshold">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min="0"
+              max="0.5"
+              step="0.01"
+              value={cfg.audioThreshold ?? 0.05}
+              onChange={(e) => update({ audioThreshold: parseFloat(e.target.value) })}
+              className="flex-1 accent-[#d035f1]"
+            />
+          </div>
+        </Field>
+      </Section>
     </div>
   )
 }

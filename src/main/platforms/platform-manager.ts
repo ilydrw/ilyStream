@@ -17,6 +17,7 @@ import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
 
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
+  private viewerCounts: Partial<Record<Platform, number>> = {}
 
   constructor(private db: Database, private tiktokChatSender: TikTokChatSender) {
     super()
@@ -31,22 +32,18 @@ export class PlatformManager extends EventEmitter {
     ]
 
     const autoReconnect = !!this.db.getSetting('platformAutoReconnect')
-    
+
     for (const connector of platforms) {
       this.connectors.set(connector.platform, connector)
       connector.setAutoReconnect(autoReconnect)
 
       connector.on('event', (event: AnyStreamEvent) => {
         console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
-        
-        // DEBUG: Write to file
-        try {
-          const fs = require('fs')
-          const debugPath = 'c:\\Dev\\ilyStream\\event_debug.log'
-          const logLine = `[${new Date().toISOString()}] PLATFORM_MANAGER_RELAY: ${event.platform} ${event.type}\n`
-          fs.appendFileSync(debugPath, logLine)
-        } catch (e) {}
-        
+
+        if (event.type === 'viewer-count') {
+          this.viewerCounts[event.platform] = (event as any).count
+        }
+
         this.emit('event', event)
         this.emit(event.type, event)
       })
@@ -155,5 +152,9 @@ export class PlatformManager extends EventEmitter {
     console.log(`[platform-manager] Emitting test event: ${event.type}`)
     this.emit('event', event)
     this.emit(event.type, event)
+  }
+
+  getViewerCounts(): Record<Platform, number> {
+    return { ...this.viewerCounts } as Record<Platform, number>
   }
 }

@@ -80,6 +80,19 @@ describe('TriggerEngine', () => {
     expect(enqueue).not.toHaveBeenCalled()
   })
 
+  it('rejects nested quantified regex conditions before evaluating chat text', () => {
+    const { engine, enqueue } = createEngine()
+    const rule = createRule('redos-regex', 0)
+
+    engine.updateRule({
+      ...rule,
+      conditions: [{ type: 'keyword', value: '(a+)+$', matchMode: 'regex', caseSensitive: false }]
+    })
+
+    engine.evaluate(createChatEvent('aaaaaaaaaaaaaaaaaaaaaaaa!'))
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
   it('does not let chat TTS trigger actions bypass command and role gates', () => {
     const { engine, enqueue, prepareChatSpeechMessage } = createEngine()
 

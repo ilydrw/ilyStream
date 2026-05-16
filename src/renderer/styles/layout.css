@@ -293,9 +293,9 @@
 }
 
 .app-rail-item.is-active .app-rail-icon-wrapper {
-  background: var(--bg-brand-gradient);
+  background: var(--brand-gradient);
   color: white;
-  box-shadow: 0 0 20px rgba(25, 200, 255, 0.3);
+  box-shadow: 0 0 20px rgba(208, 53, 241, 0.3);
 }
 
 .app-rail-item.is-active svg,
@@ -341,10 +341,10 @@
 }
 
 .app-drawer-item.is-active {
-  background: var(--bg-brand-gradient);
+  background: var(--brand-gradient);
   color: white;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(25, 200, 255, 0.15);
+  box-shadow: 0 4px 12px rgba(208, 53, 241, 0.15);
 }
 
 .app-drawer-item.is-active svg,

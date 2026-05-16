@@ -65,7 +65,7 @@ export class FFmpegArgsBuilder {
     const audioFormat = config.audioFormat || 'silent'
     const copyEncodedVideo = inputFormat === 'h264'
     const isVirtualCam = fullUrl.startsWith('video=') || fullUrl.startsWith('/dev/video')
-    const format = isVirtualCam 
+    const format = isVirtualCam
       ? (process.platform === 'win32' ? 'dshow' : 'v4l2')
       : 'flv'
 
@@ -117,8 +117,20 @@ export class FFmpegArgsBuilder {
     if (!config.outputPath) throw new Error('Recording output path is required')
 
     const inputFormat = config.inputFormat || 'mjpeg'
-    const encoder = inputFormat === 'h264' ? 'copy' : bestEncoder
     const audioFormat = config.audioFormat || 'silent'
+
+    // Support explicit encoder selection or fallback to best detected
+    const selectedEncoder = (config.encoder && config.encoder !== 'auto') ? config.encoder : bestEncoder
+    const encoder = inputFormat === 'h264' ? 'copy' : selectedEncoder
+
+    // Container specific flags
+    const extension = config.outputPath.split('.').pop()?.toLowerCase()
+    const requestedContainer = config.container || extension
+    const containerFormat =
+      requestedContainer === 'mkv' ? 'matroska' :
+      requestedContainer === 'mp4' ? 'mp4' :
+      requestedContainer === 'mov' ? 'mov' :
+      'flv'
 
     return [
       ...(inputFormat === 'h264'
@@ -127,12 +139,14 @@ export class FFmpegArgsBuilder {
       ...this.encoderResolver.getEncoderArgs(encoder, { ...config, inputFormat }, 'record'),
       ...this.buildInputMap(audioFormat),
       '-c:a', 'aac',
-      '-b:a', '192k',
+      '-b:a', `${config.audioBitrate || 192}k`,
       '-ar', '48000',
       '-ac', '2',
-      '-movflags', '+faststart',
+      ...(containerFormat === 'mp4' ? ['-movflags', '+faststart'] : []),
       '-shortest',
-      '-y', config.outputPath
+      '-f', containerFormat,
+      '-n', config.outputPath
     ]
   }
+
 }

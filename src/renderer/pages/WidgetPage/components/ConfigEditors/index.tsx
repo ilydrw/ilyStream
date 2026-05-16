@@ -13,6 +13,8 @@ import { LatestGifterConfigEditor } from './LatestGifterConfigEditor'
 import { PhysicsConfigEditor } from './PhysicsConfigEditor'
 import { ChatUnifiedConfigEditor } from './ChatUnifiedConfigEditor'
 import { LikesTrackerConfigEditor } from './LikesTrackerConfigEditor'
+import { AlertsConfigEditor } from './AlertsConfigEditor'
+import { LeaderboardConfigEditor } from './LeaderboardConfigEditor'
 
 export function ConfigEditor({
   draft,
@@ -64,6 +66,12 @@ export function ConfigEditor({
   }
   if (draft.type === 'likes-tracker') {
     return <LikesTrackerConfigEditor draft={draft} onChange={onChange} />
+  }
+  if (draft.type === 'alerts') {
+    return <AlertsConfigEditor draft={draft} onChange={onChange} />
+  }
+  if (draft.type === 'leaderboard') {
+    return <LeaderboardConfigEditor draft={draft} onChange={onChange} />
   }
 
   return (

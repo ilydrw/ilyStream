@@ -5,6 +5,7 @@ import {
   type Widget
 } from '../../../../../shared/widgets'
 import { Section, Field } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function ChatUnifiedConfigEditor({
   draft,
@@ -46,7 +47,7 @@ export function ChatUnifiedConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -58,7 +59,7 @@ export function ChatUnifiedConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -70,7 +71,7 @@ export function ChatUnifiedConfigEditor({
             step={0.05}
             value={config.backgroundOpacity}
             onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -82,7 +83,7 @@ export function ChatUnifiedConfigEditor({
             step={1}
             value={config.blur}
             onChange={(e) => update('blur', Number(e.currentTarget.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -96,7 +97,7 @@ export function ChatUnifiedConfigEditor({
                 onClick={() => update('aspectRatio', r)}
                 className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
                   config.aspectRatio === r
-                    ? 'bg-white text-black border-white'
+                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -106,6 +107,8 @@ export function ChatUnifiedConfigEditor({
           </div>
         </Field>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

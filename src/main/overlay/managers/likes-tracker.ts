@@ -6,6 +6,7 @@ import type { LikesTrackerUser } from '../types'
 export class LikesTracker {
   private users = new Map<string, LikesTrackerUser>()
   private totalLikes = 0
+  private platformLikes = new Map<string, number>()
   private sse: SSEManager
 
   constructor(sse: SSEManager) {
@@ -27,17 +28,19 @@ export class LikesTracker {
       ? Math.floor(event.totalLikes)
       : null
 
+    const platform = event.platform?.toLowerCase() || 'unknown'
+
     if (platformTotal !== null) {
-      if (platformTotal >= this.totalLikes) {
-        this.totalLikes = platformTotal
-      } else {
-        console.warn(
-          `[overlay] Ignoring TikTok totalLikes regression: incoming=${platformTotal}, current=${this.totalLikes}`
-        )
-      }
+      this.platformLikes.set(platform, Math.max(this.platformLikes.get(platform) || 0, platformTotal))
     } else {
-      this.totalLikes += amount
+      this.platformLikes.set(platform, (this.platformLikes.get(platform) || 0) + amount)
     }
+
+    let totalPlatformLikes = 0
+    for (const count of this.platformLikes.values()) {
+      totalPlatformLikes += count
+    }
+    this.totalLikes = totalPlatformLikes
 
     const key = `${event.platform}:${event.user.username || event.user.id || feedItem.displayName}`.toLowerCase()
     const existing = this.users.get(key) ?? {
@@ -67,6 +70,7 @@ export class LikesTracker {
 
   reset(): void {
     this.users.clear()
+    this.platformLikes.clear()
     this.totalLikes = 0
   }
 }

@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { EventEmitter } from 'events'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'fs'
 import { basename, join } from 'path'
 import { pathToFileURL } from 'url'
 import { Database } from '../db/database'
@@ -20,7 +20,7 @@ export class SoundboardService extends EventEmitter {
     super()
     this.db = db
     this.soundsDir = join(app.getPath('userData'), 'sounds')
-    
+
     // Ensure category subdirectories exist
     const categories = ['alerts', 'board']
     categories.forEach(cat => {
@@ -62,17 +62,17 @@ export class SoundboardService extends EventEmitter {
       throw new Error('Only MP3 and WAV files are supported for event sounds.')
     }
 
-    if (!existsSync(sourcePath)) {
+    if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
       throw new Error('Sound file was not found.')
     }
 
     const targetDir = join(this.soundsDir, category)
     if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true })
-    
+
     const destPath = join(targetDir, fileName)
-    
+
     copyFileSync(sourcePath, destPath)
-    
+
     return {
       id: `${category}/${fileName}`,
       name: fileName,

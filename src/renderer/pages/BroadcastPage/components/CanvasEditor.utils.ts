@@ -317,3 +317,45 @@ export function softClip(value: number): number {
   }
 }
 
+export function traceShapePath(
+  ctx: CanvasRenderingContext2D,
+  type: string,
+  x: number,
+  y: number,
+  r: number,
+  w: number,
+  h: number,
+  cornerRadius: number
+): void {
+  ctx.beginPath()
+  if (type === 'circle') {
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+  } else if (type === 'star') {
+    const spikes = 5; const outerRadius = r; const innerRadius = r / 2.5
+    let rot = Math.PI / 2 * 3; const step = Math.PI / spikes
+    ctx.moveTo(x, y - outerRadius)
+    for (let i = 0; i < spikes; i++) {
+      let curX = x + Math.cos(rot) * outerRadius; let curY = y + Math.sin(rot) * outerRadius
+      ctx.lineTo(curX, curY); rot += step
+      curX = x + Math.cos(rot) * innerRadius; curY = y + Math.sin(rot) * innerRadius
+      ctx.lineTo(curX, curY); rot += step
+    }
+    ctx.lineTo(x, y - outerRadius); ctx.closePath()
+  } else if (type === 'heart') {
+    const d = r * 2.2; const hx = x; const hy = y - d / 4
+    ctx.moveTo(hx, hy + d / 4)
+    ctx.bezierCurveTo(hx, hy + d / 4, hx - d / 2, hy, hx - d / 2, hy - d / 4)
+    ctx.bezierCurveTo(hx - d / 2, hy - d / 2, hx, hy - d / 2, hx, hy - d / 4)
+    ctx.bezierCurveTo(hx, hy - d / 2, hx + d / 2, hy - d / 2, hx + d / 2, hy - d / 4)
+    ctx.bezierCurveTo(hx + d / 2, hy, hx, hy + d / 4, hx, hy + d / 4); ctx.closePath()
+  } else if (type === 'hexagon') {
+    for (let i = 0; i < 6; i++) { ctx.lineTo(x + r * Math.cos(i * Math.PI / 3), y + r * Math.sin(i * Math.PI / 3)) }; ctx.closePath()
+  } else if (type === 'diamond') {
+    ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath()
+  } else {
+    const rx = x - w / 2; const ry = y - h / 2
+    if ((ctx as any).roundRect) (ctx as any).roundRect(rx, ry, w, h, cornerRadius)
+    else ctx.rect(rx, ry, w, h)
+  }
+}
+

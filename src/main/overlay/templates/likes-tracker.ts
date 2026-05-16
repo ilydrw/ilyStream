@@ -3,6 +3,7 @@ import {
   type LikesTrackerConfig,
   type Widget
 } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const numericValue = Number(value)
@@ -25,7 +26,10 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
   const opacity = clampNumber(config.opacity, 0.1, 1, DEFAULT_LIKES_TRACKER_CONFIG.opacity)
   const scale = clampNumber(config.scale, 0.5, 2, DEFAULT_LIKES_TRACKER_CONFIG.scale)
   const showTotal = config.showTotal !== false
-  
+  const borderRadius = clampNumber(config.borderRadius, 0, 50, DEFAULT_LIKES_TRACKER_CONFIG.borderRadius)
+  const glassIntensity = clampNumber(config.glassIntensity, 0, 1, DEFAULT_LIKES_TRACKER_CONFIG.glassIntensity)
+  const fontFamily = config.fontFamily || DEFAULT_LIKES_TRACKER_CONFIG.fontFamily
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -39,14 +43,17 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       --tiktok-pink: #fe2c55;
       --tiktok-cyan: #25f4ee;
       --text-color: #ffffff;
-      --glass-bg: rgba(15, 15, 20, 0.7);
-      --glass-border: rgba(255, 255, 255, 0.1);
+      --glass-bg: rgba(15, 15, 20, ${0.4 + (glassIntensity * 0.4)});
+      --glass-blur: ${glassIntensity * 40}px;
+      --glass-border: rgba(255, 255, 255, ${0.05 + (glassIntensity * 0.1)});
       --row-height: 60px;
       --accent-color: ${accentColor};
       --accent-gradient: linear-gradient(135deg, var(--accent-color), #25f4ee);
       --gold: #ffd700;
       --silver: #e0e0e0;
       --bronze: #cd7f32;
+      --border-radius: ${borderRadius}px;
+      --font-main: '${fontFamily}', 'Inter', sans-serif;
     }
 
     body {
@@ -54,7 +61,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       padding: 15px;
       overflow: hidden;
       background: var(--bg-color);
-      font-family: 'Outfit', sans-serif;
+      font-family: var(--font-main);
       color: var(--text-color);
       -webkit-font-smoothing: antialiased;
       opacity: ${opacity};
@@ -68,12 +75,13 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       transform: scale(${scale});
       transform-origin: top left;
     }
+    ${getAnimationCss({ style: config.animationStyle || 'slide', duration: config.animationDuration || 800 }, '.leaderboard-wrapper')}
 
     .header {
       padding: 15px 20px;
       background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      border-radius: 16px 16px 0 0;
+      backdrop-filter: blur(var(--glass-blur));
+      border-radius: var(--border-radius) var(--border-radius) 0 0;
       border: 1px solid var(--glass-border);
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
@@ -130,8 +138,8 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     .user-list {
       position: relative;
       background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      border-radius: 0 0 16px 16px;
+      backdrop-filter: blur(var(--glass-blur));
+      border-radius: 0 0 var(--border-radius) var(--border-radius);
       border: 1px solid var(--glass-border);
       border-top: none;
       min-height: calc(var(--row-height) * ${maxVisible});
@@ -171,14 +179,14 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     .user-avatar {
       width: 40px;
       height: 40px;
-      border-radius: 12px;
+      border-radius: calc(var(--border-radius) * 0.6);
       border: 2px solid rgba(255, 255, 255, 0.1);
       display: block;
       object-fit: cover;
       transition: all 0.3s ease;
     }
 
-    .rank-1 .user-avatar { 
+    .rank-1 .user-avatar {
       border-color: var(--gold);
       box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
       transform: scale(1.1);
@@ -419,7 +427,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     // Connect to SSE
     const statusDot = document.getElementById('status-dot');
     const eventSource = new EventSource(window.location.origin + '/overlay/events?channel=likes');
-    
+
     eventSource.onopen = () => {
       console.log('[likes] SSE Connected');
       statusDot.className = 'status-dot connected';

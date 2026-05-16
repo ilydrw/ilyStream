@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StudioScene, StudioLayer } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
-import { drawMediaFallback, drawAndCacheMediaFrame, wrapCanvasText } from './CanvasEditor.utils'
+import { drawMediaFallback, drawAndCacheMediaFrame, traceShapePath, wrapCanvasText } from './CanvasEditor.utils'
 import type { CachedMediaFrame, CanvasPreviewMode, CanvasStreamOutput, BrowserFrameSurface } from './CanvasEditor.types'
+import { useStudioStore } from '../../../stores/studio-store'
+import { segmentationService } from '../../../services/SegmentationService'
 
 interface RenderLoopOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -52,6 +54,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
   const horizontalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const verticalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const dualVerticalOverlayRef = useRef({ lastAt: 0, busy: false })
+  const transitionCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const chromaCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const dualVerticalOverlayEnabledRef = useRef(dualVerticalOverlayEnabled)
   dualVerticalOverlayEnabledRef.current = dualVerticalOverlayEnabled
 
@@ -62,6 +66,30 @@ export function useRenderLoop(options: RenderLoopOptions) {
     previewMode === 'dual-portrait' ? '9:16' :
     secondaryAspectRatio
 
+  const transitionState = useStudioStore(s => s.transitionState)
+  const stingerSettings = useStudioStore(s => s.stingerSettings)
+  const scenes = useStudioStore(s => s.scenes)
+
+  const stingerVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  useEffect(() => {
+    if (stingerSettings.path) {
+      const v = document.createElement('video')
+      v.src = `file://${stingerSettings.path}`
+      v.preload = 'auto'
+      v.muted = true
+      stingerVideoRef.current = v
+    }
+  }, [stingerSettings.path])
+
+  // Play/Stop stinger
+  useEffect(() => {
+    if (transitionState.isActive && transitionState.type === 'stinger' && stingerVideoRef.current) {
+      stingerVideoRef.current.currentTime = 0
+      stingerVideoRef.current.play().catch(console.error)
+    }
+  }, [transitionState.isActive, transitionState.type])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -69,7 +97,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
     if (!ctx) return
 
     ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high' 
+    ctx.imageSmoothingQuality = 'high'
 
     let frameId: number
     const configuredOutputFps = Math.max(1, Math.min(60, Math.round(outputFps || 30)))
@@ -84,7 +112,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
       // Hibernate if page is hidden AND we aren't doing any work that requires frames (streaming, recording, etc)
       const workActive = outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
       const shouldHibernate = !isVisible && !workActive
-      
+
       if (shouldHibernate !== isHibernated) {
         isHibernated = shouldHibernate
         if (isHibernated) {
@@ -99,11 +127,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
       return isHibernated
     }
 
-    const drawScene = (targetCtx: CanvasRenderingContext2D, targetCanvas: HTMLCanvasElement, targetRatio: '16:9' | '9:16') => {
+    const drawScene = (targetCtx: CanvasRenderingContext2D, targetCanvas: HTMLCanvasElement, targetRatio: '16:9' | '9:16', sceneOverride?: StudioScene) => {
+      const scene = sceneOverride || activeScene
       targetCtx.fillStyle = '#000'
       targetCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height)
 
-      const sorted = [...activeScene.layers].sort((a, b) => a.zIndex - b.zIndex)
+      const sorted = [...scene.layers].sort((a, b) => a.zIndex - b.zIndex)
       for (const l of sorted) {
         const layout = resolveLayerLayout(l, targetRatio)
         if (!layout.visible) continue
@@ -119,15 +148,214 @@ export function useRenderLoop(options: RenderLoopOptions) {
         }
 
         const e = l.enhancements || {}
-        const shapeObj = typeof e.shape === 'object' ? e.shape : { type: e.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+        const shapeObj = (typeof e.shape === 'object' ? e.shape : { type: e.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }) as any
         const { type: shape, x: sxp, y: syp, scale: ssc, scope: sscope, captureX = 50, captureY = 50 } = shapeObj
-        
+
         // Scope Check: 'both', '16:9', or '9:16'
         const shouldApplyShape = sscope === 'both' || sscope === targetRatio
 
         // Capture Offset (Pan/Zoom)
         const cx = ((captureX - 50) / 100) * dl.width
         const cy = ((captureY - 50) / 100) * dl.height
+
+        const drawLayerSource = () => {
+          const hasChromaKey = e.chromaKey?.enabled && e.chromaKey.color
+          const vb = e.virtualBackground
+          const isVbEnabled = vb?.enabled
+
+          let drawTarget: CanvasRenderingContext2D = targetCtx
+          let drawX = dl.x - cx
+          let drawY = dl.y - cy
+
+          const video = (l.type === 'camera' || l.type === 'display') ? videoRefs.current[l.id] : null
+          const isCamera = l.type === 'camera'
+
+          if (isVbEnabled && isCamera && video && video.readyState >= 2) {
+            segmentationService.processVideo(l.id, video)
+          }
+
+          // --- DRAW BACKGROUND ---
+          if (isVbEnabled) {
+            targetCtx.save()
+            targetCtx.globalAlpha = (vb.opacity ?? 100) / 100
+
+            if (vb.type === 'color' && vb.value) {
+              targetCtx.fillStyle = vb.value
+              targetCtx.fillRect(dl.x, dl.y, dl.width, dl.height)
+            } else if (vb.type === 'image' && vb.value) {
+              let img = imageCache.current[`vb-${vb.value}`]
+              if (!img) {
+                img = new Image()
+                img.src = `file://${vb.value}`
+                imageCache.current[`vb-${vb.value}`] = img
+              }
+              if (img.complete) {
+                if (vb.blurStrength) targetCtx.filter = `blur(${vb.blurStrength / 4}px)`
+
+                const mode = vb.scalingMode || 'cover'
+                if (mode === 'stretch') {
+                  targetCtx.drawImage(img, dl.x, dl.y, dl.width, dl.height)
+                } else {
+                  const imgRatio = img.width / img.height
+                  const containerRatio = dl.width / dl.height
+                  let sw, sh, sx, sy
+
+                  if (mode === 'cover') {
+                    if (imgRatio > containerRatio) {
+                      sh = img.height; sw = img.height * containerRatio
+                      sx = (img.width - sw) / 2; sy = 0
+                    } else {
+                      sw = img.width; sh = img.width / containerRatio
+                      sx = 0; sy = (img.height - sh) / 2
+                    }
+                  } else { // contain
+                    if (imgRatio > containerRatio) {
+                      sw = img.width; sh = img.width / containerRatio
+                      sx = 0; sy = (img.height - sh) / 2
+                    } else {
+                      sh = img.height; sw = img.height * containerRatio
+                      sx = (img.width - sw) / 2; sy = 0
+                    }
+                  }
+                  targetCtx.drawImage(img, sx, sy, sw, sh, dl.x, dl.y, dl.width, dl.height)
+                }
+                targetCtx.filter = 'none'
+              }
+            } else if (vb.type === 'blur') {
+              const video = videoRefs.current[l.id]
+              if (video && video.readyState >= 2) {
+                targetCtx.save()
+                targetCtx.filter = `blur(${vb.blurStrength || 20}px) brightness(70%)`
+                targetCtx.drawImage(video, dl.x - 20, dl.y - 20, dl.width + 40, dl.height + 40)
+                targetCtx.restore()
+              }
+            }
+            targetCtx.restore()
+          }
+
+          if (hasChromaKey) {
+            if (!chromaCanvasRef.current) chromaCanvasRef.current = document.createElement('canvas')
+            const cc = chromaCanvasRef.current
+            cc.width = dl.width
+            cc.height = dl.height
+            const cCtx = cc.getContext('2d', { alpha: true, willReadFrequently: true })
+            if (cCtx) {
+              drawTarget = cCtx
+              drawX = 0
+              drawY = 0
+            }
+          }
+
+          if (l.type === 'camera' || l.type === 'display') {
+            if (video && video.readyState >= 2 && video.videoWidth > 0) {
+              const maskResult = isVbEnabled && isCamera ? segmentationService.getMask(l.id) : null
+
+              if (maskResult && maskResult.mask) {
+                // DRAW WITH MASK
+                if (!chromaCanvasRef.current) chromaCanvasRef.current = document.createElement('canvas')
+                const cc = chromaCanvasRef.current
+                cc.width = dl.width
+                cc.height = dl.height
+                const cCtx = cc.getContext('2d', { alpha: true })
+                if (cCtx) {
+                  cCtx.clearRect(0, 0, dl.width, dl.height)
+                  cCtx.drawImage(
+                    video,
+                    (layout.crop?.left || 0), (layout.crop?.top || 0),
+                    video.videoWidth - (layout.crop?.left || 0) - (layout.crop?.right || 0),
+                    video.videoHeight - (layout.crop?.top || 0) - (layout.crop?.bottom || 0),
+                    0, 0, dl.width, dl.height
+                  )
+                  cCtx.globalCompositeOperation = 'destination-in'
+                  if (layout.crop) {
+                    cCtx.drawImage(
+                      maskResult.mask,
+                      layout.crop.left, layout.crop.top,
+                      maskResult.width - layout.crop.left - layout.crop.right,
+                      maskResult.height - layout.crop.top - layout.crop.bottom,
+                      0, 0, dl.width, dl.height
+                    )
+                  } else {
+                    cCtx.drawImage(maskResult.mask, 0, 0, dl.width, dl.height)
+                  }
+                  cCtx.globalCompositeOperation = 'source-over'
+
+                  targetCtx.drawImage(cc, dl.x - cx, dl.y - cy)
+                }
+              } else {
+                drawTarget.drawImage(
+                  video,
+                  (layout.crop?.left || 0), (layout.crop?.top || 0),
+                  video.videoWidth - (layout.crop?.left || 0) - (layout.crop?.right || 0),
+                  video.videoHeight - (layout.crop?.top || 0) - (layout.crop?.bottom || 0),
+                  drawX, drawY, dl.width, dl.height
+                )
+              }
+            } else {
+              const cached = mediaFrameCache.current[l.id]
+              if (cached) drawTarget.drawImage(cached.canvas, drawX, drawY, dl.width, dl.height)
+              else drawMediaFallback(drawTarget, mediaFrameCache.current, l.id, { ...dl, x: drawX, y: drawY }, 'WAITING', l.name)
+            }
+          } else if (l.type === 'image' && imageCache.current[l.id]) {
+            drawTarget.drawImage(imageCache.current[l.id], drawX, drawY, dl.width, dl.height)
+          } else if (l.type === 'widget' || l.type === 'browser') {
+            const frame = browserFrameCache.current[l.id]
+            if (frame && frame.bitmap) {
+              const c = layout.crop
+              if (c) {
+                drawTarget.drawImage(
+                  frame.bitmap,
+                  c.left, c.top, frame.width - c.left - c.right, frame.height - c.top - c.bottom,
+                  drawX, drawY, dl.width, dl.height
+                )
+              } else {
+                drawTarget.drawImage(frame.bitmap, drawX, drawY, dl.width, dl.height)
+              }
+            }
+          } else if (l.type === 'text') {
+            const fontSize = Number(l.config?.fontSize) || 48
+            drawTarget.fillStyle = l.config?.color || '#fff'
+            drawTarget.font = `700 ${fontSize}px Inter, sans-serif`
+            drawTarget.textBaseline = 'top'
+            wrapCanvasText(drawTarget, l.config?.text || '', drawX, drawY, dl.width, fontSize * 1.2, dl.height)
+          }
+
+          if (hasChromaKey && drawTarget !== targetCtx) {
+            const cCtx = drawTarget as CanvasRenderingContext2D
+            const imgData = cCtx.getImageData(0, 0, dl.width, dl.height)
+            const data = imgData.data
+
+            const hex = e.chromaKey!.color.replace('#', '')
+            const kr = parseInt(hex.substring(0, 2), 16)
+            const kg = parseInt(hex.substring(2, 4), 16)
+            const kb = parseInt(hex.substring(4, 6), 16)
+
+            const similarity = (e.chromaKey!.similarity || 40) / 100
+            const smoothness = (e.chromaKey!.smoothness || 10) / 100
+            const spill = (e.chromaKey!.spill || 10) / 100
+
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i], g = data[i+1], b = data[i+2]
+              const rDiff = r - kr, gDiff = g - kg, bDiff = b - kb
+              const dist = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) / 441.6
+
+              if (dist < similarity) {
+                data[i+3] = 0
+              } else if (dist < similarity + smoothness) {
+                const alpha = (dist - similarity) / smoothness
+                data[i+3] = Math.min(data[i+3], alpha * 255)
+              }
+
+              if (spill > 0 && dist < similarity + spill) {
+                const avg = (r + b) / 2
+                if (g > avg) data[i+1] = avg + (g - avg) * (dist / (similarity + spill))
+              }
+            }
+            cCtx.putImageData(imgData, 0, 0)
+            targetCtx.drawImage(chromaCanvasRef.current!, dl.x - cx, dl.y - cy)
+          }
+        }
+
 
         const getFilters = (withBlur = false) => {
           const f = []
@@ -160,8 +388,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
           return f.join(' ')
         }
 
-        // Apply Shaping Mask
-        if (shouldApplyShape && shape !== 'none') {
+        // Apply Shaping Mask & Draw
+        if (shouldApplyShape && (shape as string) !== 'none') {
           const sx = dl.x + (sxp / 100) * dl.width
           const sy = dl.y + (syp / 100) * dl.height
           const sw = (ssc / 100) * dl.width
@@ -169,111 +397,119 @@ export function useRenderLoop(options: RenderLoopOptions) {
           const r = Math.min(sw, sh) / 2
           const radius = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
 
-          targetCtx.beginPath()
-          if (shape === 'circle') {
-            targetCtx.arc(sx, sy, r, 0, Math.PI * 2)
-          } else if (shape === 'star') {
-            const spikes = 5; const outerRadius = r; const innerRadius = r / 2.5
-            let rot = Math.PI / 2 * 3; let x = sx; let y = sy; const step = Math.PI / spikes
-            targetCtx.moveTo(sx, sy - outerRadius)
-            for (let i = 0; i < spikes; i++) {
-              x = sx + Math.cos(rot) * outerRadius; y = sy + Math.sin(rot) * outerRadius
-              targetCtx.lineTo(x, y); rot += step
-              x = sx + Math.cos(rot) * innerRadius; y = sy + Math.sin(rot) * innerRadius
-              targetCtx.lineTo(x, y); rot += step
-            }
-            targetCtx.lineTo(sx, sy - outerRadius); targetCtx.closePath()
-          } else if (shape === 'heart') {
-            const d = r * 2.2; const hx = sx; const hy = sy - d / 4
-            targetCtx.moveTo(hx, hy + d / 4)
-            targetCtx.bezierCurveTo(hx, hy + d / 4, hx - d / 2, hy, hx - d / 2, hy - d / 4)
-            targetCtx.bezierCurveTo(hx - d / 2, hy - d / 2, hx, hy - d / 2, hx, hy - d / 4)
-            targetCtx.bezierCurveTo(hx, hy - d / 2, hx + d / 2, hy - d / 2, hx + d / 2, hy - d / 4)
-            targetCtx.bezierCurveTo(hx + d / 2, hy, hx, hy + d / 4, hx, hy + d / 4); targetCtx.closePath()
-          } else if (shape === 'diamond') {
-            targetCtx.moveTo(sx, sy - r); targetCtx.lineTo(sx + r, sy); targetCtx.lineTo(sx, sy + r); targetCtx.lineTo(sx - r, sy); targetCtx.closePath()
-          } else if (shape === 'hexagon') {
-            for (let i = 0; i < 6; i++) { targetCtx.lineTo(sx + r * Math.cos(i * Math.PI / 3), sy + r * Math.sin(i * Math.PI / 3)) }; targetCtx.closePath()
-          } else {
-            const rx = sx - sw / 2; const ry = sy - sh / 2
-            if ((targetCtx as any).roundRect) (targetCtx as any).roundRect(rx, ry, sw, sh, radius)
-            else targetCtx.rect(rx, ry, sw, sh)
-          }
-          targetCtx.clip()
-        }
+          const shapePath = () => traceShapePath(targetCtx, shape, sx, sy, r, sw, sh, radius)
 
-        // DRAW
-        targetCtx.filter = getFilters(e.focusCircle?.enabled)
-        
-        const drawLayerSource = () => {
-          if (l.type === 'camera' || l.type === 'display') {
-            const video = videoRefs.current[l.id]
-            if (video && video.readyState >= 2 && video.videoWidth > 0) {
-              targetCtx.drawImage(
-                video, 
-                (layout.crop?.left || 0), (layout.crop?.top || 0), 
-                video.videoWidth - (layout.crop?.left || 0) - (layout.crop?.right || 0), 
-                video.videoHeight - (layout.crop?.top || 0) - (layout.crop?.bottom || 0), 
-                dl.x - cx, dl.y - cy, dl.width, dl.height
-              )
-            } else {
-              const cached = mediaFrameCache.current[l.id]
-              if (cached) targetCtx.drawImage(cached.canvas, dl.x - cx, dl.y - cy, dl.width, dl.height)
-              else drawMediaFallback(targetCtx, mediaFrameCache.current, l.id, { ...dl, x: dl.x - cx, y: dl.y - cy }, 'WAITING', l.name)
-            }
-          } else if (l.type === 'image' && imageCache.current[l.id]) {
-            targetCtx.drawImage(imageCache.current[l.id], dl.x - cx, dl.y - cy, dl.width, dl.height)
-          } else if (l.type === 'widget' || l.type === 'browser') {
-            const frame = browserFrameCache.current[l.id]
-            if (frame && frame.bitmap) {
-              const c = layout.crop
-              if (c) {
-                targetCtx.drawImage(
-                  frame.bitmap,
-                  c.left, c.top, frame.width - c.left - c.right, frame.height - c.top - c.bottom,
-                  dl.x - cx, dl.y - cy, dl.width, dl.height
-                )
-              } else {
-                targetCtx.drawImage(frame.bitmap, dl.x - cx, dl.y - cy, dl.width, dl.height)
-              }
-            }
-          } else if (l.type === 'text') {
-            const fontSize = Number(l.config?.fontSize) || 48
-            targetCtx.fillStyle = l.config?.color || '#fff'
-            targetCtx.font = `700 ${fontSize}px Inter, sans-serif`
-            targetCtx.textBaseline = 'top'
-            wrapCanvasText(targetCtx, l.config?.text || '', dl.x, dl.y, dl.width, fontSize * 1.2, dl.height)
-          }
-        }
-
-        drawLayerSource()
-
-        // Focus Circle Secondary Pass
-        if (e.focusCircle?.enabled) {
+          // Pass 1: Content (Clipped)
           targetCtx.save()
-          const fx = dl.x + (e.focusCircle.x / 100) * dl.width
-          const fy = dl.y + (e.focusCircle.y / 100) * dl.height
-          const fr = (e.focusCircle.radius / 100) * (Math.max(dl.width, dl.height) / 2)
-          targetCtx.beginPath()
-          targetCtx.arc(fx, fy, fr, 0, Math.PI * 2)
+          shapePath()
           targetCtx.clip()
-          targetCtx.filter = getFilters(false)
+          targetCtx.filter = getFilters(e.focusCircle?.enabled)
           drawLayerSource()
           targetCtx.restore()
-        }
 
-        // Vignette
-        if (e.vignette && e.vignette > 0) {
-          targetCtx.filter = 'none'
-          const grad = targetCtx.createRadialGradient(
-            dl.x + dl.width/2, dl.y + dl.height/2, 0,
-            dl.x + dl.width/2, dl.y + dl.height/2, Math.max(dl.width, dl.height) / 1.5
-          )
-          const alpha = (e.vignette / 100) * 0.8
-          grad.addColorStop(0, 'rgba(0,0,0,0)')
-          grad.addColorStop(1, `rgba(0,0,0,${alpha})`)
-          targetCtx.fillStyle = grad
-          targetCtx.fillRect(dl.x, dl.y, dl.width, dl.height)
+          // Pass 2: Border (Unclipped)
+          if (shapeObj.border?.enabled) {
+            const b = shapeObj.border
+            const vol = (window as any).__masterVolume || 0
+            const sensitivity = (b.reactivity ?? 100) / 100
+            const reactiveBoost = b.audioReactive ? (vol * 1.5 * sensitivity) : 0
+            const thickness = b.thickness * (1 + reactiveBoost)
+
+            targetCtx.save()
+            targetCtx.lineWidth = thickness
+            targetCtx.lineJoin = 'round'
+            targetCtx.lineCap = 'round'
+            shapePath()
+
+            if (b.type === 'chroma') {
+              const grad = targetCtx.createLinearGradient(sx - r, sy - r, sx + r, sy + r)
+              const hue = (performance.now() / 20) % 360
+              grad.addColorStop(0, `hsl(${hue}, 100%, 50%)`)
+              grad.addColorStop(0.5, `hsl(${(hue + 120) % 360}, 100%, 50%)`)
+              grad.addColorStop(1, `hsl(${(hue + 240) % 360}, 100%, 50%)`)
+              targetCtx.strokeStyle = grad
+              targetCtx.shadowBlur = b.audioReactive ? (10 + vol * 30) : 10
+              targetCtx.shadowColor = `hsl(${hue}, 100%, 50%)`
+            } else if (b.type === 'cyber') {
+              const hue = (performance.now() / 50) % 60
+              const color = `hsl(${180 + hue}, 100%, 50%)`
+              targetCtx.strokeStyle = color
+              targetCtx.shadowBlur = 15 + (vol * 40)
+              targetCtx.shadowColor = color
+              targetCtx.stroke()
+              // Inner Glow
+              targetCtx.lineWidth = thickness / 2
+              targetCtx.strokeStyle = '#fff'
+              targetCtx.shadowBlur = 0
+            } else {
+              targetCtx.strokeStyle = b.color || '#fff'
+              targetCtx.globalAlpha = (b.opacity ?? 100) / 100
+            }
+            targetCtx.stroke()
+            targetCtx.restore()
+          }
+
+          // Pass 3: Focus Circle & Vignette (Clipped)
+          targetCtx.save()
+          shapePath()
+          targetCtx.clip()
+
+          if (e.focusCircle?.enabled) {
+            targetCtx.save()
+            const fx = dl.x + (e.focusCircle.x / 100) * dl.width
+            const fy = dl.y + (e.focusCircle.y / 100) * dl.height
+            const fr = (e.focusCircle.radius / 100) * (Math.max(dl.width, dl.height) / 2)
+            targetCtx.beginPath()
+            targetCtx.arc(fx, fy, fr, 0, Math.PI * 2)
+            targetCtx.clip()
+            targetCtx.filter = getFilters(false)
+            drawLayerSource()
+            targetCtx.restore()
+          }
+
+          if (e.vignette && e.vignette > 0) {
+            targetCtx.filter = 'none'
+            const grad = targetCtx.createRadialGradient(
+              dl.x + dl.width/2, dl.y + dl.height/2, 0,
+              dl.x + dl.width/2, dl.y + dl.height/2, Math.max(dl.width, dl.height) / 1.5
+            )
+            const alpha = (e.vignette / 100) * 0.8
+            grad.addColorStop(0, 'rgba(0,0,0,0)')
+            grad.addColorStop(1, `rgba(0,0,0,${alpha})`)
+            targetCtx.fillStyle = grad
+            targetCtx.fillRect(dl.x, dl.y, dl.width, dl.height)
+          }
+          targetCtx.restore()
+        } else {
+          // No Shape
+          targetCtx.filter = getFilters(e.focusCircle?.enabled)
+          drawLayerSource()
+
+          if (e.focusCircle?.enabled) {
+            targetCtx.save()
+            const fx = dl.x + (e.focusCircle.x / 100) * dl.width
+            const fy = dl.y + (e.focusCircle.y / 100) * dl.height
+            const fr = (e.focusCircle.radius / 100) * (Math.max(dl.width, dl.height) / 2)
+            targetCtx.beginPath()
+            targetCtx.arc(fx, fy, fr, 0, Math.PI * 2)
+            targetCtx.clip()
+            targetCtx.filter = getFilters(false)
+            drawLayerSource()
+            targetCtx.restore()
+          }
+
+          if (e.vignette && e.vignette > 0) {
+            targetCtx.filter = 'none'
+            const grad = targetCtx.createRadialGradient(
+              dl.x + dl.width/2, dl.y + dl.height/2, 0,
+              dl.x + dl.width/2, dl.y + dl.height/2, Math.max(dl.width, dl.height) / 1.5
+            )
+            const alpha = (e.vignette / 100) * 0.8
+            grad.addColorStop(0, 'rgba(0,0,0,0)')
+            grad.addColorStop(1, `rgba(0,0,0,${alpha})`)
+            targetCtx.fillStyle = grad
+            targetCtx.fillRect(dl.x, dl.y, dl.width, dl.height)
+          }
         }
 
         targetCtx.restore()
@@ -346,7 +582,43 @@ export function useRenderLoop(options: RenderLoopOptions) {
         setFps(fpsRef.current.count); fpsRef.current.count = 0; fpsRef.current.lastTime = now
       }
 
-      drawScene(ctx, canvas, aspectRatio)
+      if (transitionState.isActive) {
+        const fromScene = scenes.find(s => s.id === transitionState.fromSceneId)
+        const toScene = scenes.find(s => s.id === transitionState.toSceneId)
+
+        if (transitionState.type === 'stinger') {
+          // In stinger mode, we draw the currently active scene (which swaps at cut point)
+          // and then draw the stinger video on top
+          drawScene(ctx, canvas, aspectRatio)
+
+          if (stingerVideoRef.current && stingerVideoRef.current.readyState >= 2) {
+            ctx.drawImage(stingerVideoRef.current, 0, 0, canvas.width, canvas.height)
+          }
+        } else if (fromScene && toScene) {
+          // Fade Transition
+          // Draw FROM scene fully
+          drawScene(ctx, canvas, aspectRatio, fromScene)
+
+          // Draw TO scene with transition alpha
+          if (!transitionCanvasRef.current) transitionCanvasRef.current = document.createElement('canvas')
+          const tCanvas = transitionCanvasRef.current
+          tCanvas.width = canvas.width
+          tCanvas.height = canvas.height
+          const tempCtx = tCanvas.getContext('2d', { alpha: true })
+          if (tempCtx) {
+            drawScene(tempCtx, tCanvas, aspectRatio, toScene)
+            ctx.save()
+            ctx.globalAlpha = transitionState.progress
+            ctx.drawImage(tCanvas, 0, 0)
+            ctx.restore()
+          }
+        } else {
+          drawScene(ctx, canvas, aspectRatio)
+        }
+      } else {
+        drawScene(ctx, canvas, aspectRatio)
+      }
+
 
       const secondary = secondaryPreviewCanvasRef.current
       if (shouldDrawSecondary && secondary && shouldCapture(secondaryCaptureRef, SECONDARY_PREVIEW_FPS, now)) {

@@ -1,4 +1,25 @@
-export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
+export function buildDeckHtml(sounds: any[] = [], actions: any[] = [], deckToken = ''): string {
+  const actionCards = actions.map(a => {
+    const payload = safePayloadJson(a.payload_json)
+    return `
+            <div class="card action" data-action-type="${escapeAttr(a.type || a.id || '')}" data-action-payload="${escapeAttr(payload)}">
+                <div class="emoji">${escapeHtml(a.icon || '')}</div>
+                <div class="label">${escapeHtml(a.name || 'Action')}</div>
+            </div>
+        `
+  }).join('')
+
+  const soundCards = sounds.length === 0 ? `
+            <div style="grid-column: span 3; padding: 40px 20px; text-align: center; color: rgba(255,255,255,0.2); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 16px;">
+                No sounds uploaded
+            </div>
+        ` : sounds.map(s => `
+            <div class="card sound" data-action-type="PLAY_SOUND" data-action-payload="${escapeAttr(JSON.stringify({ soundId: s.id || '' }))}">
+                <div class="emoji">${escapeHtml(s.emoji || '')}</div>
+                <div class="label">${escapeHtml(String(s.name || '').split('.')[0])}</div>
+            </div>
+        `).join('')
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -88,7 +109,7 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
             align-items: center;
             gap: 12px;
         }
-        
+
         .section-label::after {
             content: '';
             height: 1px;
@@ -221,12 +242,7 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
 
     <div class="section-label">Studio Actions</div>
     <div class="grid">
-        ${actions.map(a => `
-            <div class="card action" onclick="triggerAction('${a.id}')">
-                <div class="emoji">${a.icon || '⚡'}</div>
-                <div class="label">${a.name}</div>
-            </div>
-        `).join('')}
+        ${actionCards}
         <div class="card" onclick="window.location.reload()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
             <div class="label">Reload</div>
@@ -235,16 +251,7 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
 
     <div class="section-label">Sound Library</div>
     <div class="grid">
-        ${sounds.length === 0 ? `
-            <div style="grid-column: span 3; padding: 40px 20px; text-align: center; color: rgba(255,255,255,0.2); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 16px;">
-                No sounds uploaded
-            </div>
-        ` : sounds.map(s => `
-            <div class="card sound" onclick="triggerAction('PLAY_SOUND', '${s.id}')">
-                <div class="emoji">${s.emoji || '🔊'}</div>
-                <div class="label">${s.name.split('.')[0]}</div>
-            </div>
-        `).join('')}
+        ${soundCards}
     </div>
 
     <div style="height: 40px;"></div>
@@ -261,19 +268,24 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
     </div>
 
     <script>
+        const DECK_TOKEN = ${jsonForScript(deckToken)};
+
         async function triggerAction(type, payload = null) {
             try {
                 const body = { type };
-                if (payload) body.payload = payload;
-                
+                if (payload !== null && payload !== undefined) body.payload = payload;
+
                 const response = await fetch('/overlay/deck/action' + window.location.search, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-ilyStream-Deck-Token': DECK_TOKEN
+                    },
                     body: JSON.stringify(body)
                 });
                 const result = await response.json();
                 if (!result.success) console.error('Action failed:', result.error);
-                
+
                 // Haptic feedback if available
                 if (window.navigator && window.navigator.vibrate) {
                     window.navigator.vibrate(15);
@@ -283,14 +295,13 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
             }
         }
 
-        function connectSSE() {
-            // Listen to both now-playing (for the bar) and deck (for real-time UI updates)
-            const evs = new EventSource('/overlay/events?channel=now-playing,deck');
-            
+        function connectSSE(channel) {
+            const evs = new EventSource('/overlay/events?channel=' + encodeURIComponent(channel));
+
             evs.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                
-                if (data.type === 'snapshot' || data.type === 'update') {
+
+                if (channel === 'now-playing' && (data.type === 'snapshot' || data.type === 'update')) {
                     updateSpotify(data.payload);
                 } else if (data.type === 'reload') {
                     // Server notified us of a structural change (new sound, emoji change, etc)
@@ -298,10 +309,10 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
                     window.location.reload();
                 }
             };
-            
+
             evs.onerror = () => {
                 evs.close();
-                setTimeout(connectSSE, 3000);
+                setTimeout(() => connectSSE(channel), 3000);
             };
         }
 
@@ -317,9 +328,47 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = []): string {
             document.getElementById('art').src = payload.albumArtUrl || '';
         }
 
-        connectSSE();
+        document.querySelectorAll('[data-action-type]').forEach((node) => {
+            node.addEventListener('click', () => {
+                let payload = null;
+                const rawPayload = node.getAttribute('data-action-payload');
+                if (rawPayload) {
+                    try { payload = JSON.parse(rawPayload); } catch { payload = rawPayload; }
+                }
+                triggerAction(node.getAttribute('data-action-type'), payload);
+            });
+        });
+
+        connectSSE('now-playing');
+        connectSSE('deck');
     </script>
 </body>
 </html>
   `;
+}
+
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function escapeAttr(value: string): string {
+  return escapeHtml(value).replace(/`/g, '&#96;')
+}
+
+function jsonForScript(value: string): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
+function safePayloadJson(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) return ''
+  try {
+    return JSON.stringify(JSON.parse(value))
+  } catch {
+    return ''
+  }
 }

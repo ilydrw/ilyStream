@@ -4,12 +4,13 @@ import Layout from '../layouts/Layout.astro';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.8';
+const latestVersion = '0.0.9';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
 const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
+const deskThingZipUrl = `https://github.com/ilydrw/ilystream-deskthing/releases/download/v${latestVersion}/ilyStream-DeskThing-v${latestVersion}.zip`;
 
 const downloads = [
   {
@@ -123,9 +124,12 @@ const downloads = [
     <div class="section__heading">
       <p class="eyebrow">Companion</p>
       <h2>DeskThing client</h2>
-      <p>The DeskThing companion runs on a Spotify Car Thing or any DeskThing client over your local network.</p>
+      <p>The DeskThing companion v{latestVersion} runs on a Spotify Car Thing or any DeskThing client over your local network.</p>
     </div>
-    <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">DeskThing releases</a>
+    <div class="page-hero__actions">
+      <a class="button button--primary" href={deskThingZipUrl} rel="noopener">Download DeskThing .zip</a>
+      <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">DeskThing releases</a>
+    </div>
   </section>
 
   <section class="container section">

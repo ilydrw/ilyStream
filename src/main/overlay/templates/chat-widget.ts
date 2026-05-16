@@ -1,8 +1,13 @@
 import { ChatConfig, DEFAULT_CHAT_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
   const cfg: ChatConfig = { ...DEFAULT_CHAT_CONFIG, ...(widget?.config || {}) }
-  const bgOpacity = isPreview ? 0 : Math.min(1, Math.max(0, cfg.backgroundOpacity))
+  const bgOpacity = isPreview ? 0 : (0.3 + (cfg.glassIntensity * 0.5))
+  const blur = cfg.glassIntensity * 40
+  const borderRadius = cfg.borderRadius ?? 14
+  const fontFamily = cfg.fontFamily || 'Outfit'
+  const animationStyle = cfg.animationStyle || 'slide'
 
   return `
 <!DOCTYPE html>
@@ -14,7 +19,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
     <style>
         :root {
             --glass: rgba(10, 12, 16, ${bgOpacity});
-            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-border: rgba(255, 255, 255, ${0.05 + (cfg.glassIntensity * 0.1)});
             --cyan: #00f2ff;
             --magenta: #ff00ff;
             --twitch: #9146ff;
@@ -23,13 +28,15 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             --kick: #53fc18;
             --font-size: ${Math.max(16, cfg.fontSize)}px;
             --width: ${cfg.width}px;
-            --blur: ${cfg.blur}px;
+            --blur: ${blur}px;
+            --radius: ${borderRadius}px;
+            --font-main: '${fontFamily}', 'Outfit', sans-serif;
         }
 
         body {
             margin: 0;
             padding: 24px;
-            font-family: 'Outfit', sans-serif;
+            font-family: var(--font-main);
             color: white;
             height: 100vh;
             display: flex;
@@ -67,16 +74,19 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
             border: 1px solid var(--glass-border);
             padding: 10px 14px;
-            border-radius: 14px;
+            border-radius: var(--radius);
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            animation: slideIn 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            animation: ${animationStyle === 'none' ? 'none' : 'get-anim 0.35s ease both'};
             box-shadow: 0 4px 14px rgba(0,0,0,0.35);
             will-change: transform, opacity;
             transform: translateZ(0);
             position: relative;
         }
+
+        ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 400 }, '.message')}
+        @keyframes get-anim { from { } to { } } /* Fallback anchor */
 
         .message.fading-out {
             animation: fadeOut 0.5s ease forwards;
@@ -105,6 +115,16 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(-30px) scale(0.9); }
             to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+
+        @keyframes zoomIn {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .avatar-wrap {
@@ -292,7 +312,21 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         }
 
         function escapeAttr(s) {
-            return String(s).replace(/"/g, '&quot;');
+            return escapeHtml(s);
+        }
+
+        function safeAvatarUrl(url) {
+            if (typeof url !== 'string' || !url.trim()) return '';
+            try {
+                const parsed = new URL(url, window.location.origin);
+                return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+            } catch {
+                return '';
+            }
+        }
+
+        function safeHexColor(value, fallback) {
+            return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
         }
 
         function hexWithAlpha(hex, alpha) {
@@ -320,7 +354,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             const div = document.createElement('div');
             div.className = 'message ' + (msg.kind || 'chat');
             if (msg.emphasis) div.classList.add('emphasis');
-            
+
             const platformColors = {
                 twitch: '#9146ff',
                 youtube: '#ff0000',
@@ -328,14 +362,15 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 kick: '#53fc18'
             };
 
-            const accent = msg.accentColor || platformColors[msg.platform] || '#888';
+            const accent = safeHexColor(msg.accentColor, platformColors[msg.platform] || '#888888');
             const iconPath = platformIcons[msg.platform] || platformIcons.twitch;
             const glow = hexWithAlpha(accent, 0.45);
             const name = msg.displayName || msg.username || 'Anonymous';
             const initial = String(name).trim().charAt(0).toUpperCase() || '?';
+            const avatarUrl = safeAvatarUrl(msg.profilePictureUrl);
 
-            const avatarBody = msg.profilePictureUrl
-                ? '<img src="' + escapeAttr(msg.profilePictureUrl) + '" class="avatar" onerror="this.outerHTML=window.__buildAvatarFallback(this.dataset.initial)" data-initial="' + escapeAttr(initial) + '">'
+            const avatarBody = avatarUrl
+                ? '<img src="' + escapeAttr(avatarUrl) + '" class="avatar" onerror="this.outerHTML=window.__buildAvatarFallback(this.dataset.initial)" data-initial="' + escapeAttr(initial) + '">'
                 : '<div class="avatar">' + escapeHtml(initial) + '</div>';
 
             const kindTag = msg.kind === 'gift' ? '<span class="kind-tag">Gift</span>'
@@ -356,7 +391,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                         escapeHtml(name) +
                         (kindTag ? ' ' + kindTag : '') +
                     '</div>' +
-                    '<div class="text">' + (msg.message || '') + '</div>' +
+                    '<div class="text">' + escapeHtml(msg.message || '') + '</div>' +
                 '</div>';
 
             feed.appendChild(div);
@@ -379,10 +414,10 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             document.getElementById('f-user').textContent = msg.displayName || msg.username;
             document.getElementById('f-text').textContent = msg.message;
             document.getElementById('f-plat').textContent = (msg.platform || 'SYSTEM').toUpperCase();
-            
+
             featuredOverlay.style.display = 'block';
             featuredOverlay.style.opacity = '1';
-            
+
             setTimeout(() => {
                 featuredOverlay.style.opacity = '0';
                 featuredOverlay.style.transition = 'opacity 1s';

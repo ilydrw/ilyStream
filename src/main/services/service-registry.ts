@@ -30,6 +30,8 @@ import { GoveeService } from './govee-service'
 import { VirtualCameraService } from './virtual-camera-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { TikTokChatSender } from '../platforms/tiktok/tiktok-chat-sender'
+import { RecordingsService } from './recordings-service'
+
 
 export class ServiceRegistry {
   public db: Database
@@ -61,6 +63,8 @@ export class ServiceRegistry {
   public virtualCameraService: VirtualCameraService
   public lightingManager: LightingManagerService
   public tiktokChatSender: TikTokChatSender
+  public recordingsService: RecordingsService
+
   private initialized = false
   private initializationPromise: Promise<void> | null = null
 
@@ -87,7 +91,9 @@ export class ServiceRegistry {
     this.goveeService = new GoveeService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
     this.lightingManager = new LightingManagerService()
-    
+    this.recordingsService = new RecordingsService()
+
+
     // Register lighting providers
     this.lightingManager.registerProvider(this.hueService)
     this.lightingManager.registerProvider(this.goveeService)
@@ -95,16 +101,16 @@ export class ServiceRegistry {
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)
     this.coHostService = new CoHostService(
-      this.platformManager, 
-      this.aiService, 
-      this.ttsEngine, 
+      this.platformManager,
+      this.aiService,
+      this.ttsEngine,
       this.chatRelayService,
       this.memoryService
     )
     this.automationService = new AutomationService()
     this.voicemodService = new VoicemodService()
     this.vtubeService = new VTubeService()
-    
+
     this.eventOrchestrator = new EventOrchestrator(
       this.platformManager,
       this.db,
@@ -139,7 +145,7 @@ export class ServiceRegistry {
       (action) => this.overlayServer.emit('deck-action', action)
     )
     this.overlayServer.setDeviceApi(this.deviceApi)
-    
+
     // Broadcast recording state to DeskThing / Overlays
     this.streamingService.on('status', (status) => {
       this.overlayServer.broadcastRecordingState(status.recording, this.streamingService.getRecordingOutputPath() || undefined)
@@ -176,7 +182,7 @@ export class ServiceRegistry {
       // Find the PID of whatever is listening on our port without shell interpolation.
       const { stdout } = await execFileAsync('netstat', ['-ano'])
       const lines = stdout.split('\n')
-      
+
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         if (parts.length >= 5 && parts[1].includes(`:${port}`) && parts[3] === 'LISTENING') {
@@ -194,7 +200,7 @@ export class ServiceRegistry {
 
   private async initializeCoreServices(): Promise<void> {
     const settings = resolveAppSettings(this.db.getAllSettings())
-    
+
     this.ttsEngine.applySettings(settings.tts)
     this.aiService.applySettings(settings.ai)
     this.coHostService.applySettings(settings.ai)
@@ -202,9 +208,9 @@ export class ServiceRegistry {
     this.voicemodService.applySettings(settings)
     this.vtubeService.applySettings(settings)
     this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())
-    
+
     this.eventOrchestrator.init()
-    
+
     // Start OverlayServer first (critical for renderer)
     try {
       const port = settings.overlay.port || 8899;
@@ -217,12 +223,12 @@ export class ServiceRegistry {
 
     // Start other background services
     await Promise.allSettled([
-      
+
       (async () => {
         console.log('[services] Applying OBS settings...')
         // Timeout OBS initialization to 5s to prevent startup hang
         const obsPromise = this.obsService.applySettings(settings.integrations.obs)
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('OBS connection timed out')), 5000)
         )
         try {
@@ -260,7 +266,3 @@ export class ServiceRegistry {
     this.db.close()
   }
 }
-
-
-
-

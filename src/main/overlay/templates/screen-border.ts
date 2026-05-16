@@ -1,8 +1,9 @@
 import { BorderConfig, DEFAULT_BORDER_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
   const cfg: BorderConfig = { ...DEFAULT_BORDER_CONFIG, ...(widget?.config || {}) }
-  
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -23,11 +24,11 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       --opacity: ${cfg.opacity};
     }
 
-    body, html { 
-      margin: 0; 
-      padding: 0; 
+    body, html {
+      margin: 0;
+      padding: 0;
       ${cfg.forceTikTokDimensions ? 'width: 1080px; height: 1920px;' : 'width: 100vw; height: 100vh;'}
-      overflow: hidden; 
+      overflow: hidden;
       background: transparent;
       display: flex;
       align-items: center;
@@ -46,6 +47,7 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       pointer-events: none;
       opacity: var(--opacity);
     }
+    ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 1000 }, '.border-container')}
 
     /* The shimmering border */
     .border-inner {
@@ -53,17 +55,17 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       inset: 0;
       border-radius: var(--radius);
       padding: var(--thickness);
-      
+
       /* Smooth multi-stop conic gradient */
       background: conic-gradient(
-        from var(--angle), 
-        var(--color1), 
-        var(--color2) 25%, 
-        var(--color1) 50%, 
-        var(--color2) 75%, 
+        from var(--angle),
+        var(--color1),
+        var(--color2) 25%,
+        var(--color1) 50%,
+        var(--color2) 75%,
         var(--color1) 100%
       );
-      
+
       /* Masking */
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
@@ -71,12 +73,12 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       mask-composite: exclude;
 
       animation: rotate-gradient var(--speed) linear infinite;
-      
+
       /* Extreme GPU Optimization */
       will-change: --angle;
       transform: translateZ(0);
       backface-visibility: hidden;
-      
+
       /* Smooth Glow */
       filter: drop-shadow(0 0 calc(5px * var(--glow)) var(--color1))
               drop-shadow(0 0 calc(2px * var(--glow)) var(--color2));

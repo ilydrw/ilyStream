@@ -17,7 +17,7 @@ export function OverlayUrlCard() {
     const unsubscribe = window.api?.on?.('overlay:status-changed', (status: unknown) => {
       applyStatus(status as { alertsUrl?: string | null })
     })
-    
+
     const statusTimer = window.setInterval(() => {
       void window.api?.overlay?.getStatus?.().then(applyStatus)
     }, 3000)
@@ -43,24 +43,24 @@ export function OverlayUrlCard() {
           <span className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Overlay Source</span>
         </div>
       </div>
-      
+
       <div className="relative group">
-        <div className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-[#19c8ff] font-mono truncate pr-12 select-all">
+        <div className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-accent font-mono truncate pr-12 select-all shadow-inner">
           {url || 'Detecting Server...'}
         </div>
-        <button 
+        <button
           onClick={handleCopy}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all"
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-95"
           title="Copy to Clipboard"
         >
           {copied ? <IconCircleCheck size={14} className="text-emerald-500" /> : <IconCopy size={14} />}
         </button>
       </div>
 
-      <div className="p-4 rounded-xl bg-blue-400/5 border border-blue-400/10 flex gap-3">
-        <IconExternalLink size={14} className="text-blue-400 shrink-0 mt-0.5" />
-        <p className="text-[10px] text-blue-400/50 leading-relaxed">
-          The overlay is active in your broadcast software. Use the <strong>Test</strong> buttons on the left to trigger live alerts and audio previews.
+      <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 flex gap-3">
+        <IconExternalLink size={14} className="text-accent/60 shrink-0 mt-0.5" />
+        <p className="text-[10px] text-white/40 leading-relaxed">
+          The overlay is active in your broadcast software. Use the <strong className="text-white/60 uppercase tracking-widest text-[9px]">Test</strong> buttons in the route panel to trigger live alerts and audio previews.
         </p>
       </div>
     </div>

@@ -1,7 +1,7 @@
 {
   "name": "ilystream",
   "productName": "ilyStream",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "type": "module",
   "description": "Multi-platform livestream management interface with custom TTS",
   "main": "./out/main/index.js",
@@ -63,6 +63,7 @@
     }
   },
   "dependencies": {
+    "@mediapipe/selfie_segmentation": "^0.1.1675465747",
     "@tabler/icons-react": "^3.44.0",
     "@twurple/api": "^8.1.3",
     "@twurple/auth": "^8.1.3",
@@ -71,6 +72,7 @@
     "@types/fluent-ffmpeg": "^2.1.28",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "electron-log": "^5.4.0",
     "electron-updater": "^6.8.3",
     "ffmpeg-static": "^5.3.0",

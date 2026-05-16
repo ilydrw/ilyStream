@@ -46,6 +46,14 @@ export interface OverlayGoalState {
   totalShares: number
   totalRaids: number
   currentViewerCount: number
+
+  // Platform specific
+  twitchFollows: number
+  twitchSubs: number
+  tiktokFollows: number
+  tiktokLikes: number
+  tiktokGifts: number
+
   lastUpdatedAt: string | null
 }
 

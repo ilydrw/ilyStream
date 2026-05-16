@@ -84,7 +84,7 @@ export default function VoiceEffectsPage() {
             type="button"
             onClick={() => setIsEnabled(!isEnabled)}
             className={`app-button !h-11 !px-5 !text-[10px] font-black tracking-[0.14em] ${
-              isEnabled ? '!border-accent/30 !bg-accent/20 !text-white' : '!text-white/40'
+              isEnabled ? 'bg-brand-gradient border-transparent text-white shadow-glow' : '!text-white/40'
             }`}
           >
             <IconPower size={15} />
@@ -193,7 +193,7 @@ export default function VoiceEffectsPage() {
               type="button"
               onClick={() => setIsMonitoring(!isMonitoring)}
               className={`app-button !h-11 !w-full !text-[10px] font-black tracking-[0.12em] ${
-                isMonitoring ? '!border-accent/30 !bg-accent/20 !text-white' : ''
+                isMonitoring ? 'bg-brand-gradient border-transparent text-white shadow-glow' : ''
               }`}
             >
               <IconRipple size={15} />

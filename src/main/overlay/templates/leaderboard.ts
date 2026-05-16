@@ -1,4 +1,15 @@
-export function buildLeaderboardHtml(): string {
+import { Widget } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
+
+export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): string {
+  const cfg = (_widget.config as any) || {}
+  const glassIntensity = cfg.glassIntensity ?? 0.6
+  const bgOpacity = (0.3 + (glassIntensity * 0.4))
+  const blur = glassIntensity * 50
+  const borderRadius = cfg.borderRadius ?? 32
+  const fontFamily = cfg.fontFamily || 'Outfit'
+  const accentColor = cfg.accentColor || '#ff00ff'
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -8,36 +19,44 @@ export function buildLeaderboardHtml(): string {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: rgba(15, 17, 21, 0.7);
+            --bg: rgba(10, 12, 18, ${bgOpacity});
             --glass: rgba(255, 255, 255, 0.05);
             --glass-border: rgba(255, 255, 255, 0.1);
             --cyan: #00f2ff;
-            --magenta: #ff00ff;
+            --magenta: ${accentColor};
             --white: #ffffff;
+            --radius: ${borderRadius}px;
+            --font-main: "${fontFamily}", sans-serif;
+            --blur: ${blur}px;
         }
 
         body {
             margin: 0;
             padding: 20px;
-            font-family: 'Outfit', sans-serif;
+            font-family: var(--font-main);
             color: var(--white);
             overflow: hidden;
         }
 
         .container {
             width: 320px;
-            background: rgba(10, 12, 18, 0.45);
-            backdrop-filter: blur(40px) saturate(220%);
-            -webkit-backdrop-filter: blur(40px) saturate(220%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 32px;
+            background: var(--bg);
+            backdrop-filter: blur(var(--blur)) saturate(220%);
+            -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
             padding: 24px;
-            box-shadow: 
+            box-shadow:
                 0 25px 60px rgba(0, 0, 0, 0.5),
                 inset 0 0 20px rgba(255, 255, 255, 0.05);
             position: relative;
             overflow: hidden;
         }
+
+        ${getAnimationCss({
+          style: cfg.animationStyle || 'fade',
+          duration: 600
+        }, '.container')}
 
         .container::after {
             content: "";
@@ -125,7 +144,7 @@ export function buildLeaderboardHtml(): string {
         /* Top 3 Stylings */
         .item:nth-child(1) { border-color: rgba(255, 204, 0, 0.3); background: rgba(255, 204, 0, 0.05); }
         .item:nth-child(1) .rank { background: #ffcc00; color: #000; }
-        
+
         .item:nth-child(2) { border-color: rgba(204, 204, 204, 0.3); background: rgba(204, 204, 204, 0.05); }
         .item:nth-child(2) .rank { background: #cccccc; color: #000; }
 
@@ -163,13 +182,24 @@ export function buildLeaderboardHtml(): string {
             if (JSON.stringify(newData) === JSON.stringify(currentData)) return;
             currentData = newData;
 
-            container.innerHTML = newData.slice(0, 10).map((u, i) => 
+            container.innerHTML = newData.slice(0, 10).map((u, i) =>
                 '<div class="item" style="transform: translateY(0); transition-delay: ' + (i * 50) + 'ms">' +
                     '<div class="rank">' + (i + 1) + '</div>' +
-                    '<div class="username">' + u.username + '</div>' +
-                    '<div class="score">' + u.score.toLocaleString() + '</div>' +
+                    '<div class="username">' + escapeHtml(u.username || u.displayName || 'Unknown') + '</div>' +
+                    '<div class="score">' + formatScore(u.score) + '</div>' +
                 '</div>'
             ).join('');
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, (char) => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
+            ));
+        }
+
+        function formatScore(value) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
         }
 
         function connect() {

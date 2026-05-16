@@ -1,4 +1,5 @@
 import { PhysicsConfig, DEFAULT_PHYSICS_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: PhysicsConfig = { ...DEFAULT_PHYSICS_CONFIG, ...(widget?.config || {}) }
@@ -11,13 +12,13 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
   <title>Physics Overlay</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
   <style>
-    body, html { 
-      margin: 0; 
-      padding: 0; 
-      width: 100%; 
-      height: 100%; 
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
-      background: transparent; 
+      background: transparent;
     }
     #canvas-container {
       position: fixed;
@@ -26,6 +27,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
       height: 100vh;
       pointer-events: none;
     }
+    ${getAnimationCss({ style: cfg.animationStyle || 'fade', duration: cfg.animationDuration || 1000 }, '#canvas-container')}
     canvas {
       display: block;
     }
@@ -39,7 +41,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
 
     const cfg = ${JSON.stringify(cfg)};
     const container = document.getElementById('canvas-container');
-    
+
     // Setup Engine
     const engine = Engine.create({
       gravity: { x: 0, y: cfg.gravity }
@@ -98,7 +100,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
 
     function spawn(payload) {
       const { imageUrl, x = 0.5, size = 60, mass = 1, restitution = 0.6 } = payload;
-      
+
       if (activeObjects.size >= cfg.maxObjects) {
         // Remove oldest
         const oldest = [...activeObjects][0];
@@ -122,7 +124,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
       });
 
       Body.setMass(obj, mass);
-      
+
       Composite.add(engine.world, obj);
       activeObjects.add(obj);
 
@@ -139,7 +141,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
     function connectSSE() {
       const channel = 'physics';
       const src = new EventSource('/overlay/events?channel=' + channel);
-      
+
       src.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'reload') { window.location.reload(); return; }

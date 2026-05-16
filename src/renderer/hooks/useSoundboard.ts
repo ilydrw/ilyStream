@@ -45,11 +45,16 @@ export function useSoundboard(category?: 'alerts' | 'board') {
     await window.api.sound.play(id, volume)
   }
 
+  const stopAllSounds = async () => {
+    await window.api.sound.stopAll()
+  }
+
   return {
     sounds,
     refreshSounds,
     uploadSound,
     deleteSound,
-    playSound
+    playSound,
+    stopAllSounds
   }
 }

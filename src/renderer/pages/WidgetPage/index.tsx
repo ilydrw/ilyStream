@@ -116,7 +116,7 @@ export default function WidgetPage() {
 
   const overlayUrlFor = (id: string) => {
     if (!overlayPort) return null
-    return `http://localhost:${overlayPort}/overlay/${id}`
+    return `http://127.0.0.1:${overlayPort}/overlay/${id}`
   }
 
   const copyUrl = (id: string) => {
@@ -228,7 +228,7 @@ function OverlayStatusPill({ running, port }: { running: boolean; port: number |
       }`}
     >
       <span className={`h-2 w-2 rounded-full ${running ? 'bg-success' : 'bg-white/30'}`} />
-      {running && port ? `localhost:${port}` : 'Overlay server offline'}
+      {running && port ? `127.0.0.1:${port}` : 'Overlay server offline'}
     </div>
   )
 }

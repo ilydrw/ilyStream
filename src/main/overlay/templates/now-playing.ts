@@ -1,4 +1,5 @@
 import { NowPlayingConfig, DEFAULT_NOW_PLAYING_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 const OVERLAY_POSITION_MAP: Record<string, string> = {
   'bottom-left':   'align-items:flex-end;justify-content:flex-start',
@@ -18,7 +19,12 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function buildNowPlayingOverlayHtml(widget?: any): string {
   const cfg: NowPlayingConfig = { ...DEFAULT_NOW_PLAYING_CONFIG, ...(widget?.config || {}) }
-  const bgRgba = hexToRgba(cfg.backgroundColor, 0.4)
+  const glassIntensity = cfg.glassIntensity ?? 0.5
+  const bgOpacity = (0.4 + (glassIntensity * 0.45))
+  const blur = glassIntensity * 45
+  const borderRadius = cfg.borderRadius ?? 24
+  const fontFamily = cfg.fontFamily || 'Inter'
+  const bgRgba = hexToRgba(cfg.backgroundColor, bgOpacity)
   const accentRgba = hexToRgba(cfg.accentColor, 1)
 
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] ?? OVERLAY_POSITION_MAP['top-left']
@@ -30,11 +36,13 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
     <meta charset="utf-8" />
     <title>ilyStream Now Playing & Queue</title>
     <style>
-      :root { 
-        color-scheme: dark; 
-        font-family: "Inter", "Segoe UI", sans-serif;
+      :root {
+        color-scheme: dark;
+        font-family: "${fontFamily}", "Inter", "Segoe UI", sans-serif;
         --chroma: linear-gradient(45deg, #00f2ff, #006aff, #7000ff, #ff00c8);
         --cyber: linear-gradient(45deg, #ff00ff, #00ffff, #ff00ff);
+        --radius: ${borderRadius}px;
+        --blur: ${blur}px;
       }
       * { box-sizing: border-box; }
       body {
@@ -52,11 +60,9 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         gap: 12px;
         width: ${cfg.width}px;
         max-width: calc(100vw - 64px);
-        opacity: 0;
-        transform: translateY(12px) scale(0.98);
-        transition: all 600ms cubic-bezier(0.22, 1, 0.36, 1);
         filter: drop-shadow(0 20px 40px rgba(0,0,0,0.4));
       }
+      ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 600 }, '.container')}
       .container.is-visible {
         opacity: 1;
         transform: translateY(0) scale(1);
@@ -72,7 +78,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       .panel {
         position: relative;
         width: 100%;
-        border-radius: 24px;
+        border-radius: var(--radius);
         display: flex;
         flex-direction: column;
         background: ${cfg.showBorder && cfg.borderType === 'solid' ? cfg.borderColor : 'transparent'};
@@ -83,10 +89,10 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         z-index: 2;
         pointer-events: none;
         display: ${cfg.showBorder && cfg.borderType !== 'solid' ? 'block' : 'none'};
-        border-radius: 24px;
+        border-radius: var(--radius);
         padding: ${cfg.borderWidth}px;
-        background: conic-gradient(from var(--angle), ${cfg.borderType === 'chroma' 
-          ? '#00f2ff, #006aff, #7000ff, #ff00c8, #00f2ff' 
+        background: conic-gradient(from var(--angle), ${cfg.borderType === 'chroma'
+          ? '#00f2ff, #006aff, #7000ff, #ff00c8, #00f2ff'
           : '#ff00ff, #00ffff, #ff00ff'}) border-box;
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         -webkit-mask-composite: xor;
@@ -101,9 +107,9 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         gap: 20px;
         background: ${bgRgba};
         margin: ${cfg.showBorder ? cfg.borderWidth : 0}px;
-        border-radius: ${cfg.showBorder ? `calc(24px - ${cfg.borderWidth}px)` : '24px'};
-        backdrop-filter: blur(40px) saturate(220%);
-        -webkit-backdrop-filter: blur(40px) saturate(220%);
+        border-radius: ${cfg.showBorder ? `calc(var(--radius) - ${cfg.borderWidth}px)` : 'var(--radius)'};
+        backdrop-filter: blur(var(--blur)) saturate(220%);
+        -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
         box-shadow: inset 0 0 20px rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.12);
         width: calc(100% - ${cfg.showBorder ? cfg.borderWidth * 2 : 0}px);
@@ -133,7 +139,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       .art {
         width: 72px;
         height: 72px;
-        border-radius: 12px;
+        border-radius: calc(var(--radius) * 0.5);
         background: rgba(255, 255, 255, 0.05);
         flex-shrink: 0;
         background-size: cover;
@@ -215,7 +221,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         background: ${accentRgba};
         transition: width 800ms linear;
       }
-      
+
       .queue-panel {
         background: ${bgRgba};
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -307,7 +313,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
           <div class="progress"><div class="progress-bar" id="bar"></div></div>
         </div>
       </div>
-      
+
       <div class="queue-panel" id="queue-panel">
         <div class="queue-header">Up Next</div>
         <div id="queue-list"></div>
@@ -319,7 +325,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       const SHOW_REQUESTER = ${cfg.showRequester ? 'true' : 'false'};
       const SHOW_QUEUE = ${cfg.showQueue ? 'true' : 'false'};
       const MAX_QUEUE = ${cfg.maxQueueItems ?? 5};
-      
+
       const container = document.getElementById('container');
       const trackEl = document.getElementById('track');
       const artistEl = document.getElementById('artist');
@@ -334,7 +340,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       function updateMarquee(el, container) {
         el.classList.remove('marquee');
         el.style.removeProperty('--container-width');
-        
+
         const isOverflowing = el.scrollWidth > container.clientWidth;
         if (isOverflowing) {
           el.classList.add('marquee');
@@ -349,6 +355,16 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+      }
+
+      function safeImageUrl(value) {
+        if (typeof value !== 'string' || !value.trim()) return '';
+        try {
+          const url = new URL(value, window.location.origin);
+          return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+        } catch {
+          return '';
+        }
       }
 
       function render(state) {
@@ -402,25 +418,26 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         }
 
         container.classList.add('is-visible');
-        
+
         if (state.trackId) {
           trackEl.textContent = state.trackName || '—';
           artistEl.textContent = (state.artists || []).join(', ');
-          
+
           setTimeout(() => {
             updateMarquee(trackEl, trackContainer);
             updateMarquee(artistEl, artistContainer);
           }, 50);
 
-          if (state.albumArtUrl) {
-            artEl.style.backgroundImage = 'url("' + state.albumArtUrl + '")';
+          const albumArtUrl = safeImageUrl(state.albumArtUrl);
+          if (albumArtUrl) {
+            artEl.style.backgroundImage = 'url("' + albumArtUrl.replace(/"/g, '%22') + '")';
           } else {
             artEl.style.backgroundImage = '';
           }
 
           if (SHOW_REQUESTER && state.requestedBy) {
             requesterEl.style.display = 'flex';
-            requesterEl.innerHTML = 'Requested by ' + escapeHtml(state.requestedBy);
+            requesterEl.textContent = 'Requested by ' + state.requestedBy;
           } else {
             requesterEl.style.display = 'none';
           }
@@ -436,18 +453,18 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
             const isInjected = item.status === 'injected';
             const row = document.createElement('div');
             row.className = 'queue-item' + (isInjected ? ' is-injected' : '');
-            
+
             let html = '<div class="queue-info">';
             html += '<div class="queue-track">' + escapeHtml(item.track.name) + '</div>';
             html += '<div class="queue-artist">' + escapeHtml((item.track?.artists || []).join(', ')) + '</div>';
             html += '</div>';
-            
+
             if (item.requestedBy) {
               html += '<div class="queue-requester">' + escapeHtml(item.requestedBy) + '</div>';
             } else if (isInjected) {
               html += '<div class="queue-status">NEXT</div>';
             }
-            
+
             row.innerHTML = html;
             queueList.appendChild(row);
           });

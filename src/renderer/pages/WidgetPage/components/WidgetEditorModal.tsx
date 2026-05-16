@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { IconRefresh } from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
@@ -24,19 +24,34 @@ export function WidgetEditorModal({
     setDraft(widget)
   }, [widget.id])
 
+  // Debounce the config update for the iframe URL to avoid flicker while dragging sliders
+  const [debouncedConfig, setDebouncedConfig] = useState(draft.config)
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedConfig(draft.config)
+    }, 400) // 400ms delay for a snappy but stable feel
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    }
+  }, [draft.config])
+
   const previewWidget = previewOverride ?? draft
 
   const previewUrl = useMemo(() => {
     if (!overlayPort) return null
-    const base = `http://localhost:${overlayPort}/overlay/${previewWidget.id}`
+    const base = `http://127.0.0.1:${overlayPort}/overlay/${previewWidget.id}`
     try {
-      const configJson = JSON.stringify(previewWidget.config)
+      // Use debouncedConfig for the URL to avoid flickering iframe reloads
+      const configJson = JSON.stringify(debouncedConfig)
       const encoded = btoa(unescape(encodeURIComponent(configJson)))
       return `${base}?config=${encoded}&preview=1`
     } catch (e) {
       return base
     }
-  }, [overlayPort, previewWidget.id, previewWidget.config])
+  }, [overlayPort, previewWidget.id, debouncedConfig])
 
   const handleDraftChange = (next: Widget) => {
     setDraft(next)
@@ -87,8 +102,8 @@ export function WidgetEditorModal({
         {/* Preview */}
         <div className="bg-[#050505] flex flex-col min-h-0 relative">
           <div className="absolute top-4 right-4 z-context flex items-center gap-2">
-            <button 
-              onClick={() => setPreviewKey((k) => k + 1)} 
+            <button
+              onClick={() => setPreviewKey((k) => k + 1)}
               className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-accent/30 text-white/40 hover:text-white transition-all cursor-pointer"
               title="Reload preview"
             >
@@ -103,7 +118,7 @@ export function WidgetEditorModal({
                 style={{
                   width: (draft.config as any)?.aspectRatio === 'tiktok' ? 'auto' : '100%',
                   height: (draft.config as any)?.aspectRatio === 'tiktok' ? '100%' : 'auto',
-                  aspectRatio: (draft.config as any)?.aspectRatio === 'tiktok' ? '9/16' : 
+                  aspectRatio: (draft.config as any)?.aspectRatio === 'tiktok' ? '9/16' :
                                (draft.config as any)?.aspectRatio === 'landscape' ? '16/9' : 'auto',
                   maxWidth: '100%',
                   maxHeight: '100%',
@@ -119,11 +134,11 @@ export function WidgetEditorModal({
                     style={{ border: 'none', background: 'transparent' }}
                   />
                 </div>
-                
+
                 {/* Resolution Badge */}
                 <div className="absolute -bottom-8 left-0 right-0 flex justify-center">
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/10">
-                    {(draft.config as any)?.aspectRatio === 'tiktok' ? '1080 × 1920 (9:16)' : 
+                    {(draft.config as any)?.aspectRatio === 'tiktok' ? '1080 × 1920 (9:16)' :
                      (draft.config as any)?.aspectRatio === 'landscape' ? '1920 × 1080 (16:9)' : 'Auto Resolution'}
                   </span>
                 </div>
@@ -143,10 +158,10 @@ export function WidgetEditorModal({
             <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-bold text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer">
               Discard
             </button>
-            <button 
-              onClick={handleSave} 
-              disabled={saving} 
-              className="px-8 py-2.5 rounded-xl bg-accent text-black text-xs font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-accent/20"
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-8 py-2.5 rounded-xl bg-brand-gradient text-white text-xs font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-accent/20"
             >
               {saving ? 'Saving...' : 'Apply Changes'}
             </button>

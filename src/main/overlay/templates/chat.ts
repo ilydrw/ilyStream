@@ -1,4 +1,5 @@
 import { ChatConfig, DEFAULT_CHAT_CONFIG } from '../../../shared/widgets'
+import { getAnimationCss } from './animation-utils'
 
 export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: ChatConfig = { ...DEFAULT_CHAT_CONFIG, ...(widget?.config || {}) }
@@ -13,7 +14,7 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
   const feedDir = cfg.position.startsWith('top') ? 'column-reverse' : 'column'
   const bgOpacity = isPreview ? 0 : Math.min(1, Math.max(0, cfg.backgroundOpacity))
 
-  const configJson = JSON.stringify({
+  const configJson = jsonForScript({
     maxItems: cfg.maxItems,
     chatOnly: cfg.chatOnly,
     fadeAfterMs: cfg.fadeOutAfterSeconds > 0 ? cfg.fadeOutAfterSeconds * 1000 : 0,
@@ -66,12 +67,12 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         backdrop-filter: blur(var(--blur)) saturate(220%);
         -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
         border: 1px solid var(--glass-border);
-        box-shadow: 
-            0 10px 30px rgba(0,0,0,0.4), 
+        box-shadow:
+            0 10px 30px rgba(0,0,0,0.4),
             inset 0 0 20px rgba(255,255,255,0.05);
-        animation: entry-slide-in 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
         transition: transform 0.3s ease;
       }
+      ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 400 }, '.entry')}
       .entry::before {
         content: "";
         position: absolute;
@@ -79,7 +80,7 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         background: radial-gradient(circle at 20% 0%, rgba(255,255,255,0.08) 0%, transparent 60%);
         pointer-events: none;
       }
-      .entry--event { 
+      .entry--event {
         background: linear-gradient(135deg, var(--bg-event), rgba(20, 10, 40, ${bgOpacity}));
         border-color: rgba(147, 51, 234, 0.4);
       }
@@ -139,10 +140,6 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
         margin-bottom: 6px;
         display: block;
         opacity: 0.8;
-      }
-      @keyframes entry-slide-in {
-        from { opacity: 0; transform: translateX(-30px) scale(0.9); }
-        to { opacity: 1; transform: translateX(0) scale(1); }
       }
       .fading {
         animation: entry-fade-out 0.6s ease forwards;
@@ -304,4 +301,13 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
     </script>
   </body>
 </html>`
+}
+
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }

@@ -8,6 +8,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function SocialsConfigEditor({
   draft,
@@ -59,9 +60,9 @@ export function SocialsConfigEditor({
                   <option value="discord">DC</option>
                   <option value="custom">CS</option>
                 </select>
-                <span className="text-[9px] font-black uppercase text-accent pointer-events-none">{acc.platform.slice(0, 2)}</span>
+                <span className="text-[9px] font-black uppercase text-[#d035f1] pointer-events-none">{acc.platform.slice(0, 2)}</span>
               </div>
-              
+
               <input
                 type="text"
                 value={acc.username}
@@ -70,7 +71,7 @@ export function SocialsConfigEditor({
                 placeholder="@handle"
               />
 
-              <button 
+              <button
                 onClick={() => removeAccount(acc.id)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-white/10 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100"
               >
@@ -78,7 +79,7 @@ export function SocialsConfigEditor({
               </button>
             </div>
           ))}
-          
+
           <button
             onClick={addAccount}
             className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest text-white/20 hover:border-white/20 hover:text-white hover:bg-white/[0.02] transition-all"
@@ -98,7 +99,7 @@ export function SocialsConfigEditor({
             step={1}
             value={config.interval}
             onChange={(e) => update('interval', Number(e.currentTarget.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
@@ -112,7 +113,7 @@ export function SocialsConfigEditor({
                 onClick={() => update('position', pos)}
                 className={`h-10 rounded-lg text-[10px] font-bold border transition-all ${
                   config.position === pos
-                    ? 'bg-white text-black border-white'
+                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -132,7 +133,7 @@ export function SocialsConfigEditor({
             className="!w-24 !h-9 !text-xs text-right"
           />
         </Field>
-        
+
         <SwitchRow
           label="Show border"
           value={config.showBorder}
@@ -149,11 +150,11 @@ export function SocialsConfigEditor({
                 onClick={() => update('style', s)}
                 className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
                   config.style === s
-                    ? s === 'chroma' 
+                    ? s === 'chroma'
                       ? 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500 text-white border-transparent'
                       : s === 'cyber'
-                        ? 'bg-gradient-to-r from-[#D035F1] to-[#19C8FF] text-white border-transparent'
-                        : 'bg-white text-black border-white'
+                        ? 'bg-brand-gradient text-white border-transparent shadow-glow'
+                        : 'bg-brand-gradient text-white border-transparent shadow-glow'
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -165,19 +166,9 @@ export function SocialsConfigEditor({
 
         <ColorRow label="Accent" value={config.accentColor} onChange={(v) => update('accentColor', v)} />
         <ColorRow label="Background" value={config.backgroundColor || '#0b0d10'} onChange={(v) => update('backgroundColor', v)} />
-        
-        <Field label={`Background opacity — ${Math.round(config.backgroundOpacity * 100)}%`}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.backgroundOpacity}
-            onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

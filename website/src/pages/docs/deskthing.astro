@@ -3,6 +3,8 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+const latestVersion = '0.0.9';
+const deskThingZipUrl = `https://github.com/ilydrw/ilystream-deskthing/releases/download/v${latestVersion}/ilyStream-DeskThing-v${latestVersion}.zip`;
 
 const toc = [
   { id: 'overview', label: 'Overview' },
@@ -57,7 +59,7 @@ const toc = [
     it to your DeskThing desktop server and assign it to the device.
   </p>
   <ol>
-    <li><strong>Download the latest release.</strong> Visit <a href="https://github.com/ilydrw/ilystream-deskthing/releases" rel="noopener">ilystream-deskthing releases</a> and download the most recent <code>.zip</code>.</li>
+    <li><strong>Download the latest release.</strong> Download <a href={deskThingZipUrl} rel="noopener">ilyStream DeskThing v{latestVersion}</a>, or visit <a href="https://github.com/ilydrw/ilystream-deskthing/releases" rel="noopener">ilystream-deskthing releases</a> for older builds.</li>
     <li><strong>Install via DeskThing.</strong> In the DeskThing desktop app, open the apps panel and use the <em>Install from file</em> option, then select the downloaded archive.</li>
     <li><strong>Assign it to the Car Thing.</strong> Drop the ilyStream app into the Car Thing's app slot list so it shows up in the device's app rotation.</li>
   </ol>

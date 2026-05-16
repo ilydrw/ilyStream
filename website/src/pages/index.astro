@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.8';
+const latestVersion = '0.0.9';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,11 +46,11 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'High-Fidelity Recording: Local VBR/CRF encoding optimized for NVENC, QSV, and AMF.',
-  'DeskThing Control: Start and stop recording sessions directly from your Car Thing deck.',
-  'FFmpeg Hardening: Clean "q" command shutdown and production ASAR path resolution.',
-  'Native Audio Reliability: Hardened installation routines for native audio engine components.',
-  'System Integrity: Robust directory management and power-save blocking for long sessions.',
+  'Projector Reliability: Loaded layouts and right-clicked sources now open on the selected fullscreen display with the correct scene and aspect ratio.',
+  'Security Audit Pass: Hardened overlay templates, local device APIs, IPC surfaces, and production window behavior.',
+  'Recording Library: Local recordings are easier to browse, open, play back, and clean up after a session.',
+  'DeskThing v0.0.9: Companion metadata, pairing scaffolding, and release bundle are aligned with the desktop app.',
+  'Website Refresh: Download links, docs, and release messaging now point at the v0.0.9 release set.',
 ];
 
 const docPreviews = [
@@ -164,8 +164,8 @@ const screensPreview = [
   <section class="container section release">
     <div class="section__heading">
       <p class="eyebrow">What is in v{latestVersion}</p>
-      <h2>A cleaner first public build.</h2>
-      <p>Polish, recovery, and consistency for the production surfaces creators reach for first.</p>
+      <h2>A release pass for the studio surfaces.</h2>
+      <p>Reliability, safer local surfaces, and matching companion downloads for the workflows creators reach for first.</p>
     </div>
     <ul class="release-list">
       {releaseNotes.map((note, i) => (

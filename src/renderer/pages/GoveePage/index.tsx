@@ -133,24 +133,24 @@ export default function GoveePage() {
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <Metric 
-          icon={status.isConnected ? <IconCircleCheck size={20} /> : <IconRadio size={20} />} 
-          label="API Status" 
-          value={status.isConnected ? 'CONNECTED' : 'NOT LINKED'} 
+        <Metric
+          icon={status.isConnected ? <IconCircleCheck size={20} /> : <IconRadio size={20} />}
+          label="API Status"
+          value={status.isConnected ? 'CONNECTED' : 'NOT LINKED'}
           sub={status.isConnected ? `Linked: ${status.apiKey}` : "Cloud Connection Idle"}
           accent={status.isConnected ? 'text-emerald-400' : 'text-danger'}
         />
-        <Metric 
-          icon={<GoveeIcon size={26} />} 
-          label="Active Devices" 
-          value={status.deviceCount.toString()} 
+        <Metric
+          icon={<GoveeIcon size={26} />}
+          label="Active Devices"
+          value={status.deviceCount.toString()}
           sub={`Cloud ${status.cloudDeviceCount || 0} / LAN ${status.lanDeviceCount || 0}`}
           accent="text-accent"
         />
-        <Metric 
-          icon={<IconActivity size={20} />} 
-          label="Event Sync" 
-          value={status.isConnected ? 'READY' : 'DISABLED'} 
+        <Metric
+          icon={<IconActivity size={20} />}
+          label="Event Sync"
+          value={status.isConnected ? 'READY' : 'DISABLED'}
           sub="Live Interaction Link"
           accent={status.isConnected ? 'text-blue-400' : 'text-white/10'}
         />
@@ -180,7 +180,7 @@ export default function GoveePage() {
                 </div>
               </div>
               {status.isConnected && (
-                <button 
+                <button
                   onClick={handleDisconnect}
                   className="p-2 rounded-lg bg-white/5 text-white/20 hover:text-danger hover:bg-danger/10 transition-all"
                   title="Unlink Account"
@@ -202,17 +202,17 @@ export default function GoveePage() {
                       placeholder="Paste your Govee Developer API Key..."
                       className="app-input"
                     />
-                    <a 
-                      href="https://developer.govee.com/reference/get-you-govee-api-key" 
-                      target="_blank" 
+                    <a
+                      href="https://developer.govee.com/reference/get-you-govee-api-key"
+                      target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1.5 text-[10px] font-bold text-blue-400/60 hover:text-blue-400 uppercase tracking-wider mt-1 transition-colors"
                     >
                       Request an API Key <IconExternalLink size={10} />
                     </a>
                   </div>
-                  
-                  <button 
+
+                  <button
                     onClick={handleLink}
                     disabled={isLinking || !apiKey}
                     className="app-button-primary w-full !h-12 text-[10px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed"
@@ -237,7 +237,7 @@ export default function GoveePage() {
                     Your Govee account is synchronized. LAN discovery runs during refresh.
                   </p>
                   <div className="w-full h-px bg-white/5 mb-6" />
-                  <button 
+                  <button
                     onClick={refreshDevices}
                     className="text-[10px] font-black text-accent uppercase tracking-widest hover:underline"
                   >
@@ -268,7 +268,7 @@ export default function GoveePage() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="p-8 space-y-6 bg-white/[0.01]">
                 <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
                   <div>
@@ -276,8 +276,8 @@ export default function GoveePage() {
                     <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">Strobe teal on new followers</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="sr-only peer"
                       checked={goveeSettings.flashOnFollow}
                       onChange={(e) => window.api.settings.setMany({ goveeFlashOnFollow: e.target.checked })}
@@ -292,8 +292,8 @@ export default function GoveePage() {
                     <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">Cyber strobe on gift events</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="sr-only peer"
                       checked={goveeSettings.flashOnGift}
                       onChange={(e) => window.api.settings.setMany({ goveeFlashOnGift: e.target.checked })}
@@ -303,7 +303,7 @@ export default function GoveePage() {
                 </div>
 
                 <div className="pt-4">
-                  <button 
+                  <button
                     onClick={() => {
                       window.api.govee.testStrobe()
                       toast.success('Govee test strobe triggered!')
@@ -327,7 +327,7 @@ export default function GoveePage() {
                 <h2>Discovered Devices</h2>
               </div>
               {status.isConnected && (
-                <button 
+                <button
                   onClick={refreshDevices}
                   disabled={isLoadingDevices}
                   className="text-[10px] font-bold text-blue-400/60 hover:text-blue-400 tracking-widest transition-colors flex items-center gap-2 disabled:opacity-30"
@@ -365,12 +365,12 @@ export default function GoveePage() {
                       onClick={() => toggleDeviceSelection(device)}
                       className={`p-4 rounded-2xl border flex items-center gap-4 text-left transition-all group ${
                         isSelected
-                          ? 'bg-accent/10 border-accent/40'
-                          : 'bg-white/[0.03] border-white/5 hover:border-accent/30'
+                          ? 'bg-brand-gradient border-transparent text-white shadow-glow'
+                          : 'bg-white/[0.03] border-white/5 hover:border-brand-gradient/30'
                       }`}
                     >
                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                         isSelected ? 'bg-accent/15 text-accent' : 'bg-white/5 text-white/20 group-hover:text-accent'
+                         isSelected ? 'bg-white/10' : 'bg-white/5 text-white/20 group-hover:text-white'
                        }`}>
                          <IconBulb size={24} />
                        </div>
@@ -384,7 +384,7 @@ export default function GoveePage() {
                          {device.source || 'cloud'}
                        </div>
                        {isSelected ? (
-                         <div className="w-5 h-5 rounded-full bg-accent flex items-center justify-center text-black">
+                         <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-white">
                            <IconCheck size={12} strokeWidth={4} />
                          </div>
                        ) : (

@@ -34,7 +34,7 @@ export function SceneSidebar(props: SceneSidebarProps) {
             onClick={() => onSelectScene(scene.id)}
             onDoubleClick={() => { setEditingSceneId(scene.id); setEditingSceneName(scene.name) }}
             onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, scene.id) }}
-            className={`w-full text-left px-4 py-4 rounded-xl text-[13px] font-black transition-all ${activeSceneId === scene.id ? 'bg-accent text-white shadow-xl shadow-accent/20 translate-x-1' : 'text-white/20 hover:text-white/40 hover:bg-white/5'}`}
+            className={`w-full text-left px-4 py-4 rounded-xl text-[13px] font-black transition-all ${activeSceneId === scene.id ? 'bg-brand-gradient text-white shadow-xl shadow-glow translate-x-1' : 'text-white/20 hover:text-white/40 hover:bg-white/5'}`}
           >
             {editingSceneId === scene.id ? (
               <input

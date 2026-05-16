@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function NowPlayingConfigEditor({
   draft,
@@ -180,19 +181,9 @@ export function NowPlayingConfigEditor({
           onChange={(v) => update('backgroundColor', v)}
         />
         <ColorRow label="Text" value={config.textColor} onChange={(v) => update('textColor', v)} />
-
-        <Field label={`Background opacity — ${Math.round(config.backgroundOpacity * 100)}%`}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.backgroundOpacity}
-            onChange={(e) => update('backgroundOpacity', Number(e.currentTarget.value))}
-            className="w-full accent-white"
-          />
-        </Field>
       </Section>
+
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

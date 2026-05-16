@@ -6,6 +6,7 @@ import {
 } from '../../../../../shared/widgets'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { DesignSystemSection } from './DesignSystemSection'
 
 export function ParticleConfigEditor({
   draft,
@@ -32,7 +33,7 @@ export function ParticleConfigEditor({
           value={config.eventDriven}
           onChange={(v) => update('eventDriven', v)}
         />
-        
+
         <Field label="Particle count" hint="Number of hearts to spawn in a burst (or total on screen).">
           <NumberInput
             value={config.count}
@@ -69,7 +70,7 @@ export function ParticleConfigEditor({
             step={0.1}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
 
@@ -81,10 +82,11 @@ export function ParticleConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-white"
+            className="w-full accent-[#d035f1]"
           />
         </Field>
       </Section>
+      <DesignSystemSection config={config as any} onUpdate={update as any} />
     </div>
   )
 }

@@ -1,6 +1,13 @@
 import { Widget } from '../../../shared/widgets'
 
 export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): string {
+  const cfg = (_widget.config as any) || {}
+  const glassIntensity = cfg.glassIntensity ?? 0.5
+  const bgOpacity = (0.2 + (glassIntensity * 0.4))
+  const blur = glassIntensity * 60
+  const borderRadius = cfg.borderRadius ?? 40
+  const fontFamily = cfg.fontFamily || 'Inter'
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -11,9 +18,12 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     :root {
       --cyber-blue: #00f2ff;
       --cyber-pink: #ff00e5;
-      --glass-bg: rgba(10, 12, 18, 0.5);
+      --glass-bg: rgba(10, 12, 18, ${bgOpacity});
       --glass-border: rgba(255, 255, 255, 0.15);
       --liquid-shine: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
+      --radius: ${borderRadius}px;
+      --font-main: "${fontFamily}", Inter, "Segoe UI", Arial, sans-serif;
+      --blur: ${blur}px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,7 +36,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       padding: 0;
       background: transparent !important;
       overflow: hidden;
-      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      font-family: var(--font-main);
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }
@@ -83,15 +93,15 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       gap: 20px;
       overflow: visible;
       border: 1px solid var(--glass-border);
-      border-radius: 40px;
+      border-radius: var(--radius);
       background: var(--glass-bg);
       padding: 35px 50px;
       text-align: center;
       box-shadow:
         0 30px 80px rgba(0, 0, 0, 0.6),
-        inset 0 0 30px rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(50px) saturate(250%);
-      -webkit-backdrop-filter: blur(50px) saturate(250%);
+        inset 0 0 20px rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(var(--blur)) saturate(250%);
+      -webkit-backdrop-filter: blur(var(--blur)) saturate(250%);
     }
 
     .alert-content::after {

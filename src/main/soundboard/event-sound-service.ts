@@ -63,7 +63,7 @@ export class EventSoundService {
 
     const userKey = event.user.id || event.user.username
     const giftKey = `${event.platform}:${userKey}:${event.giftId || event.giftName}`
-    
+
     const existing = this.giftAggregationTimers.get(giftKey)
     if (existing) {
       clearTimeout(existing.timer)
@@ -77,8 +77,8 @@ export class EventSoundService {
           const final = this.giftAggregationTimers.get(giftKey)
           if (final) {
             this.giftAggregationTimers.delete(giftKey)
-            const aggregatedEvent = { 
-              ...final.lastEvent, 
+            const aggregatedEvent = {
+              ...final.lastEvent,
               giftCount: final.count,
               isCombo: false,
               // Sum up monetary value if available
@@ -123,10 +123,7 @@ export class EventSoundService {
     // Previously we also baked styles into the HTML here, which double-styled
     // the alert (nested borders, doubled padding, two backgrounds).
     const text = hasText
-      ? this.replaceVariables(this.settings[`eventText${kind}Template`], event).replace(
-          /\r?\n/g,
-          '<br />'
-        )
+      ? formatAlertText(this.replaceVariables(this.settings[`eventText${kind}Template`], event))
       : ''
 
     this.overlayServer.pushAlert(
@@ -215,7 +212,7 @@ export class EventSoundService {
     if (!hasImage && !hasText && !hasSound) return
 
     const text = hasText
-      ? this.replaceVariables(rule.textTemplate, event).replace(/\r?\n/g, '<br />')
+      ? formatAlertText(this.replaceVariables(rule.textTemplate, event))
       : ''
 
     this.overlayServer.pushAlert(
@@ -422,4 +419,11 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function formatAlertText(value: string): string {
+  return value
+    .split(/\r?\n/)
+    .map(escapeHtml)
+    .join('<br />')
 }

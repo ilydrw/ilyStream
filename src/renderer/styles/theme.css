@@ -47,9 +47,9 @@
   --line-hairline:  rgba(255, 255, 255, 0.03);
 
   /* ---------- Semantic / Functional ---------- */
-  --color-accent:        #19C8FF;
-  --color-accent-hover:  #61D9FF;
-  --color-accent-rgb:    25, 200, 255;
+  --color-accent:        #D035F1;
+  --color-accent-hover:  #E066FF;
+  --color-accent-rgb:    208, 53, 241;
   --color-success:       #22C55E;
   --color-success-2:     #24D18B;
   --color-warning:       #F59E0B;
@@ -75,8 +75,8 @@
   /* ---------- Shadows ---------- */
   --shadow-card:        0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 28px rgba(0,0,0,0.32);
   --shadow-cta:         0 8px 28px rgba(37, 199, 255, 0.28);
-  --shadow-accent:      0 0 20px rgba(25, 200, 255, 0.30);
-  --shadow-rail:        0 4px 12px rgba(25, 200, 255, 0.15);
+  --shadow-accent:      0 0 20px rgba(208, 53, 241, 0.30);
+  --shadow-rail:        0 4px 12px rgba(208, 53, 241, 0.15);
   --shadow-inner-faint: 0 1px 0 rgba(255,255,255,0.04) inset;
 
   /* ---------- Radii ---------- */
