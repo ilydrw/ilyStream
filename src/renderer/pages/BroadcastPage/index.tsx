@@ -151,6 +151,23 @@ export default function BroadcastPage() {
     }
   }, [isDualLayoutMode, store.aspectRatio])
 
+  useEffect(() => {
+    if (store.aspectRatio !== '16:9') return
+    const scene = store.studioMode ? previewScene : activeScene
+    scene.layers.forEach(layer => {
+      const hasPortraitStageSavedAsLandscape =
+        layer.type === 'display' &&
+        layer.x === 0 &&
+        layer.y === 0 &&
+        layer.width === PORTRAIT_STAGE.width &&
+        layer.height === PORTRAIT_STAGE.height
+
+      if (hasPortraitStageSavedAsLandscape) {
+        store.updateLayer(scene.id, layer.id, fullStageRect(LANDSCAPE_STAGE))
+      }
+    })
+  }, [activeScene, previewScene, store])
+
 
   const activeCanvasStreamOutputs = useMemo(() => {
 
