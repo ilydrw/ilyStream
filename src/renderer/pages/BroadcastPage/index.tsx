@@ -36,6 +36,33 @@ function formatDuration(totalSeconds: number): string {
 }
 
 type ProjectorAspectRatio = '16:9' | '9:16'
+const LANDSCAPE_STAGE = { width: 1920, height: 1080 }
+const PORTRAIT_STAGE = { width: 1080, height: 1920 }
+
+function getLayoutModeForAspectRatio(aspectRatio: ProjectorAspectRatio): BroadcastLayoutMode {
+  return aspectRatio === '9:16' ? 'vertical' : 'horizontal'
+}
+
+function fitRect(
+  stage: { width: number; height: number },
+  sourceWidth: number,
+  sourceHeight: number,
+  fill = 0.72
+) {
+  const scale = Math.min(stage.width * fill / sourceWidth, stage.height * fill / sourceHeight)
+  const width = Math.max(1, Math.round(sourceWidth * scale))
+  const height = Math.max(1, Math.round(sourceHeight * scale))
+  return {
+    x: Math.round((stage.width - width) / 2),
+    y: Math.round((stage.height - height) / 2),
+    width,
+    height
+  }
+}
+
+function fullStageRect(stage: { width: number; height: number }) {
+  return { x: 0, y: 0, width: stage.width, height: stage.height }
+}
 
 interface SourceContextMenuState {
   x: number
@@ -60,7 +87,7 @@ export default function BroadcastPage() {
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null)
   const [obsStatus, setObsStatus] = useState<any>(null)
   const [virtualCameraInfo, setVirtualCameraInfo] = useState<any>(null)
-  const [broadcastLayoutMode, setBroadcastLayoutMode] = useState<BroadcastLayoutMode>('horizontal')
+  const [broadcastLayoutMode, setBroadcastLayoutMode] = useState<BroadcastLayoutMode>(() => getLayoutModeForAspectRatio(store.aspectRatio))
   const [layoutAssignments, setLayoutAssignments] = useState<Record<BroadcastLayoutId, string[]>>({ horizontal: [], vertical: [] })
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [customStreamKey, setCustomStreamKey] = useState('')
@@ -76,6 +103,13 @@ export default function BroadcastPage() {
   const [dualVerticalOverlayEnabled, setDualVerticalOverlayEnabled] = useState(false)
   const isDualLayoutMode = broadcastLayoutMode === 'dual' || broadcastLayoutMode === 'dual-portrait' || broadcastLayoutMode === 'dual-horizontal'
   const effectiveDualVerticalOverlay = isDualLayoutMode && dualVerticalOverlayEnabled
+
+  useEffect(() => {
+    if (isDualLayoutMode) return
+    const nextMode = getLayoutModeForAspectRatio(store.aspectRatio)
+    setBroadcastLayoutMode(current => current === nextMode ? current : nextMode)
+  }, [isDualLayoutMode, store.aspectRatio])
+
   useEffect(() => {
     if (!isDualLayoutMode && dualVerticalOverlayEnabled) setDualVerticalOverlayEnabled(false)
   }, [isDualLayoutMode, dualVerticalOverlayEnabled])
@@ -324,38 +358,61 @@ export default function BroadcastPage() {
       text: 'Text'
     }[type]
 
-    const fit = (sourceWidth: number, sourceHeight: number, fill = 0.72) => {
-      const scale = Math.min(store.canvasWidth * fill / sourceWidth, store.canvasHeight * fill / sourceHeight)
-      const width = Math.max(1, Math.round(sourceWidth * scale))
-      const height = Math.max(1, Math.round(sourceHeight * scale))
-      return {
-        x: Math.round((store.canvasWidth - width) / 2),
-        y: Math.round((store.canvasHeight - height) / 2),
-        width,
-        height
-      }
-    }
+    const widget = type === 'widget'
+      ? widgets.find(w => w.id === config.widgetId)
+      : undefined
+    const widgetPreset = type === 'widget'
+      ? resolveWidgetStudioPreset(widget, config, LANDSCAPE_STAGE.width, LANDSCAPE_STAGE.height)
+      : null
 
-    const rect = type === 'display'
-      ? { x: 0, y: 0, width: store.canvasWidth, height: store.canvasHeight }
-      : type === 'audio'
-        ? { x: 0, y: 0, width: 1, height: 1 }
-        : type === 'text'
-          ? fit(960, 160, 0.58)
-          : fit(1280, 720)
+    const landscapeRect = widgetPreset
+      ? { x: widgetPreset.x, y: widgetPreset.y, width: widgetPreset.width, height: widgetPreset.height }
+      : type === 'display'
+        ? fullStageRect(LANDSCAPE_STAGE)
+        : type === 'audio'
+          ? { x: 0, y: 0, width: 1, height: 1 }
+          : type === 'text'
+            ? fitRect(LANDSCAPE_STAGE, 960, 160, 0.58)
+            : fitRect(LANDSCAPE_STAGE, 1280, 720)
+
+    const portraitRect = widgetPreset
+      ? {
+          x: widgetPreset.portraitX,
+          y: widgetPreset.portraitY,
+          width: widgetPreset.portraitWidth,
+          height: widgetPreset.portraitHeight
+        }
+      : type === 'display' || type === 'camera' || type === 'browser' || type === 'image'
+        ? fitRect(PORTRAIT_STAGE, 1920, 1080, 1)
+        : type === 'audio'
+          ? { x: 0, y: 0, width: 1, height: 1 }
+          : type === 'text'
+            ? fitRect(PORTRAIT_STAGE, 720, 160, 0.72)
+            : fitRect(PORTRAIT_STAGE, 1280, 720)
+
+    const layerConfig = widgetPreset?.config
+      ? { ...config, ...widgetPreset.config }
+      : config
+    const locked = widgetPreset?.locked ?? (type === 'audio')
 
     store.addLayer(targetScene.id, {
       type,
       name,
-      config,
-      ...rect,
+      config: layerConfig,
+      ...landscapeRect,
+      portraitX: portraitRect.x,
+      portraitY: portraitRect.y,
+      portraitWidth: portraitRect.width,
+      portraitHeight: portraitRect.height,
       opacity: 1,
       rotation: 0,
       visible: type !== 'audio',
-      locked: type === 'audio'
+      locked,
+      portraitVisible: type !== 'audio',
+      portraitLocked: widgetPreset?.portraitLocked ?? locked
     })
     setShowSourceModal(false)
-  }, [activeScene, store])
+  }, [activeScene, previewScene, store, widgets])
 
   // Streaming Handlers
   const startBroadcast = async () => {

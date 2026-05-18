@@ -46,6 +46,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const selectedLayerId = useStudioStore(s => s.selectedLayerId)
   const undo = useStudioStore(s => s.undo)
   const redo = useStudioStore(s => s.redo)
+  const snapToGrid = useStudioStore(s => s.snapToGrid)
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -515,7 +516,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [activeScene.id, updateLayer, isPanning, selectionContext, aspectRatio])
+  }, [activeScene.id, activeScene.layers, updateLayer, isPanning, selectionContext, aspectRatio, snapToGrid])
 
   const resetView = () => {
     setZoom(1)
