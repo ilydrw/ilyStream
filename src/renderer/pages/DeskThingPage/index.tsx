@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {IconDeviceMobile, IconPlus, IconTrash, IconCopy, IconCheck, IconClock, IconCpu, IconMusic, IconLayoutGrid} from '@tabler/icons-react'
 import type { PairCode, PairedDevice } from '../../../shared/device-api'
+import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { DeskThingIcon } from '../../components/ui/DeskThingIcon'
 import { CarThingIcon } from '../../components/ui/CarThingIcon'
 
@@ -9,8 +10,8 @@ export default function DeskThingPage() {
   const [pair, setPair] = useState<PairCode | null>(null)
   const [pairExpiresIn, setPairExpiresIn] = useState(0)
   const [serverPort, setServerPort] = useState<number | null>(null)
-  const [serverHost, setServerHost] = useState<string>('')
-  const [copied, setCopied] = useState<'code' | 'url' | null>(null)
+  const [deviceHosts, setDeviceHosts] = useState<string[]>([])
+  const [copied, setCopied] = useState<'code' | 'address' | 'url' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadDevices = async () => {
@@ -25,22 +26,20 @@ export default function DeskThingPage() {
 
   const loadOverlayInfo = async () => {
     try {
-      const status = await window.api?.overlay?.getStatus?.()
+      const status = await window.api?.overlay?.getStatus?.() as OverlayRuntimeStatus | undefined
       if (status?.port) setServerPort(status.port)
+      const hosts = Array.isArray(status?.deviceHosts)
+        ? status.deviceHosts.filter((host): host is string => typeof host === 'string' && host.length > 0)
+        : status?.deviceHost
+          ? [status.deviceHost]
+          : []
+      setDeviceHosts(hosts)
     } catch {}
   }
 
   useEffect(() => {
     loadDevices()
     loadOverlayInfo()
-    // Best-effort host detection — the device needs the desktop's LAN IP, not
-    // localhost. We can't enumerate NICs from the renderer, so fall back to
-    // the existing OBS host setting when it looks like a real LAN address.
-    void window.api?.settings?.getAll().then((settings: any) => {
-      if (settings?.obsHost && settings.obsHost !== '127.0.0.1' && settings.obsHost !== 'localhost') {
-        setServerHost(settings.obsHost)
-      }
-    })
   }, [])
 
   // Tick the pair-code countdown
@@ -84,18 +83,27 @@ export default function DeskThingPage() {
     await loadDevices()
   }
 
-  const handleCopy = (value: string, kind: 'code' | 'url') => {
+  const handleCopy = (value: string, kind: 'code' | 'address' | 'url') => {
     void navigator.clipboard.writeText(value).then(() => {
       setCopied(kind)
       setTimeout(() => setCopied((current) => (current === kind ? null : current)), 1500)
     })
   }
 
+  const pairAddress = useMemo(() => {
+    if (deviceHosts.length > 0) return deviceHosts[0]
+    return serverPort ? `127.0.0.1:${serverPort}` : null
+  }, [deviceHosts, serverPort])
+
+  const alternateDeviceHosts = useMemo(
+    () => deviceHosts.filter((host) => host !== pairAddress),
+    [deviceHosts, pairAddress]
+  )
+
   const pairUrl = useMemo(() => {
-    if (!serverPort) return null
-    const host = serverHost || '<your-LAN-IP>'
-    return `http://${host}:${serverPort}/api/v1/pair/complete`
-  }, [serverHost, serverPort])
+    if (!pairAddress) return null
+    return `http://${pairAddress}/api/v1/pair/complete`
+  }, [pairAddress])
 
   return (
     <div className="app-page">
@@ -188,27 +196,53 @@ export default function DeskThingPage() {
 
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                  Pair endpoint
+                  DeskThing address
                 </div>
-                {pairUrl ? (
+                {pairAddress ? (
                   <div className="flex items-center gap-2">
                     <code className="text-xs font-mono text-white/70 bg-white/[0.03] border border-white/5 rounded-lg px-3 py-2 truncate flex-1">
-                      {pairUrl}
+                      {pairAddress}
                     </code>
                     <button
-                      onClick={() => handleCopy(pairUrl, 'url')}
+                      onClick={() => handleCopy(pairAddress, 'address')}
                       className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70 transition shrink-0"
+                      title="Copy address"
                     >
-                      {copied === 'url' ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                      {copied === 'address' ? <IconCheck size={14} /> : <IconCopy size={14} />}
                     </button>
                   </div>
                 ) : (
                   <div className="text-xs text-white/40">Overlay server not running.</div>
                 )}
+                {alternateDeviceHosts.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {alternateDeviceHosts.map((host) => (
+                      <button
+                        key={host}
+                        onClick={() => handleCopy(host, 'address')}
+                        className="text-[10px] font-bold text-white/35 hover:text-white/70 bg-white/[0.03] border border-white/5 rounded px-2 py-1 transition"
+                        title="Copy alternate address"
+                      >
+                        {host}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <p className="text-[11px] text-white/30 leading-relaxed">
-                  On the device, POST <code className="text-white/50">{`{ code, label }`}</code> to this URL.
-                  The response includes a long-lived token to use as <code className="text-white/50">Authorization: Bearer &lt;token&gt;</code>.
-                  {!serverHost && ' Replace <your-LAN-IP> with the desktop\'s LAN address.'}
+                  Enter this address in DeskThing, then enter the 6-digit code. The companion automatically uses
+                  <code className="text-white/50"> /api/v1/pair/complete</code>
+                  {pairUrl && (
+                    <>
+                      {' '}(<button
+                        type="button"
+                        onClick={() => handleCopy(pairUrl, 'url')}
+                        className="text-white/45 hover:text-white/70 underline underline-offset-2"
+                      >
+                        copy endpoint
+                      </button>)
+                    </>
+                  )}
+                  .
                 </p>
               </div>
             </div>

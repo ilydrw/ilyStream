@@ -9,6 +9,7 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
   const borderRadius = cfg.borderRadius ?? 32
   const fontFamily = cfg.fontFamily || 'Outfit'
   const accentColor = cfg.accentColor || '#ff00ff'
+  const secondaryColor = cfg.secondaryColor || accentColor
 
   return `
 <!DOCTYPE html>
@@ -22,8 +23,8 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             --bg: rgba(10, 12, 18, ${bgOpacity});
             --glass: rgba(255, 255, 255, 0.05);
             --glass-border: rgba(255, 255, 255, 0.1);
-            --cyan: #00f2ff;
-            --magenta: ${accentColor};
+            --cyan: ${accentColor};
+            --magenta: ${secondaryColor};
             --white: #ffffff;
             --radius: ${borderRadius}px;
             --font-main: "${fontFamily}", sans-serif;

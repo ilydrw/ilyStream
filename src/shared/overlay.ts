@@ -61,6 +61,11 @@ export interface OverlayRuntimeStatus {
   running: boolean
   port: number | null
   requestedPort: number | null
+  listenHost?: string | null
+  deviceHost?: string | null
+  deviceHosts?: string[]
+  devicePairUrl?: string | null
+  devicePairUrls?: string[]
   lastError: string | null
   startedAt: string | null
   chatUrl: string | null

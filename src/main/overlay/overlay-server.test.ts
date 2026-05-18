@@ -20,6 +20,8 @@ describe('OverlayServer', () => {
     expect(status.healthUrl).toBeTruthy()
     expect(status.chatUrl).toBeTruthy()
     expect(status.goalsUrl).toBeTruthy()
+    expect(status.deviceHosts).toContain(`127.0.0.1:${status.port}`)
+    expect(status.devicePairUrl).toContain('/api/v1/pair/complete')
 
     const healthResponse = await fetch(status.healthUrl!)
     const health = await healthResponse.json()

@@ -17,7 +17,7 @@ setupLogger()
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   console.log('[main] Another instance is already running. Quitting...')
-  app.quit()
+  app.exit(0)
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
@@ -319,6 +319,8 @@ function registerAssetProtocol(): void {
 }
 
 app.whenReady().then(async () => {
+  if (!gotTheLock) return
+
   services = new ServiceRegistry(); initPromise = services.initialize();
   electronApp.setAppUserModelId('com.ilystream.app')
 

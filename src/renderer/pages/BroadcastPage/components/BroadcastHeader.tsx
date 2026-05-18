@@ -92,9 +92,9 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   const assignedStreamCount = layoutAssignments.horizontal.length + layoutAssignments.vertical.length
 
   return (
-    <header className="shrink-0 h-20 px-6 flex items-center justify-between border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl z-[500]" style={{ WebkitAppRegion: 'drag' } as any}>
+    <header className="shrink-0 h-20 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-hidden border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl z-[500]" style={{ WebkitAppRegion: 'drag' } as any}>
       {/* Workspace Group */}
-      <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      <div className="min-w-0 flex items-center gap-2 xl:gap-3 2xl:gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10">
           <Tooltip content={showLeftSidebar ? "Hide Navigation" : "Show Navigation"} position="bottom">
             <button
@@ -106,9 +106,9 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           </Tooltip>
         </div>
 
-        <div className="h-8 w-px bg-white/5 mx-1" />
+        <div className="hidden xl:block h-8 w-px bg-white/5 mx-1" />
 
-        <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="min-w-0 flex bg-white/5 rounded-2xl p-1 border border-white/10">
           <Select
             value={broadcastLayoutMode}
             onChange={onLayoutModeChange}
@@ -119,45 +119,45 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               { value: 'dual-horizontal', label: 'Dual Landscape', icon: <IconStack2 size={15} /> },
               { value: 'dual-portrait', label: 'Dual Vertical', icon: <IconStack2 size={15} className="rotate-90" /> }
             ]}
-            className="w-36"
-            buttonClassName="h-9 bg-transparent border-0 rounded-xl px-3 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
+            className="w-28 2xl:w-36"
+            buttonClassName="h-9 bg-transparent border-0 rounded-xl px-2 2xl:px-3 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
           />
           <div className="w-px h-6 bg-white/5 mx-1 self-center" />
           <button
             onClick={onToggleStudioMode}
-            className={`px-3 h-9 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border ${studioMode ? 'bg-brand-gradient border-transparent text-white shadow-lg shadow-accent/20 shadow-glow' : 'text-white/30 border-transparent hover:text-white hover:bg-white/5'}`}
+            className={`shrink-0 px-2 2xl:px-3 h-9 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border ${studioMode ? 'bg-brand-gradient border-transparent text-white shadow-lg shadow-accent/20 shadow-glow' : 'text-white/30 border-transparent hover:text-white hover:bg-white/5'}`}
           >
             <div className={`w-2 h-2 rounded-full ${studioMode ? 'bg-white animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-white/10'}`} />
-            Studio
+            <span className="hidden 2xl:inline">Studio</span>
           </button>
         </div>
       </div>
 
       {/* Telemetry & Center Group */}
-      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-8 py-2 px-6 bg-white/[0.02] border border-white/5 rounded-full backdrop-blur-md">
-        <div className="flex items-center gap-6">
+      <div className="justify-self-center min-w-0 max-w-full flex items-center gap-3 2xl:gap-8 py-2 px-3 2xl:px-6 bg-white/[0.02] border border-white/5 rounded-2xl 2xl:rounded-full backdrop-blur-md">
+        <div className="min-w-0 flex items-center gap-3 2xl:gap-6">
           <div className="flex flex-col items-center">
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Status</span>
+            <span className="hidden 2xl:block text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Status</span>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-success animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`} />
-              <span className={`text-[11px] font-black uppercase tracking-widest ${isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'}`}>
+              <span className={`max-w-20 truncate text-[10px] 2xl:text-[11px] font-black uppercase tracking-widest ${isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'}`}>
                 {isStreaming ? 'Streaming' : isRecording ? 'Recording' : 'Offline'}
               </span>
             </div>
           </div>
 
-          <div className="w-px h-8 bg-white/5" />
+          <div className="w-px h-7 2xl:h-8 bg-white/5" />
 
           <div className="flex flex-col items-center">
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Session</span>
-            <span className="text-[11px] font-mono font-bold text-white/80 tabular-nums">
+            <span className="hidden 2xl:block text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Session</span>
+            <span className="text-[10px] 2xl:text-[11px] font-mono font-bold text-white/80 tabular-nums">
               {isRecording || isStreaming ? recordingTime : '00:00:00'}
             </span>
           </div>
 
-          <div className="w-px h-8 bg-white/5" />
+          <div className="hidden 2xl:block w-px h-8 bg-white/5" />
 
-          <div className="flex flex-col items-center">
+          <div className="hidden 2xl:flex flex-col items-center">
             <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Health</span>
             <div className="flex items-center gap-1.5">
               <IconActivity size={12} className="text-accent/60" />
@@ -168,9 +168,9 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
       </div>
 
       {/* Control Room Group */}
-      <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      <div className="justify-self-end min-w-0 flex items-center gap-2 2xl:gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
         {/* Production Tools */}
-        <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="hidden 2xl:flex bg-white/5 rounded-2xl p-1 border border-white/10">
           <Tooltip content="Undo (Ctrl+Z)" position="bottom">
             <button onClick={undo} disabled={!canUndo} className="p-2.5 rounded-lg text-white/20 hover:text-white disabled:opacity-5 transition-all"><IconRotate2 size={18} /></button>
           </Tooltip>
@@ -194,10 +194,10 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
         <div className="relative">
           <button
             onClick={() => setShowOutputsMenu(!showOutputsMenu)}
-            className={`h-11 px-4 rounded-2xl border transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest ${showOutputsMenu ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
+            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-2xl border transition-all flex items-center gap-2 2xl:gap-3 text-[10px] font-black uppercase tracking-widest ${showOutputsMenu ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
           >
             <IconScreenShare size={18} />
-            Outputs
+            <span className="hidden 2xl:inline">Outputs</span>
             <IconChevronDown size={14} className={`transition-transform duration-300 ${showOutputsMenu ? 'rotate-180' : ''}`} />
           </button>
 
@@ -275,7 +275,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
         </div>
 
         {/* Stream Block */}
-        <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10 ml-2">
+        <div className="min-w-0 flex bg-white/5 rounded-2xl p-1 border border-white/10">
           <Select
             value={platforms.find(p => layoutAssignments.horizontal.includes(p.id) || layoutAssignments.vertical.includes(p.id))?.id || (customRtmpUrl ? 'custom' : '')}
             onChange={(val) => {
@@ -295,17 +295,17 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               ...platforms.map(p => ({ value: p.id, label: p.name, icon: <PlatformLogo platform={p.id} size={14} /> })),
               { value: 'custom', label: 'Custom RTMP', icon: <IconPlus size={14} /> }
             ]}
-            className="w-44"
-            buttonClassName="h-11 bg-transparent border-0 px-4 text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all"
+            className="w-32 2xl:w-44"
+            buttonClassName="h-10 2xl:h-11 bg-transparent border-0 px-2 2xl:px-4 text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all"
             placeholder="Destination"
           />
 
-          <div className="w-px h-8 bg-white/10 mx-1 self-center" />
+          <div className="w-px h-7 2xl:h-8 bg-white/10 mx-1 self-center" />
 
           {isStreaming ? (
             <button
               onClick={onStopBroadcast}
-              className="h-11 px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/30 transition-all flex items-center gap-3"
+              className="h-10 2xl:h-11 px-4 2xl:px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/30 transition-all flex items-center gap-2 2xl:gap-3"
             >
               <IconSquare size={12} className="fill-current" /> Stop
             </button>
@@ -313,7 +313,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             <button
               onClick={onStartBroadcast}
               disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())}
-              className="h-11 px-8 rounded-xl bg-brand-gradient text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all flex items-center gap-3 shadow-lg shadow-accent/20 disabled:opacity-20 disabled:cursor-not-allowed shadow-glow"
+              className="h-10 2xl:h-11 px-4 2xl:px-8 rounded-xl bg-brand-gradient text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 2xl:gap-3 shadow-lg shadow-accent/20 disabled:opacity-20 disabled:cursor-not-allowed shadow-glow"
             >
               <IconBroadcast size={16} /> Go Live
             </button>
@@ -322,7 +322,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
 
         <button
           onClick={onToggleRightSidebar}
-          className={`p-3 rounded-2xl border transition-all ${showRightSidebar ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`}
+          className={`p-2.5 2xl:p-3 rounded-2xl border transition-all ${showRightSidebar ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`}
         >
           {showRightSidebar ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />}
         </button>

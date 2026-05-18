@@ -913,6 +913,20 @@ export default function BroadcastPage() {
               }
             },
             {
+              id: 'project-layout',
+              label: 'Project Layout',
+              icon: <IconCast size={18} />,
+              submenu: monitors.length > 0 ? monitors.map(m => ({
+                id: `layout-monitor-${m.id}`,
+                label: m.label,
+                onClick: () => void openProjector({
+                  monitorId: m.id,
+                  sceneId: sourceContextMenu.sceneId,
+                  aspectRatio: sourceContextMenu.aspectRatio
+                })
+              })) : [{ id: 'no-layout-monitors', label: 'No Monitors Detected', disabled: true }]
+            },
+            {
               id: 'project',
               label: 'Project Source',
               icon: <IconCast size={18} />,
@@ -931,7 +945,7 @@ export default function BroadcastPage() {
           ] : [
             {
               id: 'project',
-              label: 'Project',
+              label: 'Project Layout',
               icon: <IconCast size={18} />,
               submenu: monitors.length > 0 ? monitors.map(m => ({
                 id: `monitor-${m.id}`,

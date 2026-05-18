@@ -8,6 +8,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
   const borderRadius = cfg.borderRadius ?? 14
   const fontFamily = cfg.fontFamily || 'Outfit'
   const animationStyle = cfg.animationStyle || 'slide'
+  const accentColor = (cfg as any).accentColor || '#00f2ff'
+  const secondaryColor = (cfg as any).secondaryColor || '#ff00ff'
 
   return `
 <!DOCTYPE html>
@@ -20,8 +22,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         :root {
             --glass: rgba(10, 12, 16, ${bgOpacity});
             --glass-border: rgba(255, 255, 255, ${0.05 + (cfg.glassIntensity * 0.1)});
-            --cyan: #00f2ff;
-            --magenta: #ff00ff;
+            --cyan: ${accentColor};
+            --magenta: ${secondaryColor};
             --twitch: #9146ff;
             --youtube: #ff0000;
             --tiktok: #00f2ea;

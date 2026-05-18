@@ -50,7 +50,7 @@ const CHAT_BUFFER_LIMIT = 50
  */
 export class DeviceApi {
   /**
-   * Pending pair codes are stored only in memory — they're short-lived (60s)
+   * Pending pair codes are stored only in memory — they're short-lived
    * and never need to survive a restart. Kept as an array because there will
    * usually be 0 or 1 active codes at a time.
    */

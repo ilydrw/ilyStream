@@ -304,6 +304,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     }
   }
 
+  const handleEditorContextMenu = (
+    e: React.MouseEvent,
+    layer: StudioLayer | null,
+    interactionAspectRatio: '16:9' | '9:16'
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onSelectionContextChange(interactionAspectRatio)
+    onContextMenu?.(e, layer, interactionAspectRatio)
+  }
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (isPanning) {
@@ -546,7 +557,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   className="relative shadow-2xl border border-white/10 bg-[#050505]"
                   style={{ width: canvasWidth, height: canvasHeight }}
                   onMouseDown={handleCanvasMouseDown}
-                  onContextMenu={(e) => onContextMenu?.(e, null, aspectRatio)}
+                  onContextMenu={(e) => handleEditorContextMenu(e, null, aspectRatio)}
                 >
                 <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="block w-full h-full" />
                 <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} />
@@ -556,7 +567,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
                   resolve={(l) => resolveLayerLayout(l, aspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
                   onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
-                  onContextMenu={onContextMenu}
+                  onContextMenu={handleEditorContextMenu}
                 />
 
                 {/* Static Center Guides while interacting */}
@@ -594,8 +605,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
               {isDual && (
                 <div
                   className="relative group h-full flex items-center justify-center p-2"
-                  onContextMenu={(e) => onContextMenu?.(e, null, secondaryPreviewAspectRatio)}
-                  onClick={() => onContextMenu?.({ clientX: 0, clientY: 0 } as any, null, secondaryPreviewAspectRatio)}
+                  onContextMenu={(e) => handleEditorContextMenu(e, null, secondaryPreviewAspectRatio)}
                 >
                   <canvas
                     ref={secondaryPreviewCanvasRef}
@@ -604,23 +614,23 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover:shadow-accent/10 border border-white/5"
                   />
                   <InteractionLayer
-                    layers={activeScene.layers} selectedLayerId={selectionContext === secondaryAspectRatio ? selectedLayerId : null}
-                    aspectRatio={secondaryAspectRatio} canvasWidth={secondaryNativeW}
+                    layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
+                    aspectRatio={secondaryPreviewAspectRatio} canvasWidth={secondaryNativeW}
                     highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
-                    resolve={(l) => resolveLayerLayout(l, secondaryAspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
+                    resolve={(l) => resolveLayerLayout(l, secondaryPreviewAspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
                     onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
-                    onContextMenu={onContextMenu}
+                    onContextMenu={handleEditorContextMenu}
                   />
 
                   {/* Static Center Guides while interacting */}
-                  {(dragRef.current || resizeRef.current) && selectionContext === secondaryAspectRatio && (
+                  {(dragRef.current || resizeRef.current) && selectionContext === secondaryPreviewAspectRatio && (
                     <div className="absolute inset-0 pointer-events-none opacity-20">
                       <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white" />
                       <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white" />
                     </div>
                   )}
 
-                  {selectionContext === secondaryAspectRatio && activeGuides.length > 0 && (
+                  {selectionContext === secondaryPreviewAspectRatio && activeGuides.length > 0 && (
                     <div className="absolute inset-0 pointer-events-none">
                       {activeGuides.map((g, i) => (
                         <div
@@ -639,7 +649,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   )}
 
                   <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
-                    Secondary: {secondaryAspectRatio}
+                    Secondary: {secondaryPreviewAspectRatio}
                   </div>
                 </div>
               )}

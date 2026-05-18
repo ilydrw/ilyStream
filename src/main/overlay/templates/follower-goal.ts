@@ -272,8 +272,8 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
       var CFG = ${configJson};
       var params = new URLSearchParams(window.location.search);
 
-      var IS_CHROMA = params.get('chroma') === '1' || params.get('chroma') === 'true' || CFG.accentColor === 'chroma';
-      var IS_CYBERNEON = params.get('cyberneon') === '1' || params.get('cyberneon') === 'true' || CFG.accentColor === 'cyberneon';
+      var IS_CHROMA = params.get('chroma') === '1' || params.get('chroma') === 'true' || CFG.accentColor === 'chroma' || CFG.style === 'chroma';
+      var IS_CYBERNEON = params.get('cyberneon') === '1' || params.get('cyberneon') === 'true' || CFG.accentColor === 'cyberneon' || CFG.style === 'cyber';
       var OFFSET = parseInt(params.get('offset') || '0', 10);
       var GOAL_OVERRIDE = params.get('goal') ? parseInt(params.get('goal'), 10) : null;
 

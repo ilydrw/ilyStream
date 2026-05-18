@@ -25,11 +25,15 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
   const menuRef = useRef<HTMLDivElement>(null)
   const [activeSubmenu, setActiveSubmenu] = useState<{ id: string, x: number, y: number, items: ContextMenuItem[] } | null>(null)
   const [position, setPosition] = useState({ x, y })
+  const openSubmenu = (id: string, rect: DOMRect, items: ContextMenuItem[]) => {
+    setActiveSubmenu({ id, x: rect.right + 6, y: rect.top - 4, items })
+  }
 
   useEffect(() => {
     if (!isSubmenu) {
       const handleClickOutside = (e: MouseEvent) => {
-        if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        const target = e.target as HTMLElement | null
+        if (target && !target.closest('[data-context-menu-root="true"]')) {
           onClose()
         }
       }
@@ -68,6 +72,7 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
       )}
       <motion.div
         ref={menuRef}
+        data-context-menu-root="true"
         initial={{ opacity: 0, scale: 0.98, y: -4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: -4 }}
@@ -83,14 +88,16 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
                 disabled={item.disabled}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (item.submenu) return
+                  if (item.submenu) {
+                    openSubmenu(item.id, e.currentTarget.getBoundingClientRect(), item.submenu)
+                    return
+                  }
                   item.onClick?.()
                   onClose()
                 }}
                 onMouseEnter={(e) => {
-                  if (item.submenu) {
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    setActiveSubmenu({ id: item.id, x: rect.right + 6, y: rect.top - 4, items: item.submenu })
+                  if (item.submenu && !item.disabled) {
+                    openSubmenu(item.id, e.currentTarget.getBoundingClientRect(), item.submenu)
                   } else {
                     setActiveSubmenu(null)
                   }

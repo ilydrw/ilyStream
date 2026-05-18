@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'http'
 import { EventEmitter } from 'events'
+import { networkInterfaces } from 'os'
 import type { AnyStreamEvent } from '../platforms/types'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import { Database } from '../db/database'
@@ -15,8 +16,8 @@ import { NowPlayingManager } from './managers/now-playing-manager'
 import { LikesTracker } from './managers/likes-tracker'
 import { DEFAULT_PORT } from './types'
 
-const DEFAULT_LISTEN_HOST = '127.0.0.1'
-const ALLOWED_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+const DEFAULT_LISTEN_HOST = '0.0.0.0'
+const ALLOWED_LISTEN_HOSTS = new Set(['0.0.0.0', '127.0.0.1', 'localhost', '::1', '::'])
 
 function resolveListenHost(): string {
   const requested = (process.env.ILYSTREAM_OVERLAY_HOST || DEFAULT_LISTEN_HOST).trim()
@@ -24,6 +25,30 @@ function resolveListenHost(): string {
   if (ALLOWED_LISTEN_HOSTS.has(requested)) return requested
   console.warn(`[OverlayServer] Using non-loopback overlay host from ILYSTREAM_OVERLAY_HOST: ${requested}`)
   return requested
+}
+
+function getLanIPv4Addresses(): string[] {
+  const addresses = new Set<string>()
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family === 'IPv4' && !entry.internal) {
+        addresses.add(entry.address)
+      }
+    }
+  }
+  return [...addresses]
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === '0.0.0.0' || host === '::'
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
+
+function formatHostPort(host: string, port: number): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]:${port}` : `${host}:${port}`
 }
 
 export class OverlayServer extends EventEmitter {
@@ -49,6 +74,11 @@ export class OverlayServer extends EventEmitter {
     running: false,
     port: null,
     requestedPort: null,
+    listenHost: null,
+    deviceHost: null,
+    deviceHosts: [],
+    devicePairUrl: null,
+    devicePairUrls: [],
     lastError: null,
     startedAt: null,
     chatUrl: null,
@@ -273,6 +303,11 @@ export class OverlayServer extends EventEmitter {
       this.sse.startPingLoop()
     } catch (error: any) {
       this.status.running = false
+      this.status.listenHost = null
+      this.status.deviceHost = null
+      this.status.deviceHosts = []
+      this.status.devicePairUrl = null
+      this.status.devicePairUrls = []
       this.status.lastError = error.message
     }
     this.emit('status', this.getStatus())
@@ -287,12 +322,25 @@ export class OverlayServer extends EventEmitter {
       await new Promise<void>(r => s.close(() => r()))
     }
     this.status.running = false
+    this.status.listenHost = null
+    this.status.deviceHost = null
+    this.status.deviceHosts = []
+    this.status.devicePairUrl = null
+    this.status.devicePairUrls = []
     this.emit('status', this.getStatus())
   }
 
   private markRunning(port: number): void {
+    const deviceHosts = this.getReachableDeviceHosts(port)
+    const devicePairUrls = deviceHosts.map((host) => `http://${host}/api/v1/pair/complete`)
+
     this.status.running = true
     this.status.port = port
+    this.status.listenHost = this.listenHost
+    this.status.deviceHost = deviceHosts[0] || null
+    this.status.deviceHosts = deviceHosts
+    this.status.devicePairUrl = devicePairUrls[0] || null
+    this.status.devicePairUrls = devicePairUrls
     this.status.startedAt = this.status.startedAt || new Date().toISOString()
     const base = `http://127.0.0.1:${port}`
     this.status.chatUrl = `${base}/overlay/chat.html`
@@ -302,6 +350,23 @@ export class OverlayServer extends EventEmitter {
     this.status.deckUrl = `${base}/overlay/deck`
     this.status.particlesUrl = `${base}/overlay/particles.html`
     this.status.dualVerticalUrl = `${base}/overlay/dual-vertical.html`
+  }
+
+  private getReachableDeviceHosts(port: number): string[] {
+    const hosts = new Set<string>()
+
+    if (isWildcardHost(this.listenHost)) {
+      for (const address of getLanIPv4Addresses()) {
+        hosts.add(formatHostPort(address, port))
+      }
+      hosts.add(formatHostPort('127.0.0.1', port))
+    } else if (isLoopbackHost(this.listenHost)) {
+      hosts.add(formatHostPort('127.0.0.1', port))
+    } else {
+      hosts.add(formatHostPort(this.listenHost, port))
+    }
+
+    return [...hosts]
   }
 
   private updateClientCounts(): void {

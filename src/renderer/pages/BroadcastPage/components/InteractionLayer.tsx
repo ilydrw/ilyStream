@@ -41,7 +41,11 @@ export function InteractionLayer(props: InteractionLayerProps) {
           <div
             key={layer.id}
             onMouseDown={(e) => onMouseDown(e, layer, props.aspectRatio)}
-            onContextMenu={(e) => onContextMenu?.(e, layer, props.aspectRatio)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onContextMenu?.(e, layer, props.aspectRatio)
+            }}
             className={`absolute pointer-events-auto transition-shadow duration-300 ${isLocked ? 'cursor-default' : 'cursor-move'} ${
               isSelected || layer.id === props.highlightedLayerId
                 ? `${isLocked ? 'ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(251,191,36,0.22)]' : cropping ? 'ring-[6px] ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.7)]' : 'ring-[6px] ring-[#d035f1] shadow-[0_0_50px_rgba(208,53,241,0.8)]'} z-10`

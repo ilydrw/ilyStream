@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { IconRefresh } from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
+import { WidgetThemeSection } from './ConfigEditors/WidgetThemeSection'
 import { Modal } from '../../../components/ui/Modal'
 
 export function WidgetEditorModal({
@@ -96,6 +97,9 @@ export function WidgetEditorModal({
       <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] h-full">
         {/* Config */}
         <div className="border-r border-white/5 overflow-y-auto custom-scrollbar p-8 bg-black/20">
+          <div className="mb-8">
+            <WidgetThemeSection draft={draft} onChange={handleDraftChange} />
+          </div>
           <ConfigEditor draft={draft} onChange={handleDraftChange} onPreview={handlePreviewOverride} />
         </div>
 

@@ -23,6 +23,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
   }
   const maxVisible = Math.round(clampNumber(config.maxAvatars, 1, 25, DEFAULT_LIKES_TRACKER_CONFIG.maxAvatars))
   const accentColor = safeHexColor(config.accentColor, DEFAULT_LIKES_TRACKER_CONFIG.accentColor)
+  const secondaryColor = safeHexColor((config as any).secondaryColor, '#25f4ee')
   const opacity = clampNumber(config.opacity, 0.1, 1, DEFAULT_LIKES_TRACKER_CONFIG.opacity)
   const scale = clampNumber(config.scale, 0.5, 2, DEFAULT_LIKES_TRACKER_CONFIG.scale)
   const showTotal = config.showTotal !== false
@@ -48,7 +49,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       --glass-border: rgba(255, 255, 255, ${0.05 + (glassIntensity * 0.1)});
       --row-height: 60px;
       --accent-color: ${accentColor};
-      --accent-gradient: linear-gradient(135deg, var(--accent-color), #25f4ee);
+      --accent-gradient: linear-gradient(135deg, var(--accent-color), ${secondaryColor});
       --gold: #ffd700;
       --silver: #e0e0e0;
       --bronze: #cd7f32;
