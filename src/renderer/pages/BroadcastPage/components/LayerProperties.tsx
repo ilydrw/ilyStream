@@ -115,6 +115,12 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
 
   const isPortrait = activeOrientation === '9:16'
   const layout = resolveLayerLayout(layer, activeOrientation)
+  const sourceFitMode = layer.config.fitMode === 'cover' || layer.config.fitMode === 'stretch' ? layer.config.fitMode : 'contain'
+  const scaleModeOptions = [
+    { value: 'contain', label: 'Contain' },
+    { value: 'cover', label: 'Cover' },
+    { value: 'stretch', label: 'Stretch' }
+  ] as const
 
   const update = (updates: Partial<StudioLayer>) => store.updateLayer(sceneId, layer.id, updates)
 
@@ -270,6 +276,28 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
 
         {/* Source Config Section */}
         <Section title="Source Parameters" icon={IconSettings}>
+          {(layer.type === 'camera' || layer.type === 'display' || layer.type === 'browser' || layer.type === 'image') && (
+            <div className="space-y-3">
+              <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 block ml-1">Scale Mode</label>
+              <div className="grid grid-cols-3 gap-2">
+                {scaleModeOptions.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => updateConfig({ fitMode: option.value })}
+                    className={`h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                      sourceFitMode === option.value
+                        ? 'bg-accent text-black border-accent shadow-glow shadow-accent/20'
+                        : 'bg-white/[0.03] text-white/30 border-white/5 hover:text-white hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(layer.type === 'camera' || layer.type === 'audio') && (
             <div className="space-y-4">
               <div>

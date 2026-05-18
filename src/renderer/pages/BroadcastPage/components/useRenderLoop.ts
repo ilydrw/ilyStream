@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { StudioScene, StudioLayer } from '../../../../shared/studio'
+import type { StudioScene } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
-import { drawMediaFallback, drawAndCacheMediaFrame, traceShapePath, wrapCanvasText } from './CanvasEditor.utils'
+import {
+  croppedSourceRect,
+  drawFittedSource,
+  drawMediaFallback,
+  resolveSourceFitMode,
+  traceShapePath,
+  wrapCanvasText
+} from './CanvasEditor.utils'
 import type { CachedMediaFrame, CanvasPreviewMode, CanvasStreamOutput, BrowserFrameSurface } from './CanvasEditor.types'
 import { useStudioStore } from '../../../stores/studio-store'
 import { segmentationService } from '../../../services/SegmentationService'
@@ -169,6 +176,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
 
           const video = (l.type === 'camera' || l.type === 'display') ? videoRefs.current[l.id] : null
           const isCamera = l.type === 'camera'
+          const fitMode = resolveSourceFitMode(l)
 
           if (isVbEnabled && isCamera && video && video.readyState >= 2) {
             segmentationService.processVideo(l.id, video)
@@ -259,58 +267,67 @@ export function useRenderLoop(options: RenderLoopOptions) {
                 const cCtx = cc.getContext('2d', { alpha: true })
                 if (cCtx) {
                   cCtx.clearRect(0, 0, dl.width, dl.height)
-                  cCtx.drawImage(
+                  drawFittedSource(
+                    cCtx,
                     video,
-                    (layout.crop?.left || 0), (layout.crop?.top || 0),
-                    video.videoWidth - (layout.crop?.left || 0) - (layout.crop?.right || 0),
-                    video.videoHeight - (layout.crop?.top || 0) - (layout.crop?.bottom || 0),
-                    0, 0, dl.width, dl.height
+                    croppedSourceRect(video.videoWidth, video.videoHeight, layout.crop),
+                    { x: 0, y: 0, width: dl.width, height: dl.height },
+                    fitMode
                   )
                   cCtx.globalCompositeOperation = 'destination-in'
-                  if (layout.crop) {
-                    cCtx.drawImage(
-                      maskResult.mask,
-                      layout.crop.left, layout.crop.top,
-                      maskResult.width - layout.crop.left - layout.crop.right,
-                      maskResult.height - layout.crop.top - layout.crop.bottom,
-                      0, 0, dl.width, dl.height
-                    )
-                  } else {
-                    cCtx.drawImage(maskResult.mask, 0, 0, dl.width, dl.height)
-                  }
+                  drawFittedSource(
+                    cCtx,
+                    maskResult.mask,
+                    croppedSourceRect(maskResult.width, maskResult.height, layout.crop),
+                    { x: 0, y: 0, width: dl.width, height: dl.height },
+                    fitMode
+                  )
                   cCtx.globalCompositeOperation = 'source-over'
 
                   targetCtx.drawImage(cc, dl.x - cx, dl.y - cy)
                 }
               } else {
-                drawTarget.drawImage(
+                drawFittedSource(
+                  drawTarget,
                   video,
-                  (layout.crop?.left || 0), (layout.crop?.top || 0),
-                  video.videoWidth - (layout.crop?.left || 0) - (layout.crop?.right || 0),
-                  video.videoHeight - (layout.crop?.top || 0) - (layout.crop?.bottom || 0),
-                  drawX, drawY, dl.width, dl.height
+                  croppedSourceRect(video.videoWidth, video.videoHeight, layout.crop),
+                  { x: drawX, y: drawY, width: dl.width, height: dl.height },
+                  fitMode
                 )
               }
             } else {
               const cached = mediaFrameCache.current[l.id]
-              if (cached) drawTarget.drawImage(cached.canvas, drawX, drawY, dl.width, dl.height)
-              else drawMediaFallback(drawTarget, mediaFrameCache.current, l.id, { ...dl, x: drawX, y: drawY }, 'WAITING', l.name)
+              if (cached) {
+                drawFittedSource(
+                  drawTarget,
+                  cached.canvas,
+                  croppedSourceRect(cached.width, cached.height),
+                  { x: drawX, y: drawY, width: dl.width, height: dl.height },
+                  fitMode
+                )
+              } else {
+                drawMediaFallback(drawTarget, mediaFrameCache.current, l.id, { ...dl, x: drawX, y: drawY }, 'WAITING', l.name)
+              }
             }
           } else if (l.type === 'image' && imageCache.current[l.id]) {
-            drawTarget.drawImage(imageCache.current[l.id], drawX, drawY, dl.width, dl.height)
+            const image = imageCache.current[l.id]
+            drawFittedSource(
+              drawTarget,
+              image,
+              croppedSourceRect(image.naturalWidth || image.width, image.naturalHeight || image.height, layout.crop),
+              { x: drawX, y: drawY, width: dl.width, height: dl.height },
+              fitMode
+            )
           } else if (l.type === 'widget' || l.type === 'browser') {
             const frame = browserFrameCache.current[l.id]
             if (frame && frame.bitmap) {
-              const c = layout.crop
-              if (c) {
-                drawTarget.drawImage(
-                  frame.bitmap,
-                  c.left, c.top, frame.width - c.left - c.right, frame.height - c.top - c.bottom,
-                  drawX, drawY, dl.width, dl.height
-                )
-              } else {
-                drawTarget.drawImage(frame.bitmap, drawX, drawY, dl.width, dl.height)
-              }
+              drawFittedSource(
+                drawTarget,
+                frame.bitmap,
+                croppedSourceRect(frame.width, frame.height, layout.crop),
+                { x: drawX, y: drawY, width: dl.width, height: dl.height },
+                l.type === 'widget' ? 'stretch' : fitMode
+              )
             }
           } else if (l.type === 'text') {
             const fontSize = Number(l.config?.fontSize) || 48

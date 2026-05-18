@@ -84,14 +84,15 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
         captureWidth: 1920,
         captureHeight: 1080,
         captureFps: 30,
-        stabilize: false
+        stabilize: false,
+        fitMode: 'contain'
       },
-      display: { captureAudio: true, desktopSourceId: '', desktopSourceName: '' },
+      display: { captureAudio: true, desktopSourceId: '', desktopSourceName: '', fitMode: 'contain' },
       audio: { captureMode: 'mic', deviceId: devices.find(d => d.kind === 'audioinput')?.deviceId || '', desktopSourceId: '', desktopSourceName: '' },
       widget: { widgetId: widgets[0]?.id || '', fps: 8 },
-      browser: { url: '', fps: 8 },
+      browser: { url: '', fps: 8, fitMode: 'contain' },
       text: { text: 'New Text', color: '#ffffff', fontSize: 48 },
-      image: { assetPath: '' }
+      image: { assetPath: '', fitMode: 'contain' }
     }[type])
 
     if (type === ('spotify' as any)) {

@@ -3,8 +3,11 @@ import { useParams } from 'react-router-dom'
 import { useStudioStore } from '../../stores/studio-store'
 import { resolveLayerLayout } from '../../../shared/studio'
 import {
+  croppedSourceRect,
   drawAndCacheMediaFrame,
+  drawFittedSource,
   drawMediaFallback,
+  resolveSourceFitMode,
   resolveBrowserCaptureSettings,
   resolveBrowserSourceUrl
 } from './components/CanvasEditor.utils'
@@ -383,7 +386,8 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         if (filters.length > 0) ctx.filter = filters.join(' ')
 
         ctx.globalAlpha = raw.opacity ?? 1
-        const rotation = Number(raw.rotation || 0)
+        const rotation = Number(layout.rotation || 0)
+        const fitMode = resolveSourceFitMode(raw)
         if (rotation) {
           ctx.translate(drawLayout.x + drawLayout.width / 2, drawLayout.y + drawLayout.height / 2)
           ctx.rotate(rotation * Math.PI / 180)
@@ -457,7 +461,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
               if (withBlur && e.focusCircle?.enabled) ctx.filter = `${oldFilter === 'none' ? '' : oldFilter} blur(${(e.focusCircle.blur / 100) * 40}px)`
               const sx_orig = drawLayout.x, sy_orig = drawLayout.y
               drawLayout.x -= cx; drawLayout.y -= cy
-              drawAndCacheMediaFrame(ctx, mediaFrameCache.current, raw.id, video, drawLayout, renderFrameCount, raw.crop, coversProgram ? 1 : 2)
+              drawAndCacheMediaFrame(ctx, mediaFrameCache.current, raw.id, video, drawLayout, renderFrameCount, drawLayout.crop, coversProgram ? 1 : 2, fitMode)
               drawLayout.x = sx_orig; drawLayout.y = sy_orig; ctx.filter = oldFilter
             }
             drawSource(true)
@@ -474,14 +478,24 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         } else if (raw.type === 'image') {
           const img = imageCache.current[raw.id]
           if (img && img.complete && img.naturalWidth > 0) {
-            if (raw.crop) ctx.drawImage(img, raw.crop.left, raw.crop.top, img.naturalWidth - raw.crop.left - raw.crop.right, img.naturalHeight - raw.crop.top - raw.crop.bottom, drawLayout.x - cx, drawLayout.y - cy, drawLayout.width, drawLayout.height)
-            else ctx.drawImage(img, drawLayout.x - cx, drawLayout.y - cy, drawLayout.width, drawLayout.height)
+            drawFittedSource(
+              ctx,
+              img,
+              croppedSourceRect(img.naturalWidth || img.width, img.naturalHeight || img.height, drawLayout.crop),
+              { x: drawLayout.x - cx, y: drawLayout.y - cy, width: drawLayout.width, height: drawLayout.height },
+              fitMode
+            )
           }
         } else if (raw.type === 'browser' || raw.type === 'widget') {
           const bitmap = activeBrowserBitmapsRef.current[raw.id]
           if (bitmap) {
-            if (raw.crop) ctx.drawImage(bitmap, raw.crop.left, raw.crop.top, bitmap.width - raw.crop.left - raw.crop.right, bitmap.height - raw.crop.top - raw.crop.bottom, drawLayout.x - cx, drawLayout.y - cy, drawLayout.width, drawLayout.height)
-            else ctx.drawImage(bitmap, drawLayout.x - cx, drawLayout.y - cy, drawLayout.width, drawLayout.height)
+            drawFittedSource(
+              ctx,
+              bitmap,
+              croppedSourceRect(bitmap.width, bitmap.height, drawLayout.crop),
+              { x: drawLayout.x - cx, y: drawLayout.y - cy, width: drawLayout.width, height: drawLayout.height },
+              raw.type === 'widget' ? 'stretch' : fitMode
+            )
           }
         }
         ctx.restore()

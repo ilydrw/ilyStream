@@ -16,6 +16,7 @@ export interface StudioLayer {
     text?: string
     color?: string
     fontSize?: number
+    fitMode?: 'contain' | 'cover' | 'stretch'
     [key: string]: any
   }
 

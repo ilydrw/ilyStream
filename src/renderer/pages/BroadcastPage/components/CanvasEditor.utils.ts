@@ -6,6 +6,85 @@ export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
 export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
 export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 60
 
+export type SourceFitMode = 'contain' | 'cover' | 'stretch'
+
+export interface SourceRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function resolveSourceFitMode(layer: StudioLayer): SourceFitMode {
+  const value = layer.config?.fitMode
+  return value === 'cover' || value === 'stretch' ? value : 'contain'
+}
+
+export function croppedSourceRect(width: number, height: number, crop?: Crop): SourceRect {
+  const safeWidth = Math.max(1, width)
+  const safeHeight = Math.max(1, height)
+  const left = Math.max(0, Math.min(safeWidth - 1, crop?.left || 0))
+  const top = Math.max(0, Math.min(safeHeight - 1, crop?.top || 0))
+  const right = Math.max(0, Math.min(safeWidth - left - 1, crop?.right || 0))
+  const bottom = Math.max(0, Math.min(safeHeight - top - 1, crop?.bottom || 0))
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, safeWidth - left - right),
+    height: Math.max(1, safeHeight - top - bottom)
+  }
+}
+
+export function drawFittedSource(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sourceRect: SourceRect,
+  destRect: SourceRect,
+  fitMode: SourceFitMode
+): void {
+  if (fitMode === 'stretch') {
+    ctx.drawImage(source, sourceRect.x, sourceRect.y, sourceRect.width, sourceRect.height, destRect.x, destRect.y, destRect.width, destRect.height)
+    return
+  }
+
+  const sourceRatio = sourceRect.width / sourceRect.height
+  const destRatio = destRect.width / destRect.height
+
+  if (fitMode === 'cover') {
+    let sx = sourceRect.x
+    let sy = sourceRect.y
+    let sw = sourceRect.width
+    let sh = sourceRect.height
+
+    if (sourceRatio > destRatio) {
+      sw = sh * destRatio
+      sx = sourceRect.x + (sourceRect.width - sw) / 2
+    } else {
+      sh = sw / destRatio
+      sy = sourceRect.y + (sourceRect.height - sh) / 2
+    }
+
+    ctx.drawImage(source, sx, sy, sw, sh, destRect.x, destRect.y, destRect.width, destRect.height)
+    return
+  }
+
+  let dw = destRect.width
+  let dh = destRect.height
+  let dx = destRect.x
+  let dy = destRect.y
+
+  if (sourceRatio > destRatio) {
+    dh = dw / sourceRatio
+    dy = destRect.y + (destRect.height - dh) / 2
+  } else {
+    dw = dh * sourceRatio
+    dx = destRect.x + (destRect.width - dw) / 2
+  }
+
+  ctx.drawImage(source, sourceRect.x, sourceRect.y, sourceRect.width, sourceRect.height, dx, dy, dw, dh)
+}
+
 export function drawMediaStatus(
   ctx: CanvasRenderingContext2D,
   layout: { x: number; y: number; width: number; height: number },
@@ -90,7 +169,8 @@ export function drawAndCacheMediaFrame(
   layout: { x: number; y: number; width: number; height: number },
   frameCount: number,
   crop?: Crop,
-  cacheEveryFrames = 1
+  cacheEveryFrames = 1,
+  fitMode: SourceFitMode = 'contain'
 ): void {
   // Draw live media through a per-source surface. This avoids transient GPU
   // read hiccups from punching through as black/flicker on the composited scene.
@@ -102,7 +182,7 @@ export function drawAndCacheMediaFrame(
 
   if (shouldRefreshCache) {
     cached.ctx.clearRect(0, 0, width, height)
-    drawVideoFrame(cached.ctx, video, { x: 0, y: 0, width, height }, crop)
+    drawVideoFrame(cached.ctx, video, { x: 0, y: 0, width, height }, crop, fitMode)
     cached.lastUpdateAt = performance.now()
   }
 
@@ -138,31 +218,10 @@ function drawVideoFrame(
   ctx: CanvasRenderingContext2D,
   video: HTMLVideoElement,
   layout: { x: number; y: number; width: number; height: number },
-  crop?: Crop
+  crop?: Crop,
+  fitMode: SourceFitMode = 'contain'
 ): void {
-  if (!crop) {
-    ctx.drawImage(video, layout.x, layout.y, layout.width, layout.height)
-    return
-  }
-
-  const sourceWidth = video.videoWidth
-  const sourceHeight = video.videoHeight
-  const sx = Math.max(0, crop.left)
-  const sy = Math.max(0, crop.top)
-  const sw = Math.max(1, sourceWidth - crop.left - crop.right)
-  const sh = Math.max(1, sourceHeight - crop.top - crop.bottom)
-
-  ctx.drawImage(
-    video,
-    sx,
-    sy,
-    sw,
-    sh,
-    layout.x,
-    layout.y,
-    layout.width,
-    layout.height
-  )
+  drawFittedSource(ctx, video, croppedSourceRect(video.videoWidth, video.videoHeight, crop), layout, fitMode)
 }
 
 export function drawSourceHealthBadge(
