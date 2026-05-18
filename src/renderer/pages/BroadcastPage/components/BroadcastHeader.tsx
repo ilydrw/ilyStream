@@ -92,7 +92,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   const assignedStreamCount = layoutAssignments.horizontal.length + layoutAssignments.vertical.length
 
   return (
-    <header className="shrink-0 h-20 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-hidden border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl z-[500]" style={{ WebkitAppRegion: 'drag' } as any}>
+    <header className="relative z-[900] shrink-0 h-20 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-visible border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl" style={{ WebkitAppRegion: 'drag' } as any}>
       {/* Workspace Group */}
       <div className="min-w-0 flex items-center gap-2 xl:gap-3 2xl:gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10">
