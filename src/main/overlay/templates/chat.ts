@@ -224,6 +224,8 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
       }
 
       function addItem(item, animate) {
+        var allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid', 'share'];
+        if (item.kind && allowedKinds.indexOf(item.kind) === -1) return;
         if (CFG.chatOnly && item.kind !== 'chat') return;
         maybeClearEmpty();
         var existing = FEED.querySelector('[data-id="' + item.id + '"]');
@@ -253,7 +255,8 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
 
       function renderSnapshot(items) {
         FEED.innerHTML = '';
-        var visible = items.slice(-CFG.maxItems);
+        var allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid', 'share'];
+        var visible = items.filter(function(i) { return !i.kind || allowedKinds.indexOf(i.kind) !== -1; }).slice(-CFG.maxItems);
         if (CFG.chatOnly) visible = visible.filter(function(i) { return i.kind === 'chat'; });
         if (visible.length === 0) { renderEmpty(); return; }
         visible.forEach(function(item) { addItem(item, false); });

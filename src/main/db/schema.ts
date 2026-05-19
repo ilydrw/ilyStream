@@ -72,6 +72,12 @@ export const SCHEMA_SQL = `
     PRIMARY KEY (username, platform)
   );
 
+  CREATE TABLE IF NOT EXISTS stream_state (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS deck_actions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -173,7 +179,7 @@ export const SCHEMA_SQL = `
 export function ensureColumn(db: BetterSqlite3.Database, table: string, column: string, definition: string): void {
   const t = table.trim()
   const c = column.trim()
-  const ALLOWED_TABLES = new Set(['voice_profiles', 'triggers', 'platform_configs', 'settings', 'event_history', 'user_stats', 'global_stats', 'tiktok_gifts', 'tiktok_gift_aliases', 'economy_users', 'deck_actions', 'widgets', 'sounds_metadata'])
+  const ALLOWED_TABLES = new Set(['voice_profiles', 'triggers', 'platform_configs', 'settings', 'event_history', 'user_stats', 'global_stats', 'tiktok_gifts', 'tiktok_gift_aliases', 'economy_users', 'stream_state', 'deck_actions', 'widgets', 'sounds_metadata'])
   const IDENTIFIER_RE = /^[a-z_][a-z0-9_]*$/i
   if (!ALLOWED_TABLES.has(t) || !IDENTIFIER_RE.test(c)) throw new Error(`ensureColumn: Rejected invalid Table='${t}', Column='${c}'`)
   const rows = db.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>

@@ -22,15 +22,23 @@ export class EconomyService extends EventEmitter {
   }
 
   private loadState() {
-    const row = this.db.getRawDb().prepare('SELECT value_json FROM stream_state WHERE key = ?').get('subathon_end') as any
-    if (row) {
-      this.subathonEndTime = JSON.parse(row.value_json).timestamp
+    try {
+      const row = this.db.getRawDb().prepare('SELECT value_json FROM stream_state WHERE key = ?').get('subathon_end') as any
+      if (row) {
+        this.subathonEndTime = JSON.parse(row.value_json).timestamp
+      }
+    } catch (err) {
+      console.warn('[economy] Could not load stream_state; continuing with a fresh subathon timer.', err)
     }
   }
 
   private saveState() {
-    this.db.getRawDb().prepare('INSERT OR REPLACE INTO stream_state (key, value_json) VALUES (?, ?)')
-      .run('subathon_end', JSON.stringify({ timestamp: this.subathonEndTime }))
+    try {
+      this.db.getRawDb().prepare('INSERT OR REPLACE INTO stream_state (key, value_json) VALUES (?, ?)')
+        .run('subathon_end', JSON.stringify({ timestamp: this.subathonEndTime }))
+    } catch (err) {
+      console.warn('[economy] Could not save stream_state.', err)
+    }
   }
 
   // --- Likeathon (Decay Loop) ---

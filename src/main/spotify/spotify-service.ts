@@ -7,10 +7,25 @@ import type { Database } from '../db/database'
 import type { PlatformManager } from '../platforms/platform-manager'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
+import { resolveAppSettings } from '../../shared/app-settings'
 import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
 import { SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
 import { SpotifyMapper } from './mappers/spotify-mapper'
 import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
+
+const SONG_REQUEST_COMMANDS = new Set(['!sr', '!songrequest', '!play', '.play', '/play'])
+const SKIP_COMMANDS = new Set(['!skip', '!voteskip', '.skip', '/skip'])
+
+interface SongRequestSource {
+  platform?: string
+  displayName?: string
+  profilePictureUrl?: string | null
+}
+
+type SpotifyChatCommand =
+  | { type: 'song-request'; query: string }
+  | { type: 'skip' }
+  | { type: 'none' }
 
 export class SpotifyService extends EventEmitter {
   private connected = false
@@ -45,12 +60,18 @@ export class SpotifyService extends EventEmitter {
   }
 
   async connect(clientIdOverride?: string): Promise<SpotifyStatus> {
-    const settings = this.db.getAllSettings()
-    const currentClientId = (settings.spotifyClientId as string) || DEFAULT_SPOTIFY_CLIENT_ID
-    const clientId = clientIdOverride || currentClientId
+    const settings = resolveAppSettings(this.db.getAllSettings())
+    const currentClientId = settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID
+    const clientId = (clientIdOverride?.trim() || currentClientId).trim()
 
-    if (clientIdOverride && clientIdOverride !== currentClientId) {
-      this.db.setSetting('spotifyClientId', clientIdOverride)
+    if (!clientId) {
+      this.lastError = 'Spotify Client ID is required before connecting.'
+      this.emit('status', this.getStatus())
+      throw new Error(this.lastError)
+    }
+
+    if (clientIdOverride?.trim() && clientId !== currentClientId) {
+      this.db.setSetting('spotifyClientId', clientId)
       this.db.setSetting('spotifyAccessToken', null)
       this.db.setSetting('spotifyRefreshToken', null)
     }
@@ -71,7 +92,7 @@ export class SpotifyService extends EventEmitter {
       }
     } else {
       this.accessToken = token
-      this.refreshToken = settings.spotifyRefreshToken as string | undefined || null
+      this.refreshToken = settings.spotifyRefreshToken || null
       this.client.setAccessToken(token)
     }
 
@@ -137,17 +158,24 @@ export class SpotifyService extends EventEmitter {
   async processEvent(event: AnyStreamEvent): Promise<boolean> {
     if (event.type !== 'chat') return false
     const chat = event as ChatEvent
-    const msg = chat.message.trim().toLowerCase()
+    const command = this.parseChatCommand(chat.message)
+    if (command.type === 'none') return false
 
-    if (msg.startsWith('!sr ') || msg.startsWith('!songrequest ')) {
-      const query = chat.message.split(' ').slice(1).join(' ')
-      if (query) {
-        await this.searchAndEnqueue(query, chat.user.username)
-        return true
-      }
+    const settings = resolveAppSettings(this.db.getAllSettings())
+
+    if (command.type === 'song-request') {
+      if (!settings.spotifySongRequestsEnabled || !settings.spotifyPlayEnabled || !command.query) return true
+
+      await this.searchAndEnqueue(command.query, chat.user.username, {
+        platform: chat.platform,
+        displayName: chat.user.displayName,
+        profilePictureUrl: chat.user.profilePictureUrl ?? null
+      })
+      return true
     }
 
-    if (msg === '!skip') {
+    if (command.type === 'skip') {
+      if (!settings.spotifySongRequestsEnabled || !settings.spotifySkipEnabled) return true
       await this.skip()
       return true
     }
@@ -155,24 +183,40 @@ export class SpotifyService extends EventEmitter {
     return false
   }
 
-  async searchAndEnqueue(query: string, username: string): Promise<SpotifySongRequest | null> {
+  async searchAndEnqueue(query: string, username: string, source: SongRequestSource = {}): Promise<SpotifySongRequest | null> {
     try {
+      const settings = resolveAppSettings(this.db.getAllSettings())
+      if (!settings.spotifySongRequestsEnabled || !settings.spotifyPlayEnabled) return null
+
+      const queuedRequests = this.requestQueue.filter(r => r.status === 'queued')
+      if (settings.spotifyMaxQueueLength > 0 && queuedRequests.length >= settings.spotifyMaxQueueLength) return null
+
+      const normalizedUsername = username.toLowerCase()
+      const userQueued = queuedRequests.filter(r => String(r.requestedBy).toLowerCase() === normalizedUsername).length
+      if (settings.spotifyMaxPerUser > 0 && userQueued >= settings.spotifyMaxPerUser) return null
+
       const rawTrack = await this.client.searchTrack(query)
       if (!rawTrack) return null
 
       const track = this.mapper.mapTrack(rawTrack)
+      if (!settings.spotifyAllowExplicit && track.explicit) return null
+
       await this.client.enqueue(track.uri)
 
       const request: SpotifySongRequest = {
         id: Math.random().toString(36).substring(2, 11),
         track,
         requestedBy: username,
-        platform: 'all', // Default platform for manual sr
+        platform: source.platform || 'all',
         requestedAt: Date.now(),
-        status: 'queued'
+        status: 'queued',
+        displayName: source.displayName,
+        profilePictureUrl: source.profilePictureUrl ?? null
       }
       this.requestQueue.push(request)
       this.saveQueueCache()
+      this.emit('queue-update', this.getQueue())
+      this.emitNowPlaying()
       this.emit('song-requested', request)
       return request
     } catch (e) {
@@ -181,16 +225,31 @@ export class SpotifyService extends EventEmitter {
     }
   }
 
+  private parseChatCommand(message: string): SpotifyChatCommand {
+    const trimmed = message.trim()
+    const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/)
+    if (!match) return { type: 'none' }
+
+    const command = match[1].toLowerCase()
+    const argument = (match[2] ?? '').trim()
+
+    if (SONG_REQUEST_COMMANDS.has(command)) return { type: 'song-request', query: argument }
+    if (SKIP_COMMANDS.has(command)) return { type: 'skip' }
+    return { type: 'none' }
+  }
+
   async removeFromQueue(requestId: string): Promise<void> {
     this.requestQueue = this.requestQueue.filter(r => r.id !== requestId)
     this.saveQueueCache()
     this.emit('queue-update', this.getQueue())
+    this.emitNowPlaying()
   }
 
   async clearQueue(): Promise<void> {
     this.requestQueue = []
     this.saveQueueCache()
     this.emit('queue-update', this.getQueue())
+    this.emitNowPlaying()
   }
 
   async skip(): Promise<void> {
@@ -225,13 +284,38 @@ export class SpotifyService extends EventEmitter {
   private async poll(): Promise<void> {
     if (!this.connected) return
     try {
-      const raw = await this.client.getCurrentlyPlaying()
+      const raw = await this.client.getPlaybackState()
       const state = this.mapper.mapPlaybackState(raw)
-      this.currentNowPlaying = this.mapper.mapNowPlaying(state)
-      this.emit('now-playing', this.currentNowPlaying)
-    } catch (e) {
-      // Handle auth error if needed
+      this.currentNowPlaying = {
+        ...this.mapper.mapNowPlaying(state),
+        queue: this.getQueue()
+      }
+      this.emitNowPlaying()
+    } catch (e: any) {
+      const message = e instanceof Error ? e.message : String(e)
+      console.error('[Spotify] Now playing poll failed:', message)
+
+      if (message.includes('401')) {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'unauthorized' }
+        this.handleAuthError('Spotify authorization expired. Reconnect Spotify.')
+      } else if (message.includes('403')) {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'forbidden' }
+      } else if (message.includes('404')) {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'no-device' }
+      } else {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'error' }
+      }
+
+      this.emitNowPlaying()
     }
+  }
+
+  private emitNowPlaying(): void {
+    this.currentNowPlaying = {
+      ...this.currentNowPlaying,
+      queue: this.getQueue()
+    }
+    this.emit('now-playing', this.currentNowPlaying)
   }
 
   private handleAuthError(error?: string): void {
@@ -256,11 +340,17 @@ export class SpotifyService extends EventEmitter {
   }
 
   async restoreSession(): Promise<void> {
-    const settings = this.db.getAllSettings()
-    this.accessToken = settings.spotifyAccessToken as string | null
-    this.refreshToken = settings.spotifyRefreshToken as string | null
+    const settings = resolveAppSettings(this.db.getAllSettings())
+    this.accessToken = settings.spotifyAccessToken || null
+    this.refreshToken = settings.spotifyRefreshToken || null
 
     if (this.refreshToken) {
+      if (!(settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID).trim()) {
+        this.lastError = 'Spotify Client ID is required before restoring Spotify.'
+        this.emit('status', this.getStatus())
+        return
+      }
+
       try {
         await this.refreshAccessToken()
         this.profile = await this.client.getProfile()
@@ -275,7 +365,14 @@ export class SpotifyService extends EventEmitter {
 
   private async refreshAccessToken(): Promise<void> {
     if (!this.refreshToken) return
-    const clientId = (this.db.getSetting('spotifyClientId') as string) || DEFAULT_SPOTIFY_CLIENT_ID
+    const settings = resolveAppSettings(this.db.getAllSettings())
+    const clientId = (settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID).trim()
+
+    if (!clientId) {
+      const error = 'Spotify Client ID is required before refreshing Spotify.'
+      this.handleAuthError(error)
+      throw new Error(error)
+    }
 
     try {
       const tokens = await refreshSpotifyTokens(clientId, this.refreshToken)

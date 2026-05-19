@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isTikTokLikeSystemText } from '../../shared/chat-event-filter'
 
 export interface ChatMessage {
   id: string
@@ -34,9 +35,15 @@ export const useChatStore = create<ChatStore>((set) => ({
   searchQuery: '',
 
   addMessage: (msg) =>
-    set((state) => ({
-      messages: [...state.messages, msg].slice(-state.maxMessages)
-    })),
+    set((state) => {
+      if (msg.platform === 'tiktok' && isTikTokLikeSystemText(msg.message)) {
+        return state
+      }
+
+      return {
+        messages: [...state.messages, msg].slice(-state.maxMessages)
+      }
+    }),
 
   clearMessages: () => set({ messages: [] }),
 

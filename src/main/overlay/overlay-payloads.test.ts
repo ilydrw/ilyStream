@@ -109,7 +109,7 @@ describe('overlay payload helpers', () => {
     expect(shouldBroadcastParticleEvent({ ...baseGift, isCombo: false })).toBe(true)
   })
 
-  it('lets like tracker fall back to deltas when TikTok omits cumulative totals', () => {
+  it('does not map likes into generic overlay feed items', () => {
     const event: LikeEvent = {
       id: 'like-1',
       platform: 'tiktok',
@@ -129,13 +129,35 @@ describe('overlay payload helpers', () => {
       }
     }
 
-    expect(eventToOverlayFeedItem(event)).toEqual(
-      expect.objectContaining({
-        kind: 'like',
-        amount: 8,
-        meta: undefined
-      })
-    )
+    expect(eventToOverlayFeedItem(event)).toBeNull()
+  })
+
+  it('does not map TikTok like system messages that arrive as chat', () => {
+    const event: ChatEvent = {
+      id: 'chat-like-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T10:00:00.000Z'),
+      type: 'chat',
+      raw: {
+        displayType: 'pm_mt_msg_viewer',
+        defaultPattern: '{0:user} liked the LIVE',
+        likeCount: 15,
+        totalLikeCount: 18610
+      },
+      message: 'Alex liked the LIVE',
+      emotes: [],
+      user: {
+        id: 'user-4',
+        username: 'alex',
+        displayName: 'Alex',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    }
+
+    expect(eventToOverlayFeedItem(event)).toBeNull()
   })
 
   it('clamps alert durations into a safe browser-source range', () => {
@@ -154,6 +176,24 @@ describe('overlay payload helpers', () => {
         platform: 'tiktok',
         durationMs: 30000,
         html: '&lt;strong&gt;Hi&lt;/strong&gt;'
+      })
+    )
+  })
+
+  it('accepts html payloads from direct alert pushes', () => {
+    expect(
+      createOverlayAlertItem(
+        {
+          html: 'Test User is now following!',
+          durationMs: 5000,
+          animationIn: 'fade',
+          animationOut: 'fade'
+        },
+        'tiktok'
+      )
+    ).toEqual(
+      expect.objectContaining({
+        html: 'Test User is now following!'
       })
     )
   })

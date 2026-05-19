@@ -94,9 +94,14 @@ export class OverlayRouter {
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
     const pathname = url.pathname
+    const isDeviceApiPath = pathname.startsWith('/api/v1/')
 
     if (request.method === 'OPTIONS') {
-      this.writeCorsHeaders(response, 204, 'application/json', request)
+      if (isDeviceApiPath) {
+        this.writeOpenCorsHeaders(response, 204, 'application/json')
+      } else {
+        this.writeCorsHeaders(response, 204, 'application/json', request)
+      }
       response.end()
       return
     }
@@ -488,6 +493,16 @@ export class OverlayRouter {
       ...this.corsHeaders(request),
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-ilyStream-Deck-Token',
+      'Access-Control-Max-Age': '86400'
+    })
+  }
+
+  private writeOpenCorsHeaders(response: ServerResponse, statusCode: number, contentType = 'application/json'): void {
+    response.writeHead(statusCode, {
+      'Content-Type': contentType,
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400'
     })
   }

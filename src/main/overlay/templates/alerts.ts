@@ -248,9 +248,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
   </style>
 </head>
 <body>
-  <div id="diag" class="diag-overlay">DISCONNECTED</div>
   <div id="v5-alert-stage"></div>
-  <div id="keep-alive" style="width:1px;height:1px;position:absolute;bottom:0;right:0;background:rgba(255,255,255,0.005);animation:rendering-heartbeat 2s infinite;"></div>
 
   <script>
     const IS_PREVIEW = ${JSON.stringify(isPreview)};
@@ -373,11 +371,11 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       }, clampNumber(alert.durationMs, 1000, 30000, 5000));
     }
 
-    const diag = document.getElementById('diag');
+    const diag = null;
 
     function setDiag(text, connected) {
-      if (!diag) return;
       console.log('[alerts-diag]', text, connected ? '(connected)' : '(error)');
+      if (!diag) return;
       diag.textContent = text;
       diag.classList.toggle('connected', connected);
       if (connected) {

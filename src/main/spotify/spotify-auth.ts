@@ -13,7 +13,7 @@ const TOKEN_URL = 'https://accounts.spotify.com/api/token'
  * Default Client ID for ilyStream.
  * Users can still override this in settings if they want their own app.
  */
-export const DEFAULT_SPOTIFY_CLIENT_ID = '' // Placeholder: in a real app this would be the app's registered ID
+export const DEFAULT_SPOTIFY_CLIENT_ID = process.env.ILYSTREAM_SPOTIFY_CLIENT_ID?.trim() || ''
 
 const SCOPES = [
   'user-modify-playback-state',
@@ -39,6 +39,8 @@ function generateCodeChallenge(verifier: string): string {
 }
 
 export async function initiateSpotifyAuth(clientId: string): Promise<SpotifyTokens> {
+  if (!clientId.trim()) throw new Error('Spotify Client ID is required before connecting.')
+
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = generateCodeChallenge(codeVerifier)
   const state = randomBytes(32).toString('base64url')
@@ -156,6 +158,8 @@ export async function refreshSpotifyTokens(
   clientId: string,
   refreshToken: string
 ): Promise<SpotifyTokens> {
+  if (!clientId.trim()) throw new Error('Spotify Client ID is required before refreshing Spotify.')
+
   const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

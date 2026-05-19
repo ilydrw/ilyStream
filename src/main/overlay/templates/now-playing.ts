@@ -402,7 +402,9 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
           return;
         }
 
-        if (!state.trackId && (!state.queue || state.queue.length === 0)) {
+        const hasTrack = Boolean(state.trackId || state.trackName);
+
+        if (!hasTrack && (!state.queue || state.queue.length === 0)) {
           if (HIDE_WHEN_IDLE) {
             container.classList.remove('is-visible');
           } else {
@@ -419,7 +421,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
 
         container.classList.add('is-visible');
 
-        if (state.trackId) {
+        if (hasTrack) {
           trackEl.textContent = state.trackName || '—';
           artistEl.textContent = (state.artists || []).join(', ');
 

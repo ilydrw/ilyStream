@@ -107,6 +107,8 @@ export class DeviceApi {
    * `chatBacklog` snapshot when a new device subscribes.
    */
   appendChatItem(item: unknown): void {
+    if (isLikeFeedItem(item)) return
+
     this.chatBuffer.push(item)
     if (this.chatBuffer.length > CHAT_BUFFER_LIMIT) {
       this.chatBuffer = this.chatBuffer.slice(-CHAT_BUFFER_LIMIT)
@@ -161,6 +163,11 @@ export class DeviceApi {
     const method = request.method || 'GET'
 
     try {
+      if (route === 'health' && method === 'GET') {
+        writeJson(response, { status: 'ok', serverVersion: SERVER_VERSION })
+        return true
+      }
+
       // --- Pairing endpoints (no token required) ---
       if (route === 'pair/complete' && method === 'POST') {
         await this.handlePairComplete(request, response)
@@ -321,7 +328,11 @@ export class DeviceApi {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive'
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'X-Accel-Buffering': 'no'
     })
     response.write(': connected\n\n')
 
@@ -382,7 +393,7 @@ export class DeviceApi {
     const token =
       typeof header === 'string' && header.startsWith('Bearer ')
         ? header.slice('Bearer '.length).trim()
-        : null
+        : getQueryToken(request)
 
     return !!token && this.authService.verifyToken(token)
   }
@@ -416,6 +427,15 @@ export class DeviceApi {
 
 // --- Helpers ---
 
+function isLikeFeedItem(item: unknown): boolean {
+  return Boolean(
+    item &&
+      typeof item === 'object' &&
+      'kind' in item &&
+      (item as { kind?: unknown }).kind === 'like'
+  )
+}
+
 function generatePairCode(): string {
   return randomInt(0, 1_000_000)
     .toString()
@@ -432,10 +452,21 @@ function writeJson(
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(json),
     'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400'
   })
   response.end(json)
+}
+
+function getQueryToken(request: IncomingMessage): string | null {
+  try {
+    const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
+    return url.searchParams.get('token') || url.searchParams.get('access_token')
+  } catch {
+    return null
+  }
 }
 
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {

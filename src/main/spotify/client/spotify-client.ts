@@ -58,6 +58,13 @@ export class SpotifyClient {
     return res.json()
   }
 
+  async getPlaybackState(): Promise<any | null> {
+    const res = await this.fetch('/me/player')
+    if (res.status === 204) return null
+    if (!res.ok) throw new Error(`Playback state fetch failed (${res.status})`)
+    return res.json()
+  }
+
   async pause(): Promise<void> {
     const res = await this.fetch('/me/player/pause', { method: 'PUT' })
     if (!res.ok && res.status !== 403) throw new Error(`Pause failed (${res.status})`)

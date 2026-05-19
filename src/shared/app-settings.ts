@@ -312,8 +312,15 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
 
   const normalizeSoundId = (id: string): string => {
     if (!id) return ''
-    if (id.includes('\\') || id.includes('/')) return ''
+    if (id.startsWith('/')) return ''
+    if (id.includes('\\')) return ''
+    const parts = id.split('/').filter(Boolean)
+    if (parts.length > 2) return ''
+    if (parts.length === 2 && parts[0] !== 'alerts' && parts[0] !== 'board') return ''
+    if (parts.some(part => part === '.' || part === '..')) return ''
+    const fileName = parts[parts.length - 1] || ''
     const lower = id.toLowerCase()
+    if (fileName.includes('\\') || fileName.includes('/')) return ''
     if (!lower.endsWith('.mp3') && !lower.endsWith('.wav')) return ''
     return id
   }
@@ -561,6 +568,19 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     eventTextSuperfanColor: nested.alerts.superfan.color,
     eventTextSuperfanBackgroundColor: nested.alerts.superfan.backgroundColor,
     eventTextSuperfanBorderColor: nested.alerts.superfan.borderColor,
-    eventTextSuperfanFontSize: nested.alerts.superfan.fontSize
+    eventTextSuperfanFontSize: nested.alerts.superfan.fontSize,
+    spotifyClientId: nested.spotify.clientId,
+    spotifyAccessToken: nested.spotify.accessToken,
+    spotifyRefreshToken: nested.spotify.refreshToken,
+    spotifyTokenExpiresAt: nested.spotify.tokenExpiresAt,
+    spotifySongRequestsEnabled: nested.spotify.songRequestsEnabled,
+    spotifyPlayEnabled: nested.spotify.playEnabled,
+    spotifySkipEnabled: nested.spotify.skipEnabled,
+    spotifyAllowExplicit: nested.spotify.allowExplicit,
+    spotifyMaxQueueLength: nested.spotify.maxQueueLength,
+    spotifyMaxPerUser: nested.spotify.maxPerUser,
+    spotifyUserId: nested.spotify.userId,
+    spotifyDisplayName: nested.spotify.displayName,
+    spotifyVotesRequired: nested.spotify.votesRequired
   }
 }

@@ -1,4 +1,5 @@
 import { buildRelayText, getAutoRelayTargets, normalizeRelayText } from '../../shared/chat-relay'
+import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import type { AppSettings } from '../../shared/app-settings'
 import { PlatformManager } from '../platforms/platform-manager'
 import type { AnyStreamEvent, ChatEvent, Platform, PlatformChatSendResult } from '../platforms/types'
@@ -10,7 +11,7 @@ export class ChatRelayService {
   private readonly suppressedInbound = new Map<string, number>()
 
   private readonly handlePlatformEvent = (event: AnyStreamEvent) => {
-    if (event.type !== 'chat') {
+    if (event.type !== 'chat' || shouldSuppressStreamEventFromChat(event)) {
       return
     }
 

@@ -126,7 +126,7 @@ describe('resolveAppSettings event sounds', () => {
   it('normalizes gift and follower event sound settings', () => {
     const settings = resolveAppSettings({
       eventSoundGiftEnabled: true,
-      eventSoundGiftSoundId: 'gift-drop.mp3',
+      eventSoundGiftSoundId: 'alerts/gift-drop.mp3',
       eventSoundGiftVolume: 2,
       eventSoundFollowEnabled: true,
       eventSoundFollowSoundId: 'new-follower.wav',
@@ -139,7 +139,7 @@ describe('resolveAppSettings event sounds', () => {
     expect(settings).toEqual(
       expect.objectContaining({
         eventSoundGiftEnabled: true,
-        eventSoundGiftSoundId: 'gift-drop.mp3',
+        eventSoundGiftSoundId: 'alerts/gift-drop.mp3',
         eventSoundGiftVolume: 1,
         eventSoundFollowEnabled: true,
         eventSoundFollowSoundId: 'new-follower.wav',
@@ -155,7 +155,7 @@ describe('resolveAppSettings event sounds', () => {
     const settings = resolveAppSettings({
       eventSoundGiftSoundId: 'C:\\sounds\\gift.mp3',
       eventSoundFollowSoundId: 'follow.ogg',
-      eventSoundSuperfanSoundId: '..\\superfan.wav'
+      eventSoundSuperfanSoundId: '../superfan.wav'
     })
 
     expect(settings.eventSoundGiftSoundId).toBe('')
@@ -175,5 +175,32 @@ describe('resolveAppSettings event sounds', () => {
     expect(settings.eventTextSuperfanBackgroundColor).toBe('rgba(0, 0, 0, 0.05)')
     expect(settings.eventTextSuperfanBorderColor).toBe('#ff00aa')
     expect(settings.eventTextSuperfanFontSize).toBe(120)
+  })
+})
+
+describe('resolveAppSettings Spotify aliases', () => {
+  it('returns flat Spotify keys from defaults and nested settings', () => {
+    const defaults = resolveAppSettings()
+    const settings = resolveAppSettings({
+      spotify: {
+        clientId: 'client-123',
+        songRequestsEnabled: false,
+        playEnabled: false,
+        skipEnabled: true,
+        allowExplicit: false,
+        maxQueueLength: 10,
+        maxPerUser: 2
+      }
+    })
+
+    expect(defaults.spotifySongRequestsEnabled).toBe(true)
+    expect(defaults.spotifyPlayEnabled).toBe(true)
+    expect(settings.spotifyClientId).toBe('client-123')
+    expect(settings.spotifySongRequestsEnabled).toBe(false)
+    expect(settings.spotifyPlayEnabled).toBe(false)
+    expect(settings.spotifySkipEnabled).toBe(true)
+    expect(settings.spotifyAllowExplicit).toBe(false)
+    expect(settings.spotifyMaxQueueLength).toBe(10)
+    expect(settings.spotifyMaxPerUser).toBe(2)
   })
 })

@@ -238,7 +238,7 @@ export const DEFAULT_NOW_PLAYING_CONFIG: NowPlayingConfig = {
 
 export interface NowPlayingPayload {
   isPlaying: boolean
-  /** Spotify track id; null when nothing playing. */
+  /** Spotify track id; null when unavailable or nothing playing. */
   trackId: string | null
   trackName: string
   artists: string[]

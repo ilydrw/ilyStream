@@ -1,5 +1,6 @@
 import { AnyStreamEvent } from '../platforms/types'
 import type { OverlayAlertItem, OverlayFeedItem } from '../../shared/overlay'
+import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -30,6 +31,7 @@ export function eventToOverlayFeedItem(event: AnyStreamEvent): OverlayFeedItem |
 
   switch (event.type) {
     case 'chat':
+      if (shouldSuppressStreamEventFromChat(event)) return null
       return {
         id: event.id,
         kind: 'chat',
@@ -104,20 +106,7 @@ export function eventToOverlayFeedItem(event: AnyStreamEvent): OverlayFeedItem |
       }
 
     case 'like':
-      return {
-        id: event.id,
-        kind: 'like',
-        platform: event.platform,
-        platformLabel,
-        displayName: event.user.displayName || event.user.username,
-        profilePictureUrl: event.user.profilePictureUrl,
-        message: `sent ${event.likeCount} likes`,
-        amount: event.likeCount,
-        meta: event.totalLikes > 0 ? `${event.totalLikes.toLocaleString()} total` : undefined,
-        accentColor,
-        timestamp: toISO(event.timestamp),
-        emphasis: false
-      }
+      return null
 
     case 'share':
       return {
@@ -152,7 +141,8 @@ export function sanitizeOverlayHtml(html: string): string {
 export function createOverlayAlertItem(
   payload: {
     id?: string
-    template: string
+    template?: string
+    html?: string
     imageUrl?: string
     audioUrl?: string
     audioVolume?: number
@@ -176,7 +166,7 @@ export function createOverlayAlertItem(
   return {
     id: payload.id || crypto.randomUUID(),
     platform,
-    html: sanitizeOverlayHtml(payload.template),
+    html: sanitizeOverlayHtml(payload.template ?? payload.html ?? ''),
     imageUrl: payload.imageUrl,
     audioUrl: payload.audioUrl,
     audioVolume: clampNumber(payload.audioVolume, 0, 1),

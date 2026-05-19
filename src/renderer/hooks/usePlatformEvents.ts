@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import { useChatStore } from '../stores/chat-store'
 import { useConnectionStore } from '../stores/connection-store'
 
@@ -23,16 +24,20 @@ export function usePlatformEvents(isMounted: boolean) {
       window.api.on('event:stream', (event: any) => {
         console.log(`[usePlatformEvents] Received ${event.type} event from ${event.platform}:`, event)
         if (event.type === 'gift' && event.isCombo) return
+        const suppressFromChat = shouldSuppressStreamEventFromChat(event)
 
-        addEventDiagnostic({
-          id: event.id ?? `${event.platform}:${event.type}:${Date.now()}`,
-          platform: event.platform,
-          type: event.type,
-          summary: summarizeStreamEvent(event),
-          timestamp: new Date(event.timestamp ?? Date.now())
-        })
+        if (!suppressFromChat) {
+          addEventDiagnostic({
+            id: event.id ?? `${event.platform}:${event.type}:${Date.now()}`,
+            platform: event.platform,
+            type: event.type,
+            summary: summarizeStreamEvent(event),
+            timestamp: new Date(event.timestamp ?? Date.now())
+          })
+        }
 
         if (event.type === 'chat') {
+          if (suppressFromChat) return
           // Map Platform ChatEvent to Renderer ChatMessage
           const chatMsg = {
             id: event.id,

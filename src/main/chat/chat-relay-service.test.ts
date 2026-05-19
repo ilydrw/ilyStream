@@ -43,14 +43,15 @@ function createSettings(overrides: Partial<AppSettings> = {}): AppSettings {
 function createChatEvent(
   platform: Platform,
   message: string,
-  displayName = 'Stream Friend'
+  displayName = 'Stream Friend',
+  raw: Record<string, unknown> = {}
 ): ChatEvent {
   return {
     id: `${platform}-chat-1`,
     platform,
     timestamp: new Date('2026-04-10T12:00:00.000Z'),
     type: 'chat',
-    raw: {},
+    raw,
     message,
     emotes: [],
     user: {
@@ -160,6 +161,47 @@ describe('ChatRelayService', () => {
 
     try {
       platformManager.emit('event', createChatEvent('twitch', 'hello there'))
+      await Promise.resolve()
+
+      expect(platformManager.sendChatMessageToPlatforms).not.toHaveBeenCalled()
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('does not auto relay TikTok like system messages that arrive as chat', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: true },
+      twitch: { platform: 'twitch', canSend: true },
+      youtube: { platform: 'youtube', canSend: true },
+      kick: { platform: 'kick', canSend: false, reason: 'Unsupported' }
+    })
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([])
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () =>
+        createSettings({
+          chatAutoRelayPlatforms: {
+            tiktok: true,
+            twitch: true,
+            youtube: true,
+            kick: false
+          }
+        })
+    )
+
+    try {
+      platformManager.emit(
+        'event',
+        createChatEvent('tiktok', 'Alex liked the LIVE', 'Alex', {
+          displayType: 'pm_mt_msg_viewer',
+          defaultPattern: '{0:user} liked the LIVE',
+          likeCount: 15,
+          totalLikeCount: 18610
+        })
+      )
       await Promise.resolve()
 
       expect(platformManager.sendChatMessageToPlatforms).not.toHaveBeenCalled()

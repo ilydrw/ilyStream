@@ -99,30 +99,30 @@ export default function DashboardPage() {
                 <h2 className="kicker !opacity-100 mb-1">Service Nodes</h2>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 !p-8 !pt-0">
               {platformRows.map((row) => (
                 <Link 
                   key={row.platform} 
                   to={`/connections/${row.platform}`}
-                  className="flex items-center justify-between pl-4 py-4 pr-0 rounded-2xl bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 !p-4 rounded-2xl bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group overflow-hidden"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex min-w-0 items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center transition-transform">
                       <PlatformLogo platform={row.platform} size={20} />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-bold text-white">{row.label}</span>
+                    <div className="min-w-0 flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-bold text-white">{row.label}</span>
                         <div className={`w-1.5 h-1.5 rounded-full ${statusDot(row.status)}`} />
                       </div>
-                      <p className={`text-[10px] font-black tracking-widest ${statusStyles[row.status]}`}>
+                      <p className={`truncate text-[10px] font-black tracking-widest ${statusStyles[row.status]}`}>
                         {row.status}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right flex flex-col items-end">
-                    <div className="text-lg font-black text-white tabular-nums leading-none translate-x-1 pr-0">{(row.viewers || 0).toLocaleString()}</div>
-                    <div className="text-[9px] font-black tracking-widest text-white/20 mt-1 pr-0">Viewers</div>
+                  <div className="min-w-[64px] shrink-0 text-right flex flex-col items-end gap-1">
+                    <div className="max-w-full truncate text-lg font-black text-white tabular-nums leading-none">{(row.viewers || 0).toLocaleString()}</div>
+                    <div className="text-[9px] font-black tracking-widest text-white/20">Viewers</div>
                   </div>
                 </Link>
               ))}

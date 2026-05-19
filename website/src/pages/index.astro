@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.9';
+const latestVersion = '0.0.10';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,11 +46,11 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Projector Reliability: Loaded layouts and right-clicked sources now open on the selected fullscreen display with the correct scene and aspect ratio.',
-  'Security Audit Pass: Hardened overlay templates, local device APIs, IPC surfaces, and production window behavior.',
-  'Recording Library: Local recordings are easier to browse, open, play back, and clean up after a session.',
-  'DeskThing v0.0.9: Companion metadata, pairing scaffolding, and release bundle are aligned with the desktop app.',
-  'Website Refresh: Download links, docs, and release messaging now point at the v0.0.9 release set.',
+  'Fresh Install Fix: New Windows installs now create the stream_state database table before services touch it, so the app opens cleanly.',
+  'DeskThing v0.0.10: LAN pairing, preflight requests, and live event streams work from browser-style clients on the local network.',
+  'Chat Cleanup: TikTok likes stay out of chat while the likes widgets and stats still update.',
+  'Spotify + Alerts: Song requests reach Spotify reliably, alert overlays clean up after playback, and alert sounds are accepted from bundled paths.',
+  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.10 release set.',
 ];
 
 const docPreviews = [

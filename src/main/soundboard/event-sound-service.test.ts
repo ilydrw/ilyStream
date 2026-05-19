@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_APP_SETTINGS } from '../../shared/app-settings'
+import { DEFAULT_APP_SETTINGS, resolveAppSettings } from '../../shared/app-settings'
 import type { FollowEvent, GiftEvent, JoinEvent, SubscriptionEvent, UserInfo } from '../platforms/types'
 import { EventSoundService } from './event-sound-service'
 
@@ -24,6 +24,31 @@ describe('EventSoundService', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('plays category-scoped alert sound ids after settings normalization', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = { pushAlert: vi.fn() }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings(resolveAppSettings({
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          soundEnabled: true,
+          soundId: 'alerts/follow-drop.mp3'
+        }
+      ]
+    }))
+    service.processEvent(makeFollowEvent())
+
+    expect(soundboard.playSound).toHaveBeenCalledWith('alerts/follow-drop.mp3', 1)
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audioUrl: 'alerts/follow-drop.mp3'
+      }),
+      'tiktok'
+    )
   })
 
   it('plays the configured follow sound for follow events', () => {

@@ -9,6 +9,7 @@ import {
 import { Database } from '../../db/database'
 import { TikTokChatSender } from './tiktok-chat-sender'
 import { TikTokMapper } from '../mappers/tiktok-mapper'
+import { isTikTokLikeSystemPayload } from '../../../shared/chat-event-filter'
 
 export class TikTokConnector extends BaseConnector {
   readonly platform: Platform = 'tiktok'
@@ -96,6 +97,7 @@ export class TikTokConnector extends BaseConnector {
 
   private setupEventListeners(connection: any): void {
     connection.on('chat', (data: any) => {
+      if (isTikTokLikeSocialPayload(data)) return
       this.emitEvent(this.mapper.mapChat(data))
     })
 
@@ -174,6 +176,10 @@ export function isFatalTikTokConnectionErrorMessage(msg: string): boolean {
 
 export function isTikTokFollowSocialPayload(payload: any): boolean {
   return payload?.common?.displayText?.displayType === 'pm_mt_msg_viewer_follow_anchor'
+}
+
+export function isTikTokLikeSocialPayload(payload: any): boolean {
+  return isTikTokLikeSystemPayload(payload)
 }
 
 export function mapTikTokUserInfo(data: any) {

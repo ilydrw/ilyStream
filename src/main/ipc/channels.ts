@@ -19,6 +19,7 @@ import type { WindowsSettingsTarget } from '../system/windows-settings'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { OBSRuntimeStatus } from '../../shared/obs'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
+import type { NowPlayingPayload } from '../../shared/widgets'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -135,4 +136,5 @@ export interface IpcEventChannels {
   }
   'spotify:status-changed': SpotifyStatus
   'spotify:queue-update': SpotifySongRequest[]
+  'spotify:now-playing': NowPlayingPayload
 }

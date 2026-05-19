@@ -25,8 +25,9 @@ export class ChatManager {
     const feedItem = eventToOverlayFeedItem(event)
     if (!feedItem) return
 
-    // FILTER: Allow common stream events in the main feed
-    const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid', 'like', 'share']
+    // Likes are high-volume telemetry; keep them on dedicated like widgets/stats,
+    // not in chat-style feeds.
+    const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid', 'share']
     if (allowedKinds.includes(feedItem.kind)) {
       this.history = limitHistory([...this.history, feedItem], CHAT_HISTORY_LIMIT)
       this.sse.broadcast('chat', { type: 'append', payload: feedItem })

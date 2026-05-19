@@ -1,10 +1,13 @@
+import { EventEmitter } from 'events'
 import { describe, expect, it } from 'vitest'
 import {
   buildTikTokConnectionOptions,
   buildTikTokConnectionOptionCandidates,
   isFatalTikTokConnectionErrorMessage,
   isTikTokFollowSocialPayload,
-  mapTikTokUserInfo
+  isTikTokLikeSocialPayload,
+  mapTikTokUserInfo,
+  TikTokConnector
 } from './tiktok-connector'
 
 describe('TikTokConnector connection hardening', () => {
@@ -81,6 +84,86 @@ describe('TikTokConnector connection hardening', () => {
         }
       })
     ).toBe(false)
+  })
+
+  it('recognizes TikTok like payloads that arrive with social display metadata', () => {
+    expect(
+      isTikTokLikeSocialPayload({
+        likeCount: 5,
+        totalLikeCount: 12470,
+        specifiedDisplayText: [
+          {
+            uid: '7320750950765921322',
+            displayText: {
+              displayType: 'pm_mt_msg_viewer',
+              defaultPattern: '{0:user} liked the LIVE'
+            }
+          }
+        ]
+      })
+    ).toBe(true)
+
+    expect(
+      isTikTokLikeSocialPayload({
+        likeCount: 1,
+        common: {
+          displayText: {
+            displayType: 'pm_mt_msg_viewer',
+            defaultPattern: '{0:user} liked the LIVE'
+          }
+        }
+      })
+    ).toBe(true)
+  })
+
+  it('does not treat normal chat messages that mention likes as TikTok like payloads', () => {
+    expect(
+      isTikTokLikeSocialPayload({
+        comment: 'why did it reset my likes',
+        uniqueId: 'chat_friend'
+      })
+    ).toBe(false)
+
+    expect(
+      isTikTokLikeSocialPayload({
+        comment: 'I only like my cake eaten',
+        uniqueId: 'chat_friend'
+      })
+    ).toBe(false)
+  })
+
+  it('drops TikTok like social payloads before they can become chat events', () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter()
+    const events: any[] = []
+
+    connector.on('event', (event) => events.push(event))
+    ;(connector as any).setupEventListeners(connection)
+
+    connection.emit('chat', {
+      likeCount: 5,
+      totalLikeCount: 12470,
+      specifiedDisplayText: [
+        {
+          displayText: {
+            displayType: 'pm_mt_msg_viewer',
+            defaultPattern: '{0:user} liked the LIVE'
+          }
+        }
+      ]
+    })
+    connection.emit('chat', {
+      comment: 'I only like my cake eaten',
+      userId: '123',
+      uniqueId: 'cake_friend',
+      nickname: 'Cake Friend'
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toEqual(expect.objectContaining({
+      type: 'chat',
+      message: 'I only like my cake eaten'
+    }))
   })
 
   it('maps TikTok followInfo followStatus as follower permission', () => {

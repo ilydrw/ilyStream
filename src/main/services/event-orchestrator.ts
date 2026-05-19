@@ -16,6 +16,7 @@ import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { StreamingService } from './streaming-service'
 import { BrowserWindow } from 'electron'
+import type { AnyStreamEvent } from '../platforms/types'
 
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
@@ -42,56 +43,7 @@ export class EventOrchestrator {
 
   init(): void {
     this.platformManager.on('event', (event) => {
-      console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
-
-      // 1. Log to DB
-      this.db.addEvent(
-        event.platform,
-        event.type,
-        'user' in event ? event.user.displayName || event.user.username : null,
-        event
-      )
-
-      // 2. Broadcast to Overlay
-      console.log(`[orchestrator] Broadcasting to overlays...`)
-      this.overlayServer.handleStreamEvent(event)
-
-      // 3. Play Sounds
-      this.eventSoundService.processEvent(event)
-
-      // 4. Spotify Integration (Song Requests, etc)
-      const handledBySpotify = this.spotifyService.processEvent(event)
-
-      // 5. TTS (only if not a spotify command or if configured)
-      if (!handledBySpotify) {
-        console.log(`[orchestrator] Sending to TTS engine...`)
-        this.ttsEngine.processEvent(event)
-      }
-
-      // 6. Hardware (Hue)
-      this.handleHardwareAlerts(event)
-
-      // 7. Automation Triggers
-      console.log(`[orchestrator] Processing triggers...`)
-      this.triggerEngine.evaluate(event)
-
-      // 8. System Automation (Direct Mapping)
-      this.handleAutomation(event)
-
-      // 9. Economy (Likes, Timer, Points)
-      this.handleEconomy(event)
-
-      // 10. Lifetime stats (per-user + global counters surfaced on the Stats page)
-      try {
-        this.statsService.recordEvent(event)
-      } catch (err) {
-        console.error('[EventOrchestrator] Stats recording failed:', err)
-      }
-
-      // 11. DB Pruning (Throttle)
-      if (Date.now() % 100 === 0) {
-        this.db.pruneEventHistory()
-      }
+      void this.handlePlatformEvent(event)
     })
 
     // Listen to Trigger Actions
@@ -152,6 +104,63 @@ export class EventOrchestrator {
 
     // Initial sync
     this.overlayServer.setNowPlaying(this.spotifyService.getNowPlaying())
+  }
+
+  private async handlePlatformEvent(event: AnyStreamEvent): Promise<void> {
+    try {
+      console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
+
+      // 1. Log to DB
+      this.db.addEvent(
+        event.platform,
+        event.type,
+        'user' in event ? event.user.displayName || event.user.username : null,
+        event
+      )
+
+      // 2. Broadcast to Overlay
+      console.log(`[orchestrator] Broadcasting to overlays...`)
+      this.overlayServer.handleStreamEvent(event)
+
+      // 3. Play Sounds
+      this.eventSoundService.processEvent(event)
+
+      // 4. Spotify Integration (Song Requests, etc)
+      const handledBySpotify = await this.spotifyService.processEvent(event)
+
+      // 5. TTS (only if not a spotify command or if configured)
+      if (!handledBySpotify) {
+        console.log(`[orchestrator] Sending to TTS engine...`)
+        this.ttsEngine.processEvent(event)
+      }
+
+      // 6. Hardware (Hue)
+      this.handleHardwareAlerts(event)
+
+      // 7. Automation Triggers
+      console.log(`[orchestrator] Processing triggers...`)
+      this.triggerEngine.evaluate(event)
+
+      // 8. System Automation (Direct Mapping)
+      this.handleAutomation(event)
+
+      // 9. Economy (Likes, Timer, Points)
+      this.handleEconomy(event)
+
+      // 10. Lifetime stats (per-user + global counters surfaced on the Stats page)
+      try {
+        this.statsService.recordEvent(event)
+      } catch (err) {
+        console.error('[EventOrchestrator] Stats recording failed:', err)
+      }
+
+      // 11. DB Pruning (Throttle)
+      if (Date.now() % 100 === 0) {
+        this.db.pruneEventHistory()
+      }
+    } catch (err) {
+      console.error('[EventOrchestrator] Event handling failed:', err)
+    }
   }
 
   private recordSongRequested(request: any): void {

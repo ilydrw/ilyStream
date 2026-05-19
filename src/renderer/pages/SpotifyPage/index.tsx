@@ -18,13 +18,13 @@ type SpotifySettings = Pick<
 >
 
 const DEFAULT_SPOTIFY_SETTINGS: SpotifySettings = {
-  spotifyClientId: DEFAULT_APP_SETTINGS.spotifyClientId,
-  spotifySongRequestsEnabled: DEFAULT_APP_SETTINGS.spotifySongRequestsEnabled,
-  spotifyPlayEnabled: DEFAULT_APP_SETTINGS.spotifyPlayEnabled,
-  spotifySkipEnabled: DEFAULT_APP_SETTINGS.spotifySkipEnabled,
-  spotifyAllowExplicit: DEFAULT_APP_SETTINGS.spotifyAllowExplicit,
-  spotifyMaxQueueLength: DEFAULT_APP_SETTINGS.spotifyMaxQueueLength,
-  spotifyMaxPerUser: DEFAULT_APP_SETTINGS.spotifyMaxPerUser
+  spotifyClientId: DEFAULT_APP_SETTINGS.spotify.clientId,
+  spotifySongRequestsEnabled: DEFAULT_APP_SETTINGS.spotify.songRequestsEnabled,
+  spotifyPlayEnabled: DEFAULT_APP_SETTINGS.spotify.playEnabled,
+  spotifySkipEnabled: DEFAULT_APP_SETTINGS.spotify.skipEnabled,
+  spotifyAllowExplicit: DEFAULT_APP_SETTINGS.spotify.allowExplicit,
+  spotifyMaxQueueLength: DEFAULT_APP_SETTINGS.spotify.maxQueueLength,
+  spotifyMaxPerUser: DEFAULT_APP_SETTINGS.spotify.maxPerUser
 }
 
 export default function SpotifyPage() {
@@ -167,13 +167,13 @@ export default function SpotifyPage() {
               {!status?.connected ? (
                 <div className="flex flex-col gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20">Client ID (Optional)</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20">Spotify Client ID</label>
                     <input
                       type="text"
                       className="app-input w-full"
                       value={clientIdInput}
                       onChange={(e) => setClientIdInput(e.currentTarget.value)}
-                      placeholder="Use default client"
+                      placeholder="Paste Spotify app Client ID"
                     />
                   </div>
                   <button onClick={handleConnect} disabled={connecting} className="app-button-primary w-full !h-10 text-[10px] font-black uppercase tracking-widest">
@@ -207,7 +207,7 @@ export default function SpotifyPage() {
                 <Toggle value={settings.spotifySongRequestsEnabled} onChange={(v) => updateSetting('spotifySongRequestsEnabled', v)} />
               </SpotifySetting>
 
-              <SpotifySetting label="PlayerPlay Command" desc="Enable !play <song> syntax." disabled={!settings.spotifySongRequestsEnabled}>
+              <SpotifySetting label="Play Command" desc="Enable !play <song> syntax." disabled={!settings.spotifySongRequestsEnabled}>
                 <Toggle value={settings.spotifyPlayEnabled} onChange={(v) => updateSetting('spotifyPlayEnabled', v)} disabled={!settings.spotifySongRequestsEnabled} />
               </SpotifySetting>
 
