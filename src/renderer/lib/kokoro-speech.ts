@@ -3,6 +3,8 @@ import { DEFAULT_KOKORO_VOICE, KOKORO_MODEL_ID, isKokoroVoiceId } from '../../sh
 import { applyVoiceEffects, getDynamicPitchAndRate } from './audio-effects'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { audioEngine } from '../utils/audio-engine'
+import ortWasmMjsUrl from '../../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs?url'
+import ortWasmBinaryUrl from '../../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm?url'
 
 type KokoroModule = typeof import('kokoro-js')
 type KokoroInstance = Awaited<ReturnType<KokoroModule['KokoroTTS']['from_pretrained']>>
@@ -14,6 +16,10 @@ type RenderedAudio = {
 }
 
 const KOKORO_AUDIO_CACHE_VERSION = 'web-audio-single-voice-v2'
+const KOKORO_WASM_PATHS = {
+  mjs: new URL(ortWasmMjsUrl, import.meta.url).href,
+  wasm: new URL(ortWasmBinaryUrl, import.meta.url).href
+}
 
 // ─── LRU Cache ────────────────────────────────────────────────────────────────
 
@@ -64,7 +70,8 @@ function loadKokoroModel(): Promise<KokoroInstance> {
 
   modelPromise = (async () => {
     try {
-      const { KokoroTTS } = await import('kokoro-js')
+      const { KokoroTTS, env: kokoroEnv } = await import('kokoro-js')
+      kokoroEnv.wasmPaths = KOKORO_WASM_PATHS
 
       // Audio quality beats speed for stream TTS. WebGPU can be faster, but on
       // some Windows GPU/driver combos it produces buzzy/revving artifacts.
