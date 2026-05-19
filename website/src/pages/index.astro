@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.10';
+const latestVersion = '0.0.11';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -47,10 +47,11 @@ const highlights = [
 
 const releaseNotes = [
   'Fresh Install Fix: New Windows installs now create the stream_state database table before services touch it, so the app opens cleanly.',
-  'DeskThing v0.0.10: LAN pairing, preflight requests, and live event streams work from browser-style clients on the local network.',
+  'DeskThing v0.0.11: Companion metadata stays matched to the desktop app release.',
   'Chat Cleanup: TikTok likes stay out of chat while the likes widgets and stats still update.',
   'Spotify + Alerts: Song requests reach Spotify reliably, alert overlays clean up after playback, and alert sounds are accepted from bundled paths.',
-  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.10 release set.',
+  'Kokoro + Spotify: Local TTS now loads its bundled ONNX runtime, and Spotify token refreshes retry transient outages.',
+  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.11 release set.',
 ];
 
 const docPreviews = [

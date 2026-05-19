@@ -3,7 +3,7 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
-const latestVersion = '0.0.10';
+const latestVersion = '0.0.11';
 const deskThingZipUrl = `https://github.com/ilydrw/ilystream-deskthing/releases/download/v${latestVersion}/ilyStream-DeskThing-v${latestVersion}.zip`;
 
 const toc = [
