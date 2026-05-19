@@ -8,6 +8,8 @@ export const SPOTIFY_REDIRECT_PORT = 8789
 const REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_REDIRECT_PORT}/callback`
 const AUTH_URL = 'https://accounts.spotify.com/authorize'
 const TOKEN_URL = 'https://accounts.spotify.com/api/token'
+const TOKEN_REFRESH_RETRY_DELAYS_MS = [750, 1500]
+const TRANSIENT_TOKEN_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 
 /**
  * Default Client ID for ilyStream.
@@ -160,30 +162,69 @@ export async function refreshSpotifyTokens(
 ): Promise<SpotifyTokens> {
   if (!clientId.trim()) throw new Error('Spotify Client ID is required before refreshing Spotify.')
 
-  const response = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken
-    }).toString()
-  })
+  let lastError: Error | null = null
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Spotify token refresh failed (${response.status}): ${text}`)
+  for (let attempt = 0; attempt <= TOKEN_REFRESH_RETRY_DELAYS_MS.length; attempt++) {
+    let response: Response
+
+    try {
+      response = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken
+        }).toString()
+      })
+    } catch (error: any) {
+      lastError = new Error(`Spotify token refresh failed: ${error?.message ?? String(error)}`)
+      if (attempt === TOKEN_REFRESH_RETRY_DELAYS_MS.length) throw lastError
+      await delay(TOKEN_REFRESH_RETRY_DELAYS_MS[attempt])
+      continue
+    }
+
+    if (!response.ok) {
+      const text = await response.text()
+      lastError = new Error(`Spotify token refresh failed (${response.status}): ${text}`)
+
+      if (!TRANSIENT_TOKEN_STATUSES.has(response.status) || attempt === TOKEN_REFRESH_RETRY_DELAYS_MS.length) {
+        throw lastError
+      }
+
+      await delay(resolveRetryDelay(response, TOKEN_REFRESH_RETRY_DELAYS_MS[attempt]))
+      continue
+    }
+
+    const data = (await response.json()) as {
+      access_token: string
+      refresh_token?: string
+      expires_in: number
+    }
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token ?? refreshToken,
+      expiresIn: data.expires_in
+    }
   }
 
-  const data = (await response.json()) as {
-    access_token: string
-    refresh_token?: string
-    expires_in: number
-  }
+  throw lastError ?? new Error('Spotify token refresh failed')
+}
 
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? refreshToken,
-    expiresIn: data.expires_in
-  }
+function resolveRetryDelay(response: Response, fallbackMs: number): number {
+  const retryAfter = response.headers.get('retry-after')
+  if (!retryAfter) return fallbackMs
+
+  const seconds = Number(retryAfter)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+
+  const retryAt = Date.parse(retryAfter)
+  if (Number.isFinite(retryAt)) return Math.max(0, retryAt - Date.now())
+
+  return fallbackMs
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
