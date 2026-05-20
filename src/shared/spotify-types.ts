@@ -16,7 +16,7 @@ export interface SpotifySongRequest {
   requestedBy: string
   platform: string
   requestedAt: number
-  status: 'queued' | 'played' | 'skipped'
+  status: 'queued' | 'played' | 'skipped' | 'injected'
   displayName?: string
   profilePictureUrl?: string | null
 }

@@ -4,15 +4,15 @@ import type { NowPlayingPayload } from '../../../shared/widgets'
 export class SpotifyMapper {
   mapTrack(item: any): SpotifyTrack {
     return {
-      id: item.id,
-      name: item.name,
-      artists: item.artists.map((a: any) => a.name),
-      albumName: item.album.name,
-      durationMs: item.duration_ms,
-      explicit: item.explicit,
-      uri: item.uri,
-      externalUrl: item.external_urls.spotify,
-      albumArtUrl: item.album.images?.[0]?.url
+      id: item?.id ?? '',
+      name: item?.name ?? '',
+      artists: Array.isArray(item?.artists) ? item.artists.map((a: any) => a?.name).filter(Boolean) : [],
+      albumName: item?.album?.name ?? '',
+      durationMs: typeof item?.duration_ms === 'number' ? item.duration_ms : 0,
+      explicit: Boolean(item?.explicit),
+      uri: item?.uri ?? '',
+      externalUrl: item?.external_urls?.spotify ?? '',
+      albumArtUrl: item?.album?.images?.[0]?.url
     }
   }
 

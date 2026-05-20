@@ -166,7 +166,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       }
       .label {
         text-transform: uppercase;
-        letter-spacing: 0.15em;
+        letter-spacing: 0;
         font-size: 10px;
         font-weight: 800;
         color: ${accentRgba};
@@ -250,7 +250,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         font-size: 10px;
         font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0;
         opacity: 0.4;
         padding-left: 4px;
       }
@@ -290,7 +290,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         border-radius: 4px;
         background: ${accentRgba};
         color: #000;
-        letter-spacing: 0.05em;
+        letter-spacing: 0;
       }
       .queue-item.is-injected {
         background: rgba(255, 255, 255, 0.08);
@@ -459,10 +459,14 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
           barEl.style.width = progress + '%';
         }
 
-        if (SHOW_QUEUE && state.queue && state.queue.length > 0) {
+        const upcoming = Array.isArray(state.queue)
+          ? state.queue.filter(item => item && item.status !== 'played' && item.status !== 'skipped')
+          : [];
+
+        if (SHOW_QUEUE && upcoming.length > 0) {
           queuePanel.style.display = 'flex';
           queueList.innerHTML = '';
-          state.queue.slice(0, MAX_QUEUE).forEach(item => {
+          upcoming.slice(0, MAX_QUEUE).forEach((item, index) => {
             const isInjected = item.status === 'injected';
             const row = document.createElement('div');
             row.className = 'queue-item' + (isInjected ? ' is-injected' : '');
@@ -474,8 +478,12 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
 
             if (item.requestedBy) {
               html += '<div class="queue-requester">' + escapeHtml(item.requestedBy) + '</div>';
-            } else if (isInjected) {
+            }
+
+            if (index === 0) {
               html += '<div class="queue-status">NEXT</div>';
+            } else if (isInjected) {
+              html += '<div class="queue-status">SPOTIFY</div>';
             }
 
             row.innerHTML = html;

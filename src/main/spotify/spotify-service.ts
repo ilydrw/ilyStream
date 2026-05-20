@@ -5,7 +5,7 @@ import { app } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import type { Database } from '../db/database'
 import type { PlatformManager } from '../platforms/platform-manager'
-import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
+import type { SpotifySongRequest, SpotifyStatus, SpotifyTrack } from '../../shared/spotify-types'
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
@@ -41,6 +41,8 @@ export class SpotifyService extends EventEmitter {
   private refreshToken: string | null = null
   private lastError: string | null = null
   private restoreRetryTimer: NodeJS.Timeout | null = null
+  private currentRequestId: string | null = null
+  private lastQueueFetchWarningAt = 0
 
   constructor(private db: Database, private platformManager: PlatformManager) {
     super()
@@ -223,7 +225,8 @@ export class SpotifyService extends EventEmitter {
       this.requestQueue.push(request)
       this.saveQueueCache()
       this.emit('queue-update', this.getQueue())
-      this.emitNowPlaying()
+      const queueSnapshot = await this.fetchSpotifyQueueSnapshot()
+      this.emitNowPlaying(this.buildOverlayQueue(queueSnapshot, this.currentNowPlaying.trackId))
       this.emit('song-requested', request)
       return request
     } catch (e) {
@@ -298,11 +301,17 @@ export class SpotifyService extends EventEmitter {
     try {
       const raw = await this.client.getPlaybackState()
       const state = this.mapper.mapPlaybackState(raw)
+      const nowPlaying = this.mapper.mapNowPlaying(state)
+      const currentRequest = this.resolveCurrentRequest(nowPlaying.trackId)
+      this.markRequestsPlayedThrough(nowPlaying.trackId)
+      const queueSnapshot = await this.fetchSpotifyQueueSnapshot()
       this.currentNowPlaying = {
-        ...this.mapper.mapNowPlaying(state),
-        queue: this.getQueue()
+        ...nowPlaying,
+        requestedBy: currentRequest?.displayName || currentRequest?.requestedBy || null,
+        requesterPlatform: currentRequest?.platform || null,
+        queue: this.buildOverlayQueue(queueSnapshot, nowPlaying.trackId)
       }
-      this.emitNowPlaying()
+      this.emitNowPlaying(this.currentNowPlaying.queue)
     } catch (e: any) {
       const message = e instanceof Error ? e.message : String(e)
       console.error('[Spotify] Now playing poll failed:', message)
@@ -334,10 +343,10 @@ export class SpotifyService extends EventEmitter {
     }
   }
 
-  private emitNowPlaying(): void {
+  private emitNowPlaying(queue: SpotifySongRequest[] = this.getQueue()): void {
     this.currentNowPlaying = {
       ...this.currentNowPlaying,
-      queue: this.getQueue()
+      queue
     }
     this.emit('now-playing', this.currentNowPlaying)
   }
@@ -377,6 +386,148 @@ export class SpotifyService extends EventEmitter {
     this.emit('status', this.getStatus())
   }
 
+  /**
+   * Mark any 'queued' request whose track is currently playing — and every
+   * 'queued' request requested before it — as 'played'. Our local queue is
+   * the order in which we called `client.enqueue`, which is the order
+   * Spotify plays them in, so anything older than the current track has
+   * already been heard. Without this the widget would always show the
+   * oldest request at the top of "Up Next" forever.
+   */
+  private markRequestsPlayedThrough(currentTrackId: string | null): void {
+    if (!currentTrackId) return
+
+    const matchIndex = this.requestQueue.findIndex(
+      (r) => r.status === 'queued' && r.track.id === currentTrackId
+    )
+    if (matchIndex < 0) return
+
+    let mutated = false
+    for (let i = 0; i <= matchIndex; i++) {
+      const request = this.requestQueue[i]
+      if (request.status === 'queued') {
+        request.status = 'played'
+        mutated = true
+      }
+    }
+
+    if (mutated) {
+      this.pruneCompletedRequests()
+      this.saveQueueCache()
+      this.emit('queue-update', this.getQueue())
+    }
+  }
+
+  private resolveCurrentRequest(currentTrackId: string | null): SpotifySongRequest | null {
+    if (!currentTrackId) {
+      this.currentRequestId = null
+      return null
+    }
+
+    const existing = this.currentRequestId
+      ? this.requestQueue.find((r) => r.id === this.currentRequestId && r.track.id === currentTrackId)
+      : null
+    if (existing) return existing
+
+    const queued = this.requestQueue.find((r) => r.status === 'queued' && r.track.id === currentTrackId)
+    this.currentRequestId = queued?.id ?? null
+    return queued ?? null
+  }
+
+  private async fetchSpotifyQueueSnapshot(): Promise<any | null> {
+    try {
+      return await this.client.getUserQueue()
+    } catch (err) {
+      const now = Date.now()
+      if (now - this.lastQueueFetchWarningAt > 60_000) {
+        this.lastQueueFetchWarningAt = now
+        log.warn('[Spotify] Queue fetch failed; falling back to local request order:', this.getErrorMessage(err))
+      }
+      return null
+    }
+  }
+
+  private buildOverlayQueue(queueSnapshot: any | null, currentTrackId: string | null): SpotifySongRequest[] {
+    const queuedRequests = this.requestQueue.filter((r) => (
+      r.status === 'queued' &&
+      (!currentTrackId || r.track.id !== currentTrackId)
+    ))
+    if (!queueSnapshot || !Array.isArray(queueSnapshot.queue)) return queuedRequests
+
+    const usedRequestIds = new Set<string>()
+    const orderedQueue: SpotifySongRequest[] = []
+
+    queueSnapshot.queue.forEach((item: any, index: number) => {
+      const track = this.mapQueueTrack(item)
+      if (!track) return
+      if (currentTrackId && track.id === currentTrackId) return
+
+      const request = this.findQueuedRequestForTrack(track, usedRequestIds)
+      if (request) {
+        usedRequestIds.add(request.id)
+        orderedQueue.push(request)
+        return
+      }
+
+      orderedQueue.push({
+        id: `spotify-queue-${track.id || track.uri || index}-${index}`,
+        track,
+        requestedBy: '',
+        platform: 'spotify',
+        requestedAt: Date.now(),
+        status: 'injected',
+        displayName: undefined,
+        profilePictureUrl: null
+      })
+    })
+
+    queuedRequests.forEach((request) => {
+      if (!usedRequestIds.has(request.id)) orderedQueue.push(request)
+    })
+
+    return orderedQueue
+  }
+
+  private mapQueueTrack(item: any): SpotifyTrack | null {
+    if (!item || (item.type && item.type !== 'track')) return null
+
+    const track = this.mapper.mapTrack(item)
+    if (!track.id && !track.uri) return null
+    if (!track.name) return null
+    return track
+  }
+
+  private findQueuedRequestForTrack(track: SpotifyTrack, usedRequestIds: Set<string>): SpotifySongRequest | null {
+    return this.requestQueue.find((request) => (
+      request.status === 'queued' &&
+      !usedRequestIds.has(request.id) &&
+      this.tracksMatch(request.track, track)
+    )) ?? null
+  }
+
+  private tracksMatch(left: SpotifyTrack, right: SpotifyTrack): boolean {
+    return Boolean(
+      (left.id && right.id && left.id === right.id) ||
+      (left.uri && right.uri && left.uri === right.uri)
+    )
+  }
+
+  /**
+   * Keep all still-queued requests plus a small tail of played / skipped
+   * history. Without this, requestQueue grows for every request the channel
+   * has ever fulfilled inside the 24-hour cache window — which is mostly
+   * dead weight by the time it's been heard.
+   */
+  private pruneCompletedRequests(maxCompletedTail = 20): void {
+    const completed = this.requestQueue.filter((r) => r.status !== 'queued')
+    if (completed.length <= maxCompletedTail) return
+
+    const trimmedCompleted = new Set(completed.slice(-maxCompletedTail))
+    this.requestQueue = this.requestQueue.filter(
+      (r) => r.status === 'queued' || trimmedCompleted.has(r)
+    )
+  }
+
   private saveQueueCache(): void {
     try {
       writeFileSync(join(app.getPath('userData'), 'spotify-queue.json'), JSON.stringify(this.requestQueue))
@@ -385,11 +536,25 @@ export class SpotifyService extends EventEmitter {
 
   private loadQueueCache(): void {
     const path = join(app.getPath('userData'), 'spotify-queue.json')
-    if (existsSync(path)) {
-      try {
-        this.requestQueue = JSON.parse(readFileSync(path, 'utf-8')).filter((r: any) => r.requestedAt > Date.now() - 86400000)
-      } catch {}
-    }
+    if (!existsSync(path)) return
+    try {
+      const now = Date.now()
+      const ONE_HOUR_MS = 60 * 60 * 1000
+      const ONE_DAY_MS = 24 * ONE_HOUR_MS
+      this.requestQueue = JSON.parse(readFileSync(path, 'utf-8'))
+        .filter((r: any) => r.requestedAt > now - ONE_DAY_MS)
+        .map((r: any) => {
+          // Any request still marked 'queued' from a prior session has either
+          // already played on Spotify (so the poll loop missed it because we
+          // weren't running) or got skipped/dropped from Spotify's queue.
+          // Mark it 'played' so the in-app queue doesn't stay stuck on the
+          // oldest request forever after a restart.
+          if (r.status === 'queued' && r.requestedAt < now - ONE_HOUR_MS) {
+            return { ...r, status: 'played' }
+          }
+          return r
+        })
+    } catch {}
   }
 
   async restoreSession(): Promise<void> {

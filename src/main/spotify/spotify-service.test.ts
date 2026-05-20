@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SpotifyService } from './spotify-service'
 import type { Database } from '../db/database'
 import type { ChatEvent } from '../platforms/types'
+import type { SpotifySongRequest } from '../../shared/spotify-types'
 
 vi.mock('electron', () => ({
   app: { getPath: () => 'C:\\Dev\\ilyStream\\.tmp-vitest-userdata' },
@@ -30,7 +31,9 @@ function createService(settings: Record<string, unknown> = {}, options: { connec
     searchTrack: vi.fn(),
     enqueue: vi.fn(),
     skip: vi.fn(),
-    getProfile: vi.fn()
+    getProfile: vi.fn(),
+    getPlaybackState: vi.fn(),
+    getUserQueue: vi.fn()
   }
 
   ;(service as any).client = client
@@ -42,16 +45,40 @@ function createService(settings: Record<string, unknown> = {}, options: { connec
   return { service, client }
 }
 
-function makeTrack(explicit = false) {
+function makeTrack(explicit = false, id = 'track-1', name = 'Current Song') {
   return {
-    id: 'track-1',
-    name: 'Current Song',
+    id,
+    name,
     artists: [{ name: 'Artist One' }],
     album: { name: 'Album', images: [{ url: 'https://example.com/art.jpg' }] },
     duration_ms: 180000,
     explicit,
-    uri: 'spotify:track:track-1',
-    external_urls: { spotify: 'https://open.spotify.com/track/track-1' }
+    type: 'track',
+    uri: `spotify:track:${id}`,
+    external_urls: { spotify: `https://open.spotify.com/track/${id}` }
+  }
+}
+
+function makeRequest(id: string, trackId: string, requestedBy: string): SpotifySongRequest {
+  return {
+    id,
+    track: {
+      id: trackId,
+      name: `${trackId} song`,
+      artists: ['Artist One'],
+      albumName: 'Album',
+      durationMs: 180000,
+      explicit: false,
+      uri: `spotify:track:${trackId}`,
+      externalUrl: `https://open.spotify.com/track/${trackId}`,
+      albumArtUrl: 'https://example.com/art.jpg'
+    },
+    requestedBy,
+    platform: 'twitch',
+    requestedAt: Date.now(),
+    status: 'queued',
+    displayName: `${requestedBy} display`,
+    profilePictureUrl: null
   }
 }
 
@@ -160,5 +187,89 @@ describe('SpotifyService chat commands', () => {
 
     await expect(service.processEvent(makeChat('!skip'))).resolves.toBe(true)
     expect(client.skip).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks request and everything earlier as played once Spotify is playing that track', () => {
+    const { service } = createService()
+    const queue = (service as any).requestQueue as Array<{ id: string; track: { id: string }; status: string }>
+    queue.push(
+      { id: 'r1', track: { id: 'track-a' }, status: 'queued' } as any,
+      { id: 'r2', track: { id: 'track-b' }, status: 'queued' } as any,
+      { id: 'r3', track: { id: 'track-c' }, status: 'queued' } as any
+    )
+
+    ;(service as any).markRequestsPlayedThrough('track-b')
+
+    expect(queue[0].status).toBe('played')
+    expect(queue[1].status).toBe('played')
+    expect(queue[2].status).toBe('queued')
+  })
+
+  it('leaves the queue alone when nothing is playing or the current track was never requested', () => {
+    const { service } = createService()
+    const queue = (service as any).requestQueue as Array<{ id: string; track: { id: string }; status: string }>
+    queue.push({ id: 'r1', track: { id: 'track-a' }, status: 'queued' } as any)
+
+    ;(service as any).markRequestsPlayedThrough(null)
+    expect(queue[0].status).toBe('queued')
+
+    ;(service as any).markRequestsPlayedThrough('track-never-requested')
+    expect(queue[0].status).toBe('queued')
+  })
+
+  it('orders the widget up-next list from Spotify’s live queue', async () => {
+    const { service, client } = createService()
+    const queue = (service as any).requestQueue as SpotifySongRequest[]
+    queue.push(
+      makeRequest('r1', 'track-a', 'alice'),
+      makeRequest('r2', 'track-b', 'bob')
+    )
+    client.getPlaybackState.mockResolvedValue({
+      is_playing: true,
+      item: makeTrack(false, 'track-current', 'Current Song'),
+      progress_ms: 1000
+    })
+    client.getUserQueue.mockResolvedValue({
+      currently_playing: null,
+      queue: [
+        makeTrack(false, 'track-b', 'Bob Request'),
+        makeTrack(false, 'track-a', 'Alice Request'),
+        makeTrack(false, 'track-spotify', 'Spotify Queue Song')
+      ]
+    })
+
+    await (service as any).poll()
+
+    const overlayQueue = service.getNowPlaying().queue
+    expect(overlayQueue.map((request) => request.track.id)).toEqual(['track-b', 'track-a', 'track-spotify'])
+    expect(overlayQueue[0]).toMatchObject({ id: 'r2', requestedBy: 'bob', status: 'queued' })
+    expect(overlayQueue[2]).toMatchObject({ requestedBy: '', platform: 'spotify', status: 'injected' })
+  })
+
+  it('keeps the current requested track out of up next and shows its requester', async () => {
+    const { service, client } = createService()
+    const queue = (service as any).requestQueue as SpotifySongRequest[]
+    queue.push(
+      makeRequest('r1', 'track-a', 'alice'),
+      makeRequest('r2', 'track-b', 'bob')
+    )
+    client.getPlaybackState.mockResolvedValue({
+      is_playing: true,
+      item: makeTrack(false, 'track-a', 'Alice Request'),
+      progress_ms: 1000
+    })
+    client.getUserQueue.mockResolvedValue({
+      currently_playing: null,
+      queue: [makeTrack(false, 'track-b', 'Bob Request')]
+    })
+
+    await (service as any).poll()
+
+    const nowPlaying = service.getNowPlaying()
+    expect(nowPlaying.requestedBy).toBe('alice display')
+    expect(nowPlaying.requesterPlatform).toBe('twitch')
+    expect(nowPlaying.queue.map((request) => request.track.id)).toEqual(['track-b'])
+    expect(queue[0].status).toBe('played')
+    expect(queue[1].status).toBe('queued')
   })
 })

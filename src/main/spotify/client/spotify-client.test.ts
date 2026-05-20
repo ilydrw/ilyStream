@@ -45,4 +45,39 @@ describe('SpotifyClient', () => {
 
     await expect(client.getPlaybackState()).resolves.toBeNull()
   })
+
+  it('fetches the user playback queue for the widget up-next list', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        currently_playing: null,
+        queue: [
+          {
+            id: 'track-next',
+            name: 'Next Song',
+            artists: [{ name: 'Next Artist' }],
+            album: { name: 'Next Album', images: [] },
+            duration_ms: 180000,
+            explicit: false,
+            uri: 'spotify:track:track-next',
+            external_urls: { spotify: 'https://open.spotify.com/track/track-next' }
+          }
+        ]
+      }), { status: 200 }))
+
+    const client = new SpotifyClient()
+    client.setAccessToken('access-token')
+
+    const queue = await client.getUserQueue()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.spotify.com/v1/me/player/queue',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token'
+        })
+      })
+    )
+    expect(queue?.queue?.[0]?.name).toBe('Next Song')
+  })
 })
