@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OverlayServer } from './overlay-server'
 import { DeviceApi } from './device-api'
-import type { ChatEvent, LikeEvent } from '../platforms/types'
+import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
 
 let overlayServer: OverlayServer | null = null
 
@@ -202,7 +202,53 @@ describe('OverlayServer', () => {
     const eventsStream = await readStreamUntil(eventsResponse, '"chatBacklog"', eventsController)
     expect(eventsStream).toContain('"message":"deskthing hello"')
   })
+
+  it('does not send in-progress TikTok gift combos to particle widgets', () => {
+    overlayServer = new OverlayServer()
+    const broadcast = vi.fn()
+    ;(overlayServer as any).sse.broadcast = broadcast
+
+    overlayServer.handleStreamEvent(makeGiftEvent(true))
+
+    expect(broadcast).not.toHaveBeenCalledWith('particles', expect.anything())
+    expect(broadcast).not.toHaveBeenCalledWith('event-particles', expect.anything())
+
+    overlayServer.handleStreamEvent(makeGiftEvent(false))
+
+    expect(broadcast).toHaveBeenCalledWith('particles', expect.objectContaining({
+      type: 'event',
+      payload: expect.objectContaining({ giftName: 'GG', isCombo: false })
+    }))
+    expect(broadcast).toHaveBeenCalledWith('event-particles', expect.objectContaining({
+      type: 'event',
+      payload: expect.objectContaining({ giftName: 'GG', isCombo: false })
+    }))
+  })
 })
+
+function makeGiftEvent(isCombo: boolean): GiftEvent {
+  return {
+    id: `gift-${isCombo ? 'combo' : 'final'}`,
+    platform: 'tiktok',
+    timestamp: new Date('2026-04-10T10:10:00.000Z'),
+    type: 'gift',
+    raw: {},
+    giftName: 'GG',
+    giftId: 'gg',
+    giftCount: 1,
+    monetaryValue: 1,
+    isCombo,
+    user: {
+      id: 'user-4',
+      username: 'gg_friend',
+      displayName: 'GG Friend',
+      isModerator: false,
+      isSubscriber: false,
+      isVip: false,
+      badges: []
+    }
+  }
+}
 
 async function readStreamUntil(response: Response, needle: string, controller: AbortController): Promise<string> {
   const reader = response.body?.getReader()

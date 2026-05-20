@@ -110,7 +110,7 @@ export class TikTokMapper {
       giftId: String(gift?.id || data?.giftId || '0'),
       giftCount: data.repeatCount || data.giftCount || 1,
       monetaryValue: estimateTikTokCreatorGiftCents(diamondCount),
-      isCombo: !!data.repeatEnd
+      isCombo: isTikTokGiftComboInProgress(data.repeatEnd)
     }
   }
 
@@ -208,5 +208,9 @@ export class TikTokMapper {
     }
     return 0
   }
+}
+
+function isTikTokGiftComboInProgress(repeatEnd: unknown): boolean {
+  return repeatEnd === false || repeatEnd === 0 || repeatEnd === 'false'
 }
 

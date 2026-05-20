@@ -21,6 +21,7 @@ import type { AnyStreamEvent } from '../platforms/types'
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
   private countedSongRequestIds = new Set<string>()
+  private initialized = false
 
   constructor(
     private platformManager: PlatformManager,
@@ -42,6 +43,13 @@ export class EventOrchestrator {
   ) {}
 
   init(): void {
+    if (this.initialized) {
+      console.log('[orchestrator] init: already subscribed')
+      return
+    }
+    this.initialized = true
+
+    console.log('[orchestrator] init: subscribing to platform events')
     this.platformManager.on('event', (event) => {
       void this.handlePlatformEvent(event)
     })
@@ -112,8 +120,15 @@ export class EventOrchestrator {
       }
     })
 
-    // Initial sync
-    this.overlayServer.setNowPlaying(this.spotifyService.getNowPlaying())
+    // Initial sync. Wrap because a throw here would skip the success log and
+    // could mask the fact that all .on() subscriptions above already ran.
+    try {
+      this.overlayServer.setNowPlaying(this.spotifyService.getNowPlaying())
+    } catch (err) {
+      console.error('[orchestrator] init: initial now-playing sync failed:', err)
+    }
+
+    console.log('[orchestrator] init: subscriptions ready')
   }
 
   private async handlePlatformEvent(event: AnyStreamEvent): Promise<void> {
@@ -318,7 +333,7 @@ export class EventOrchestrator {
       if (event.type === 'chat') {
         const message = event.message.trim().toLowerCase()
         await this.automationService.handleTrigger(message, 'chat-command', settings.automationKeystrokeMapping)
-      } else if (event.type === 'gift') {
+      } else if (event.type === 'gift' && !event.isCombo) {
         await this.automationService.handleTrigger(event.giftName, 'gift', settings.automationKeystrokeMapping)
       }
     } catch (error) {

@@ -64,7 +64,7 @@ function makeOrchestrator(
   )
 
   orchestrator.init()
-  return { platformManager, spotifyService, ttsEngine, statsService, overlayServer }
+  return { orchestrator, platformManager, spotifyService, ttsEngine, statsService, overlayServer }
 }
 
 async function flushAsyncHandlers() {
@@ -112,5 +112,16 @@ describe('EventOrchestrator Spotify handling', () => {
     expect(handleStreamEvent).toHaveBeenCalled()
     expect(spotifyService.processEvent).toHaveBeenCalled()
     expect(statsService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ message: 'hello chat' }))
+  })
+
+  it('does not subscribe duplicate platform listeners if init runs again', async () => {
+    const { orchestrator, platformManager, spotifyService, overlayServer } = makeOrchestrator(false)
+
+    orchestrator.init()
+    platformManager.emit('event', makeChat('single pipeline'))
+    await flushAsyncHandlers()
+
+    expect(overlayServer.handleStreamEvent).toHaveBeenCalledTimes(1)
+    expect(spotifyService.processEvent).toHaveBeenCalledTimes(1)
   })
 })

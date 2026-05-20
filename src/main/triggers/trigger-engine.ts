@@ -44,6 +44,8 @@ export class TriggerEngine extends EventEmitter {
   }
 
   private handleGiftDebounce(event: GiftEvent): void {
+    if (event.isCombo) return
+
     const key = `${event.platform}:${event.user.username}:${event.giftId}`
     const existing = this.giftDebouncers.get(key)
 

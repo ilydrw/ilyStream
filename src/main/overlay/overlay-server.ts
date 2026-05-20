@@ -15,6 +15,7 @@ import { GoalManager } from './managers/goal-manager'
 import { NowPlayingManager } from './managers/now-playing-manager'
 import { LikesTracker } from './managers/likes-tracker'
 import { DEFAULT_PORT } from './types'
+import { shouldBroadcastParticleEvent } from './overlay-payloads'
 
 const DEFAULT_LISTEN_HOST = '0.0.0.0'
 const ALLOWED_LISTEN_HOSTS = new Set(['0.0.0.0', '127.0.0.1', 'localhost', '::1', '::'])
@@ -224,6 +225,7 @@ export class OverlayServer extends EventEmitter {
 
     // Broadcast to specific widget channels for reactive updates
     this.runStreamEventStage('particles', () => {
+      if (!shouldBroadcastParticleEvent(event)) return
       this.sse.broadcast('particles', { type: 'event', payload: event })
       this.sse.broadcast('event-particles', { type: 'event', payload: event })
     })

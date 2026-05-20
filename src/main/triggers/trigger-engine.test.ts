@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatEvent } from '../platforms/types'
+import type { ChatEvent, GiftEvent } from '../platforms/types'
 import type { TTSEngine } from '../tts/tts-engine'
 import type { TriggerRule } from './trigger-types'
 import { TriggerEngine } from './trigger-engine'
@@ -116,6 +116,37 @@ describe('TriggerEngine', () => {
       })
     )
   })
+
+  it('ignores in-progress gift combo updates before firing gift trigger actions', () => {
+    vi.useFakeTimers()
+    const { engine } = createEngine()
+    const playSound = vi.fn()
+    engine.on('action:play-sound', playSound)
+
+    try {
+      engine.updateRule({
+        id: 'gg-gift',
+        name: 'GG gift',
+        enabled: true,
+        platforms: ['tiktok'],
+        conditions: [{ type: 'event_type', value: 'gift' }],
+        actions: [{ type: 'play_sound', filePath: 'gg.mp3', volume: 1 }],
+        cooldown: 0,
+        userCooldown: 0,
+        sortOrder: 0
+      })
+
+      engine.evaluate(createGiftEvent(true))
+      vi.advanceTimersByTime(2100)
+      expect(playSound).not.toHaveBeenCalled()
+
+      engine.evaluate(createGiftEvent(false))
+      vi.advanceTimersByTime(2100)
+      expect(playSound).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 function createEngine() {
@@ -124,7 +155,31 @@ function createEngine() {
   const engine = new TriggerEngine({
     enqueue,
     prepareChatSpeechMessage
-  } as unknown as TTSEngine)
+  } as unknown as TTSEngine, {} as any)
 
   return { engine, enqueue, prepareChatSpeechMessage }
+}
+
+function createGiftEvent(isCombo: boolean): GiftEvent {
+  return {
+    id: `gift-${isCombo ? 'combo' : 'final'}`,
+    platform: 'tiktok',
+    timestamp: new Date('2026-04-04T12:01:00.000Z'),
+    type: 'gift',
+    raw: {},
+    user: {
+      id: 'user-2',
+      username: 'gg_friend',
+      displayName: 'GG Friend',
+      isModerator: false,
+      isSubscriber: false,
+      isVip: false,
+      badges: []
+    },
+    giftName: 'GG',
+    giftId: 'gg',
+    giftCount: 1,
+    monetaryValue: 1,
+    isCombo
+  }
 }

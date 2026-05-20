@@ -16,7 +16,7 @@ export class EventSoundService {
 
   constructor(
     private readonly soundboardService: Pick<SoundboardService, 'playSound' | 'stopAll'>,
-    private readonly overlayServer: Pick<OverlayServer, 'pushAlert'>
+    private readonly overlayServer: Pick<OverlayServer, 'pushAlert' | 'getStatus'>
   ) {}
 
   applySettings(settings: AppSettings): void {
@@ -61,6 +61,7 @@ export class EventSoundService {
 
   private aggregateGift(event: any): void {
     if (!this.settings) return
+    if (event.isCombo) return
 
     const userKey = event.user.id || event.user.username
     const giftKey = `${event.platform}:${userKey}:${event.giftId || event.giftName}`
@@ -127,6 +128,10 @@ export class EventSoundService {
       ? formatAlertText(this.replaceVariables(this.settings[`eventText${kind}Template`], event))
       : ''
 
+    // Audio is played by the renderer above. We deliberately omit `audioUrl`
+    // from the overlay payload so the alert overlay only renders the visual.
+    // If we also sent audioUrl, every overlay browser source would play the
+    // same clip — anyone with OBS + a preview tab would hear it doubled.
     this.overlayServer.pushAlert(
       {
         id: event.id,
@@ -139,8 +144,6 @@ export class EventSoundService {
         backgroundColor: this.settings[`eventText${kind}BackgroundColor`],
         borderColor: this.settings[`eventText${kind}BorderColor`],
         fontSize: this.settings[`eventText${kind}FontSize`],
-        audioUrl: hasSound ? soundId : undefined,
-        audioVolume: soundVolume,
         fontWeight: this.settings[`eventAlert${kind}FontWeight`],
         textShadow: this.settings[`eventAlert${kind}TextShadow`],
         layout: this.settings[`eventAlert${kind}Layout`],
@@ -159,6 +162,18 @@ export class EventSoundService {
     const rules = [...this.settings.alertRules]
       .filter(rule => this.matchesRule(rule, event))
       .sort((a, b) => b.priority - a.priority)
+
+    if (rules.length === 0) {
+      // Only worth shouting about for events that meaningfully drive alerts.
+      // Chat events spam this otherwise.
+      if (event.type !== 'chat' && event.type !== 'like') {
+        console.log(
+          `[event-sound] No alert rules matched ${event.type} on ${event.platform}` +
+          ` (have ${this.settings.alertRules.length} total rule(s))`
+        )
+      }
+      return
+    }
 
     for (const rule of rules) {
       this.handleRuleAlert(rule, event)
@@ -187,7 +202,11 @@ export class EventSoundService {
       if (!haystack.includes(needle)) return false
     }
 
-    if (rule.cooldownMs > 0) {
+    // Simulated events (the Test button) should always fire — they share a
+    // single hard-coded user, so a per-user cooldown would silently block
+    // every test after the first.
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    if (rule.cooldownMs > 0 && !isSimulated) {
       const previous = this.recentRuleHits.get(this.cooldownKey(rule, event))
       if (previous && Date.now() - previous < rule.cooldownMs) return false
     }
@@ -202,6 +221,7 @@ export class EventSoundService {
 
   private recordRuleFire(rule: AlertRule, event: AnyStreamEvent): void {
     if (rule.cooldownMs <= 0) return
+    if ((event.raw as any)?.simulated) return
     const now = Date.now()
     this.recentRuleHits.set(this.cooldownKey(rule, event), now)
 
@@ -217,15 +237,30 @@ export class EventSoundService {
     if (!this.settings) return
 
     const suppressSound = Boolean((event.raw as any)?.suppressEventSound)
-    const hasSound = !suppressSound && rule.soundEnabled && rule.soundId
-    if (hasSound) {
+    const hasSound = !suppressSound && rule.soundEnabled && Boolean(rule.soundId)
+
+    // The alert overlay's <audio> plays the sound via the `audioUrl` on the
+    // pushAlert payload below. We only ALSO play via the renderer (the
+    // soundboard path) when no overlay client is connected — otherwise the
+    // streamer would hear every alert twice (once from the renderer, once
+    // from the overlay browser source).
+    if (hasSound && !this.hasOverlayAudioSink()) {
       this.soundboardService.playSound(rule.soundId, rule.soundVolume)
     }
 
     const imageUrl = this.resolveRuleImageUrl(rule, event)
-    const hasImage = rule.imageEnabled && imageUrl
+    const hasImage = rule.imageEnabled && Boolean(imageUrl)
     const hasText = rule.textEnabled && rule.textTemplate.trim().length > 0
-    if (!hasImage && !hasText && !hasSound) return
+    if (!hasImage && !hasText && !hasSound) {
+      console.warn(
+        `[event-sound] Rule "${rule.name}" matched ${event.type} but has no sound/image/text enabled — nothing to fire.`
+      )
+      return
+    }
+
+    console.log(
+      `[event-sound] Firing rule "${rule.name}" for ${event.type} (sound=${hasSound}, image=${hasImage}, text=${hasText})`
+    )
 
     const text = hasText
       ? formatAlertText(this.replaceVariables(rule.textTemplate, event))
@@ -257,6 +292,14 @@ export class EventSoundService {
     )
 
     this.recordRuleFire(rule, event)
+  }
+
+  private hasOverlayAudioSink(): boolean {
+    try {
+      return Number(this.overlayServer.getStatus()?.alertClientCount || 0) > 0
+    } catch {
+      return false
+    }
   }
 
   private resolveRuleImageUrl(rule: AlertRule, event: AnyStreamEvent): string {
