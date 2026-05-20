@@ -1,15 +1,24 @@
-import { ChatConfig, DEFAULT_CHAT_CONFIG } from '../../../shared/widgets'
+import { DEFAULT_CHAT_CONFIG, DEFAULT_CHAT_UNIFIED_CONFIG, type ChatConfig, type ChatUnifiedConfig } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
 
+type UnifiedChatRuntimeConfig = ChatConfig & ChatUnifiedConfig
+
 export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
-  const cfg: ChatConfig = { ...DEFAULT_CHAT_CONFIG, ...(widget?.config || {}) }
-  const bgOpacity = isPreview ? 0 : (0.3 + (cfg.glassIntensity * 0.5))
-  const blur = cfg.glassIntensity * 40
+  const cfg = {
+    ...DEFAULT_CHAT_CONFIG,
+    ...DEFAULT_CHAT_UNIFIED_CONFIG,
+    ...(widget?.config || {})
+  } as UnifiedChatRuntimeConfig
+  const bgOpacity = isPreview ? 0 : Math.max(0, Math.min(1, cfg.backgroundOpacity ?? (0.3 + (cfg.glassIntensity * 0.5))))
+  const blur = Math.max(0, Math.min(100, Number(cfg.blur ?? (cfg.glassIntensity * 40))))
   const borderRadius = cfg.borderRadius ?? 14
   const fontFamily = cfg.fontFamily || 'Outfit'
   const animationStyle = cfg.animationStyle || 'slide'
   const accentColor = (cfg as any).accentColor || '#00f2ff'
   const secondaryColor = (cfg as any).secondaryColor || '#ff00ff'
+  const scale = Math.max(0.4, Math.min(2.5, Number(cfg.scale || 1)))
+  const opacity = Math.max(0, Math.min(1, Number(cfg.opacity ?? 1)))
+  const showPlatformBadge = cfg.showPlatformBadge !== false
 
   return `
 <!DOCTYPE html>
@@ -22,6 +31,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         :root {
             --glass: rgba(10, 12, 16, ${bgOpacity});
             --glass-border: rgba(255, 255, 255, ${0.05 + (cfg.glassIntensity * 0.1)});
+            --bubble: rgba(9, 11, 16, ${Math.max(0.16, bgOpacity)});
+            --bubble-strong: rgba(255, 255, 255, 0.07);
             --cyan: ${accentColor};
             --magenta: ${secondaryColor};
             --twitch: #9146ff;
@@ -33,6 +44,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             --blur: ${blur}px;
             --radius: ${borderRadius}px;
             --font-main: '${fontFamily}', 'Outfit', sans-serif;
+            --feed-scale: ${scale};
+            --feed-opacity: ${opacity};
         }
 
         body {
@@ -60,31 +73,30 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         #v2-chat-feed {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 10px;
             mask-image: linear-gradient(to bottom, transparent, black 15%);
-            padding-top: 60px;
+            padding-top: 50px;
             width: min(var(--width), 100%);
             transition: all 0.3s ease;
-            filter: drop-shadow(0 20px 40px rgba(0,0,0,0.5));
+            filter: drop-shadow(0 16px 34px rgba(0,0,0,0.48));
+            opacity: var(--feed-opacity);
+            transform: scale(var(--feed-scale));
+            transform-origin: bottom left;
         }
 
-        /* Social Stream Ninja-inspired: tight rows, circular avatars,
-           platform-colored ring + corner badge. */
+        /* Social Stream Ninja-inspired: circular avatars leading compact
+           speech bubbles with a tiny platform badge tucked into the avatar. */
         .message {
-            background: var(--glass);
-            backdrop-filter: blur(var(--blur)) saturate(180%);
-            -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
-            border: 1px solid var(--glass-border);
-            padding: 10px 14px;
-            border-radius: var(--radius);
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
+            display: grid;
+            grid-template-columns: 50px minmax(0, 1fr);
+            align-items: start;
+            gap: 10px;
+            padding: 0;
             animation: ${animationStyle === 'none' ? 'none' : 'get-anim 0.35s ease both'};
-            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
             will-change: transform, opacity;
             transform: translateZ(0);
             position: relative;
+            max-width: 100%;
         }
 
         ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 400 }, '.message')}
@@ -104,7 +116,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             font-size: 14px;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 4px;
+            letter-spacing: 0;
             text-align: center;
             width: 100%;
             padding: 60px;
@@ -132,36 +144,51 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         .avatar-wrap {
             position: relative;
             flex-shrink: 0;
-            width: 44px;
-            height: 44px;
+            width: 50px;
+            height: 50px;
+            margin-top: 2px;
+            filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
         }
 
         .avatar {
-            width: 44px;
-            height: 44px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            background: rgba(255,255,255,0.08);
+            background:
+                radial-gradient(circle at 30% 22%, rgba(255,255,255,0.22), transparent 34%),
+                linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04));
             object-fit: cover;
             border: 3px solid var(--platform-color, rgba(255,255,255,0.35));
-            box-shadow: 0 0 12px var(--platform-glow, rgba(0,0,0,0.4));
-            display: block;
-            font-weight: 800;
+            box-shadow:
+                0 0 0 2px rgba(8, 10, 14, 0.94),
+                0 0 18px var(--platform-glow, rgba(0,0,0,0.4));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
             font-size: 18px;
-            color: rgba(255,255,255,0.85);
+            color: rgba(255,255,255,0.92);
             text-align: center;
-            line-height: 38px;
+            line-height: 1;
             box-sizing: border-box;
+            overflow: hidden;
+            text-transform: uppercase;
+        }
+
+        img.avatar {
+            display: block;
+            padding: 0;
         }
 
         .platform-badge {
             position: absolute;
-            bottom: -3px;
-            right: -3px;
-            width: 20px;
-            height: 20px;
+            bottom: -2px;
+            right: -4px;
+            width: 21px;
+            height: 21px;
             border-radius: 50%;
             background: var(--platform-color, #333);
-            border: 2px solid rgba(10, 12, 16, 0.95);
+            border: 2px solid rgba(7, 9, 12, 0.98);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -178,27 +205,54 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         .content-box {
             flex: 1;
             min-width: 0;
-            padding-top: 1px;
+            position: relative;
+            padding: 8px 12px 10px;
+            border-radius: max(12px, var(--radius));
+            background:
+                linear-gradient(180deg, var(--bubble-strong), transparent 42%),
+                var(--bubble);
+            border: 1px solid var(--platform-soft, rgba(255,255,255,0.18));
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.08),
+                0 10px 28px rgba(0,0,0,0.34);
+            backdrop-filter: blur(var(--blur)) saturate(160%);
+            -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+        }
+
+        .content-box::before {
+            content: "";
+            position: absolute;
+            left: -6px;
+            top: 15px;
+            width: 10px;
+            height: 10px;
+            background: var(--bubble);
+            border-left: 1px solid var(--platform-soft, rgba(255,255,255,0.16));
+            border-bottom: 1px solid var(--platform-soft, rgba(255,255,255,0.16));
+            transform: rotate(45deg);
+            backdrop-filter: blur(var(--blur));
         }
 
         .username {
-            font-weight: 700;
-            font-size: calc(var(--font-size) * 0.78);
-            margin-bottom: 3px;
+            font-weight: 900;
+            font-size: calc(var(--font-size) * 0.72);
+            margin-bottom: 2px;
             display: flex;
             align-items: center;
             gap: 8px;
             text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-            letter-spacing: 0.01em;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--platform-color, #fff);
         }
 
         .kind-tag {
             font-size: 0.7em;
             font-weight: 800;
-            background: rgba(255,255,255,0.14);
+            background: var(--platform-chip, rgba(255,255,255,0.14));
             padding: 2px 7px;
-            border-radius: 6px;
-            letter-spacing: 0.08em;
+            border-radius: 999px;
+            letter-spacing: 0;
             color: rgba(255,255,255,0.85);
             text-transform: uppercase;
         }
@@ -208,7 +262,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             line-height: 1.35;
             word-wrap: break-word;
             opacity: 1;
-            font-weight: 500;
+            font-weight: 600;
             text-shadow: 0 1px 4px rgba(0,0,0,0.4);
             color: rgba(255,255,255,0.95);
         }
@@ -251,7 +305,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             margin-bottom: 24px;
             color: var(--cyan);
             text-transform: uppercase;
-            letter-spacing: 6px;
+            letter-spacing: 0;
         }
 
         .featured-text {
@@ -266,19 +320,19 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             opacity: 0.5;
             font-weight: 900;
             font-size: 1rem;
-            letter-spacing: 4px;
+            letter-spacing: 0;
         }
 
         /* Event Emphasis */
-        .message.gift {
-            border-color: rgba(255, 215, 0, 0.4);
-            background: linear-gradient(135deg, var(--glass), rgba(255, 215, 0, 0.1));
+        .message.gift .content-box {
+            border-color: rgba(255, 215, 0, 0.45);
+            background: linear-gradient(135deg, var(--bubble), rgba(255, 215, 0, 0.12));
         }
-        .message.follow {
-            border-color: rgba(0, 242, 255, 0.4);
-            background: linear-gradient(135deg, var(--glass), rgba(0, 242, 255, 0.1));
+        .message.follow .content-box {
+            border-color: rgba(0, 242, 255, 0.45);
+            background: linear-gradient(135deg, var(--bubble), rgba(0, 242, 255, 0.12));
         }
-        .message.emphasis {
+        .message.emphasis .content-box {
             box-shadow: 0 0 40px rgba(0, 242, 255, 0.15);
         }
     </style>
@@ -301,6 +355,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         const featuredOverlay = document.getElementById('featured-overlay');
         const MAX_MESSAGES = ${cfg.maxItems || 75};
         const FADE_OUT_MS = ${(cfg as any).fadeOutAfterSeconds || 0} * 1000;
+        const SHOW_PLATFORM_BADGE = ${showPlatformBadge};
 
         const platformIcons = {
             twitch: '<path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0h1.714v5.143h-1.714zm-10.286 0h1.714v5.143H6zm1.714-2.572H1.714v15.428h4.286v3.429l3.429-3.429h2.572l7.714-7.714V2.142zm11.143 10.286-3 3H10.286L7.714 18v-2.571H3.429V3.857h12.857z"/>',
@@ -367,6 +422,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             const accent = safeHexColor(msg.accentColor, platformColors[msg.platform] || '#888888');
             const iconPath = platformIcons[msg.platform] || platformIcons.twitch;
             const glow = hexWithAlpha(accent, 0.45);
+            const soft = hexWithAlpha(accent, 0.42);
+            const chip = hexWithAlpha(accent, 0.24);
             const name = msg.displayName || msg.username || 'Anonymous';
             const initial = String(name).trim().charAt(0).toUpperCase() || '?';
             const avatarUrl = safeAvatarUrl(msg.profilePictureUrl);
@@ -381,15 +438,24 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 : msg.kind === 'raid' ? '<span class="kind-tag">Raid</span>'
                 : '';
 
+            div.style.setProperty('--platform-color', accent);
+            div.style.setProperty('--platform-glow', glow);
+            div.style.setProperty('--platform-soft', soft);
+            div.style.setProperty('--platform-chip', chip);
+
+            const platformBadge = SHOW_PLATFORM_BADGE
+                ? '<div class="platform-badge">' +
+                    '<svg viewBox="0 0 24 24">' + iconPath + '</svg>' +
+                  '</div>'
+                : '';
+
             div.innerHTML =
-                '<div class="avatar-wrap" style="--platform-color: ' + accent + '; --platform-glow: ' + glow + '">' +
+                '<div class="avatar-wrap">' +
                     avatarBody +
-                    '<div class="platform-badge">' +
-                        '<svg viewBox="0 0 24 24">' + iconPath + '</svg>' +
-                    '</div>' +
+                    platformBadge +
                 '</div>' +
                 '<div class="content-box">' +
-                    '<div class="username" style="color: ' + accent + '">' +
+                    '<div class="username">' +
                         escapeHtml(name) +
                         (kindTag ? ' ' + kindTag : '') +
                     '</div>' +
@@ -430,7 +496,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         }
 
         function connect() {
-            const evs = new EventSource('/overlay/events?channel=chat');
+            const evs = new EventSource('/overlay/events?channel=chat-unified');
             evs.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'snapshot') {
@@ -444,7 +510,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                     addMessage(data.payload);
                 } else if (data.type === \'reload\') {
                     window.location.reload();
-                } else if (data.type === \'feature-broadcast\') {
+                } else if (data.type === \'feature-broadcast\' || data.type === \'feature\') {
                     showFeatured(data.payload);
                 }
             };
