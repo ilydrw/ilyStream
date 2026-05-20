@@ -4,9 +4,22 @@ import {
   type BorderConfig,
   type Widget
 } from '../../../../../shared/widgets'
+import { applyWidgetThemeConfig, type WidgetThemeId } from '../../../../../shared/widget-themes'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, ColorRow } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
+
+const BORDER_THEME_OPTIONS: Array<{
+  id: WidgetThemeId
+  style: BorderConfig['style']
+  label: string
+  selectedClass: string
+}> = [
+  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'chroma', style: 'chroma', label: 'Chroma', selectedClass: 'bg-gradient-to-r from-red-500 via-yellow-300 via-green-400 to-fuchsia-500 text-white border-transparent' },
+  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'gob-the-stopper', style: 'gob-the-stopper', label: 'Gob', selectedClass: 'bg-lime-300 text-black border-lime-200 shadow-[0_0_18px_rgba(182,255,0,0.24)]' }
+]
 
 export function BorderConfigEditor({
   draft,
@@ -24,22 +37,26 @@ export function BorderConfigEditor({
     onChange({ ...draft, config: { ...config, [key]: value } })
   }
 
+  const applyTheme = (themeId: WidgetThemeId) => {
+    onChange({ ...draft, config: applyWidgetThemeConfig(config, themeId) })
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <Section label="Colors">
         <Field label="Theme">
-          <div className="grid grid-cols-3 gap-2">
-            {(['classic', 'chroma', 'cyber'] as const).map((s) => (
+          <div className="grid grid-cols-4 gap-2">
+            {BORDER_THEME_OPTIONS.map((option) => (
               <button
-                key={s}
-                onClick={() => update('style', s)}
+                key={option.id}
+                onClick={() => applyTheme(option.id)}
                 className={`h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
-                  config.style === s
-                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
+                  config.style === option.style
+                    ? option.selectedClass
                     : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                 }`}
               >
-                {s.replace('-', ' ')}
+                {option.label}
               </button>
             ))}
           </div>

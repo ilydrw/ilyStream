@@ -135,8 +135,8 @@ export function NowPlayingConfigEditor({
         {config.showBorder && (
           <>
             <Field label="Border Type">
-              <div className="grid grid-cols-3 gap-2">
-                {(['solid', 'chroma', 'cyber'] as const).map((type) => (
+              <div className="grid grid-cols-4 gap-2">
+                {(['solid', 'chroma', 'cyber', 'gob-the-stopper'] as const).map((type) => (
                   <button
                     key={type}
                     onClick={() => update('borderType', type)}
@@ -146,7 +146,7 @@ export function NowPlayingConfigEditor({
                         : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
                     }`}
                   >
-                    {type.toUpperCase()}
+                    {type === 'gob-the-stopper' ? 'GOB' : type.toUpperCase()}
                   </button>
                 ))}
               </div>

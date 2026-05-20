@@ -30,6 +30,15 @@ export class AlertManager extends EventEmitter {
       }
     }
 
+    if (
+      finalPayload.imageUrl &&
+      !finalPayload.imageUrl.startsWith('http') &&
+      !finalPayload.imageUrl.startsWith('data:') &&
+      !finalPayload.imageUrl.startsWith('/')
+    ) {
+      finalPayload.imageUrl = `/assets/${finalPayload.imageUrl}`
+    }
+
     const alertItem = createOverlayAlertItem(finalPayload as any, platform)
     this.history = limitHistory([...this.history, alertItem], ALERT_HISTORY_LIMIT)
     this.sse.broadcast('alerts', { type: 'append', payload: alertItem })

@@ -53,6 +53,13 @@ const sections = [
         kicker: 'Production audio',
         time: '10 min',
       },
+      {
+        title: 'Spotify setup',
+        copy: 'Create a Spotify Developer app, add the ilyStream redirect URI, connect your account, and enable song requests.',
+        href: 'docs/spotify/',
+        kicker: 'Music integration',
+        time: '9 min',
+      },
     ],
   },
   {
@@ -73,15 +80,15 @@ const sections = [
 <Layout
   active="docs"
   title="Documentation"
-  description="ilyStream integration guides and setup workflows: Philips Hue, Govee, OBS, DeskThing, and audio routing."
+  description="ilyStream integration guides and setup workflows: Philips Hue, Govee, OBS, Spotify, DeskThing, and audio routing."
 >
   <section class="page-hero">
     <div class="container">
       <p class="eyebrow">Documentation</p>
       <h1>Integration guides &amp; setup workflows.</h1>
       <p class="lede">
-        Hands-on guides for connecting ilyStream to the lights, overlays, and
-        companion devices that make a stream feel alive. Each guide walks through
+        Hands-on guides for connecting ilyStream to the lights, overlays, music,
+        and companion devices that make a stream feel alive. Each guide walks through
         the same path: prerequisites, step-by-step setup, configuration in ilyStream,
         and troubleshooting.
       </p>
@@ -89,6 +96,7 @@ const sections = [
         <a class="button button--primary" href={withBase('docs/getting-started/')}>Start here</a>
         <a class="button button--ghost" href={withBase('docs/philips-hue/')}>Philips Hue</a>
         <a class="button button--ghost" href={withBase('docs/obs/')}>OBS overlays</a>
+        <a class="button button--ghost" href={withBase('docs/spotify/')}>Spotify setup</a>
       </div>
     </div>
   </section>

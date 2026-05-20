@@ -417,7 +417,7 @@ function RuleEditor({
                   </Field>
                   <div className="grid grid-cols-3 gap-2">
                     <ColorField label="Text" value={rule.textColor} onChange={(v) => updateRule({ textColor: v })} />
-                    <ColorField label="Bg" value={normalizeColorInput(rule.backgroundColor, '#000000')} onChange={(v) => updateRule({ backgroundColor: `${v}33` })} />
+                    <ColorField label="Bg" value={normalizeColorInput(rule.backgroundColor, '#000000')} onChange={(v) => updateRule({ backgroundColor: v })} />
                     <NumberField label="Size" value={rule.fontSize} min={12} max={120} onChange={(v) => updateRule({ fontSize: v })} />
                   </div>
                 </div>
@@ -455,7 +455,7 @@ function RuleEditor({
               <div className="space-y-4 p-4 rounded-xl bg-accent/5 border border-accent/10">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-accent/80 mb-2">Gift Thresholds</h3>
                 <NumberField label="Min Gifts" value={rule.minGiftCount} min={0} max={9999} onChange={(v) => updateRule({ minGiftCount: v })} />
-                <NumberField label="Min Amount (Cents)" value={Math.round(rule.minAmountCents / 100)} min={0} max={1000} onChange={(v) => updateRule({ minAmountCents: v * 100 })} />
+                <NumberField label="Min Amount ($)" value={Math.round(rule.minAmountCents / 100)} min={0} max={1000} onChange={(v) => updateRule({ minAmountCents: v * 100 })} />
               </div>
             )}
           </div>

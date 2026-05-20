@@ -170,15 +170,37 @@ describe('OverlayServer', () => {
     expect(pairResponse.headers.get('access-control-allow-origin')).toBe('*')
     expect(pairBody.token).toBe('desk-token')
 
+    const eventsController = new AbortController()
     const eventsResponse = await fetch(`http://127.0.0.1:${status.port}/api/v1/events?token=${pairBody.token}`, {
-      headers: { Origin: origin }
+      headers: { Origin: origin },
+      signal: eventsController.signal
     })
 
     expect(eventsResponse.status).toBe(200)
     expect(eventsResponse.headers.get('access-control-allow-origin')).toBe('*')
     expect(eventsResponse.headers.get('content-type')).toContain('text/event-stream')
 
-    await eventsResponse.body?.cancel()
+    overlayServer.handleStreamEvent({
+      id: 'chat-deskthing-1',
+      platform: 'twitch',
+      timestamp: new Date('2026-04-10T11:00:00.000Z'),
+      type: 'chat',
+      raw: {},
+      message: 'deskthing hello',
+      emotes: [],
+      user: {
+        id: 'user-3',
+        username: 'desk_viewer',
+        displayName: 'Desk Viewer',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    })
+
+    const eventsStream = await readStreamUntil(eventsResponse, '"chatBacklog"', eventsController)
+    expect(eventsStream).toContain('"message":"deskthing hello"')
   })
 })
 

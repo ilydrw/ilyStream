@@ -244,7 +244,7 @@ export function AlertConfigSection({
                 label="Panel"
                 value={backgroundColor}
                 disabled={!textEnabled}
-                onChange={(value) => update(`eventText${type}BackgroundColor` as EventSoundSettingKey, `${value}33`)}
+                onChange={(value) => update(`eventText${type}BackgroundColor` as EventSoundSettingKey, value)}
               />
               <Field label="Border">
                 <button

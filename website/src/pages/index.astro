@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.11';
+const latestVersion = '0.0.12';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -47,17 +47,18 @@ const highlights = [
 
 const releaseNotes = [
   'Fresh Install Fix: New Windows installs now create the stream_state database table before services touch it, so the app opens cleanly.',
-  'DeskThing v0.0.11: Companion metadata stays matched to the desktop app release.',
+  'DeskThing v0.0.12: Companion metadata stays matched to the desktop app release.',
   'Chat Cleanup: TikTok likes stay out of chat while the likes widgets and stats still update.',
   'Spotify + Alerts: Song requests reach Spotify reliably, alert overlays clean up after playback, and alert sounds are accepted from bundled paths.',
   'Kokoro + Spotify: Local TTS now loads its bundled ONNX runtime, and Spotify token refreshes retry transient outages.',
-  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.11 release set.',
+  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.12 release set.',
 ];
 
 const docPreviews = [
   { title: 'Getting started', copy: 'Install, launch, and connect your first scene in under five minutes.', href: 'docs/getting-started/', kicker: 'Tutorial' },
   { title: 'Philips Hue', copy: 'Pair the Bridge, generate a username, and map fixtures to chat reactions.', href: 'docs/philips-hue/', kicker: 'Smart lights' },
   { title: 'OBS overlays', copy: 'Add ilyStream widgets and alerts as transparent OBS browser sources.', href: 'docs/obs/', kicker: 'Browser sources' },
+  { title: 'Spotify setup', copy: 'Create the Spotify app, add the redirect URI, and connect song requests.', href: 'docs/spotify/', kicker: 'Music integration' },
   { title: 'DeskThing companion', copy: 'Pair a Car Thing or DeskThing client to control your stream.', href: 'docs/deskthing/', kicker: 'Companion app' },
 ];
 
@@ -478,7 +479,7 @@ const screensPreview = [
   /* Doc cards */
   .docs-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 14px;
   }
 

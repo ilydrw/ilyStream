@@ -17,6 +17,7 @@ const MAX_BODY_BYTES = 64 * 1024
 const SSE_PING_INTERVAL_MS = 25_000
 const PAIR_RATE_LIMIT_WINDOW_MS = 5 * 60_000
 const PAIR_RATE_LIMIT_MAX_ATTEMPTS = 10
+const MAX_PENDING_PAIR_CODES = 5
 
 interface PendingPairCode {
   code: string
@@ -86,8 +87,9 @@ export class DeviceApi {
    * polling the catalog.
    */
   broadcast(type: DeviceEventType, payload: unknown): void {
-    // chatAppend is high-volume — we don't store it in `latestState` because
-    // replay happens through the chatBacklog buffer instead.
+    // chatAppend is high-volume and incremental. The rolling chatBacklog
+    // snapshot is stored separately so clients can either append live entries
+    // or replace from the current backlog without missing chat.
     if (type !== 'chatAppend') {
       this.latestState[type] = payload
     }
@@ -104,7 +106,9 @@ export class DeviceApi {
 
   /**
    * Buffer + broadcast a single chat-feed item. The buffer is replayed as a
-   * `chatBacklog` snapshot when a new device subscribes.
+   * `chatBacklog` snapshot when a new device subscribes. We also publish the
+   * latest backlog live because older DeskThing builds listen for snapshots
+   * but not incremental appends.
    */
   appendChatItem(item: unknown): void {
     if (isLikeFeedItem(item)) return
@@ -114,12 +118,14 @@ export class DeviceApi {
       this.chatBuffer = this.chatBuffer.slice(-CHAT_BUFFER_LIMIT)
     }
     this.broadcast('chatAppend', item)
+    this.broadcast('chatBacklog', [...this.chatBuffer])
   }
 
   // --- Pairing (called from the desktop UI via IPC) ---
 
   startPairCode(): PairCode {
     this.pruneCodes()
+    this.pendingCodes = this.pendingCodes.slice(-(MAX_PENDING_PAIR_CODES - 1))
     const code = generatePairCode()
     const expiresAt = Date.now() + PAIR_CODE_TTL_MS
     this.pendingCodes.push({ code, expiresAt })
@@ -242,9 +248,12 @@ export class DeviceApi {
     response: ServerResponse<IncomingMessage>
   ): Promise<void> {
     const body = await readJsonBody<{ code?: string | number; label?: string }>(request)
-    const code = String(body.code ?? '').trim().padStart(6, '0')
+    const rawCode = String(body.code ?? '').trim()
+    const code = rawCode.padStart(6, '0')
     const label = (body.label || 'DeskThing').trim().slice(0, 64)
     const attemptKey = this.getRateLimitKey(request)
+
+    this.prunePairAttempts()
 
     if (this.isPairRateLimited(attemptKey)) {
       writeJson(response, { error: 'Too many pairing attempts' }, 429)
@@ -253,7 +262,7 @@ export class DeviceApi {
 
     console.log(`[device-api] Attempting to pair device label: "${label}"`)
 
-    if (!code) {
+    if (!rawCode) {
       writeJson(response, { error: 'Missing code' }, 400)
       return
     }
@@ -347,7 +356,7 @@ export class DeviceApi {
     // Chat is replayed as a single backlog snapshot rather than per-item
     // appends, so devices that connect mid-stream see recent context all at
     // once instead of nothing.
-    if (this.chatBuffer.length > 0) {
+    if (this.chatBuffer.length > 0 && this.latestState.chatBacklog === undefined) {
       response.write(
         `data: ${JSON.stringify({ type: 'chatBacklog', payload: this.chatBuffer })}\n\n`
       )
@@ -422,6 +431,15 @@ export class DeviceApi {
   private pruneCodes(): void {
     const now = Date.now()
     this.pendingCodes = this.pendingCodes.filter((c) => c.expiresAt > now)
+  }
+
+  private prunePairAttempts(): void {
+    const now = Date.now()
+    for (const [key, entry] of this.pairAttempts) {
+      if (entry.resetAt <= now) {
+        this.pairAttempts.delete(key)
+      }
+    }
   }
 }
 

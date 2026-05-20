@@ -15,6 +15,7 @@ import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
 
 const SONG_REQUEST_COMMANDS = new Set(['!sr', '!songrequest', '!play', '.play', '/play'])
 const SKIP_COMMANDS = new Set(['!skip', '!voteskip', '.skip', '/skip'])
+const RESTORE_RETRY_DELAY_MS = 30_000
 
 interface SongRequestSource {
   platform?: string
@@ -39,6 +40,7 @@ export class SpotifyService extends EventEmitter {
   private accessToken: string | null = null
   private refreshToken: string | null = null
   private lastError: string | null = null
+  private restoreRetryTimer: NodeJS.Timeout | null = null
 
   constructor(private db: Database, private platformManager: PlatformManager) {
     super()
@@ -60,6 +62,8 @@ export class SpotifyService extends EventEmitter {
   }
 
   async connect(clientIdOverride?: string): Promise<SpotifyStatus> {
+    this.clearRestoreRetry()
+
     const settings = resolveAppSettings(this.db.getAllSettings())
     const currentClientId = settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID
     const clientId = (clientIdOverride?.trim() || currentClientId).trim()
@@ -142,6 +146,7 @@ export class SpotifyService extends EventEmitter {
   }
 
   async disconnect(): Promise<void> {
+    this.clearRestoreRetry()
     this.connected = false
     this.accessToken = null
     this.refreshToken = null
@@ -165,6 +170,7 @@ export class SpotifyService extends EventEmitter {
 
     if (command.type === 'song-request') {
       if (!settings.spotifySongRequestsEnabled || !settings.spotifyPlayEnabled || !command.query) return true
+      if (!(await this.ensureReadyForCommand())) return true
 
       await this.searchAndEnqueue(command.query, chat.user.username, {
         platform: chat.platform,
@@ -176,6 +182,7 @@ export class SpotifyService extends EventEmitter {
 
     if (command.type === 'skip') {
       if (!settings.spotifySongRequestsEnabled || !settings.spotifySkipEnabled) return true
+      if (!(await this.ensureReadyForCommand())) return true
       await this.skip()
       return true
     }
@@ -221,6 +228,9 @@ export class SpotifyService extends EventEmitter {
       return request
     } catch (e) {
       console.error('[Spotify] SR failed:', e)
+      this.lastError = `Song request failed: ${this.getErrorMessage(e)}`
+      this.emit('status', this.getStatus())
+      this.emitNowPlaying()
       return null
     }
   }
@@ -258,6 +268,8 @@ export class SpotifyService extends EventEmitter {
       this.skipVotes.clear()
     } catch (e) {
       console.error('[Spotify] Skip failed:', e)
+      this.lastError = `Skip failed: ${this.getErrorMessage(e)}`
+      this.emit('status', this.getStatus())
     }
   }
 
@@ -281,7 +293,7 @@ export class SpotifyService extends EventEmitter {
     void this.poll()
   }
 
-  private async poll(): Promise<void> {
+  private async poll(hasRetriedAfterRefresh = false): Promise<void> {
     if (!this.connected) return
     try {
       const raw = await this.client.getPlaybackState()
@@ -295,7 +307,19 @@ export class SpotifyService extends EventEmitter {
       const message = e instanceof Error ? e.message : String(e)
       console.error('[Spotify] Now playing poll failed:', message)
 
-      if (message.includes('401')) {
+      if (message.includes('401') && this.refreshToken && !hasRetriedAfterRefresh) {
+        try {
+          this.setNowPlayingStatus('ok', true)
+          await this.refreshAccessToken()
+          this.connected = true
+          this.lastError = null
+          this.emit('status', this.getStatus())
+          await this.poll(true)
+          return
+        } catch {
+          this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'unauthorized' }
+        }
+      } else if (message.includes('401')) {
         this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'unauthorized' }
         this.handleAuthError('Spotify authorization expired. Reconnect Spotify.')
       } else if (message.includes('403')) {
@@ -316,6 +340,35 @@ export class SpotifyService extends EventEmitter {
       queue: this.getQueue()
     }
     this.emit('now-playing', this.currentNowPlaying)
+  }
+
+  private setNowPlayingStatus(status: NowPlayingPayload['status'], isRefreshing = false): void {
+    this.currentNowPlaying = {
+      ...EMPTY_NOW_PLAYING,
+      status,
+      isRefreshing,
+      queue: this.getQueue()
+    }
+    this.emitNowPlaying()
+  }
+
+  private async ensureReadyForCommand(): Promise<boolean> {
+    if (this.connected) return true
+
+    const settings = resolveAppSettings(this.db.getAllSettings())
+    this.accessToken = this.accessToken || settings.spotifyAccessToken || null
+    this.refreshToken = this.refreshToken || settings.spotifyRefreshToken || null
+
+    if (!this.refreshToken) {
+      this.lastError = 'Spotify is not connected. Connect Spotify before using chat commands.'
+      this.setNowPlayingStatus('unauthorized')
+      this.emit('status', this.getStatus())
+      return false
+    }
+
+    this.setNowPlayingStatus('ok', true)
+    await this.restoreSession()
+    return this.connected
   }
 
   private handleAuthError(error?: string): void {
@@ -352,13 +405,22 @@ export class SpotifyService extends EventEmitter {
       }
 
       try {
+        this.setNowPlayingStatus('ok', true)
         await this.refreshAccessToken()
         this.profile = await this.client.getProfile()
         this.connected = true
+        this.lastError = null
+        this.clearRestoreRetry()
         this.startPolling()
         this.emit('status', this.getStatus())
       } catch (e: any) {
-        this.lastError = `Session restoration failed: ${e.message}`
+        const message = this.getErrorMessage(e)
+        const isTransient = this.isTransientSpotifyError(e)
+        this.connected = false
+        this.lastError = `Session restoration failed: ${message}`
+        this.setNowPlayingStatus(isTransient ? 'error' : 'unauthorized')
+        this.emit('status', this.getStatus())
+        this.scheduleRestoreRetry(e)
       }
     }
   }
@@ -381,16 +443,50 @@ export class SpotifyService extends EventEmitter {
       this.db.setSetting('spotifyAccessToken', tokens.accessToken)
       this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
       this.client.setAccessToken(tokens.accessToken)
+      this.lastError = null
       log.info('[Spotify] Access token refreshed')
     } catch (err: any) {
       log.error('[Spotify] Token refresh failed:', err)
-      this.handleAuthError(`Token refresh failed: ${err.message}`)
+      this.handleAuthError(`Token refresh failed: ${this.getErrorMessage(err)}`)
       throw err
     }
   }
 
   async dispose(): Promise<void> {
     if (this.pollTimer) clearInterval(this.pollTimer)
+    this.clearRestoreRetry()
     this.accessToken = null
+  }
+
+  private scheduleRestoreRetry(error: unknown): void {
+    if (this.restoreRetryTimer || !this.isTransientSpotifyError(error)) return
+
+    this.restoreRetryTimer = setTimeout(() => {
+      this.restoreRetryTimer = null
+      void this.restoreSession()
+    }, RESTORE_RETRY_DELAY_MS)
+    this.restoreRetryTimer.unref?.()
+  }
+
+  private clearRestoreRetry(): void {
+    if (!this.restoreRetryTimer) return
+    clearTimeout(this.restoreRetryTimer)
+    this.restoreRetryTimer = null
+  }
+
+  private isTransientSpotifyError(error: unknown): boolean {
+    const message = this.getErrorMessage(error)
+    return (
+      /\b(?:408|429|500|502|503|504)\b/.test(message) ||
+      /timeout|timed out|network|fetch failed|econnreset|etimedout|disconnect|reset before headers/i.test(message)
+    )
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message
+    if (error && typeof error === 'object' && 'message' in error) {
+      return String((error as { message?: unknown }).message || error)
+    }
+    return String(error)
   }
 }

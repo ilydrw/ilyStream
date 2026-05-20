@@ -94,72 +94,105 @@ export class EventOrchestrator {
 
     // 12. Spotify -> Overlay Bridge
     this.spotifyService.on('now-playing', (payload) => {
-      this.overlayServer.setNowPlaying(payload)
+      try {
+        this.overlayServer.setNowPlaying(payload)
+      } catch (err) {
+        console.error('[EventOrchestrator] Spotify now-playing bridge failed:', err)
+      }
     })
 
     // 13. Spotify -> Stats: count each song request exactly once when it
     // first appears in the queue. The queue updates frequently as songs
     // play / get removed, so we de-dupe on requestId.
-    this.spotifyService.on('song-requested', (request) => this.recordSongRequested(request))
+    this.spotifyService.on('song-requested', (request) => {
+      try {
+        this.recordSongRequested(request)
+      } catch (err) {
+        console.error('[EventOrchestrator] Song request stats recording failed:', err)
+      }
+    })
 
     // Initial sync
     this.overlayServer.setNowPlaying(this.spotifyService.getNowPlaying())
   }
 
   private async handlePlatformEvent(event: AnyStreamEvent): Promise<void> {
-    try {
-      console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
+    console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
 
-      // 1. Log to DB
+    // 1. Log to DB
+    await this.runEventStage('event history', () => {
       this.db.addEvent(
         event.platform,
         event.type,
         'user' in event ? event.user.displayName || event.user.username : null,
         event
       )
+    })
 
-      // 2. Broadcast to Overlay
+    // 2. Broadcast to Overlay
+    await this.runEventStage('overlay broadcast', () => {
       console.log(`[orchestrator] Broadcasting to overlays...`)
       this.overlayServer.handleStreamEvent(event)
+    })
 
-      // 3. Play Sounds
+    // 3. Play Sounds
+    await this.runEventStage('event sounds', () => {
       this.eventSoundService.processEvent(event)
+    })
 
-      // 4. Spotify Integration (Song Requests, etc)
-      const handledBySpotify = await this.spotifyService.processEvent(event)
+    // 4. Spotify Integration (Song Requests, etc)
+    let handledBySpotify = false
+    await this.runEventStage('spotify', async () => {
+      handledBySpotify = await this.spotifyService.processEvent(event)
+    })
 
-      // 5. TTS (only if not a spotify command or if configured)
-      if (!handledBySpotify) {
+    // 5. TTS (only if not a spotify command or if configured)
+    if (!handledBySpotify) {
+      await this.runEventStage('tts', () => {
         console.log(`[orchestrator] Sending to TTS engine...`)
         this.ttsEngine.processEvent(event)
-      }
+      })
+    }
 
-      // 6. Hardware (Hue)
+    // 6. Hardware (Hue)
+    await this.runEventStage('hardware alerts', () => {
       this.handleHardwareAlerts(event)
+    })
 
-      // 7. Automation Triggers
+    // 7. Automation Triggers
+    await this.runEventStage('triggers', () => {
       console.log(`[orchestrator] Processing triggers...`)
       this.triggerEngine.evaluate(event)
+    })
 
-      // 8. System Automation (Direct Mapping)
+    // 8. System Automation (Direct Mapping)
+    await this.runEventStage('automation', () => {
       this.handleAutomation(event)
+    })
 
-      // 9. Economy (Likes, Timer, Points)
+    // 9. Economy (Likes, Timer, Points)
+    await this.runEventStage('economy', () => {
       this.handleEconomy(event)
+    })
 
-      // 10. Lifetime stats (per-user + global counters surfaced on the Stats page)
-      try {
-        this.statsService.recordEvent(event)
-      } catch (err) {
-        console.error('[EventOrchestrator] Stats recording failed:', err)
-      }
+    // 10. Lifetime stats (per-user + global counters surfaced on the Stats page)
+    await this.runEventStage('stats', () => {
+      this.statsService.recordEvent(event)
+    })
 
-      // 11. DB Pruning (Throttle)
+    // 11. DB Pruning (Throttle)
+    await this.runEventStage('event history pruning', () => {
       if (Date.now() % 100 === 0) {
         this.db.pruneEventHistory()
       }
+    })
+  }
+
+  private async runEventStage(stage: string, handler: () => void | Promise<void>): Promise<void> {
+    try {
+      await handler()
     } catch (err) {
-      console.error('[EventOrchestrator] Event handling failed:', err)
+      console.error(`[EventOrchestrator] ${stage} failed:`, err)
     }
   }
 

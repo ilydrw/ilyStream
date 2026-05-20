@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { applyWidgetThemeConfig } from './widget-themes'
+import { applyWidgetThemeConfig, getWidgetTheme } from './widget-themes'
 
 describe('applyWidgetThemeConfig', () => {
   it('applies the Gob the Stopper palette to common and nested widget color fields', () => {
     const themed = applyWidgetThemeConfig({
+      style: 'classic',
+      borderType: 'solid',
       accentColor: '#ffffff',
       backgroundColor: '#ffffff',
       followerHearts: {
@@ -19,6 +21,8 @@ describe('applyWidgetThemeConfig', () => {
     expect(themed).toEqual(expect.objectContaining({
       themeId: 'gob-the-stopper',
       widgetThemeName: 'Gob the Stopper',
+      style: 'gob-the-stopper',
+      borderType: 'gob-the-stopper',
       accentColor: '#B6FF00',
       backgroundColor: '#020402',
       secondaryColor: '#050505',
@@ -50,11 +54,20 @@ describe('applyWidgetThemeConfig', () => {
       widgetThemeName: 'Chroma',
       style: 'chroma',
       borderType: 'chroma',
-      accentColor: '#00F2FF'
+      accentColor: '#FF3B30'
     }))
     expect(themed.particleLayer).toEqual(expect.objectContaining({
       style: 'hearts',
-      primaryColor: '#00F2FF'
+      primaryColor: '#FF3B30'
     }))
+  })
+
+  it('keeps Chroma visually distinct from Cyber', () => {
+    const chroma = getWidgetTheme('chroma')
+    const cyber = getWidgetTheme('cyber')
+
+    expect(chroma.colors.primary).not.toBe(cyber.colors.primary)
+    expect(chroma.colors.secondary).not.toBe(cyber.colors.secondary)
+    expect(chroma.colors.border).not.toBe(cyber.colors.border)
   })
 })

@@ -56,13 +56,19 @@ export class TikTokConnector extends BaseConnector {
 
         this.setupEventListeners(connection)
 
-        // Add a timeout to the connection attempt
-        const connectPromise = connection.connect()
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Connection timed out after 15s (${candidate.name})`)), 15000)
-        )
+        // Add a timeout to the connection attempt and always clear it once
+        // the candidate wins/fails so failed retries do not leave timers alive.
+        let connectTimeout: ReturnType<typeof setTimeout> | null = null
+        try {
+          const connectPromise = connection.connect()
+          const timeoutPromise = new Promise((_, reject) => {
+            connectTimeout = setTimeout(() => reject(new Error(`Connection timed out after 15s (${candidate.name})`)), 15000)
+          })
 
-        await Promise.race([connectPromise, timeoutPromise])
+          await Promise.race([connectPromise, timeoutPromise])
+        } finally {
+          if (connectTimeout) clearTimeout(connectTimeout)
+        }
 
         console.log(`[TikTokConnector] Successfully connected via: ${candidate.name}`)
         this.setStatus('connected')
@@ -97,7 +103,10 @@ export class TikTokConnector extends BaseConnector {
 
   private setupEventListeners(connection: any): void {
     connection.on('chat', (data: any) => {
-      if (isTikTokLikeSocialPayload(data)) return
+      if (isTikTokLikeSocialPayload(data)) {
+        this.emitEvent(this.mapper.mapLike(data))
+        return
+      }
       this.emitEvent(this.mapper.mapChat(data))
     })
 

@@ -24,7 +24,7 @@ const imageUrl = Astro.site ? new URL(withBase(image), Astro.site).toString() : 
 const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
 
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
-const latestVersion = '0.0.11';
+const latestVersion = '0.0.12';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 
@@ -165,6 +165,7 @@ const navItems = [
               <li><a href={withBase('docs/getting-started/')}>Getting started</a></li>
               <li><a href={withBase('docs/philips-hue/')}>Philips Hue</a></li>
               <li><a href={withBase('docs/obs/')}>OBS overlays</a></li>
+              <li><a href={withBase('docs/spotify/')}>Spotify setup</a></li>
             </ul>
           </div>
           <div class="footer__col">

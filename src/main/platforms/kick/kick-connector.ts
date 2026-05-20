@@ -46,10 +46,15 @@ export class KickConnector extends BaseConnector {
     // Try kick-js first, fall back to raw WebSocket
     const KickJS = await loadOptionalModule('@retconned/kick-js')
 
-    if (KickJS) {
-      await this.connectViaKickJS(KickJS, channelName)
-    } else {
-      await this.connectViaPusher(channelName)
+    try {
+      if (KickJS) {
+        await this.connectViaKickJS(KickJS, channelName)
+      } else {
+        await this.connectViaPusher(channelName)
+      }
+    } catch (error) {
+      await this.cleanup()
+      throw error
     }
   }
 
@@ -178,21 +183,37 @@ export class KickConnector extends BaseConnector {
 
     // Wait for connection confirmation
     await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Kick WebSocket connection timeout')), 10_000)
-
-      this.ws.once('message', (raw: any) => {
+      let settled = false
+      const settle = (callback: () => void) => {
+        if (settled) return
+        settled = true
         clearTimeout(timeout)
+        this.ws?.off?.('message', onMessage)
+        this.ws?.off?.('error', onError)
+        this.ws?.off?.('close', onClose)
+        callback()
+      }
+      const onMessage = (raw: any) => {
         try {
           const msg = JSON.parse(raw.toString())
           if (msg.event === 'pusher:connection_established') {
-            resolve()
+            settle(resolve)
           } else {
-            reject(new Error('Unexpected first message from Kick WebSocket'))
+            settle(() => reject(new Error('Unexpected first message from Kick WebSocket')))
           }
         } catch (e) {
-          reject(e)
+          settle(() => reject(e))
         }
-      })
+      }
+      const onError = (err: unknown) => settle(() => reject(err))
+      const onClose = () => settle(() => reject(new Error('Kick WebSocket closed before connection established')))
+      const timeout = setTimeout(() => {
+        settle(() => reject(new Error('Kick WebSocket connection timeout')))
+      }, 10_000)
+
+      this.ws.once('message', onMessage)
+      this.ws.once('error', onError)
+      this.ws.once('close', onClose)
     })
   }
 

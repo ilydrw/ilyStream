@@ -51,8 +51,9 @@ export class EventSoundService {
       case 'join':
         if (this.shouldTreatJoinAsSuperfan(event)) {
           this.handleAlert('Superfan', event)
+          return
         }
-        return
+        break
     }
 
     this.handleRuleAlerts(event)
@@ -187,14 +188,29 @@ export class EventSoundService {
     }
 
     if (rule.cooldownMs > 0) {
-      const cooldownKey = `${rule.id}:${event.platform}:${'user' in event ? event.user.id || event.user.username : 'global'}`
-      const now = Date.now()
-      const previous = this.recentRuleHits.get(cooldownKey)
-      if (previous && now - previous < rule.cooldownMs) return false
-      this.recentRuleHits.set(cooldownKey, now)
+      const previous = this.recentRuleHits.get(this.cooldownKey(rule, event))
+      if (previous && Date.now() - previous < rule.cooldownMs) return false
     }
 
     return true
+  }
+
+  private cooldownKey(rule: AlertRule, event: AnyStreamEvent): string {
+    const subject = 'user' in event ? event.user.id || event.user.username : 'global'
+    return `${rule.id}:${event.platform}:${subject}`
+  }
+
+  private recordRuleFire(rule: AlertRule, event: AnyStreamEvent): void {
+    if (rule.cooldownMs <= 0) return
+    const now = Date.now()
+    this.recentRuleHits.set(this.cooldownKey(rule, event), now)
+
+    if (this.recentRuleHits.size > 1000) {
+      const cutoff = now - 24 * 60 * 60 * 1000
+      for (const [key, ts] of this.recentRuleHits) {
+        if (ts < cutoff) this.recentRuleHits.delete(key)
+      }
+    }
   }
 
   private handleRuleAlert(rule: AlertRule, event: AnyStreamEvent): void {
@@ -239,6 +255,8 @@ export class EventSoundService {
       },
       event.platform
     )
+
+    this.recordRuleFire(rule, event)
   }
 
   private resolveRuleImageUrl(rule: AlertRule, event: AnyStreamEvent): string {

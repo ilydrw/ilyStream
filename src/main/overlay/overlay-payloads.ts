@@ -170,7 +170,7 @@ export function createOverlayAlertItem(
     imageUrl: payload.imageUrl,
     audioUrl: payload.audioUrl,
     audioVolume: clampNumber(payload.audioVolume, 0, 1),
-    durationMs: Math.min(Math.max(Math.round(payload.durationMs), 1000), 30000),
+    durationMs: clampDuration(payload.durationMs),
     animationIn: payload.animationIn,
     animationOut: payload.animationOut,
     textColor: payload.textColor,
@@ -196,6 +196,12 @@ function clampNumber(value: unknown, min: number, max: number): number | undefin
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return undefined
   return Math.min(max, Math.max(min, numeric))
+}
+
+function clampDuration(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 5000
+  return Math.min(30000, Math.max(1000, Math.round(numeric)))
 }
 
 function escapeHtml(value: string): string {

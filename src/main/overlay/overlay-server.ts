@@ -215,49 +215,61 @@ export class OverlayServer extends EventEmitter {
   }
 
   handleStreamEvent(event: AnyStreamEvent): void {
-    this.chat.handleEvent(event)
-    this.goals.handleEvent(event)
+    this.runStreamEventStage('chat', () => {
+      this.chat.handleEvent(event)
+    })
+    this.runStreamEventStage('goals', () => {
+      this.goals.handleEvent(event)
+    })
 
     // Broadcast to specific widget channels for reactive updates
-    this.sse.broadcast('particles', { type: 'event', payload: event })
-    this.sse.broadcast('event-particles', { type: 'event', payload: event })
+    this.runStreamEventStage('particles', () => {
+      this.sse.broadcast('particles', { type: 'event', payload: event })
+      this.sse.broadcast('event-particles', { type: 'event', payload: event })
+    })
 
     if (event.type === 'gift') {
-      const gift = event as any
-      const gifterData = {
-        username: gift.user?.displayName || gift.user?.username || 'Anonymous',
-        avatarUrl: gift.user?.profilePictureUrl
-      }
-      this.sse.broadcast('latest-gifter', { type: 'update', data: gifterData })
+      this.runStreamEventStage('latest gifter', () => {
+        const gift = event as any
+        const gifterData = {
+          username: gift.user?.displayName || gift.user?.username || 'Anonymous',
+          avatarUrl: gift.user?.profilePictureUrl
+        }
+        this.sse.broadcast('latest-gifter', { type: 'update', data: gifterData })
 
-      // Persist to DB for initial load of the widget
-      if (this.db) {
-        this.db.setSetting('last_gifter_v1', JSON.stringify(gifterData))
-      }
+        // Persist to DB for initial load of the widget
+        if (this.db) {
+          this.db.setSetting('last_gifter_v1', JSON.stringify(gifterData))
+        }
+      })
     }
 
     if (event.type === 'like') {
-      const like = event as any
-      const feedItem = like._feedItem || {
-        id: like.id,
-        type: 'like',
-        displayName: like.user?.displayName || like.user?.username || 'Fan',
-        profilePictureUrl: like.user?.profilePictureUrl,
-        amount: like.likeCount || 1,
-        totalLikes: like.totalLikes,
-        timestamp: like.timestamp || new Date()
-      }
-      const updatedState = this.likes.updateState(like, feedItem)
-      this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
+      this.runStreamEventStage('likes', () => {
+        const like = event as any
+        const feedItem = like._feedItem || {
+          id: like.id,
+          type: 'like',
+          displayName: like.user?.displayName || like.user?.username || 'Fan',
+          profilePictureUrl: like.user?.profilePictureUrl,
+          amount: like.likeCount || 1,
+          totalLikes: like.totalLikes,
+          timestamp: like.timestamp || new Date()
+        }
+        const updatedState = this.likes.updateState(like, feedItem)
+        this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
+      })
     }
 
     if (event.type === 'viewer-count') {
-      const viewerCounts = this.platformManager?.getViewerCounts() || {}
-      const total = Object.values(viewerCounts).reduce((a, b) => (a as number) + (b as number), 0)
-      this.sse.broadcast('node-network', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
-      // For DeskThing's direct event listener which seems to listen to all channels but expects 'viewer-count' type
-      this.sse.broadcast('deck', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
-      this.deviceApi?.broadcast('viewerCount', { total, breakdown: viewerCounts })
+      this.runStreamEventStage('viewer count', () => {
+        const viewerCounts = this.platformManager?.getViewerCounts() || {}
+        const total = Object.values(viewerCounts).reduce((a, b) => (a as number) + (b as number), 0)
+        this.sse.broadcast('node-network', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
+        // For DeskThing's direct event listener which seems to listen to all channels but expects 'viewer-count' type
+        this.sse.broadcast('deck', { type: 'viewer-count', payload: { total, breakdown: viewerCounts } })
+        this.deviceApi?.broadcast('viewerCount', { total, breakdown: viewerCounts })
+      })
     }
   }
 
@@ -286,6 +298,14 @@ export class OverlayServer extends EventEmitter {
     const next = this.operationQueue.then(operation, operation)
     this.operationQueue = next.catch(() => undefined)
     return next
+  }
+
+  private runStreamEventStage(stage: string, handler: () => void): void {
+    try {
+      handler()
+    } catch (err) {
+      console.error(`[OverlayServer] ${stage} stream handler failed:`, err)
+    }
   }
 
   private async startInternal(port: number): Promise<void> {

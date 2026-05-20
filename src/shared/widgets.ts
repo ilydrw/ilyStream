@@ -138,7 +138,7 @@ export interface FollowerGoalConfig {
   position: 'top-left' | 'top-right' | 'top-center' | 'bottom-left' | 'bottom-right' | 'bottom-center'
   width: number
   showBorder: boolean
-  style: 'classic' | 'chroma' | 'cyber'
+  style: 'classic' | 'chroma' | 'cyber' | 'gob-the-stopper'
   fontFamily: string
   borderRadius: number
   glassIntensity: number
@@ -200,7 +200,7 @@ export interface NowPlayingConfig {
   showBorder: boolean
   borderWidth: number
   borderColor: string
-  borderType: 'solid' | 'chroma' | 'cyber'
+  borderType: 'solid' | 'chroma' | 'cyber' | 'gob-the-stopper'
   fontFamily: string
   borderRadius: number
   glassIntensity: number
@@ -296,7 +296,7 @@ export interface SocialsConfig {
   blur: number
   accentColor: string
   showBorder: boolean
-  style: 'classic' | 'chroma' | 'cyber'
+  style: 'classic' | 'chroma' | 'cyber' | 'gob-the-stopper'
   fontFamily: string
   borderRadius: number
   glassIntensity: number
@@ -329,7 +329,7 @@ export const DEFAULT_SOCIALS_CONFIG: SocialsConfig = {
 // ----- Screen Border widget ------------------------------------------------
 
 export interface BorderConfig {
-  style: 'classic' | 'chroma' | 'cyber'
+  style: 'classic' | 'chroma' | 'cyber' | 'gob-the-stopper'
   thickness: number
   borderRadius: number
   glowIntensity: number

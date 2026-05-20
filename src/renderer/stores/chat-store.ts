@@ -40,6 +40,10 @@ export const useChatStore = create<ChatStore>((set) => ({
         return state
       }
 
+      if (state.messages.some((existing) => existing.id === msg.id)) {
+        return state
+      }
+
       return {
         messages: [...state.messages, msg].slice(-state.maxMessages)
       }

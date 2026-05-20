@@ -24,10 +24,16 @@ function makeChat(message: string): ChatEvent {
   }
 }
 
-function makeOrchestrator(spotifyHandled: boolean) {
+function makeOrchestrator(
+  spotifyHandled: boolean,
+  overrides: {
+    handleStreamEvent?: ReturnType<typeof vi.fn>
+    recordEvent?: ReturnType<typeof vi.fn>
+  } = {}
+) {
   const platformManager = new EventEmitter()
   const overlayServer = Object.assign(new EventEmitter(), {
-    handleStreamEvent: vi.fn(),
+    handleStreamEvent: overrides.handleStreamEvent || vi.fn(),
     setNowPlaying: vi.fn()
   })
   const spotifyService = Object.assign(new EventEmitter(), {
@@ -35,6 +41,8 @@ function makeOrchestrator(spotifyHandled: boolean) {
     getNowPlaying: vi.fn(() => ({ queue: [] }))
   })
   const ttsEngine = { processEvent: vi.fn() }
+
+  const statsService = { recordEvent: overrides.recordEvent || vi.fn() }
 
   const orchestrator = new EventOrchestrator(
     platformManager as any,
@@ -49,14 +57,14 @@ function makeOrchestrator(spotifyHandled: boolean) {
     {} as any,
     {} as any,
     Object.assign(new EventEmitter()) as any,
-    { recordEvent: vi.fn() } as any,
+    statsService as any,
     {} as any,
     { getState: vi.fn(() => ({ devices: [] })) } as any,
     {} as any
   )
 
   orchestrator.init()
-  return { platformManager, spotifyService, ttsEngine }
+  return { platformManager, spotifyService, ttsEngine, statsService, overlayServer }
 }
 
 async function flushAsyncHandlers() {
@@ -81,5 +89,28 @@ describe('EventOrchestrator Spotify handling', () => {
     await flushAsyncHandlers()
 
     expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+  })
+
+  it('keeps dispatching later consumers when an earlier stage throws', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const handleStreamEvent = vi.fn(() => {
+      throw new Error('overlay exploded')
+    })
+    const recordEvent = vi.fn()
+    const { platformManager, spotifyService, statsService } = makeOrchestrator(false, {
+      handleStreamEvent,
+      recordEvent
+    })
+
+    try {
+      platformManager.emit('event', makeChat('hello chat'))
+      await flushAsyncHandlers()
+    } finally {
+      errorSpy.mockRestore()
+    }
+
+    expect(handleStreamEvent).toHaveBeenCalled()
+    expect(spotifyService.processEvent).toHaveBeenCalled()
+    expect(statsService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ message: 'hello chat' }))
   })
 })

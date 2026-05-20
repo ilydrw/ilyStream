@@ -256,7 +256,10 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     const totalLikesEl = document.getElementById('total-likes');
 
     let totalLikes = 0;
-    const users = new Map(); // key: displayName, value: { profilePictureUrl, count, element }
+    // Keyed by the server's unique key (\`\${platform}:\${username}\`) so two users
+    // sharing a display name don't collapse into one entry. Falls back to
+    // displayName for legacy snapshots and preview/test mode.
+    const users = new Map();
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => (
@@ -271,6 +274,10 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       return 'https://via.placeholder.com/36';
     }
 
+    function userKey(user) {
+      return String(user && (user.key || user.displayName) || '');
+    }
+
     function addLike(payload) {
       if (!payload) return;
       const { displayName, profilePictureUrl, amount } = payload;
@@ -278,6 +285,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       // Skip events without an identifiable user — otherwise we'd key the Map by undefined.
       if (!displayName) return;
 
+      const key = userKey(payload);
       const likeAmount = Math.max(1, Math.floor(Number(amount)) || 1);
 
       // The server now applies all source-of-truth logic for the global total
@@ -295,15 +303,16 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
 
       // Per-user count always increments by the per-event delta — the platform
       // total only describes the aggregate, not the per-user attribution.
-      let userData = users.get(displayName);
+      let userData = users.get(key);
       if (!userData) {
-        userData = { profilePictureUrl, count: 0, element: null };
-        users.set(displayName, userData);
+        userData = { displayName, profilePictureUrl, count: 0, element: null };
+        users.set(key, userData);
       }
       userData.count += likeAmount;
+      userData.displayName = displayName || userData.displayName;
       if (profilePictureUrl) userData.profilePictureUrl = profilePictureUrl;
 
-      updateLeaderboard(displayName);
+      updateLeaderboard(key);
     }
 
     function applySnapshot(payload) {
@@ -313,17 +322,37 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         totalLikesEl.textContent = totalLikes.toLocaleString();
       }
 
-      if (Array.isArray(payload.users)) {
-        payload.users.forEach((user) => {
-          if (!user || !user.displayName) return;
-          users.set(user.displayName, {
-            profilePictureUrl: user.profilePictureUrl,
-            count: Math.max(0, Math.floor(Number(user.count)) || 0),
-            element: users.get(user.displayName)?.element || null
-          });
+      if (!Array.isArray(payload.users)) return;
+
+      // Rebuild from the snapshot so users who dropped out of the server's
+      // top list don't linger with stale counts in the widget.
+      const next = new Map();
+      payload.users.forEach((user) => {
+        if (!user || !user.displayName) return;
+        const key = userKey(user);
+        const previous = users.get(key);
+        next.set(key, {
+          displayName: user.displayName,
+          profilePictureUrl: user.profilePictureUrl,
+          count: Math.max(0, Math.floor(Number(user.count)) || 0),
+          element: previous?.element || null
         });
-        updateLeaderboard('');
-      }
+      });
+
+      // Tear down DOM rows for users no longer in the snapshot.
+      users.forEach((data, key) => {
+        if (!next.has(key) && data.element) {
+          const removing = data.element;
+          removing.style.opacity = '0';
+          removing.style.transform = 'translateY(' + OFFSCREEN_Y + 'px)';
+          setTimeout(() => removing.remove(), 600);
+        }
+      });
+
+      users.clear();
+      next.forEach((value, key) => users.set(key, value));
+
+      updateLeaderboard('');
     }
 
     // TEST MODE: Press 'T' to simulate a like
@@ -339,15 +368,16 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       }
     });
 
-    function updateLeaderboard(activeUser) {
+    function updateLeaderboard(activeKey) {
       const sorted = Array.from(users.entries())
         .sort((a, b) => b[1].count - a[1].count)
         .slice(0, MAX_VISIBLE);
 
-      const currentTopNames = new Set(sorted.map(([name]) => name));
+      const currentTopKeys = new Set(sorted.map(([key]) => key));
 
-      sorted.forEach(([name, data], index) => {
+      sorted.forEach(([key, data], index) => {
         let row = data.element;
+        const displayName = data.displayName || key;
 
         if (!row) {
           row = document.createElement('div');
@@ -361,7 +391,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
               '<img class="user-avatar" src="' + escapeHtml(safeAvatarUrl(data.profilePictureUrl)) + '" />' +
             '</div>' +
             '<div class="user-info">' +
-              '<span class="user-name">' + escapeHtml(name) + '</span>' +
+              '<span class="user-name">' + escapeHtml(displayName) + '</span>' +
             '</div>' +
             '<div class="user-score">' + data.count.toLocaleString() + '</div>';
 
@@ -378,6 +408,11 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         row.querySelector('.rank').textContent = '#' + (index + 1);
         row.querySelector('.user-score').textContent = data.count.toLocaleString();
 
+        const nameEl = row.querySelector('.user-name');
+        if (nameEl && nameEl.textContent !== displayName) {
+          nameEl.textContent = displayName;
+        }
+
         // Keep avatar in sync if the user supplied a new profile picture.
         const avatarEl = row.querySelector('.user-avatar');
         const desiredSrc = safeAvatarUrl(data.profilePictureUrl);
@@ -391,7 +426,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         row.style.transform = 'translateY(' + (index * ROW_HEIGHT) + 'px)';
         row.style.zIndex = String(MAX_VISIBLE - index);
 
-        if (name === activeUser) {
+        if (key === activeKey) {
           spawnParticles(row);
         }
       });
@@ -399,8 +434,8 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       // Fade out users who fell out of top 10. Detach the element from the
       // user record immediately so a quick re-entry creates a fresh row
       // instead of racing with the pending removal.
-      users.forEach((data, name) => {
-        if (!currentTopNames.has(name) && data.element) {
+      users.forEach((data, key) => {
+        if (!currentTopKeys.has(key) && data.element) {
           const removing = data.element;
           data.element = null;
           removing.style.opacity = '0';

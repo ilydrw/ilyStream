@@ -51,4 +51,42 @@ describe('AlertManager', () => {
       })
     )
   })
+
+  it('rewrites bare image asset ids to overlay-served asset URLs', () => {
+    const manager = new AlertManager({ broadcast: vi.fn() } as any)
+
+    manager.pushAlert({
+      id: 'alert-3',
+      template: 'Alert',
+      imageUrl: 'gift-icon.png',
+      durationMs: 5000,
+      animationIn: 'fade',
+      animationOut: 'fade'
+    }, 'tiktok')
+
+    expect(manager.getHistory()[0]).toEqual(
+      expect.objectContaining({
+        imageUrl: '/assets/gift-icon.png'
+      })
+    )
+  })
+
+  it('leaves remote image URLs untouched', () => {
+    const manager = new AlertManager({ broadcast: vi.fn() } as any)
+
+    manager.pushAlert({
+      id: 'alert-4',
+      template: 'Alert',
+      imageUrl: 'https://cdn.example.com/avatar.png',
+      durationMs: 5000,
+      animationIn: 'fade',
+      animationOut: 'fade'
+    }, 'tiktok')
+
+    expect(manager.getHistory()[0]).toEqual(
+      expect.objectContaining({
+        imageUrl: 'https://cdn.example.com/avatar.png'
+      })
+    )
+  })
 })

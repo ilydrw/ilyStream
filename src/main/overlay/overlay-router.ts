@@ -50,6 +50,7 @@ const ALLOWED_OVERLAY_CHANNELS = new Set<OverlayChannel>([
 ])
 
 const TEST_ENDPOINTS_ENABLED = process.env.ILYSTREAM_ENABLE_TEST_ENDPOINTS === '1'
+const MAX_DECK_ACTION_BODY_BYTES = 64 * 1024
 
 const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -322,21 +323,18 @@ export class OverlayRouter {
       return
     }
 
-    let body = ''
-    request.on('data', chunk => { body += chunk })
-    request.on('end', () => {
-      try {
-        const action = JSON.parse(body)
-        if (!action || typeof action.type !== 'string' || !action.type.trim()) {
-          this.writeJson(response, { error: 'Invalid action' }, 400, request)
-          return
-        }
-        this.emitDeckAction({ type: action.type.trim(), payload: action.payload })
-        this.writeJson(response, { success: true }, 200, request)
-      } catch (e) {
-        this.writeJson(response, { error: 'Invalid body' }, 400, request)
+    try {
+      const action = await this.readJsonBody<{ type?: unknown; payload?: unknown }>(request)
+      if (!action || typeof action.type !== 'string' || !action.type.trim()) {
+        this.writeJson(response, { error: 'Invalid action' }, 400, request)
+        return
       }
-    })
+      this.emitDeckAction({ type: action.type.trim(), payload: action.payload })
+      this.writeJson(response, { success: true }, 200, request)
+    } catch (err) {
+      const tooLarge = err instanceof Error && err.message === 'Request body too large'
+      this.writeJson(response, { error: tooLarge ? 'Request body too large' : 'Invalid body' }, tooLarge ? 413 : 400, request)
+    }
   }
 
   private async serveAsset(pathname: string, request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -538,5 +536,30 @@ export class OverlayRouter {
     } catch {
       return false
     }
+  }
+
+  private async readJsonBody<T>(request: IncomingMessage): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
+      let body = ''
+      let total = 0
+
+      request.on('data', (chunk: Buffer) => {
+        total += chunk.length
+        if (total > MAX_DECK_ACTION_BODY_BYTES) {
+          reject(new Error('Request body too large'))
+          request.destroy()
+          return
+        }
+        body += chunk.toString('utf8')
+      })
+      request.on('end', () => {
+        try {
+          resolve((body ? JSON.parse(body) : {}) as T)
+        } catch {
+          reject(new Error('Invalid JSON'))
+        }
+      })
+      request.on('error', reject)
+    })
   }
 }

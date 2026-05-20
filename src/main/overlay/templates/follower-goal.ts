@@ -167,14 +167,14 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
 
       /* Chroma Mode */
       .chroma-text {
-        background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000);
+        background: linear-gradient(90deg, #ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef, #ff3b30);
         background-size: 200% auto;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         animation: chroma-flow 8s linear infinite;
       }
       .chroma-bg {
-        background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000) !important;
+        background: linear-gradient(90deg, #ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef, #ff3b30) !important;
         background-size: 400px 100% !important;
         animation: chroma-flow-fixed 8s linear infinite !important;
       }
@@ -191,6 +191,22 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         background: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1) !important;
         background-size: 400px 100% !important;
         animation: chroma-flow-fixed 6s linear infinite !important;
+      }
+
+      /* Gob the Stopper Mode */
+      .gob-text {
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00);
+        background-size: 220% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 18px rgba(182, 255, 0, 0.24);
+        animation: chroma-flow 7s linear infinite;
+      }
+      .gob-bg {
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00) !important;
+        background-size: 420px 100% !important;
+        box-shadow: 0 0 18px rgba(182, 255, 0, 0.45);
+        animation: chroma-flow-fixed 7s linear infinite !important;
       }
 
       /* Advanced Border Gradient */
@@ -217,6 +233,16 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
       }
       .card.cyberneon-border {
         --gradient-border: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1);
+      }
+      .card.gob-border {
+        --gradient-border: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #ce1126, #b6ff00);
+        background:
+          linear-gradient(135deg, rgba(182, 255, 0, 0.08), transparent 52%),
+          rgba(2, 4, 2, 0.5);
+        box-shadow:
+          0 25px 60px rgba(0,0,0,0.55),
+          0 0 34px rgba(182, 255, 0, 0.18),
+          inset 0 0 20px rgba(182,255,0,0.08);
       }
       @keyframes border-flow {
         0% { background-position: 0% 0%; }
@@ -274,6 +300,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
 
       var IS_CHROMA = params.get('chroma') === '1' || params.get('chroma') === 'true' || CFG.accentColor === 'chroma' || CFG.style === 'chroma';
       var IS_CYBERNEON = params.get('cyberneon') === '1' || params.get('cyberneon') === 'true' || CFG.accentColor === 'cyberneon' || CFG.style === 'cyber';
+      var IS_GOB = params.get('gob') === '1' || params.get('gob') === 'true' || CFG.style === 'gob-the-stopper' || CFG.themeId === 'gob-the-stopper';
       var OFFSET = parseInt(params.get('offset') || '0', 10);
       var GOAL_OVERRIDE = params.get('goal') ? parseInt(params.get('goal'), 10) : null;
 
@@ -303,6 +330,11 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         elFill.classList.add('cyberneon-bg');
         elPct.classList.add('cyberneon-text');
         if (CFG.showBorder) elCard.classList.add('has-gradient-border', 'cyberneon-border');
+      } else if (IS_GOB) {
+        elCurrent.classList.add('gob-text');
+        elFill.classList.add('gob-bg');
+        elPct.classList.add('gob-text');
+        if (CFG.showBorder) elCard.classList.add('has-gradient-border', 'gob-border');
       }
 
       function animateCount(target) {

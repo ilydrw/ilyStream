@@ -132,7 +132,7 @@ describe('TikTokConnector connection hardening', () => {
     ).toBe(false)
   })
 
-  it('drops TikTok like social payloads before they can become chat events', () => {
+  it('converts TikTok like social payloads into like events instead of chat', () => {
     const connector = new TikTokConnector({} as any, {} as any)
     const connection = new EventEmitter()
     const events: any[] = []
@@ -159,8 +159,13 @@ describe('TikTokConnector connection hardening', () => {
       nickname: 'Cake Friend'
     })
 
-    expect(events).toHaveLength(1)
+    expect(events).toHaveLength(2)
     expect(events[0]).toEqual(expect.objectContaining({
+      type: 'like',
+      likeCount: 5,
+      totalLikes: 12470
+    }))
+    expect(events[1]).toEqual(expect.objectContaining({
       type: 'chat',
       message: 'I only like my cake eaten'
     }))

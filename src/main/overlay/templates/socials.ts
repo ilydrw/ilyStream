@@ -117,9 +117,9 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         content: '';
         position: absolute;
         inset: 0;
-        border-radius: 16px 16px 0 0;
+        border-radius: var(--radius);
         padding: 2px;
-        background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+        background: linear-gradient(90deg, #ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef, #ff3b30);
         background-size: 200% auto;
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -158,6 +158,47 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         animation: shimmer-progress 2s linear infinite !important;
       }
       @keyframes shimmer-progress {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+      }
+      ` : ''}
+
+      ${cfg.style === 'gob-the-stopper' ? `
+      .card-bg {
+        background:
+          linear-gradient(135deg, rgba(182, 255, 0, 0.08), transparent 48%),
+          rgba(2, 4, 2, 0.88) !important;
+        border: 2px solid rgba(182, 255, 0, 0.85);
+        box-shadow:
+          0 18px 40px rgba(0, 0, 0, 0.64),
+          0 0 28px rgba(182, 255, 0, 0.2),
+          inset 0 0 18px rgba(182, 255, 0, 0.08);
+      }
+      .card-bg::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #ce1126, #b6ff00);
+        background-size: 220% 100%;
+        opacity: 0.22;
+        mix-blend-mode: screen;
+        animation: gob-flow 7s linear infinite;
+        pointer-events: none;
+      }
+      .progress-bar {
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00) !important;
+        background-size: 200% 100% !important;
+        box-shadow: 0 0 12px rgba(182, 255, 0, 0.7) !important;
+        animation: gob-flow 3s linear infinite !important;
+      }
+      .platform-name {
+        color: #b6ff00 !important;
+      }
+      .username {
+        color: #f7ffe8;
+      }
+      @keyframes gob-flow {
         0% { background-position: 0% 50%; }
         100% { background-position: 200% 50%; }
       }

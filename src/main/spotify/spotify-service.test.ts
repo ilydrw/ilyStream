@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   spotifyMaxPerUser: 3
 }
 
-function createService(settings: Record<string, unknown> = {}) {
+function createService(settings: Record<string, unknown> = {}, options: { connected?: boolean } = {}) {
   const db = {
     getAllSettings: vi.fn(() => ({ ...DEFAULT_SETTINGS, ...settings })),
     getSetting: vi.fn((key: string) => ({ ...DEFAULT_SETTINGS, ...settings })[key]),
@@ -29,10 +29,14 @@ function createService(settings: Record<string, unknown> = {}) {
   const client = {
     searchTrack: vi.fn(),
     enqueue: vi.fn(),
-    skip: vi.fn()
+    skip: vi.fn(),
+    getProfile: vi.fn()
   }
 
   ;(service as any).client = client
+  ;(service as any).connected = options.connected ?? true
+  ;(service as any).accessToken = settings.spotifyAccessToken || 'access-token'
+  ;(service as any).refreshToken = settings.spotifyRefreshToken || 'refresh-token'
   ;(service as any).saveQueueCache = vi.fn()
 
   return { service, client }
@@ -96,6 +100,25 @@ describe('SpotifyService chat commands', () => {
       profilePictureUrl: 'https://example.com/viewer.png',
       status: 'queued'
     })
+  })
+
+  it('restores a saved session before handling chat song requests', async () => {
+    const { service, client } = createService(
+      {
+        spotifyAccessToken: 'expired-access-token',
+        spotifyRefreshToken: 'saved-refresh-token'
+      },
+      { connected: false }
+    )
+    client.searchTrack.mockResolvedValue(makeTrack())
+    ;(service as any).restoreSession = vi.fn(async () => {
+      ;(service as any).connected = true
+    })
+
+    await expect(service.processEvent(makeChat('!play current song'))).resolves.toBe(true)
+
+    expect((service as any).restoreSession).toHaveBeenCalled()
+    expect(client.searchTrack).toHaveBeenCalledWith('current song')
   })
 
   it('supports legacy song request command prefixes', async () => {

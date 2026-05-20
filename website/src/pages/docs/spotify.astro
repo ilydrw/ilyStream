@@ -1,0 +1,147 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const redirectUri = 'http://127.0.0.1:8789/callback';
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'create-app', label: 'Create a Spotify app' },
+  { id: 'copy-client-id', label: 'Copy the Client ID' },
+  { id: 'connect-ilystream', label: 'Connect in ilyStream' },
+  { id: 'requests', label: 'Song requests' },
+  { id: 'widgets', label: 'Now Playing widget' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Spotify setup"
+  description="Create a Spotify Developer app, add the ilyStream redirect URI, connect your account, and enable song requests and now-playing widgets."
+  slug="spotify"
+  updated="May 2026"
+  readingTime="9 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    ilyStream connects to Spotify through Spotify's official Web API. The setup has
+    two parts: first you create a small app in the Spotify Developer Dashboard, then
+    you paste that app's <strong>Client ID</strong> into ilyStream and approve the
+    connection in your browser.
+  </p>
+  <p>
+    The most important piece is the redirect URI. ilyStream listens locally on your
+    PC while you approve Spotify, so the Spotify app must include this exact URI:
+  </p>
+  <pre><code>{redirectUri}</code></pre>
+
+  <div class="callout">
+    <span class="callout__icon">i</span>
+    <p><strong>Client ID only.</strong> ilyStream uses Spotify's PKCE login flow, so you do not need a Client Secret. Do not paste or share a Client Secret.</p>
+  </div>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>A Spotify account you can log into in a browser.</li>
+    <li>The Spotify desktop app, web player, or mobile app available as an active playback device.</li>
+    <li>Spotify Premium for playback control features such as queueing tracks and skipping. Free accounts may authorize, but Spotify can reject playback-control actions.</li>
+    <li>ilyStream running on the same Windows PC that will complete the browser authorization.</li>
+  </ul>
+
+  <h2 id="create-app">Create a Spotify app</h2>
+  <ol>
+    <li><strong>Open the Spotify Developer Dashboard.</strong> Go to <a href="https://developer.spotify.com/dashboard" rel="noopener">developer.spotify.com/dashboard</a> and log in with the Spotify account you want ilyStream to control.</li>
+    <li><strong>Create an app.</strong> Click <em>Create app</em>. Give it a clear name like <code>ilyStream</code> and a short description like <code>Local ilyStream song request integration</code>.</li>
+    <li><strong>Add the Redirect URI.</strong> In the redirect URI field, paste <code>{redirectUri}</code>. Use <code>127.0.0.1</code>, not <code>localhost</code>, and do not add a trailing slash.</li>
+    <li><strong>Select Web API.</strong> If Spotify asks which API or SDK you plan to use, choose <em>Web API</em>.</li>
+    <li><strong>Accept the terms and save.</strong> Finish creating the app. If you are editing an existing Spotify app instead, open its settings, add the same redirect URI, and save the settings.</li>
+  </ol>
+
+  <div class="callout callout--warn">
+    <span class="callout__icon">!</span>
+    <p><strong>The redirect URI must match.</strong> Spotify treats <code>http://127.0.0.1:8789/callback</code>, <code>http://localhost:8789/callback</code>, and <code>http://127.0.0.1:8789/callback/</code> as different values. ilyStream uses the first one exactly.</p>
+  </div>
+
+  <h2 id="copy-client-id">Copy the Client ID</h2>
+  <ol>
+    <li><strong>Open the app settings.</strong> In the Spotify Developer Dashboard, click the app you created.</li>
+    <li><strong>Find the Client ID.</strong> It is shown in the app's basic information or settings area.</li>
+    <li><strong>Copy only the Client ID.</strong> It is safe to paste into ilyStream. Leave the Client Secret alone; ilyStream does not use it.</li>
+  </ol>
+
+  <h2 id="connect-ilystream">Connect in ilyStream</h2>
+  <ol>
+    <li><strong>Start Spotify playback.</strong> Open Spotify on the same account and play any track for a second. This gives Spotify an active device for ilyStream to control.</li>
+    <li><strong>Open Spotify Management.</strong> In ilyStream, go to the Spotify page from the sound tools area.</li>
+    <li><strong>Paste the Client ID.</strong> Put the Client ID from the Developer Dashboard into the <em>Spotify Client ID</em> field.</li>
+    <li><strong>Click Connect Spotify Account.</strong> ilyStream opens your browser and starts a five-minute local callback window on port <code>8789</code>.</li>
+    <li><strong>Approve the permissions.</strong> Log into Spotify if prompted, then allow ilyStream to read playback state, read currently playing, manage playback, and update saved tracks.</li>
+    <li><strong>Return to ilyStream.</strong> When the browser shows <em>Connected</em>, close that tab. ilyStream should switch to <em>Authentication active</em> and show the connected Spotify profile.</li>
+  </ol>
+
+  <div class="callout callout--success">
+    <span class="callout__icon">&check;</span>
+    <p><strong>Connected.</strong> ilyStream stores the access token locally and refreshes it automatically. If you change the Client ID later, ilyStream clears the old tokens and asks you to authorize again.</p>
+  </div>
+
+  <h2 id="requests">Song requests</h2>
+  <p>
+    After Spotify is connected, ilyStream can listen for chat commands and add
+    tracks to the active Spotify queue.
+  </p>
+  <ol>
+    <li><strong>Enable Requests.</strong> Turn on <em>Enable Requests</em> in the Spotify page.</li>
+    <li><strong>Enable Play Command.</strong> Viewers can request songs with <code>!play &lt;song&gt;</code>, <code>!sr &lt;song&gt;</code>, <code>!songrequest &lt;song&gt;</code>, <code>.play &lt;song&gt;</code>, or <code>/play &lt;song&gt;</code>.</li>
+    <li><strong>Enable Skip Command if wanted.</strong> Skip commands include <code>!skip</code>, <code>!voteskip</code>, <code>.skip</code>, and <code>/skip</code>.</li>
+    <li><strong>Set the safety limits.</strong> Use <em>Queue Hard Limit</em> to cap total backlog size and <em>Per-User Cap</em> to stop one viewer from filling the whole queue.</li>
+    <li><strong>Choose explicit filtering.</strong> Turn off <em>Explicit Audio</em> if explicit tracks should be blocked.</li>
+  </ol>
+
+  <p>
+    Song requests add tracks to Spotify's current playback queue. They do not build
+    or save a playlist, and they require a valid active device on the connected
+    Spotify account.
+  </p>
+
+  <h2 id="widgets">Now Playing widget</h2>
+  <p>
+    Once the account is connected, the Now Playing widget can show the current
+    track, album art, artist, playback status, and queued requests.
+  </p>
+  <ol>
+    <li><strong>Open the Widgets workspace.</strong> Add or select the Spotify / Now Playing widget.</li>
+    <li><strong>Style the widget.</strong> Pick the border style, theme, colors, album-art behavior, and queue display options.</li>
+    <li><strong>Add it to OBS.</strong> Copy the widget URL into an OBS Browser Source just like any other ilyStream overlay.</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>Spotify says the redirect URI is invalid.</strong> Open your Spotify app settings and confirm the redirect URI is exactly <code>{redirectUri}</code>. Do not use <code>localhost</code>, do not use a different port, and do not add a trailing slash.</p>
+  <p><strong>ilyStream says the Client ID is required.</strong> Paste the Client ID from the Spotify Developer app. The Client Secret will not work here.</p>
+  <p><strong>The browser never returns to ilyStream.</strong> Keep ilyStream open while approving Spotify. If the tab sits forever or ilyStream times out, another program may be using port <code>8789</code> or Windows Firewall may be blocking local loopback traffic.</p>
+  <p><strong>Connected, but no song appears.</strong> Start playback in Spotify first. Spotify often reports no active device until the desktop app, web player, or phone has played something on the connected account.</p>
+  <p><strong>Song requests search but never queue.</strong> Check that <em>Enable Requests</em> and <em>Play Command</em> are on, the queue/user caps are not already hit, and the track is available in your region. If explicit filtering is off, explicit tracks are skipped.</p>
+  <p><strong>Skip or queue actions return forbidden.</strong> Spotify usually requires Premium for playback control through the Web API. Reconnect with a Premium account and make sure that account owns the active playback device.</p>
+  <p><strong>Token refresh fails with a 503 or timeout.</strong> Spotify or the network may be temporarily unavailable. ilyStream retries transient refresh failures; if it stays disconnected, click <em>Terminate Session</em>, then connect again after Spotify is reachable.</p>
+
+  <h3>Useful Spotify references</h3>
+  <ul>
+    <li><a href="https://developer.spotify.com/documentation/web-api/concepts/redirect_uri" rel="noopener">Spotify redirect URI requirements</a></li>
+    <li><a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow" rel="noopener">Spotify Authorization Code with PKCE flow</a></li>
+    <li><a href="https://developer.spotify.com/documentation/web-api" rel="noopener">Spotify Web API documentation</a></li>
+  </ul>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/audio-tts/')}>
+      <p>Previous</p>
+      <strong>&larr; Audio routing &amp; TTS</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/deskthing/')}>
+      <p>Next</p>
+      <strong>DeskThing pairing &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

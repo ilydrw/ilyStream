@@ -1,8 +1,72 @@
 import { BorderConfig, DEFAULT_BORDER_CONFIG } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
 
+function resolveBorderVisuals(cfg: BorderConfig): { background: string; glow: string } {
+  if (cfg.style === 'chroma') {
+    return {
+      background: `conic-gradient(
+        from var(--angle),
+        #ff3b30,
+        #ffd60a 16%,
+        #34d399 33%,
+        #00e5ff 50%,
+        #3b82f6 67%,
+        #d946ef 84%,
+        #ff3b30 100%
+      )`,
+      glow: `drop-shadow(0 0 calc(5px * var(--glow)) #ffd60a)
+              drop-shadow(0 0 calc(2px * var(--glow)) #00e5ff)`
+    }
+  }
+
+  if (cfg.style === 'cyber') {
+    return {
+      background: `conic-gradient(
+        from var(--angle),
+        #19c8ff,
+        #d035f1 25%,
+        #00ffff 50%,
+        #d035f1 75%,
+        #19c8ff 100%
+      )`,
+      glow: `drop-shadow(0 0 calc(5px * var(--glow)) #19c8ff)
+              drop-shadow(0 0 calc(2px * var(--glow)) #d035f1)`
+    }
+  }
+
+  if (cfg.style === 'gob-the-stopper') {
+    return {
+      background: `conic-gradient(
+        from var(--angle),
+        #b6ff00,
+        #f7ffe8 22%,
+        #050505 42%,
+        #ce1126 62%,
+        #050505 82%,
+        #b6ff00 100%
+      )`,
+      glow: `drop-shadow(0 0 calc(6px * var(--glow)) #b6ff00)
+              drop-shadow(0 0 calc(2px * var(--glow)) #ce1126)`
+    }
+  }
+
+  return {
+    background: `conic-gradient(
+        from var(--angle),
+        var(--color1),
+        var(--color2) 25%,
+        var(--color1) 50%,
+        var(--color2) 75%,
+        var(--color1) 100%
+      )`,
+    glow: `drop-shadow(0 0 calc(5px * var(--glow)) var(--color1))
+              drop-shadow(0 0 calc(2px * var(--glow)) var(--color2))`
+  }
+}
+
 export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
   const cfg: BorderConfig = { ...DEFAULT_BORDER_CONFIG, ...(widget?.config || {}) }
+  const borderVisuals = resolveBorderVisuals(cfg)
 
   return `<!DOCTYPE html>
 <html>
@@ -56,15 +120,7 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       border-radius: var(--radius);
       padding: var(--thickness);
 
-      /* Smooth multi-stop conic gradient */
-      background: conic-gradient(
-        from var(--angle),
-        var(--color1),
-        var(--color2) 25%,
-        var(--color1) 50%,
-        var(--color2) 75%,
-        var(--color1) 100%
-      );
+      background: ${borderVisuals.background};
 
       /* Masking */
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -80,8 +136,7 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       backface-visibility: hidden;
 
       /* Smooth Glow */
-      filter: drop-shadow(0 0 calc(5px * var(--glow)) var(--color1))
-              drop-shadow(0 0 calc(2px * var(--glow)) var(--color2));
+      filter: ${borderVisuals.glow};
     }
 
     @keyframes rotate-gradient {

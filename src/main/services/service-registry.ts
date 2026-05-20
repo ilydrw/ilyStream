@@ -254,10 +254,10 @@ export class ServiceRegistry {
   async dispose(): Promise<void> {
     this.chatRelayService.dispose()
     this.economyService.dispose()
-    this.spotifyService.dispose()
+    await this.spotifyService.dispose()
     await this.lightingManager.dispose()
     this.tiktokChatSender.closeWindow()
-    const startResults = await Promise.allSettled([
+    await Promise.allSettled([
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),
       this.obsService.disconnect(),

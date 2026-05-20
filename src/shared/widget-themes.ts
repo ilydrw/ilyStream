@@ -1,6 +1,6 @@
 export type WidgetThemeId = 'classic' | 'chroma' | 'cyber' | 'solid' | 'gob-the-stopper'
-export type WidgetThemeStyle = 'classic' | 'chroma' | 'cyber'
-export type WidgetThemeBorderType = 'solid' | 'chroma' | 'cyber'
+export type WidgetThemeStyle = 'classic' | 'chroma' | 'cyber' | 'gob-the-stopper'
+export type WidgetThemeBorderType = 'solid' | 'chroma' | 'cyber' | 'gob-the-stopper'
 
 export interface WidgetThemeColors {
   primary: string
@@ -47,14 +47,14 @@ export const WIDGET_THEMES: WidgetTheme[] = [
     style: 'chroma',
     borderType: 'chroma',
     colors: {
-      primary: '#00F2FF',
-      secondary: '#FF00FF',
-      accent: '#00FF66',
-      background: '#050505',
-      surface: '#101018',
-      text: '#FFFFFF',
-      muted: '#A8B3CF',
-      border: '#00F2FF'
+      primary: '#FF3B30',
+      secondary: '#34D399',
+      accent: '#FFD60A',
+      background: '#09040F',
+      surface: '#161021',
+      text: '#FFF7ED',
+      muted: '#C4B5FD',
+      border: '#7C3AED'
     }
   },
   {
@@ -95,8 +95,8 @@ export const WIDGET_THEMES: WidgetTheme[] = [
     id: 'gob-the-stopper',
     name: 'Gob the Stopper',
     description: 'Lime green and black Palestinian-inspired widget palette.',
-    style: 'classic',
-    borderType: 'solid',
+    style: 'gob-the-stopper',
+    borderType: 'gob-the-stopper',
     colors: {
       primary: '#B6FF00',
       secondary: '#050505',
@@ -110,8 +110,8 @@ export const WIDGET_THEMES: WidgetTheme[] = [
   }
 ]
 
-const WIDGET_STYLE_VALUES = new Set<WidgetThemeStyle>(['classic', 'chroma', 'cyber'])
-const BORDER_TYPE_VALUES = new Set<WidgetThemeBorderType>(['solid', 'chroma', 'cyber'])
+const WIDGET_STYLE_VALUES = new Set<WidgetThemeStyle>(['classic', 'chroma', 'cyber', 'gob-the-stopper'])
+const BORDER_TYPE_VALUES = new Set<WidgetThemeBorderType>(['solid', 'chroma', 'cyber', 'gob-the-stopper'])
 
 const COLOR_KEY_MAP: Record<string, keyof WidgetThemeColors> = {
   accentColor: 'primary',

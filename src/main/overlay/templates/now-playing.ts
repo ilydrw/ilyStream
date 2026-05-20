@@ -17,6 +17,18 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
+function resolveAnimatedBorderStops(borderType: NowPlayingConfig['borderType']): string {
+  if (borderType === 'chroma') {
+    return '#ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef, #ff3b30'
+  }
+
+  if (borderType === 'gob-the-stopper') {
+    return '#b6ff00, #f7ffe8, #050505, #ce1126, #050505, #b6ff00'
+  }
+
+  return '#ff00ff, #00ffff, #ff00ff'
+}
+
 export function buildNowPlayingOverlayHtml(widget?: any): string {
   const cfg: NowPlayingConfig = { ...DEFAULT_NOW_PLAYING_CONFIG, ...(widget?.config || {}) }
   const glassIntensity = cfg.glassIntensity ?? 0.5
@@ -29,6 +41,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
 
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] ?? OVERLAY_POSITION_MAP['top-left']
   const accentSoftRgba = hexToRgba(cfg.accentColor, 0.15)
+  const animatedBorderStops = resolveAnimatedBorderStops(cfg.borderType)
 
   return `<!doctype html>
 <html lang="en">
@@ -39,7 +52,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       :root {
         color-scheme: dark;
         font-family: "${fontFamily}", "Inter", "Segoe UI", sans-serif;
-        --chroma: linear-gradient(45deg, #00f2ff, #006aff, #7000ff, #ff00c8);
+        --chroma: linear-gradient(45deg, #ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef);
         --cyber: linear-gradient(45deg, #ff00ff, #00ffff, #ff00ff);
         --radius: ${borderRadius}px;
         --blur: ${blur}px;
@@ -91,9 +104,7 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
         display: ${cfg.showBorder && cfg.borderType !== 'solid' ? 'block' : 'none'};
         border-radius: var(--radius);
         padding: ${cfg.borderWidth}px;
-        background: conic-gradient(from var(--angle), ${cfg.borderType === 'chroma'
-          ? '#00f2ff, #006aff, #7000ff, #ff00c8, #00f2ff'
-          : '#ff00ff, #00ffff, #ff00ff'}) border-box;
+        background: conic-gradient(from var(--angle), ${animatedBorderStops}) border-box;
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         -webkit-mask-composite: xor;
         mask-composite: exclude;
