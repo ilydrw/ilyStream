@@ -29,7 +29,7 @@ function resolveAnimatedBorderStops(borderType: NowPlayingConfig['borderType']):
   return '#ff00ff, #00ffff, #ff00ff'
 }
 
-export function buildNowPlayingOverlayHtml(widget?: any): string {
+export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: NowPlayingConfig = { ...DEFAULT_NOW_PLAYING_CONFIG, ...(widget?.config || {}) }
   const glassIntensity = cfg.glassIntensity ?? 0.5
   const bgOpacity = (0.4 + (glassIntensity * 0.45))
@@ -336,6 +336,60 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       const SHOW_REQUESTER = ${cfg.showRequester ? 'true' : 'false'};
       const SHOW_QUEUE = ${cfg.showQueue ? 'true' : 'false'};
       const MAX_QUEUE = ${cfg.maxQueueItems ?? 5};
+      const IS_PREVIEW = ${JSON.stringify(isPreview)};
+      const PREVIEW_STATE = {
+        isPlaying: true,
+        trackId: 'preview-track',
+        trackName: 'Neon Skyline',
+        artists: ['Luna Vale', 'Signal Bloom'],
+        albumName: 'After Hours Broadcast',
+        albumArtUrl: null,
+        durationMs: 214000,
+        progressMs: 86000,
+        requestedBy: 'MiaMoon',
+        requesterPlatform: 'tiktok',
+        status: 'ok',
+        queue: [
+          {
+            id: 'preview-request-next',
+            requestedBy: 'PixelDrew',
+            platform: 'twitch',
+            requestedAt: Date.now(),
+            status: 'queued',
+            track: {
+              id: 'preview-next',
+              name: 'Late Night Queue',
+              artists: ['Glass Circuit'],
+              albumName: 'Chat Requests',
+              durationMs: 189000,
+              progressMs: 0,
+              explicit: false,
+              uri: 'spotify:track:preview-next',
+              externalUrl: '',
+              albumArtUrl: null
+            }
+          },
+          {
+            id: 'preview-spotify-next',
+            requestedBy: '',
+            platform: 'spotify',
+            requestedAt: Date.now(),
+            status: 'injected',
+            track: {
+              id: 'preview-spotify',
+              name: 'Autoplay Drift',
+              artists: ['Spotify Queue'],
+              albumName: 'Radio',
+              durationMs: 202000,
+              progressMs: 0,
+              explicit: false,
+              uri: 'spotify:track:preview-spotify',
+              externalUrl: '',
+              albumArtUrl: null
+            }
+          }
+        ]
+      };
 
       const container = document.getElementById('container');
       const trackEl = document.getElementById('track');
@@ -495,6 +549,11 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
       }
 
       async function hydrate() {
+        if (IS_PREVIEW) {
+          render(PREVIEW_STATE);
+          return;
+        }
+
         const response = await fetch('/overlay/now-playing/state', { cache: 'no-store' });
         const state = await response.json();
         render(state);
@@ -502,12 +561,14 @@ export function buildNowPlayingOverlayHtml(widget?: any): string {
 
       hydrate().catch(console.error);
 
-      const source = new EventSource('/overlay/events?channel=now-playing');
-      source.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'snapshot') render(msg.payload);
-        else if (msg.type === 'reload') window.location.reload();
-      };
+      if (!IS_PREVIEW) {
+        const source = new EventSource('/overlay/events?channel=now-playing');
+        source.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'snapshot') render(msg.payload);
+          else if (msg.type === 'reload') window.location.reload();
+        };
+      }
     </script>
   </body>
 </html>`

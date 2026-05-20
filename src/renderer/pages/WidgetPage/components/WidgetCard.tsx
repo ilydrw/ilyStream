@@ -19,6 +19,12 @@ export function WidgetCard({
 }) {
   const template = WIDGET_TEMPLATES.find((t) => t.type === widget.type)
   const Icon = template?.icon ?? IconLayout
+  const previewConfig = widget.config as Record<string, unknown>
+  const isVerticalPreview = previewConfig.aspectRatio === 'tiktok'
+  const previewAspectRatio =
+    isVerticalPreview ? '9 / 16' :
+    previewConfig.aspectRatio === 'landscape' ? '16 / 9' :
+    '16 / 9'
 
   return (
     <section className="app-section-card glass overflow-hidden flex flex-col">
@@ -29,7 +35,7 @@ export function WidgetCard({
           </div>
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-white truncate">{widget.name}</h3>
-            <p className="text-[10px] uppercase tracking-widest text-white/30 mt-0.5">
+            <p className="text-[10px] uppercase tracking-normal text-white/30 mt-0.5">
               {template?.label ?? widget.type}
             </p>
           </div>
@@ -48,7 +54,7 @@ export function WidgetCard({
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-white/30">Browser source URL</span>
+            <span className="text-[10px] font-black uppercase tracking-normal text-white/30">Browser source URL</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-black/40 border border-white/5 font-mono text-[11px] text-white/60 min-w-0">
             <span className="truncate flex-1" title={url ?? ''}>
@@ -65,26 +71,37 @@ export function WidgetCard({
           </div>
 
           {/* Small Inline Preview */}
-          <div className="mt-2 relative w-full aspect-[21/9] rounded-lg overflow-hidden border border-white/5 bg-black/60 group/preview transition-all">
+          <div
+            className="mt-2 relative w-full rounded-lg overflow-hidden border border-white/5 bg-black/60 group/preview transition-all"
+            style={{ aspectRatio: '16 / 9' }}
+          >
             {url ? (
-              <div className="absolute inset-0 pointer-events-none opacity-80 group-hover/preview:opacity-100 transition-opacity">
-                <iframe
-                  src={`${url}?preview=1`}
-                  title={`${widget.name} preview`}
-                  className="absolute top-0 left-0 w-[400%] h-[400%] border-none"
-                  style={{
-                    transform: 'scale(0.25)',
-                    transformOrigin: '0 0',
-                    background: 'transparent'
-                  }}
-                />
+              <div className="absolute inset-2 pointer-events-none opacity-80 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+                <div
+                  className={isVerticalPreview
+                    ? 'relative h-full max-w-full overflow-hidden rounded-md border border-white/10 bg-black/50 shadow-lg'
+                    : 'absolute inset-0 overflow-hidden'
+                  }
+                  style={isVerticalPreview ? { aspectRatio: previewAspectRatio } : undefined}
+                >
+                  <iframe
+                    src={`${url}?preview=1`}
+                    title={`${widget.name} preview`}
+                    className="absolute top-0 left-0 w-[400%] h-[400%] border-none"
+                    style={{
+                      transform: 'scale(0.25)',
+                      transformOrigin: '0 0',
+                      background: 'transparent'
+                    }}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-[8px] font-black text-white/10 uppercase tracking-widest gap-2">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-[8px] font-black text-white/10 uppercase tracking-normal gap-2">
                 <span>Preview Offline</span>
               </div>
             )}
-            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
+            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-normal ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
                <div className={`w-1 h-1 rounded-full ${url ? 'bg-[#d035f1] animate-pulse' : 'bg-white/20'}`} />
                {url ? 'Preview' : 'Offline'}
             </div>

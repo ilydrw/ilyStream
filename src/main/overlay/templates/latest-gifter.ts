@@ -105,7 +105,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
       font-weight: 900;
       color: ${cfg.primaryColor};
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0;
       margin-bottom: -1px;
     }
 
@@ -146,6 +146,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
     const nameEl = document.getElementById('name');
     const avatarEl = document.getElementById('avatar');
     const widgetEl = document.getElementById('widget');
+    const IS_PREVIEW = ${JSON.stringify(isPreview)};
 
     function updateGifter(name, avatar) {
       if (name) nameEl.innerText = name;
@@ -156,22 +157,26 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
       widgetEl.classList.add('update-anim');
     }
 
-    var src = new EventSource('/overlay/events?channel=latest-gifter');
-    src.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'reload') window.location.reload();
-      if (msg.type === 'update') {
-        updateGifter(msg.data.username, msg.data.avatarUrl);
-      }
-    };
-
-    fetch('/overlay/state/latest-gifter')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.username) {
-          updateGifter(data.username, data.avatarUrl);
+    if (IS_PREVIEW) {
+      updateGifter('GalaxyMia', 'https://api.dicebear.com/7.x/avataaars/svg?seed=GalaxyMia');
+    } else {
+      var src = new EventSource('/overlay/events?channel=latest-gifter');
+      src.onmessage = function(e) {
+        var msg = JSON.parse(e.data);
+        if (msg.type === 'reload') window.location.reload();
+        if (msg.type === 'update') {
+          updateGifter(msg.data.username, msg.data.avatarUrl);
         }
-      });
+      };
+
+      fetch('/overlay/state/latest-gifter')
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.username) {
+            updateGifter(data.username, data.avatarUrl);
+          }
+        });
+    }
   </script>
 </body>
 </html>`

@@ -356,6 +356,37 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         const MAX_MESSAGES = ${cfg.maxItems || 75};
         const FADE_OUT_MS = ${(cfg as any).fadeOutAfterSeconds || 0} * 1000;
         const SHOW_PLATFORM_BADGE = ${showPlatformBadge};
+        const IS_PREVIEW = ${JSON.stringify(isPreview)};
+        const PREVIEW_MESSAGES = [
+            {
+                id: 'preview-chat-1',
+                kind: 'chat',
+                platform: 'tiktok',
+                displayName: 'MiaMoon',
+                profilePictureUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=MiaMoon',
+                message: 'The overlay is looking clean tonight.',
+                accentColor: '#00f2ea'
+            },
+            {
+                id: 'preview-chat-2',
+                kind: 'chat',
+                platform: 'twitch',
+                displayName: 'PixelDrew',
+                profilePictureUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=PixelDrew',
+                message: 'Can you queue Neon Skyline next?',
+                accentColor: '#9146ff'
+            },
+            {
+                id: 'preview-chat-3',
+                kind: 'gift',
+                platform: 'kick',
+                displayName: 'GreenRoom',
+                profilePictureUrl: '',
+                message: 'sent a GG',
+                accentColor: '#53fc18',
+                emphasis: true
+            }
+        ];
 
         const platformIcons = {
             twitch: '<path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0h1.714v5.143h-1.714zm-10.286 0h1.714v5.143H6zm1.714-2.572H1.714v15.428h4.286v3.429l3.429-3.429h2.572l7.714-7.714V2.142zm11.143 10.286-3 3H10.286L7.714 18v-2.571H3.429V3.857h12.857z"/>',
@@ -521,7 +552,12 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             };
         }
 
-        connect();
+        if (IS_PREVIEW) {
+            feed.innerHTML = '';
+            PREVIEW_MESSAGES.forEach(addMessage);
+        } else {
+            connect();
+        }
     </script>
 </body>
 </html>

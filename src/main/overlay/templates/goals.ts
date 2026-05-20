@@ -51,7 +51,7 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
         font-size: 10px;
         font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0;
         opacity: 0.4;
       }
       .goal-value {
@@ -65,6 +65,12 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
     <div id="goals-container"></div>
     <script>
       const container = document.getElementById('goals-container');
+      const IS_PREVIEW = ${JSON.stringify(isPreview)};
+      const PREVIEW_STATE = {
+        totalFollows: 1248,
+        totalLikes: 58240,
+        totalGiftCount: 317
+      };
 
       function render(state) {
         container.innerHTML = '';
@@ -96,17 +102,24 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
       }
 
       function hydrate() {
+        if (IS_PREVIEW) {
+          render(PREVIEW_STATE);
+          return;
+        }
+
         fetch('/overlay/goals/state')
           .then(r => r.json())
           .then(render)
           .catch(console.error);
       }
 
-      const src = new EventSource('/overlay/events?channel=goals');
-      src.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'snapshot') render(msg.payload);
-      };
+      if (!IS_PREVIEW) {
+        const src = new EventSource('/overlay/events?channel=goals');
+        src.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'snapshot') render(msg.payload);
+        };
+      }
 
       hydrate();
     </script>

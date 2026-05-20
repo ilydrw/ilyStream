@@ -115,7 +115,7 @@ export function generateOverlayHtml(
     case 'goal': return buildGoalsOverlayHtml(widget, isPreview)
     case 'follower-goal': return buildFollowerGoalHtml(widget, isPreview)
     case 'socials': return buildSocialsOverlayHtml(widget, isPreview)
-    case 'now-playing': return buildNowPlayingOverlayHtml(widget)
+    case 'now-playing': return buildNowPlayingOverlayHtml(widget, isPreview)
     case 'screen-border': return buildScreenBorderHtml(widget, isPreview)
     case 'event-particles': return buildParticleOverlayHtml(widget, isPreview)
     case 'falling-roses': return buildRoseOverlayHtml(widget, isPreview)

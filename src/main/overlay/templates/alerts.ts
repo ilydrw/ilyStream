@@ -524,6 +524,23 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
     if (IS_PREVIEW) {
       setDiag('PREVIEW MODE', true);
+      queueAlert({
+        id: 'preview-alert',
+        createdAt: new Date().toISOString(),
+        html: '<span>MiaMoon sent 5x Galaxy!</span>',
+        durationMs: 600000,
+        animationIn: 'bounce',
+        animationOut: 'fade',
+        layout: 'stacked',
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(10, 12, 18, 0.72)',
+        borderColor: 'gradient',
+        fontSize: 42,
+        fontWeight: 900,
+        textShadow: '0 4px 16px rgba(0,0,0,0.55)',
+        alertTop: 14,
+        alertLeft: 50
+      });
     } else {
       connectEventStream();
     }

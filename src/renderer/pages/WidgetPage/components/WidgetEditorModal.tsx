@@ -20,26 +20,36 @@ export function WidgetEditorModal({
   const [previewOverride, setPreviewOverride] = useState<Widget | null>(null)
   const [saving, setSaving] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  const previewWidget = previewOverride ?? draft
+  const previewConfig = previewWidget.config as Record<string, unknown>
+  const isVerticalPreview = previewConfig.aspectRatio === 'tiktok'
+  const previewAspectRatio =
+    isVerticalPreview ? '9 / 16' :
+    previewConfig.aspectRatio === 'landscape' ? '16 / 9' :
+    '16 / 9'
+  const previewResolution =
+    isVerticalPreview ? '1080 x 1920' :
+    previewConfig.aspectRatio === 'landscape' ? '1920 x 1080' :
+    'Responsive canvas'
 
   useEffect(() => {
     setDraft(widget)
+    setPreviewOverride(null)
   }, [widget.id])
 
   // Debounce the config update for the iframe URL to avoid flicker while dragging sliders
-  const [debouncedConfig, setDebouncedConfig] = useState(draft.config)
+  const [debouncedConfig, setDebouncedConfig] = useState(previewWidget.config)
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(() => {
-      setDebouncedConfig(draft.config)
+      setDebouncedConfig(previewWidget.config)
     }, 400) // 400ms delay for a snappy but stable feel
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
     }
-  }, [draft.config])
-
-  const previewWidget = previewOverride ?? draft
+  }, [previewWidget.config])
 
   const previewUrl = useMemo(() => {
     if (!overlayPort) return null
@@ -88,7 +98,7 @@ export function WidgetEditorModal({
             className="bg-white/5 border border-white/10 rounded-xl px-4 py-1.5 text-sm font-bold text-white focus:border-accent/50 focus:outline-none w-64 transition-all"
             placeholder="Widget name"
           />
-          <span className="text-2xs font-black uppercase tracking-[0.2em] text-white/20">
+          <span className="text-2xs font-black uppercase tracking-normal text-white/20">
             {draft.type}
           </span>
         </div>
@@ -115,21 +125,25 @@ export function WidgetEditorModal({
             </button>
           </div>
 
-          <div className="flex-1 flex items-center justify-center p-12 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
             {previewUrl ? (
               <div
-                className="relative shadow-2xl transition-all duration-500 ease-in-out"
-                style={{
-                  width: (draft.config as any)?.aspectRatio === 'tiktok' ? 'auto' : '100%',
-                  height: (draft.config as any)?.aspectRatio === 'tiktok' ? '100%' : 'auto',
-                  aspectRatio: (draft.config as any)?.aspectRatio === 'tiktok' ? '9/16' :
-                               (draft.config as any)?.aspectRatio === 'landscape' ? '16/9' : 'auto',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  minHeight: (draft.config as any)?.aspectRatio === 'tiktok' ? 0 : 380,
-                }}
+                className={`relative shadow-2xl transition-all duration-500 ease-in-out ${isVerticalPreview ? '' : 'w-full max-w-[920px]'}`}
+                style={isVerticalPreview
+                  ? { height: 'calc(100% - 56px)', maxWidth: '100%', aspectRatio: previewAspectRatio }
+                  : { aspectRatio: previewAspectRatio, maxHeight: 'calc(100% - 56px)' }
+                }
               >
-                <div className="absolute inset-0 rounded-2xl overflow-hidden border border-white/10 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22><rect x=%220%22 y=%220%22 width=%2210%22 height=%2210%22 fill=%22%23131517%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23131517%22/></svg>')] shadow-glow">
+                <div
+                  className="absolute inset-0 rounded-2xl overflow-hidden border border-white/10 shadow-glow"
+                  style={{
+                    backgroundColor: '#07080b',
+                    backgroundImage:
+                      'linear-gradient(45deg, rgba(255,255,255,0.045) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.045) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.045) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.045) 75%)',
+                    backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0',
+                    backgroundSize: '20px 20px'
+                  }}
+                >
                   <iframe
                     key={previewKey}
                     src={previewUrl}
@@ -141,9 +155,8 @@ export function WidgetEditorModal({
 
                 {/* Resolution Badge */}
                 <div className="absolute -bottom-8 left-0 right-0 flex justify-center">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/10">
-                    {(draft.config as any)?.aspectRatio === 'tiktok' ? '1080 × 1920 (9:16)' :
-                     (draft.config as any)?.aspectRatio === 'landscape' ? '1920 × 1080 (16:9)' : 'Auto Resolution'}
+                  <span className="text-[10px] font-black uppercase tracking-normal text-white/10">
+                    {previewResolution}
                   </span>
                 </div>
               </div>
@@ -165,7 +178,7 @@ export function WidgetEditorModal({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-8 py-2.5 rounded-xl bg-brand-gradient text-white text-xs font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-accent/20"
+              className="px-8 py-2.5 rounded-xl bg-brand-gradient text-white text-xs font-black uppercase tracking-normal hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-accent/20"
             >
               {saving ? 'Saving...' : 'Apply Changes'}
             </button>

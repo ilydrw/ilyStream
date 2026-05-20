@@ -78,7 +78,7 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
         .title {
             font-size: 0.9rem;
             font-weight: 800;
-            letter-spacing: 2px;
+            letter-spacing: 0;
             text-transform: uppercase;
             background: linear-gradient(45deg, var(--cyan), var(--magenta));
             -webkit-background-clip: text;
@@ -176,6 +176,14 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
 
     <script>
         const container = document.getElementById('leaderboard');
+        const IS_PREVIEW = ${JSON.stringify(isPreview)};
+        const PREVIEW_DATA = [
+            { username: 'MiaMoon', score: 12840 },
+            { username: 'PixelDrew', score: 10325 },
+            { username: 'GreenRoom', score: 9100 },
+            { username: 'LunaLive', score: 7120 },
+            { username: 'ChatHero', score: 5400 }
+        ];
         let currentData = [];
 
         function updateLeaderboard(newData) {
@@ -217,7 +225,11 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             };
         }
 
-        connect();
+        if (IS_PREVIEW) {
+            updateLeaderboard(PREVIEW_DATA);
+        } else {
+            connect();
+        }
     </script>
 </body>
 </html>
