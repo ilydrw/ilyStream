@@ -43,6 +43,10 @@ function getLayoutModeForAspectRatio(aspectRatio: ProjectorAspectRatio): Broadca
   return aspectRatio === '9:16' ? 'vertical' : 'horizontal'
 }
 
+function getAspectRatioForLayoutMode(mode: BroadcastLayoutMode): ProjectorAspectRatio {
+  return mode === 'vertical' || mode === 'dual-portrait' ? '9:16' : '16:9'
+}
+
 function fitRect(
   stage: { width: number; height: number },
   sourceWidth: number,
@@ -144,6 +148,23 @@ export default function BroadcastPage() {
   const [showStingerConfig, setShowStingerConfig] = useState(false)
   const [showHotkeys, setShowHotkeys] = useState(false)
   const [showRecordingSettings, setShowRecordingSettings] = useState(false)
+
+  const changeBroadcastLayoutMode = useCallback((mode: string) => {
+    const nextMode = mode as BroadcastLayoutMode
+    const nextAspectRatio = getAspectRatioForLayoutMode(nextMode)
+    setBroadcastLayoutMode(nextMode)
+    setSelectionContext(nextAspectRatio)
+    store.setAspectRatio(nextAspectRatio)
+  }, [store])
+
+  const changeSelectionContext = useCallback((nextContext: ProjectorAspectRatio) => {
+    setSelectionContext(nextContext)
+
+    if (!isDualLayoutMode && store.aspectRatio !== nextContext) {
+      setBroadcastLayoutMode(getLayoutModeForAspectRatio(nextContext))
+      store.setAspectRatio(nextContext)
+    }
+  }, [isDualLayoutMode, store])
 
   useEffect(() => {
     if (!isDualLayoutMode) {
@@ -561,10 +582,7 @@ export default function BroadcastPage() {
       <BroadcastHeader
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
         showLeftSidebar={showLeftSidebar} onToggleLeftSidebar={() => setShowLeftSidebar(!showLeftSidebar)} showRightSidebar={showRightSidebar} onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
-        broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={m => {
-          setBroadcastLayoutMode(m as any);
-          store.setAspectRatio(m === 'vertical' || m === 'dual-portrait' ? '9:16' : '16:9')
-        }}
+        broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={changeBroadcastLayoutMode}
         undo={store.undo} redo={store.redo} canUndo={store.past.length > 0} canRedo={store.future.length > 0}
         onTakeScreenshot={() => canvasRef.current?.takeScreenshot()} onStartRecording={startRecording} onStopRecording={stopRecording}
         onForceRefreshMedia={forceRefreshMedia} monitors={monitors} selectedMonitorId={selectedMonitorId} onSetSelectedMonitorId={setSelectedMonitorId}
@@ -646,9 +664,9 @@ export default function BroadcastPage() {
                   isVisible={isPageVisible} isPreview={true}
                   streamReady={streamReady} streamOutputs={[]}
                   previewMode="single" selectionContext={selectionContext}
-                  onSelectionContextChange={setSelectionContext}
+                  onSelectionContextChange={changeSelectionContext}
                   onContextMenu={(e, l, ctx) => {
-                    setSelectionContext(ctx)
+                    changeSelectionContext(ctx)
                     setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: previewScene.id, aspectRatio: ctx })
                   }}
                 />
@@ -723,9 +741,9 @@ export default function BroadcastPage() {
                   streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                   previewMode="single" selectionContext={selectionContext}
                   dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
-                  onSelectionContextChange={setSelectionContext}
+                  onSelectionContextChange={changeSelectionContext}
                   onContextMenu={(e, l, ctx) => {
-                    setSelectionContext(ctx)
+                    changeSelectionContext(ctx)
                     setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: activeScene.id, aspectRatio: ctx })
                   }}
                   ref={canvasRef}
@@ -742,9 +760,9 @@ export default function BroadcastPage() {
                 streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                 previewMode={broadcastLayoutMode} selectionContext={selectionContext}
                 dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
-                onSelectionContextChange={setSelectionContext}
+                onSelectionContextChange={changeSelectionContext}
                 onContextMenu={(e, l, ctx) => {
-                  setSelectionContext(ctx)
+                  changeSelectionContext(ctx)
                   setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: activeScene.id, aspectRatio: ctx })
                 }}
                 ref={canvasRef}
@@ -761,7 +779,7 @@ export default function BroadcastPage() {
             onReorderLayer={(id, i) => store.reorderLayer(store.studioMode ? previewScene.id : activeScene.id, id, i)}
             onShowSourceModal={() => setShowSourceModal(true)}
             onContextMenu={(e, l, ctx) => {
-              setSelectionContext(ctx)
+              changeSelectionContext(ctx)
               setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: getSceneIdForLayer(l), aspectRatio: ctx })
             }}
             aspectRatio={store.aspectRatio}
@@ -771,7 +789,7 @@ export default function BroadcastPage() {
             sidebarWidth={sidebarWidth}
             onSidebarResizeStart={() => setIsResizingSidebar(true)}
             selectionContext={selectionContext}
-            onSelectionContextChange={setSelectionContext}
+            onSelectionContextChange={changeSelectionContext}
           />
         )}
       </div>

@@ -115,7 +115,7 @@ export function Select({
   })
 
   return (
-    <div ref={containerRef} className={`relative ${className} ${open ? 'z-[100]' : 'z-auto'}`}>
+    <div ref={containerRef} className={`titlebar-no-drag relative ${className} ${open ? 'z-[100]' : 'z-auto'}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -141,7 +141,7 @@ export function Select({
           ref={listRef}
           role="listbox"
           tabIndex={-1}
-          className="absolute z-50 left-0 right-0 mt-2 rounded-xl border border-white/10 bg-[#0f1216]/95 backdrop-blur-xl shadow-2xl overflow-y-auto custom-scrollbar ring-1 ring-white/5 animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150"
+          className="titlebar-no-drag absolute z-50 left-0 right-0 mt-2 rounded-xl border border-white/10 bg-[#0f1216]/95 backdrop-blur-xl shadow-2xl overflow-y-auto custom-scrollbar ring-1 ring-white/5 animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150"
           style={{ maxHeight: maxListHeight }}
         >
           {grouped.map((section, groupIndex) => (
