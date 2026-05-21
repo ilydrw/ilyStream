@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.12';
+const latestVersion = '0.0.13';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,12 +46,12 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Fresh Install Fix: New Windows installs now create the stream_state database table before services touch it, so the app opens cleanly.',
-  'DeskThing v0.0.12: Companion metadata stays matched to the desktop app release.',
-  'Chat Cleanup: TikTok likes stay out of chat while the likes widgets and stats still update.',
-  'Spotify + Alerts: Song requests reach Spotify reliably, alert overlays clean up after playback, and alert sounds are accepted from bundled paths.',
-  'Kokoro + Spotify: Local TTS now loads its bundled ONNX runtime, and Spotify token refreshes retry transient outages.',
-  'Website Refresh: Download links, docs, and companion release links now point at the v0.0.12 release set.',
+  'Event Lab: Capture, replay, and assert live event flows for chat, overlays, Spotify, alerts, and DeskThing packets before stream time.',
+  'Automation Recipes: Built-in recipe packs now help creators install proven alerts, chat commands, Spotify request feedback, and growth moments.',
+  'Audit Hardening: Automation webhooks now time out cleanly instead of leaving trigger runs open on a dead endpoint.',
+  'DeskThing v0.0.13: Companion metadata, release links, and the installable bundle stay matched to the desktop app release.',
+  'Widget Reliability: Likes stay out of chat, the likes leaderboard is more customizable, and widget previews better reflect live output.',
+  'Website Refresh: Download links, getting-started docs, Spotify docs, and companion docs all point at the v0.0.13 release set.',
 ];
 
 const docPreviews = [
@@ -166,8 +166,8 @@ const screensPreview = [
   <section class="container section release">
     <div class="section__heading">
       <p class="eyebrow">What is in v{latestVersion}</p>
-      <h2>A release pass for the studio surfaces.</h2>
-      <p>Reliability, safer local surfaces, and matching companion downloads for the workflows creators reach for first.</p>
+      <h2>A release pass for testing, automation, and companion workflows.</h2>
+      <p>Replay tooling, safer automation behavior, richer widget controls, and matching companion downloads for the workflows creators reach for first.</p>
     </div>
     <ul class="release-list">
       {releaseNotes.map((note, i) => (

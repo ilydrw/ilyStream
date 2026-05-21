@@ -5,9 +5,14 @@ export class SSEManager {
   private channels = new Map<OverlayChannel, Set<SseClient>>()
   private pingTimer: NodeJS.Timeout | null = null
   private onCountsChanged?: () => void
+  private onBroadcast?: (channel: OverlayChannel, payload: unknown, clientCount: number) => void
 
-  constructor(onCountsChanged?: () => void) {
+  constructor(
+    onCountsChanged?: () => void,
+    onBroadcast?: (channel: OverlayChannel, payload: unknown, clientCount: number) => void
+  ) {
     this.onCountsChanged = onCountsChanged
+    this.onBroadcast = onBroadcast
   }
 
   attachClient(channel: OverlayChannel, request: IncomingMessage, response: ServerResponse): void {
@@ -32,6 +37,8 @@ export class SSEManager {
 
   broadcast(channel: OverlayChannel, payload: unknown): void {
     const clients = this.channels.get(channel)
+    const clientCount = clients?.size || 0
+    this.onBroadcast?.(channel, payload, clientCount)
     if (!clients) return
 
     const data = `data: ${JSON.stringify(payload)}\n\n`

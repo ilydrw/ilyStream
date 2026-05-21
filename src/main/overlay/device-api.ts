@@ -72,6 +72,12 @@ export class DeviceApi {
   private chatBuffer: unknown[] = []
 
   private pingTimer: NodeJS.Timeout | null = null
+  private diagnosticsSink?: (packet: {
+    type: DeviceEventType
+    payload: unknown
+    clientCount: number
+    at: string
+  }) => void
 
   constructor(
     private db: Database,
@@ -80,6 +86,12 @@ export class DeviceApi {
     /** Emits 'deck-action' to forward to the EventOrchestrator. */
     private emitDeckAction: (action: { type: string; payload?: unknown }) => void
   ) {}
+
+  setDiagnosticsSink(
+    sink?: (packet: { type: DeviceEventType; payload: unknown; clientCount: number; at: string }) => void
+  ): void {
+    this.diagnosticsSink = sink
+  }
 
   /**
    * Push a live state event to every connected device. Called by OverlayServer
@@ -94,6 +106,11 @@ export class DeviceApi {
       this.latestState[type] = payload
     }
     const envelope: DeviceEventEnvelope = { type, payload }
+    this.diagnosticsSink?.({
+      ...envelope,
+      clientCount: this.eventClients.size,
+      at: new Date().toISOString()
+    })
     const data = `data: ${JSON.stringify(envelope)}\n\n`
     for (const client of [...this.eventClients]) {
       try {
@@ -106,9 +123,13 @@ export class DeviceApi {
 
   /**
    * Buffer + broadcast a single chat-feed item. The buffer is replayed as a
-   * `chatBacklog` snapshot when a new device subscribes. We also publish the
-   * latest backlog live because older DeskThing builds listen for snapshots
-   * but not incremental appends.
+   * `chatBacklog` snapshot when a new device subscribes.
+   *
+   * We deliberately do NOT broadcast `chatBacklog` per item. Doing so floods
+   * the SSE stream with the entire buffer on every chat and forces clients to
+   * re-render the whole list (which makes high-velocity TikTok chat lag on
+   * the Car Thing). The latest backlog is still cached in `latestState` so
+   * freshly-connected devices receive it during the initial replay.
    */
   appendChatItem(item: unknown): void {
     if (isLikeFeedItem(item)) return
@@ -117,8 +138,8 @@ export class DeviceApi {
     if (this.chatBuffer.length > CHAT_BUFFER_LIMIT) {
       this.chatBuffer = this.chatBuffer.slice(-CHAT_BUFFER_LIMIT)
     }
+    this.latestState.chatBacklog = [...this.chatBuffer]
     this.broadcast('chatAppend', item)
-    this.broadcast('chatBacklog', [...this.chatBuffer])
   }
 
   // --- Pairing (called from the desktop UI via IPC) ---

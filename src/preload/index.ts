@@ -4,11 +4,15 @@ import type { WindowsSettingsTarget } from '../main/system/windows-settings'
 import type { GetTopUsersOptions } from '../shared/stats'
 import type { Platform } from '../main/platforms/types'
 import type { VideoFramePayload, AudioFramePayload } from '../main/services/streaming-service'
+import type { EventLabSimulationPayload } from '../shared/event-lab'
 
 export type IpcCallback = (...args: any[]) => void
 
 const allowedEventChannels = new Set([
   'event:stream',
+  'event:overlay-broadcast',
+  'event:device-broadcast',
+  'automation:run-receipt',
   'platform:status-change',
   'platform:error',
   'platform:reconnecting',
@@ -110,7 +114,7 @@ const api = {
 
   // --- Local event testing ---
   events: {
-    simulate: (payload: { platform?: string; type: 'chat' | 'gift' | 'subscription' | 'follow' | 'raid' | 'like' | 'share' | 'join' | 'superfan'; suppressSound?: boolean }) =>
+    simulate: (payload: EventLabSimulationPayload) =>
       ipcRenderer.invoke('event:simulate', payload),
     simulateChat: (payload: { platform: string; message: string; username: string }) =>
       ipcRenderer.invoke('event:simulate-chat', payload)

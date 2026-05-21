@@ -143,6 +143,14 @@ export const routes: AppRoute[] = [
     component: lazy(() => import('./pages/TriggersPage'))
   },
   {
+    path: '/event-lab',
+    label: 'Event Lab',
+    description: 'Inspect live stream events, overlay packets, device broadcasts, and replay local test events.',
+    section: 'operate',
+    icon: IconTerminal2,
+    component: lazy(() => import('./pages/EventLabPage'))
+  },
+  {
     path: '/ai-cohost',
     label: 'AI Co-Host',
     description: 'Configure your automated AI assistant, its personality, connection, and neural depth.',

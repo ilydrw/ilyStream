@@ -117,6 +117,131 @@ describe('TriggerEngine', () => {
     )
   })
 
+  it('emits a run receipt with condition and action results', async () => {
+    const { engine } = createEngine()
+    const receiptPromise = onceReceipt(engine)
+
+    engine.updateRule(createRule('chat-rule', 0))
+    engine.evaluate(createChatEvent('receipt check'))
+
+    const receipt = await receiptPromise
+    expect(receipt).toEqual(
+      expect.objectContaining({
+        eventId: 'event-1',
+        eventType: 'chat',
+        platform: 'twitch',
+        ruleCount: 1,
+        matchedRules: 1,
+        actionsAttempted: 1,
+        actionsRan: 1,
+        actionsFailed: 0
+      })
+    )
+    expect(receipt.rules[0]).toEqual(
+      expect.objectContaining({
+        ruleId: 'chat-rule',
+        matched: true,
+        blockedByCooldown: false
+      })
+    )
+    expect(receipt.rules[0].conditions[0]).toEqual(expect.objectContaining({ passed: true }))
+    expect(receipt.rules[0].actions[0]).toEqual(expect.objectContaining({ status: 'ran', type: 'tts' }))
+    expect(receipt.testPayload).toEqual(expect.objectContaining({ type: 'chat', message: 'receipt check' }))
+  })
+
+  it('explains why a rule did not match', async () => {
+    const { engine } = createEngine()
+    const receiptPromise = onceReceipt(engine)
+    const rule = createRule('keyword-rule', 0)
+
+    engine.updateRule({
+      ...rule,
+      conditions: [
+        { type: 'event_type', value: 'chat' },
+        { type: 'keyword', value: '!play', matchMode: 'starts_with', caseSensitive: false }
+      ]
+    })
+    engine.evaluate(createChatEvent('hello there'))
+
+    const receipt = await receiptPromise
+    expect(receipt.matchedRules).toBe(0)
+    expect(receipt.rules[0].matched).toBe(false)
+    expect(receipt.rules[0].conditions.map((condition) => condition.passed)).toEqual([true, false])
+    expect(receipt.rules[0].skipReason).toContain('!play')
+  })
+
+  it('records cooldown-blocked rules', async () => {
+    const { engine } = createEngine()
+
+    engine.updateRule({
+      ...createRule('cooldown-rule', 0),
+      cooldown: 30
+    })
+
+    const firstReceiptPromise = onceReceipt(engine)
+    engine.evaluate(createChatEvent('first'))
+    await firstReceiptPromise
+
+    const receiptPromise = onceReceipt(engine)
+    engine.evaluate(createChatEvent('second'))
+    const receipt = await receiptPromise
+
+    expect(receipt.matchedRules).toBe(0)
+    expect(receipt.blockedRules).toBe(1)
+    expect(receipt.rules[0]).toEqual(
+      expect.objectContaining({
+        blockedByCooldown: true,
+        matched: false
+      })
+    )
+    expect(receipt.rules[0].skipReason).toContain('cooldown')
+  })
+
+  it('fails webhook actions that hang instead of leaving a trigger run open', async () => {
+    vi.useFakeTimers()
+    const originalFetch = globalThis.fetch
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { engine } = createEngine()
+
+    globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        })
+      })
+    }) as typeof fetch
+
+    try {
+      engine.updateRule({
+        ...createRule('webhook-rule', 0),
+        actions: [{
+          type: 'http_webhook',
+          url: 'https://example.com/hook',
+          method: 'POST',
+          headers: {},
+          body: '{"message":"{message}"}'
+        }]
+      })
+
+      const receiptPromise = onceReceipt(engine)
+      engine.evaluate(createChatEvent('slow webhook'))
+      await vi.advanceTimersByTimeAsync(10_000)
+      const receipt = await receiptPromise
+
+      expect(receipt.actionsFailed).toBe(1)
+      expect(receipt.rules[0].actions[0]).toEqual(expect.objectContaining({
+        status: 'failed',
+        error: 'Webhook timed out after 10s.'
+      }))
+    } finally {
+      errorSpy.mockRestore()
+      globalThis.fetch = originalFetch
+      vi.useRealTimers()
+    }
+  })
+
   it('ignores in-progress gift combo updates before firing gift trigger actions', () => {
     vi.useFakeTimers()
     const { engine } = createEngine()
@@ -158,6 +283,12 @@ function createEngine() {
   } as unknown as TTSEngine, {} as any)
 
   return { engine, enqueue, prepareChatSpeechMessage }
+}
+
+function onceReceipt(engine: TriggerEngine): Promise<any> {
+  return new Promise((resolve) => {
+    engine.once('receipt', resolve)
+  })
 }
 
 function createGiftEvent(isCombo: boolean): GiftEvent {

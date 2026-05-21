@@ -6,7 +6,7 @@ import { restoreEnabledPlatformConnections } from '../../platforms/platform-pers
 import { AnyPlatformConfig, Platform } from '../../platforms/types'
 import { randomUUID } from 'crypto'
 import { AnyStreamEvent, UserInfo } from '../../platforms/types'
-import type { AlertRuleEventType } from '../../../shared/alert-rules'
+import type { EventLabSimulationPayload } from '../../../shared/event-lab'
 import { TikTokChatSender } from '../../platforms/tiktok/tiktok-chat-sender'
 
 let hasRestoredPlatformConnections = false
@@ -45,7 +45,7 @@ export function registerPlatformHandlers(
 
   ipcMain.handle(
     'event:simulate',
-    (_event, payload: { platform?: Platform; type: AlertRuleEventType | 'superfan'; suppressSound?: boolean }) => {
+    (_event, payload: EventLabSimulationPayload) => {
       const simulatedEvent = createSimulatedEvent(payload)
       platformManager.emitTestEvent(simulatedEvent)
       return simulatedEvent
@@ -101,14 +101,26 @@ export function registerPlatformHandlers(
 
 function createSimulatedEvent(payload: {
   platform?: Platform
-  type: AlertRuleEventType | 'superfan'
+  type: EventLabSimulationPayload['type']
+  username?: string
+  displayName?: string
+  message?: string
+  giftName?: string
+  giftId?: string
+  giftCount?: number
+  likeCount?: number
+  totalLikes?: number
+  viewerCount?: number
+  months?: number
   suppressSound?: boolean
 }): AnyStreamEvent {
   const platform = resolveSimulationPlatform(payload.platform)
-  const user = createSimulatedUser()
+  const user = createSimulatedUser(payload)
   const raw = { simulated: true, suppressEventSound: payload.suppressSound === true }
 
   if (payload.type === 'gift') {
+    const giftName = cleanText(payload.giftName, 'Test Rose', 80)
+    const giftCount = clampInteger(payload.giftCount, 1, 999, 1)
     return {
       id: randomUUID(),
       platform,
@@ -116,16 +128,17 @@ function createSimulatedEvent(payload: {
       type: 'gift',
       raw,
       user,
-      giftName: 'Test Rose',
-      giftId: 'test-rose',
+      giftName,
+      giftId: cleanText(payload.giftId, giftName.toLowerCase().replace(/[^a-z0-9]+/g, '-'), 80),
       giftImageUrl: 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/7060293123849551105~tplv-obj.png',
-      giftCount: 1,
-      monetaryValue: 1,
+      giftCount,
+      monetaryValue: giftCount,
       isCombo: false
     }
   }
 
   if (payload.type === 'superfan') {
+    const months = clampInteger(payload.months, 1, 120, 1)
     return {
       id: randomUUID(),
       platform,
@@ -139,12 +152,14 @@ function createSimulatedEvent(payload: {
         badges: [{ id: 'superfan', name: 'Superfan' }]
       },
       tier: 'Superfan',
-      months: 1,
-      isGift: false
+      months,
+      isGift: false,
+      monetaryValue: 499
     }
   }
 
   if (payload.type === 'subscription') {
+    const months = clampInteger(payload.months, 1, 120, 3)
     return {
       id: randomUUID(),
       platform,
@@ -153,13 +168,14 @@ function createSimulatedEvent(payload: {
       raw,
       user: { ...user, isSubscriber: true },
       tier: platform === 'youtube' ? 'Member' : platform === 'twitch' ? 'Tier 1' : 'Subscriber',
-      months: 3,
+      months,
       isGift: false,
       monetaryValue: 499
     }
   }
 
   if (payload.type === 'raid') {
+    const viewerCount = clampInteger(payload.viewerCount, 1, 50000, 24)
     return {
       id: randomUUID(),
       platform,
@@ -167,11 +183,13 @@ function createSimulatedEvent(payload: {
       type: 'raid',
       raw,
       user,
-      viewerCount: 24
+      viewerCount
     }
   }
 
   if (payload.type === 'like') {
+    const likeCount = clampInteger(payload.likeCount, 1, 100000, 25)
+    const totalLikes = clampInteger(payload.totalLikes, 0, 100000000, 2500)
     return {
       id: randomUUID(),
       platform,
@@ -179,8 +197,8 @@ function createSimulatedEvent(payload: {
       type: 'like',
       raw,
       user,
-      likeCount: 25,
-      totalLikes: 2500
+      likeCount,
+      totalLikes
     }
   }
 
@@ -214,8 +232,19 @@ function createSimulatedEvent(payload: {
       type: 'chat',
       raw,
       user,
-      message: 'This is a local alert test message',
+      message: cleanText(payload.message, 'This is a local alert test message', 500),
       emotes: []
+    }
+  }
+
+  if (payload.type === 'viewer-count') {
+    return {
+      id: randomUUID(),
+      platform,
+      timestamp: new Date(),
+      type: 'viewer-count',
+      raw,
+      count: clampInteger(payload.viewerCount, 0, 50000, 24)
     }
   }
 
@@ -229,11 +258,14 @@ function createSimulatedEvent(payload: {
   }
 }
 
-function createSimulatedUser(): UserInfo {
+function createSimulatedUser(payload: Pick<EventLabSimulationPayload, 'username' | 'displayName'> = {}): UserInfo {
+  const username = cleanText(payload.username, 'local_alert_test', 48).replace(/\s+/g, '_')
+  const displayName = cleanText(payload.displayName, payload.username || 'Local Alert Test', 64)
+
   return {
     id: 'local-alert-test',
-    username: 'local_alert_test',
-    displayName: 'Local Alert Test',
+    username,
+    displayName,
     isModerator: false,
     isSubscriber: false,
     isVip: false,
@@ -244,5 +276,29 @@ function createSimulatedUser(): UserInfo {
 }
 
 function resolveSimulationPlatform(platform: Platform | undefined): Platform {
-  return platform === 'twitch' || platform === 'youtube' || platform === 'kick' ? platform : 'tiktok'
+  const allowed = new Set<Platform>([
+    'tiktok',
+    'twitch',
+    'youtube',
+    'kick',
+    'x',
+    'discord',
+    'facebook',
+    'instagram',
+    'restream',
+    'linkedin',
+    'telegram'
+  ])
+  return platform && allowed.has(platform) ? platform : 'tiktok'
+}
+
+function cleanText(value: unknown, fallback: string, maxLength: number): string {
+  const text = String(value ?? '').trim()
+  return (text || fallback).slice(0, maxLength)
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const numericValue = Math.floor(Number(value))
+  if (!Number.isFinite(numericValue)) return fallback
+  return Math.min(max, Math.max(min, numericValue))
 }

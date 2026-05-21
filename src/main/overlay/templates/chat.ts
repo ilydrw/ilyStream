@@ -71,7 +71,33 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
             0 10px 30px rgba(0,0,0,0.4),
             inset 0 0 20px rgba(255,255,255,0.05);
         transition: transform 0.3s ease;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
       }
+      .entry > .body-col {
+        flex: 1;
+        min-width: 0;
+      }
+      .avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.08);
+        border: 2px solid var(--accent, var(--fallback-accent));
+        object-fit: cover;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 18px;
+        color: #fff;
+        text-transform: uppercase;
+        line-height: 1;
+        overflow: hidden;
+      }
+      img.avatar { padding: 0; }
       ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 400 }, '.entry')}
       .entry::before {
         content: "";
@@ -172,17 +198,58 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
       var CFG = ${configJson};
       var reconnectDelay = 1500;
 
+      function safeAvatarUrl(url) {
+        if (typeof url !== 'string' || !url.trim()) return '';
+        try {
+          var parsed = new URL(url, window.location.origin);
+          return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      window.__chatAvatarFallback = function(initial) {
+        var span = document.createElement('div');
+        span.className = 'avatar';
+        span.textContent = initial || '?';
+        return span;
+      };
+
+      function makeAvatar(item) {
+        var name = item.displayName || '';
+        var initial = name.trim().charAt(0) || '?';
+        var url = safeAvatarUrl(item.profilePictureUrl);
+        if (!url) {
+          return window.__chatAvatarFallback(initial);
+        }
+        var img = document.createElement('img');
+        img.className = 'avatar';
+        img.src = url;
+        img.alt = '';
+        img.dataset.initial = initial;
+        img.onerror = function() {
+          var fallback = window.__chatAvatarFallback(this.dataset.initial);
+          this.replaceWith(fallback);
+        };
+        return img;
+      }
+
       function makeEntry(item) {
         var entry = document.createElement('article');
         entry.className = 'entry' + (item.emphasis ? ' entry--event' : '');
         entry.dataset.id = item.id;
         entry.style.setProperty('--accent', item.accentColor);
 
+        entry.appendChild(makeAvatar(item));
+
+        var bodyCol = document.createElement('div');
+        bodyCol.className = 'body-col';
+
         if (item.emphasis && item.kind !== 'chat') {
           var tag = document.createElement('span');
           tag.className = 'event-tag';
           tag.textContent = item.kind.replace(/-/g, ' ');
-          entry.appendChild(tag);
+          bodyCol.appendChild(tag);
         }
 
         var userLine = document.createElement('div');
@@ -195,25 +262,24 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
           userLine.appendChild(badge);
         }
 
-        var nameText = document.createTextNode(item.displayName);
-        userLine.appendChild(nameText);
-        entry.appendChild(userLine);
-
+        userLine.appendChild(document.createTextNode(item.displayName));
+        bodyCol.appendChild(userLine);
 
         if (item.message) {
           var body = document.createElement('div');
           body.className = 'body';
           body.textContent = item.message;
-          entry.appendChild(body);
+          bodyCol.appendChild(body);
         }
 
         if (item.meta) {
           var note = document.createElement('div');
           note.className = 'meta-note';
           note.textContent = item.meta;
-          entry.appendChild(note);
+          bodyCol.appendChild(note);
         }
 
+        entry.appendChild(bodyCol);
         return entry;
       }
 

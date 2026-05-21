@@ -5,6 +5,13 @@ import { TTSEngine } from '../tts/tts-engine'
 import { AIService } from '../ai/ai-service'
 import { ConditionEvaluator } from './engine/condition-evaluator'
 import { ActionExecutor } from './engine/action-executor'
+import { randomUUID } from 'crypto'
+import type {
+  AutomationActionReceipt,
+  AutomationRunReceipt,
+  AutomationRuleReceipt
+} from '../../shared/automation-receipts'
+import type { EventLabSimulationPayload } from '../../shared/event-lab'
 
 export class TriggerEngine extends EventEmitter {
   private rules: TriggerRule[] = []
@@ -40,7 +47,7 @@ export class TriggerEngine extends EventEmitter {
       this.handleGiftDebounce(event as GiftEvent)
       return
     }
-    this.processEvent(event)
+    void this.processEvent(event)
   }
 
   private handleGiftDebounce(event: GiftEvent): void {
@@ -63,7 +70,7 @@ export class TriggerEngine extends EventEmitter {
           const buffered = this.giftDebouncers.get(key)
           if (buffered) {
             this.giftDebouncers.delete(key)
-            this.processEvent({
+            void this.processEvent({
               ...buffered.latestEvent,
               giftCount: buffered.totalCount,
               monetaryValue: buffered.totalValue,
@@ -75,18 +82,109 @@ export class TriggerEngine extends EventEmitter {
     }
   }
 
-  private processEvent(event: AnyStreamEvent): void {
-    for (const rule of this.rules) {
-      if (!rule.enabled) continue
-      if (!rule.platforms.includes(event.platform)) continue
-      if (!this.evaluator.evaluate(rule, event)) continue
-      if (this.isOnCooldown(rule, event)) continue
-
-      for (const action of rule.actions) {
-        void this.executor.execute(action, event)
-      }
-      this.setCooldown(rule, event)
+  private async processEvent(event: AnyStreamEvent): Promise<void> {
+    const startedAt = new Date()
+    const startedMs = Date.now()
+    const receipt: AutomationRunReceipt = {
+      id: randomUUID(),
+      eventId: event.id,
+      eventType: event.type,
+      platform: event.platform,
+      username: 'user' in event ? event.user.username : undefined,
+      displayName: 'user' in event ? event.user.displayName : undefined,
+      startedAt: startedAt.toISOString(),
+      finishedAt: startedAt.toISOString(),
+      durationMs: 0,
+      ruleCount: this.rules.length,
+      matchedRules: 0,
+      blockedRules: 0,
+      actionsAttempted: 0,
+      actionsRan: 0,
+      actionsSkipped: 0,
+      actionsFailed: 0,
+      rules: [],
+      testPayload: createTestPayload(event)
     }
+
+    for (const rule of this.rules) {
+      const ruleStartedMs = Date.now()
+      const platformMatched = rule.platforms.includes(event.platform)
+      const conditions = rule.enabled && platformMatched
+        ? rule.conditions.map((condition, index) => this.evaluator.evaluateCondition(condition, event, index))
+        : []
+      const allConditionsMatched = conditions.every((condition) => condition.passed)
+      const cooldownReason = rule.enabled && platformMatched && allConditionsMatched
+        ? this.getCooldownReason(rule, event)
+        : null
+      const actions: AutomationActionReceipt[] = []
+      let matched = false
+      let skipReason: string | undefined
+
+      if (!rule.enabled) {
+        skipReason = 'Rule is disabled.'
+      } else if (!platformMatched) {
+        skipReason = `Rule does not listen to ${event.platform}.`
+      } else if (!allConditionsMatched) {
+        skipReason = conditions.find((condition) => !condition.passed)?.detail || 'One or more conditions failed.'
+      } else if (cooldownReason) {
+        skipReason = cooldownReason
+        receipt.blockedRules += 1
+      } else {
+        matched = true
+        receipt.matchedRules += 1
+
+        for (const [index, action] of rule.actions.entries()) {
+          const actionStartedMs = Date.now()
+          receipt.actionsAttempted += 1
+          try {
+            const result = await this.executor.execute(action, event)
+            const actionReceipt: AutomationActionReceipt = {
+              index,
+              type: action.type,
+              status: result.status,
+              summary: result.summary,
+              durationMs: Date.now() - actionStartedMs,
+              error: result.reason
+            }
+            actions.push(actionReceipt)
+            if (result.status === 'ran') receipt.actionsRan += 1
+            if (result.status === 'skipped') receipt.actionsSkipped += 1
+            if (result.status === 'failed') receipt.actionsFailed += 1
+          } catch (error) {
+            receipt.actionsFailed += 1
+            actions.push({
+              index,
+              type: action.type,
+              status: 'failed',
+              summary: `Action ${action.type} failed`,
+              durationMs: Date.now() - actionStartedMs,
+              error: error instanceof Error ? error.message : 'Unknown action failure.'
+            })
+          }
+        }
+
+        this.setCooldown(rule, event)
+      }
+
+      const ruleReceipt: AutomationRuleReceipt = {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        enabled: rule.enabled,
+        platformMatched,
+        matched,
+        blockedByCooldown: Boolean(cooldownReason),
+        skipReason,
+        durationMs: Date.now() - ruleStartedMs,
+        conditions,
+        actions
+      }
+
+      receipt.rules.push(ruleReceipt)
+    }
+
+    receipt.finishedAt = new Date().toISOString()
+    receipt.durationMs = Date.now() - startedMs
+    this.emit('receipt', receipt)
   }
 
   addRule(rule: TriggerRule): void {
@@ -110,17 +208,23 @@ export class TriggerEngine extends EventEmitter {
   }
 
   private isOnCooldown(rule: TriggerRule, event: AnyStreamEvent): boolean {
+    return Boolean(this.getCooldownReason(rule, event))
+  }
+
+  private getCooldownReason(rule: TriggerRule, event: AnyStreamEvent): string | null {
     const now = Date.now()
     if (rule.cooldown > 0) {
       const lastFired = this.globalCooldowns.get(rule.id) || 0
-      if (now - lastFired < rule.cooldown * 1000) return true
+      const remainingMs = rule.cooldown * 1000 - (now - lastFired)
+      if (remainingMs > 0) return `Global cooldown has ${Math.ceil(remainingMs / 1000)}s remaining.`
     }
     if (rule.userCooldown > 0 && 'user' in event) {
       const key = `${rule.id}:${(event as any).user.username}`
       const lastFired = this.userCooldowns.get(key) || 0
-      if (now - lastFired < rule.userCooldown * 1000) return true
+      const remainingMs = rule.userCooldown * 1000 - (now - lastFired)
+      if (remainingMs > 0) return `User cooldown has ${Math.ceil(remainingMs / 1000)}s remaining.`
     }
-    return false
+    return null
   }
 
   private setCooldown(rule: TriggerRule, event: AnyStreamEvent): void {
@@ -138,5 +242,58 @@ export class TriggerEngine extends EventEmitter {
     const cutoff = Date.now() - 86_400_000
     for (const [key, ts] of this.globalCooldowns) if (ts < cutoff) this.globalCooldowns.delete(key)
     for (const [key, ts] of this.userCooldowns) if (ts < cutoff) this.userCooldowns.delete(key)
+  }
+}
+
+function createTestPayload(event: AnyStreamEvent): EventLabSimulationPayload {
+  if (event.type === 'viewer-count') {
+    return {
+      platform: event.platform,
+      type: 'viewer-count',
+      viewerCount: event.count
+    }
+  }
+
+  const user = 'user' in event ? event.user : undefined
+  const base: EventLabSimulationPayload = {
+    platform: event.platform,
+    type: event.type as EventLabSimulationPayload['type'],
+    username: user?.username,
+    displayName: user?.displayName
+  }
+
+  switch (event.type) {
+    case 'chat':
+      return { ...base, type: 'chat', message: event.message }
+    case 'gift':
+      return {
+        ...base,
+        type: 'gift',
+        giftName: event.giftName,
+        giftId: event.giftId,
+        giftCount: event.giftCount
+      }
+    case 'subscription':
+      return {
+        ...base,
+        type: user?.isFanClubMember ? 'superfan' : 'subscription',
+        months: event.months
+      }
+    case 'raid':
+      return { ...base, type: 'raid', viewerCount: event.viewerCount }
+    case 'like':
+      return { ...base, type: 'like', likeCount: event.likeCount, totalLikes: event.totalLikes }
+    case 'follow':
+    case 'share':
+    case 'join':
+      return base
+    default:
+      return {
+        platform: event.platform,
+        type: 'chat',
+        username: user?.username,
+        displayName: user?.displayName,
+        message: `Replay for ${event.type}`
+      }
   }
 }

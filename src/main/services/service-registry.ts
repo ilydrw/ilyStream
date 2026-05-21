@@ -199,17 +199,31 @@ export class ServiceRegistry {
   }
 
   private async initializeCoreServices(): Promise<void> {
+    // Wire up the orchestrator's platform-event subscription before anything
+    // that might throw. If a later applySettings step fails, alerts / Spotify
+    // commands / DeskThing relay would otherwise silently stop because the
+    // orchestrator listener never got attached.
+    this.eventOrchestrator.init()
+
     const settings = resolveAppSettings(this.db.getAllSettings())
 
-    this.ttsEngine.applySettings(settings.tts)
-    this.aiService.applySettings(settings.ai)
-    this.coHostService.applySettings(settings.ai)
-    this.eventSoundService.applySettings(settings)
-    this.voicemodService.applySettings(settings)
-    this.vtubeService.applySettings(settings)
-    this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())
+    const stages: Array<[string, () => void]> = [
+      ['tts settings', () => this.ttsEngine.applySettings(settings.tts)],
+      ['ai settings', () => this.aiService.applySettings(settings.ai)],
+      ['co-host settings', () => this.coHostService.applySettings(settings.ai)],
+      ['event-sound settings', () => this.eventSoundService.applySettings(settings)],
+      ['voicemod settings', () => this.voicemodService.applySettings(settings)],
+      ['vtube settings', () => this.vtubeService.applySettings(settings)],
+      ['voice profiles', () => this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())]
+    ]
 
-    this.eventOrchestrator.init()
+    for (const [name, run] of stages) {
+      try {
+        run()
+      } catch (err) {
+        console.error(`[services] ${name} failed to apply:`, err)
+      }
+    }
 
     // Start OverlayServer first (critical for renderer)
     try {

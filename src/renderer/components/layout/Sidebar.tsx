@@ -53,7 +53,7 @@ const navigationGroups: NavigationGroup[] = [
     label: 'Rules',
     drawerTitle: 'Automation & Logic',
     icon: IconBolt,
-    items: [itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/tts')]
+    items: [itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/event-lab'), itemByPath('/tts')]
   },
   {
     id: 'system',

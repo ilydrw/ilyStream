@@ -16,20 +16,55 @@ function safeHexColor(value: unknown, fallback: string): string {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback
 }
 
+function hexToRgb(color: string): string {
+  const normalized = color.replace('#', '')
+  const r = Number.parseInt(normalized.slice(0, 2), 16)
+  const g = Number.parseInt(normalized.slice(2, 4), 16)
+  const b = Number.parseInt(normalized.slice(4, 6), 16)
+  return `${r}, ${g}, ${b}`
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char
+  ))
+}
+
+function safeFontFamily(value: unknown, fallback: string): string {
+  const font = String(value || fallback).trim()
+  return /^[a-z0-9 _,-]+$/i.test(font) ? font : fallback
+}
+
 export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false): string {
   const config: LikesTrackerConfig = {
     ...DEFAULT_LIKES_TRACKER_CONFIG,
     ...(widget.config as Partial<LikesTrackerConfig> | undefined)
   }
+  const title = escapeHtml(config.title || DEFAULT_LIKES_TRACKER_CONFIG.title)
   const maxVisible = Math.round(clampNumber(config.maxAvatars, 1, 25, DEFAULT_LIKES_TRACKER_CONFIG.maxAvatars))
   const accentColor = safeHexColor(config.accentColor, DEFAULT_LIKES_TRACKER_CONFIG.accentColor)
-  const secondaryColor = safeHexColor((config as any).secondaryColor, '#25f4ee')
+  const secondaryColor = safeHexColor(config.secondaryColor, DEFAULT_LIKES_TRACKER_CONFIG.secondaryColor)
+  const backgroundColor = safeHexColor(config.backgroundColor, DEFAULT_LIKES_TRACKER_CONFIG.backgroundColor)
+  const textColor = safeHexColor(config.textColor, DEFAULT_LIKES_TRACKER_CONFIG.textColor)
+  const crownColor = safeHexColor(config.crownColor, DEFAULT_LIKES_TRACKER_CONFIG.crownColor)
   const opacity = clampNumber(config.opacity, 0.1, 1, DEFAULT_LIKES_TRACKER_CONFIG.opacity)
   const scale = clampNumber(config.scale, 0.5, 2, DEFAULT_LIKES_TRACKER_CONFIG.scale)
   const showTotal = config.showTotal !== false
+  const showHeader = config.showHeader !== false
+  const showRankNumbers = config.showRankNumbers !== false
+  const showFirstPlaceCrown = config.showFirstPlaceCrown !== false
+  const avatarShape = config.avatarShape === 'square' ? 'square' : 'circle'
   const borderRadius = clampNumber(config.borderRadius, 0, 50, DEFAULT_LIKES_TRACKER_CONFIG.borderRadius)
   const glassIntensity = clampNumber(config.glassIntensity, 0, 1, DEFAULT_LIKES_TRACKER_CONFIG.glassIntensity)
-  const fontFamily = config.fontFamily || DEFAULT_LIKES_TRACKER_CONFIG.fontFamily
+  const rowHeight = Math.round(clampNumber(config.rowHeight, 44, 88, DEFAULT_LIKES_TRACKER_CONFIG.rowHeight))
+  const avatarSize = Math.round(clampNumber(config.avatarSize, 28, 64, DEFAULT_LIKES_TRACKER_CONFIG.avatarSize))
+  const fontFamily = safeFontFamily(config.fontFamily, DEFAULT_LIKES_TRACKER_CONFIG.fontFamily)
+  const backgroundRgb = hexToRgb(backgroundColor)
+  const textRgb = hexToRgb(textColor)
+  const avatarRadius = avatarShape === 'circle' ? '999px' : '0px'
+  const crownMarkup = showFirstPlaceCrown
+    ? '<span class="first-place-crown" aria-hidden="true"><svg viewBox="0 0 24 18" focusable="false"><path d="M2 16h20v2H2v-2Zm1-13 5.6 5.2L12 1l3.4 7.2L21 3l-2.2 11H5.2L3 3Z"/></svg></span>'
+    : ''
 
   return `<!DOCTYPE html>
 <html>
@@ -43,14 +78,17 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       --bg-color: rgba(0, 0, 0, 0);
       --tiktok-pink: #fe2c55;
       --tiktok-cyan: #25f4ee;
-      --text-color: #ffffff;
-      --glass-bg: rgba(15, 15, 20, ${0.4 + (glassIntensity * 0.4)});
+      --text-color: ${textColor};
+      --muted-text-color: rgba(${textRgb}, 0.58);
+      --glass-bg: rgba(${backgroundRgb}, ${0.38 + (glassIntensity * 0.42)});
       --glass-blur: ${glassIntensity * 40}px;
-      --glass-border: rgba(255, 255, 255, ${0.05 + (glassIntensity * 0.1)});
-      --row-height: 60px;
+      --glass-border: rgba(${textRgb}, ${0.05 + (glassIntensity * 0.12)});
+      --row-height: ${rowHeight}px;
+      --avatar-size: ${avatarSize}px;
+      --avatar-radius: ${avatarRadius};
       --accent-color: ${accentColor};
       --accent-gradient: linear-gradient(135deg, var(--accent-color), ${secondaryColor});
-      --gold: #ffd700;
+      --gold: ${crownColor};
       --silver: #e0e0e0;
       --bronze: #cd7f32;
       --border-radius: ${borderRadius}px;
@@ -106,10 +144,8 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       font-size: 14px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
-      background: linear-gradient(to right, #fff, rgba(255,255,255,0.6));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      letter-spacing: 0;
+      color: var(--text-color);
     }
 
     .header-total {
@@ -136,6 +172,11 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       box-shadow: 0 0 10px #00ffa3;
     }
 
+    .status-dot.error {
+      background: var(--accent-color);
+      box-shadow: 0 0 10px var(--accent-color);
+    }
+
     .user-list {
       position: relative;
       background: var(--glass-bg);
@@ -147,6 +188,15 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       overflow: hidden;
     }
 
+    .leaderboard-wrapper.header-hidden .header {
+      display: none;
+    }
+
+    .leaderboard-wrapper.header-hidden .user-list {
+      border-radius: var(--border-radius);
+      border-top: 1px solid var(--glass-border);
+    }
+
     .user-row {
       position: absolute;
       left: 0;
@@ -154,18 +204,19 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       height: var(--row-height);
       display: flex;
       align-items: center;
-      padding: 0 20px;
+      padding: 0 18px;
       box-sizing: border-box;
-      transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+      border-bottom: 1px solid rgba(${textRgb}, 0.035);
     }
 
     .rank {
       width: 28px;
       font-size: 16px;
       font-weight: 800;
-      color: rgba(255, 255, 255, 0.3);
+      color: var(--muted-text-color);
       font-family: 'Outfit', sans-serif;
+      display: ${showRankNumbers ? 'block' : 'none'};
     }
 
     .rank-1 .rank { color: var(--gold); font-size: 20px; }
@@ -174,14 +225,21 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
 
     .avatar-wrapper {
       position: relative;
-      margin: 0 15px;
+      width: var(--avatar-size);
+      height: var(--avatar-size);
+      margin: 0 14px;
+      flex: 0 0 var(--avatar-size);
+    }
+
+    .leaderboard-wrapper.no-ranks .avatar-wrapper {
+      margin-left: 0;
     }
 
     .user-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: calc(var(--border-radius) * 0.6);
-      border: 2px solid rgba(255, 255, 255, 0.1);
+      width: var(--avatar-size);
+      height: var(--avatar-size);
+      border-radius: var(--avatar-radius);
+      border: 2px solid rgba(${textRgb}, 0.12);
       display: block;
       object-fit: cover;
       transition: all 0.3s ease;
@@ -189,8 +247,31 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
 
     .rank-1 .user-avatar {
       border-color: var(--gold);
-      box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+      box-shadow: 0 0 15px rgba(${hexToRgb(crownColor)}, 0.3);
       transform: scale(1.1);
+    }
+
+    .first-place-crown {
+      position: absolute;
+      top: -13px;
+      right: -10px;
+      width: 20px;
+      height: 16px;
+      display: none;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.45));
+      transform: rotate(12deg);
+      z-index: 2;
+    }
+
+    .first-place-crown svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      fill: var(--gold);
+    }
+
+    .rank-1 .first-place-crown {
+      display: block;
     }
 
     .user-info {
@@ -205,7 +286,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       overflow: hidden;
       text-overflow: ellipsis;
       display: block;
-      color: rgba(255, 255, 255, 0.9);
+      color: rgba(${textRgb}, 0.92);
     }
 
     .user-score {
@@ -215,7 +296,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       text-align: right;
       padding-left: 10px;
       font-variant-numeric: tabular-nums;
-      text-shadow: 0 0 10px rgba(254, 44, 85, 0.2);
+      text-shadow: 0 0 10px rgba(${hexToRgb(accentColor)}, 0.2);
     }
 
     .particle {
@@ -234,9 +315,9 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
   </style>
 </head>
 <body>
-  <div class="leaderboard-wrapper">
+  <div class="leaderboard-wrapper ${showHeader ? '' : 'header-hidden'} ${showRankNumbers ? '' : 'no-ranks'}">
     <div class="header">
-      <span class="header-title">Top Likers</span>
+      <span class="header-title">${title}</span>
       <div class="header-total">
         <div id="status-dot" class="status-dot"></div>
         <span id="total-likes">0</span>
@@ -248,9 +329,11 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
   </div>
 
   <script>
-    const ROW_HEIGHT = 60;
+    const ROW_HEIGHT = ${rowHeight};
     const MAX_VISIBLE = ${maxVisible};
     const OFFSCREEN_Y = ROW_HEIGHT * MAX_VISIBLE;
+    const CROWN_MARKUP = ${JSON.stringify(crownMarkup)};
+    const IS_PREVIEW = ${JSON.stringify(isPreview)};
 
     const userListEl = document.getElementById('user-list');
     const totalLikesEl = document.getElementById('total-likes');
@@ -318,7 +401,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     function applySnapshot(payload) {
       if (!payload) return;
       if (Number.isFinite(Number(payload.totalLikes))) {
-        totalLikes = Math.max(totalLikes, Number(payload.totalLikes));
+        totalLikes = Math.max(0, Math.floor(Number(payload.totalLikes)));
         totalLikesEl.textContent = totalLikes.toLocaleString();
       }
 
@@ -389,6 +472,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
             '<div class="rank">#' + (index + 1) + '</div>' +
             '<div class="avatar-wrapper">' +
               '<img class="user-avatar" src="' + escapeHtml(safeAvatarUrl(data.profilePictureUrl)) + '" />' +
+              CROWN_MARKUP +
             '</div>' +
             '<div class="user-info">' +
               '<span class="user-name">' + escapeHtml(displayName) + '</span>' +
@@ -460,40 +544,43 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       }
     }
 
-    // Connect to SSE
     const statusDot = document.getElementById('status-dot');
-    const eventSource = new EventSource(window.location.origin + '/overlay/events?channel=likes');
 
-    eventSource.onopen = () => {
-      console.log('[likes] SSE Connected');
-      statusDot.className = 'status-dot connected';
-    };
+    function connectLikesStream() {
+      const eventSource = new EventSource(window.location.origin + '/overlay/events?channel=likes');
 
-    eventSource.onerror = (err) => {
-      console.error('[likes] SSE Error:', err);
-      statusDot.className = 'status-dot error';
-    };
+      eventSource.onopen = () => {
+        console.log('[likes] SSE Connected');
+        statusDot.className = 'status-dot connected';
+      };
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('[likes] Received data:', data.type);
-        if (data.type === 'snapshot') {
-          applySnapshot(data.payload);
-        } else if (data.type === 'append') {
-          addLike(data.payload);
+      eventSource.onerror = (err) => {
+        console.error('[likes] SSE Error:', err);
+        statusDot.className = 'status-dot error';
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[likes] Received data:', data.type);
+          if (data.type === 'snapshot') {
+            applySnapshot(data.payload);
+          } else if (data.type === 'append') {
+            addLike(data.payload);
+          }
+        } catch (e) {
+          console.error('[likes] Failed to parse event:', e);
         }
-      } catch (e) {
-        console.error('[likes] Failed to parse event:', e);
-      }
-    };
+      };
+    }
 
-    if (${isPreview}) {
+    if (IS_PREVIEW) {
+      statusDot.className = 'status-dot connected';
       const previewUsers = [
-        ['restless tiny spirit', 430],
-        ['chat menace', 270],
-        ['rose rush', 155],
-        ['neon friend', 90]
+        ['MiaMoon', 430],
+        ['PixelDrew', 270],
+        ['RoseRush', 155],
+        ['NeonFriend', 90]
       ];
       previewUsers.forEach(([displayName, amount], index) => {
         setTimeout(() => addLike({
@@ -512,6 +599,8 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
           amount
         });
       }, 1800);
+    } else {
+      connectLikesStream();
     }
   </script>
 </body>

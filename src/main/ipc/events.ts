@@ -101,9 +101,27 @@ export function setupEventForwarding(
   triggerEngine.on('action:show-alert', forwardAlert)
   services.overlayServer.on('show-alert', forwardAlert)
   soundboardService.on('action:play-sound', forwardSound)
+  triggerEngine.on('receipt', (receipt) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('automation:run-receipt', receipt)
+    }
+  })
+
   services.overlayServer.on('status', (status) => {
     if (!window.isDestroyed()) {
       window.webContents.send('overlay:status-changed', status)
+    }
+  })
+
+  services.overlayServer.on('overlay-broadcast', (payload) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('event:overlay-broadcast', payload)
+    }
+  })
+
+  services.overlayServer.on('device-broadcast', (payload) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('event:device-broadcast', payload)
     }
   })
 

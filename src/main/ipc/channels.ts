@@ -20,6 +20,12 @@ import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { OBSRuntimeStatus } from '../../shared/obs'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
 import type { NowPlayingPayload } from '../../shared/widgets'
+import type {
+  EventLabDeviceBroadcast,
+  EventLabOverlayBroadcast,
+  EventLabSimulationPayload
+} from '../../shared/event-lab'
+import type { AutomationRunReceipt } from '../../shared/automation-receipts'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -36,6 +42,7 @@ export interface IpcInvokeChannels {
     text: string
   }) => Promise<PlatformChatSendResult[]>
   'platform:restore-connections': () => Promise<void>
+  'event:simulate': (payload: EventLabSimulationPayload) => Promise<AnyStreamEvent>
 
   // TTS controls
   'tts:skip': () => void
@@ -111,6 +118,9 @@ export interface HueLight {
 
 export interface IpcEventChannels {
   'event:stream': AnyStreamEvent
+  'event:overlay-broadcast': EventLabOverlayBroadcast
+  'event:device-broadcast': EventLabDeviceBroadcast
+  'automation:run-receipt': AutomationRunReceipt
   'platform:status-change': { platform: Platform; status: ConnectionStatus }
   'platform:error': { platform: Platform; message: string; code?: string }
   'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number }

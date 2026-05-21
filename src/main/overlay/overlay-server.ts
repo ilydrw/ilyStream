@@ -95,7 +95,17 @@ export class OverlayServer extends EventEmitter {
 
   constructor() {
     super()
-    this.sse = new SSEManager(() => this.updateClientCounts())
+    this.sse = new SSEManager(
+      () => this.updateClientCounts(),
+      (channel, payload, clientCount) => {
+        this.emit('overlay-broadcast', {
+          channel,
+          payload,
+          clientCount,
+          at: new Date().toISOString()
+        })
+      }
+    )
     this.chat = new ChatManager(this.sse)
     this.alerts = new AlertManager(this.sse)
     this.goals = new GoalManager(this.sse, null)
@@ -130,6 +140,9 @@ export class OverlayServer extends EventEmitter {
   setSoundboardService(soundboardService: any): void { this.soundboardService = soundboardService }
   setDeviceApi(deviceApi: any): void {
     this.deviceApi = deviceApi
+    if (typeof deviceApi?.setDiagnosticsSink === 'function') {
+      deviceApi.setDiagnosticsSink((packet: unknown) => this.emit('device-broadcast', packet))
+    }
     this.chat.setDeviceApi(deviceApi)
     this.goals.setDeviceApi(deviceApi)
     this.nowPlaying.setDeviceApi(deviceApi)
@@ -259,7 +272,9 @@ export class OverlayServer extends EventEmitter {
           timestamp: like.timestamp || new Date()
         }
         const updatedState = this.likes.updateState(like, feedItem)
-        this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
+        if (updatedState) {
+          this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
+        }
       })
     }
 

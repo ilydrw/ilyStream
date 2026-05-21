@@ -705,11 +705,22 @@ export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
 
 // ----- Likes Tracker widget ----------------------------------------------
 export interface LikesTrackerConfig {
+  title: string
   maxAvatars: number
   showTotal: boolean
+  showHeader: boolean
+  showRankNumbers: boolean
+  showFirstPlaceCrown: boolean
+  avatarShape: 'circle' | 'square'
   accentColor: string
+  secondaryColor: string
+  backgroundColor: string
+  textColor: string
+  crownColor: string
   opacity: number
   scale: number
+  rowHeight: number
+  avatarSize: number
   fontFamily: string
   borderRadius: number
   glassIntensity: number
@@ -718,11 +729,22 @@ export interface LikesTrackerConfig {
 }
 
 export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
+  title: 'Top Likers',
   maxAvatars: 12,
   showTotal: true,
+  showHeader: true,
+  showRankNumbers: true,
+  showFirstPlaceCrown: true,
+  avatarShape: 'circle',
   accentColor: '#FF3B5C',
+  secondaryColor: '#25F4EE',
+  backgroundColor: '#0F0F14',
+  textColor: '#FFFFFF',
+  crownColor: '#FFD60A',
   opacity: 1.0,
   scale: 1.0,
+  rowHeight: 60,
+  avatarSize: 40,
   fontFamily: 'Outfit',
   borderRadius: 20,
   glassIntensity: 0.5,

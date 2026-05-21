@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import { useChatStore } from '../stores/chat-store'
 import { useConnectionStore } from '../stores/connection-store'
+import { createEventLabId, summarizeEventForLab, useEventLabStore } from '../stores/event-lab-store'
 
 export function usePlatformEvents(isMounted: boolean) {
   const addMessage = useChatStore((s) => s.addMessage)
@@ -10,6 +11,7 @@ export function usePlatformEvents(isMounted: boolean) {
   const setError = useConnectionStore((s) => s.setError)
   const setReconnectInfo = useConnectionStore((s) => s.setReconnectInfo)
   const addEventDiagnostic = useConnectionStore((s) => s.addEventDiagnostic)
+  const addEventLabEntry = useEventLabStore((s) => s.addEntry)
 
   useEffect(() => {
     if (!window.api?.platform || !isMounted) return
@@ -25,6 +27,19 @@ export function usePlatformEvents(isMounted: boolean) {
         console.log(`[usePlatformEvents] Received ${event.type} event from ${event.platform}:`, event)
         if (event.type === 'gift' && event.isCombo) return
         const suppressFromChat = shouldSuppressStreamEventFromChat(event)
+        const labSummary = summarizeEventForLab(event)
+
+        addEventLabEntry({
+          id: event.id ?? createEventLabId('stream'),
+          kind: 'stream',
+          title: labSummary.title,
+          detail: labSummary.detail,
+          timestamp: event.timestamp ?? new Date().toISOString(),
+          platform: event.platform,
+          eventType: event.type,
+          payload: event,
+          replayable: true
+        })
 
         if (!suppressFromChat) {
           addEventDiagnostic({
@@ -117,7 +132,7 @@ export function usePlatformEvents(isMounted: boolean) {
       clearTimeout(restoreTimer)
       cleanups.forEach((fn) => fn())
     }
-  }, [isMounted, addEventDiagnostic, addMessage, setError, setReconnectInfo, setStatus, setViewerCount])
+  }, [isMounted, addEventDiagnostic, addEventLabEntry, addMessage, setError, setReconnectInfo, setStatus, setViewerCount])
 }
 
 function summarizeStreamEvent(event: any): string {

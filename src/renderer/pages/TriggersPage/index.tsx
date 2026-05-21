@@ -13,7 +13,9 @@ import {
   getTriggerValidationErrors,
   normalizeTriggerRule
 } from '../../lib/trigger-editor'
+import { createRecipeRule, type AutomationRecipe } from '../../lib/automation-recipes'
 import { CommanderView } from './CommanderView'
+import { RecipeGallery } from './RecipeGallery'
 
 export default function TriggersPage() {
   const [triggers, setTriggers] = useState<TriggerRule[]>([])
@@ -23,7 +25,7 @@ export default function TriggersPage() {
   const [draft, setDraft] = useState<TriggerRule | null>(null)
   const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create')
   const [isSaving, setIsSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<'rules' | 'commander'>('commander')
+  const [activeTab, setActiveTab] = useState<'recipes' | 'rules' | 'commander'>('recipes')
 
   useEffect(() => {
     if (!window.api?.triggers) return
@@ -73,24 +75,52 @@ export default function TriggersPage() {
     setDraft(null)
   }
 
+  const persistRule = async (rule: TriggerRule, fallbackSortOrder = triggers.length) => {
+    const existingRule = triggers.find((trigger) => trigger.id === rule.id)
+    const normalized = normalizeTriggerRule(
+      rule,
+      existingRule?.sortOrder ?? fallbackSortOrder
+    )
+
+    await window.api.triggers.save(normalized)
+    setTriggers((current) => sortRules(upsertRule(current, normalized)))
+    return normalized
+  }
+
   const saveDraft = async () => {
     if (!draft || validationErrors.length > 0) return
 
     setIsSaving(true)
 
     try {
-      const existingRule = triggers.find((trigger) => trigger.id === draft.id)
-      const normalized = normalizeTriggerRule(
-        draft,
-        existingRule?.sortOrder ?? triggers.length
-      )
-
-      await window.api.triggers.save(normalized)
-      setTriggers((current) => sortRules(upsertRule(current, normalized)))
+      await persistRule(draft)
       setDraft(null)
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const installRecipe = async (recipe: AutomationRecipe) => {
+    const rule = createRecipeRule(recipe, triggers.length)
+    await persistRule(rule, triggers.length)
+  }
+
+  const customizeRecipe = (recipe: AutomationRecipe) => {
+    setEditorMode('create')
+    setDraft(createRecipeRule(recipe, triggers.length))
+  }
+
+  const testRecipe = async (recipe: AutomationRecipe) => {
+    await window.api?.events?.simulate?.(recipe.simulation)
+  }
+
+  const importRules = async (rules: TriggerRule[]) => {
+    let imported = 0
+    for (const [index, rule] of rules.entries()) {
+      await persistRule(rule, triggers.length + index)
+      imported += 1
+    }
+    return imported
   }
 
   const toggleTrigger = async (id: string) => {
@@ -126,6 +156,14 @@ export default function TriggersPage() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center bg-white/[0.03] border border-white/5 rounded-xl p-1 h-12">
+            <button
+              onClick={() => setActiveTab('recipes')}
+              className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                activeTab === 'recipes' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
+              }`}
+            >
+              Recipes
+            </button>
             <button
               onClick={() => setActiveTab('commander')}
               className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
@@ -172,7 +210,15 @@ export default function TriggersPage() {
         </div>
       </div>
 
-      {activeTab === 'commander' ? (
+      {activeTab === 'recipes' ? (
+        <RecipeGallery
+          triggers={triggers}
+          onInstallRecipe={installRecipe}
+          onCustomizeRecipe={customizeRecipe}
+          onTestRecipe={testRecipe}
+          onImportRules={importRules}
+        />
+      ) : activeTab === 'commander' ? (
         <CommanderView />
       ) : (
         <section className="app-section-card glass overflow-hidden">
