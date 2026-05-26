@@ -38,7 +38,7 @@ export function useChatLogic() {
   useEffect(() => {
     if (!window.api?.platform) return;
     let active = true;
-    void window.api.platform.getChatCapabilities().then((nextCapabilities: any) => {
+    const refreshCapabilities = () => void window.api.platform.getChatCapabilities().then((nextCapabilities: any) => {
       if (!active) return;
       setCapabilities(nextCapabilities);
       // Ensure selected targets are still sendable after a capability change
@@ -48,8 +48,11 @@ export function useChatLogic() {
         return filtered.length > 0 ? filtered : nextSendable;
       });
     });
+    refreshCapabilities();
+    const interval = window.setInterval(refreshCapabilities, 2000);
     return () => {
       active = false;
+      window.clearInterval(interval);
     };
   }, [statuses.tiktok, statuses.twitch, statuses.youtube, statuses.kick]);
 

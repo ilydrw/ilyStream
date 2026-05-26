@@ -1,9 +1,14 @@
 import { ipcMain } from 'electron'
 import { AIService } from '../../ai/ai-service'
+import { StreamIntelligenceService } from '../../ai/stream-intelligence-service'
 
-export function registerAIHandlers(aiService: AIService): void {
+export function registerAIHandlers(aiService: AIService, streamIntelligenceService: StreamIntelligenceService): void {
   ipcMain.handle('ai:generate-response', async (_event, message: string, context: { username: string; platform: string }) => {
     return await aiService.generateResponse(message, context)
+  })
+
+  ipcMain.handle('ai:get-stream-insights', () => {
+    return streamIntelligenceService.getInsights()
   })
 
   ipcMain.handle('ai:test-connection', async () => {

@@ -3,6 +3,7 @@ import type { Icon } from '@tabler/icons-react'
 import {
   DEFAULT_NOW_PLAYING_CONFIG,
   DEFAULT_CHAT_CONFIG,
+  DEFAULT_ALERTS_CONFIG,
   DEFAULT_FOLLOWER_GOAL_CONFIG,
   DEFAULT_SOCIALS_CONFIG,
   DEFAULT_BORDER_CONFIG,
@@ -38,7 +39,7 @@ export const WIDGET_TEMPLATES: WidgetTemplate[] = [
     label: 'Event Alerts',
     icon: IconBell,
     description: 'Visual popups for gifts, follows, and subscribers.',
-    defaultConfig: {}
+    defaultConfig: DEFAULT_ALERTS_CONFIG as unknown as Record<string, unknown>
   },
   {
     type: 'follower-goal',

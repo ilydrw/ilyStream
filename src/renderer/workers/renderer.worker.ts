@@ -4,7 +4,7 @@ let videoEncoder: VideoEncoder | null = null
 let layers: any[] = []
 let cw = 1920
 let ch = 1080
-let captureFormat: 'h264' | 'mjpeg' = 'h264'
+let captureFormat: 'h264' | 'mjpeg' | 'bgra' = 'h264'
 let streamFps = 30
 let encodeInterval = 1000 / streamFps
 let jpegEncodeInFlight = false
@@ -23,16 +23,16 @@ self.onmessage = async (e) => {
 
   if (type === 'init') {
     offscreenCanvas = payload.canvas
+    captureFormat = payload.format === 'mjpeg' ? 'mjpeg' : payload.format === 'bgra' ? 'bgra' : 'h264'
     ctx = offscreenCanvas!.getContext('2d', {
       alpha: true,
       desynchronized: true,
-      willReadFrequently: false
+      willReadFrequently: captureFormat === 'bgra'
     })!
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     cw = payload.width
     ch = payload.height
-    captureFormat = payload.format === 'mjpeg' ? 'mjpeg' : 'h264'
     streamFps = Math.max(1, Math.min(60, Math.round(payload.fps || 30)))
     encodeInterval = 1000 / streamFps
     frameCountTotal = 0
@@ -104,6 +104,10 @@ self.onmessage = async (e) => {
     const frame = payload?.frame as VideoFrame | undefined
     if (!frame) return
     compositedFrameMode = true
+    if (captureFormat === 'bgra') {
+      emitBgraFrame(frame)
+      return
+    }
     encodeVideoFrame(frame)
     return
   }
@@ -266,6 +270,37 @@ async function emitJpegFrame() {
     console.error(' MJPEG encode error:', err)
   } finally {
     jpegEncodeInFlight = false
+  }
+}
+
+function emitBgraFrame(frame: VideoFrame) {
+  if (!ctx || !offscreenCanvas) {
+    frame.close()
+    return
+  }
+
+  try {
+    ctx.clearRect(0, 0, cw, ch)
+    ctx.drawImage(frame, 0, 0, cw, ch)
+    const imageData = ctx.getImageData(0, 0, cw, ch)
+    const rgba = imageData.data
+    const buffer = new ArrayBuffer(rgba.byteLength)
+    const bgra = new Uint8Array(buffer)
+
+    for (let i = 0; i < rgba.length; i += 4) {
+      bgra[i] = rgba[i + 2]
+      bgra[i + 1] = rgba[i + 1]
+      bgra[i + 2] = rgba[i]
+      bgra[i + 3] = 255
+    }
+
+    frameCountTotal++
+    const timestamp = frame.timestamp ?? Math.round((frameCountTotal / streamFps) * 1_000_000)
+    self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
+  } catch (err) {
+    self.postMessage({ type: 'error', message: String(err) })
+  } finally {
+    frame.close()
   }
 }
 

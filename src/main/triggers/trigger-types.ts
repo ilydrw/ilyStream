@@ -71,6 +71,7 @@ export type Action =
   | PlaySoundAction
   | ShowAlertAction
   | WebhookAction
+  | SendChatAction
   | RunCommandAction
   | OBSSetSceneAction
   | OBSSetSourceVisibilityAction
@@ -129,6 +130,14 @@ export interface WebhookAction {
   headers: Record<string, string>
   /** Template body with placeholders */
   body: string
+}
+
+export interface SendChatAction {
+  type: 'send_chat'
+  /** Template string with {username}, {message}, {platform} placeholders */
+  template: string
+  /** Leave unset or "source" to answer in the source platform's host chat. */
+  platform?: Platform | 'source'
 }
 
 export interface RunCommandAction {

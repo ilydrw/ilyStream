@@ -21,7 +21,8 @@ import {
   IconBroadcast,
   IconScreenShare,
   IconActivity,
-  IconChevronDown
+  IconChevronDown,
+  IconSparkles
 } from '@tabler/icons-react'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -29,6 +30,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Select } from '../../../components/ui/Select'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { Tooltip } from '../../../components/ui/Tooltip'
+import type { VirtualCameraFeedConfig, VirtualCameraFeedMode, VirtualCameraSourceFitMode, VirtualCameraSourceOption } from './CanvasEditor.types'
 
 interface BroadcastHeaderProps {
   isStreaming: boolean
@@ -41,6 +43,7 @@ interface BroadcastHeaderProps {
   onToggleRightSidebar: () => void
   broadcastLayoutMode: any
   onLayoutModeChange: (mode: string) => void
+  onApplyTikTokPreset: () => void
   undo: () => void
   redo: () => void
   canUndo: boolean
@@ -57,6 +60,9 @@ interface BroadcastHeaderProps {
   onToggleObsVirtualCamera: () => void
   virtualCameraInfo: any
   onToggleVirtualCamera: () => void
+  virtualCameraFeed: VirtualCameraFeedConfig
+  onVirtualCameraFeedChange: (feed: VirtualCameraFeedConfig) => void
+  virtualCameraSourceOptions: VirtualCameraSourceOption[]
   platforms: any[]
   layoutAssignments: any
   onToggleLayoutAssignment: (layout: any, id: string) => void
@@ -79,9 +85,11 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   const {
     isStreaming, isRecording, recordingTime, showLeftSidebar, onToggleLeftSidebar,
     showRightSidebar, onToggleRightSidebar, broadcastLayoutMode, onLayoutModeChange,
+    onApplyTikTokPreset,
     undo, redo, canUndo, canRedo, onTakeScreenshot, onStartRecording, onStopRecording,
     onForceRefreshMedia, monitors, selectedMonitorId, onSetSelectedMonitorId,
     onOpenProjector, obsStatus, onToggleObsVirtualCamera, virtualCameraInfo, onToggleVirtualCamera,
+    virtualCameraFeed, onVirtualCameraFeedChange, virtualCameraSourceOptions,
     platforms, layoutAssignments, onToggleLayoutAssignment, onRemoveLayoutAssignment,
     customRtmpUrl, onCustomRtmpUrlChange, customStreamKey, onCustomStreamKeyChange,
     onStartBroadcast, onStopBroadcast, studioMode, onToggleStudioMode, onShowMultiView,
@@ -90,6 +98,44 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
 
   const [showOutputsMenu, setShowOutputsMenu] = useState(false)
   const assignedStreamCount = layoutAssignments.horizontal.length + layoutAssignments.vertical.length
+  const selectedVirtualCameraSource = virtualCameraSourceOptions.find(option => option.id === virtualCameraFeed.sourceLayerId)
+  const virtualCameraSourceSelectOptions = virtualCameraSourceOptions.map(option => ({
+    value: option.id,
+    label: option.name,
+    icon: <IconVideo size={14} />
+  }))
+  const virtualCameraLoading = !virtualCameraInfo
+  const virtualCameraStarting = virtualCameraInfo?.state === 'starting'
+  const virtualCameraDisabled =
+    virtualCameraLoading ||
+    virtualCameraStarting ||
+    virtualCameraInfo?.state === 'unsupported' ||
+    virtualCameraInfo?.canStart === false
+  const virtualCameraLabel =
+    virtualCameraLoading ? 'Checking' :
+    virtualCameraInfo?.state === 'active' ? 'Streaming' :
+    virtualCameraStarting ? 'Starting' :
+    virtualCameraDisabled ? 'Driver needed' :
+    virtualCameraInfo?.state === 'error' ? 'Error' :
+    'Ready'
+  const virtualCameraTooltip =
+    virtualCameraLoading ? 'Checking ilyStream Virtual Camera status' :
+    virtualCameraStarting ? 'Starting ilyStream Virtual Camera' :
+    virtualCameraDisabled ? (virtualCameraInfo?.driverHint || virtualCameraInfo?.lastError || 'Virtual camera unavailable') :
+    virtualCameraInfo?.state === 'active' ? 'Stop ilyStream Virtual Camera' :
+    'Start ilyStream Virtual Camera'
+  const updateVirtualCameraFeedMode = (mode: VirtualCameraFeedMode) => {
+    onVirtualCameraFeedChange({
+      ...virtualCameraFeed,
+      mode,
+      sourceLayerId: mode === 'source'
+        ? virtualCameraFeed.sourceLayerId || virtualCameraSourceOptions[0]?.id
+        : virtualCameraFeed.sourceLayerId
+    })
+  }
+  const updateVirtualCameraSourceFitMode = (sourceFitMode: VirtualCameraSourceFitMode) => {
+    onVirtualCameraFeedChange({ ...virtualCameraFeed, sourceFitMode })
+  }
 
   return (
     <header className="relative z-[900] shrink-0 h-20 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-visible border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl" style={{ WebkitAppRegion: 'drag' } as any}>
@@ -130,6 +176,14 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             <div className={`w-2 h-2 rounded-full ${studioMode ? 'bg-white animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-white/10'}`} />
             <span className="hidden 2xl:inline">Studio</span>
           </button>
+          <Tooltip content="Apply TikTok overlay kit" position="bottom">
+            <button
+              onClick={onApplyTikTokPreset}
+              className="shrink-0 h-9 w-9 rounded-xl text-white/30 hover:text-white hover:bg-white/5 transition-all flex items-center justify-center"
+            >
+              <IconSparkles size={16} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -190,6 +244,31 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           </Tooltip>
         </div>
 
+        {/* Virtual Camera quick toggle (OBS-style) */}
+        <Tooltip
+          content={virtualCameraTooltip}
+          position="bottom"
+        >
+          <button
+            onClick={onToggleVirtualCamera}
+            disabled={virtualCameraDisabled}
+            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-2xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-20 disabled:cursor-not-allowed ${
+              virtualCameraInfo?.state === 'active'
+                ? 'bg-accent/20 border-accent/40 text-accent shadow-lg shadow-accent/10'
+                : virtualCameraLoading || virtualCameraStarting
+                  ? 'bg-white/10 border-white/20 text-white/80'
+                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <IconVideo size={18} />
+            <span className="hidden xl:inline">
+              {virtualCameraInfo?.state === 'active' ? 'Cam Live' : virtualCameraLoading ? 'Checking' : 'Cam'}
+            </span>
+            {virtualCameraInfo?.state === 'active' && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
+            {(virtualCameraLoading || virtualCameraStarting) && <div className="w-2 h-2 rounded-full bg-white/50 animate-pulse" />}
+          </button>
+        </Tooltip>
+
         {/* Outputs Dropdown */}
         <div className="relative">
           <button
@@ -233,8 +312,9 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
 
                     <button
                       onClick={() => { onToggleVirtualCamera(); setShowOutputsMenu(false); }}
-                      disabled={virtualCameraInfo?.state === 'unsupported'}
-                      className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-all text-left group"
+                      disabled={virtualCameraDisabled}
+                      title={virtualCameraTooltip}
+                      className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-all text-left group disabled:opacity-20"
                     >
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg transition-colors ${virtualCameraInfo?.state === 'active' ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/40 group-hover:text-accent'}`}>
@@ -243,12 +323,97 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                         <div>
                           <p className="text-[11px] font-black uppercase tracking-tight text-white/80">ilyStream Virtual Cam</p>
                           <p className={`text-[9px] font-bold uppercase tracking-widest ${virtualCameraInfo?.state === 'active' ? 'text-accent' : 'text-white/20'}`}>
-                            {virtualCameraInfo?.state === 'active' ? 'Streaming' : 'Ready'}
+                            {virtualCameraLabel}
                           </p>
                         </div>
                       </div>
                       {virtualCameraInfo?.state === 'active' && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
+                      {(virtualCameraLoading || virtualCameraStarting) && <div className="w-2 h-2 rounded-full bg-white/50 animate-pulse" />}
                     </button>
+
+                    <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <IconLayoutGrid size={14} className="text-white/30 shrink-0" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/30">Virtual Cam Feed</span>
+                        </div>
+                        <span className="max-w-[104px] truncate text-[9px] font-bold uppercase tracking-widest text-accent/80">
+                          {virtualCameraFeed.mode === 'source' ? selectedVirtualCameraSource?.name || 'Source' : 'Layout'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/30 border border-white/5">
+                        <button
+                          type="button"
+                          onClick={() => updateVirtualCameraFeedMode('layout')}
+                          className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
+                            virtualCameraFeed.mode === 'layout'
+                              ? 'bg-white/10 text-white shadow-sm'
+                              : 'text-white/30 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          <IconLayoutGrid size={13} /> Layout
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateVirtualCameraFeedMode('source')}
+                          disabled={virtualCameraSourceOptions.length === 0}
+                          className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 disabled:opacity-20 disabled:cursor-not-allowed ${
+                            virtualCameraFeed.mode === 'source'
+                              ? 'bg-white/10 text-white shadow-sm'
+                              : 'text-white/30 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          <IconVideo size={13} /> Source
+                        </button>
+                      </div>
+
+                      {virtualCameraFeed.mode === 'source' ? (
+                        <div className="space-y-2">
+                          <Select
+                            value={selectedVirtualCameraSource?.id || ''}
+                            onChange={(sourceLayerId) => onVirtualCameraFeedChange({ ...virtualCameraFeed, mode: 'source', sourceLayerId })}
+                            options={virtualCameraSourceSelectOptions}
+                            placeholder="Choose source"
+                            className="w-full"
+                            buttonClassName="h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] font-bold uppercase tracking-widest text-white/70 hover:text-white"
+                            maxListHeight={220}
+                          />
+                          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/30 border border-white/5">
+                            {[
+                              { value: 'contain' as const, label: 'Fit' },
+                              { value: 'cover' as const, label: 'Crop' },
+                              { value: 'stretch' as const, label: 'Fill' }
+                            ].map(option => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => updateVirtualCameraSourceFitMode(option.value)}
+                                className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                  virtualCameraFeed.sourceFitMode === option.value
+                                    ? 'bg-white/10 text-white shadow-sm'
+                                    : 'text-white/30 hover:text-white hover:bg-white/5'
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <Select
+                          value={virtualCameraFeed.layout}
+                          onChange={(layout) => onVirtualCameraFeedChange({ ...virtualCameraFeed, mode: 'layout', layout: layout as VirtualCameraFeedConfig['layout'] })}
+                          options={[
+                            { value: 'current', label: 'Current Canvas', icon: <IconLayoutGrid size={14} /> },
+                            { value: 'landscape', label: 'Landscape', icon: <IconDeviceDesktop size={14} /> },
+                            { value: 'portrait', label: 'Portrait', icon: <IconDeviceMobile size={14} /> }
+                          ]}
+                          className="w-full"
+                          buttonClassName="h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] font-bold uppercase tracking-widest text-white/70 hover:text-white"
+                        />
+                      )}
+                    </div>
 
                     <button
                       onClick={() => { onToggleObsVirtualCamera(); setShowOutputsMenu(false); }}

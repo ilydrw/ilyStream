@@ -1,4 +1,4 @@
-import {IconDatabase, IconMessage2, IconRadio} from '@tabler/icons-react'
+import {IconDatabase, IconMessage2, IconPlugConnected, IconRadio} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { RelayTagMode } from '../../../../shared/chat-relay'
 import type { AppSettings } from '../../../../shared/app-settings'
@@ -46,8 +46,24 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
             <Toggle value={settings.chat?.autoRelayEnabled} onChange={(value) => onUpdate('chatAutoRelayEnabled', value)} />
           </SettingRow>
 
+          <SettingRow label="Host Chat Responses" hint="Send command confirmations from the signed-in host account when a platform sender is ready.">
+            <Toggle value={settings.chat?.hostResponsesEnabled} onChange={(value) => onUpdate('chatHostResponsesEnabled', value)} />
+          </SettingRow>
+
           <SettingRow label="Platform Auto-Reconnect" hint="Automatically retry connections when a service drops unexpectedly. Disable this to save API limits.">
             <Toggle value={settings.platform?.autoReconnect} onChange={(value) => onUpdate('platformAutoReconnect', value)} />
+          </SettingRow>
+
+          <SettingRow label="Streamer.bot Bridge" hint="Forward ilyStream events to a local Streamer.bot WebSocket action named ilyStream Event.">
+            <Toggle value={settings.integrations?.streamerbot?.enabled} onChange={(value) => onUpdate('streamerbotEnabled', value)} />
+          </SettingRow>
+
+          <SettingRow label="Streamer.bot WebSocket" hint="Default Streamer.bot WebSocket address. Use ws://host:port format.">
+            <input
+              value={settings.integrations?.streamerbot?.wsUrl || 'ws://127.0.0.1:8080'}
+              onChange={(event) => onUpdate('streamerbotWsUrl', event.target.value)}
+              className="h-11 w-72 rounded-xl border border-white/10 bg-black/40 px-4 text-sm font-medium transition-all hover:bg-black/60 focus:border-accent focus:outline-none"
+            />
           </SettingRow>
 
           <SettingRow label="Relay Attribution" hint="Controls how relayed messages identify their source platform and sender.">
@@ -75,6 +91,20 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Relay</p>
                 <p className="text-sm font-bold text-white">{settings.chat?.autoRelayEnabled ? 'Enabled' : 'Manual'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
+              <IconMessage2 size={18} className="text-accent" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Host Replies</p>
+                <p className="text-sm font-bold text-white">{settings.chat?.hostResponsesEnabled ? 'Enabled' : 'Muted'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
+              <IconPlugConnected size={18} className="text-accent" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Streamer.bot</p>
+                <p className="text-sm font-bold text-white">{settings.integrations?.streamerbot?.enabled ? 'Forwarding' : 'Off'}</p>
               </div>
             </div>
           </div>

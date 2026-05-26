@@ -155,6 +155,78 @@ export const automationRecipes: AutomationRecipe[] = [
     }
   },
   {
+    id: 'song-request-host-reply',
+    name: 'Song Request Host Reply',
+    category: 'Spotify',
+    eventType: 'chat',
+    summary: 'Answers song request commands directly from the host chat account.',
+    outcome: 'Sends a short confirmation in the same platform chat when the sender session is ready.',
+    difficulty: 'Starter',
+    accent: 'green',
+    tags: ['spotify', 'host chat', 'confirmation'],
+    simulation: {
+      platform: 'tiktok',
+      type: 'chat',
+      username: 'music_fan',
+      displayName: 'Music Fan',
+      message: '!play Espresso'
+    },
+    rule: {
+      name: 'Recipe: Song Request Host Reply',
+      enabled: true,
+      platforms: CORE_PLATFORMS,
+      conditions: [
+        { type: 'event_type', value: 'chat' },
+        { type: 'keyword', value: '!play', matchMode: 'starts_with', caseSensitive: false }
+      ],
+      actions: [
+        {
+          type: 'send_chat',
+          template: 'Got it {username}. I will try to queue that request now.',
+          platform: 'source'
+        }
+      ],
+      cooldown: 4,
+      userCooldown: 15
+    }
+  },
+  {
+    id: 'ai-question-catcher',
+    name: 'AI Question Catcher',
+    category: 'Chat',
+    eventType: 'chat',
+    summary: 'Lets the AI co-host answer obvious chat questions without reacting to everything.',
+    outcome: 'Generates a short AI answer in chat and TTS for messages that contain a question mark.',
+    difficulty: 'Power',
+    accent: 'violet',
+    tags: ['ai', 'questions', 'chat'],
+    simulation: {
+      platform: 'twitch',
+      type: 'chat',
+      username: 'curious_viewer',
+      displayName: 'Curious Viewer',
+      message: 'what game are you playing?'
+    },
+    rule: {
+      name: 'Recipe: AI Question Catcher',
+      enabled: true,
+      platforms: CORE_PLATFORMS,
+      conditions: [
+        { type: 'event_type', value: 'chat' },
+        { type: 'keyword', value: '?', matchMode: 'contains', caseSensitive: false }
+      ],
+      actions: [
+        {
+          type: 'ai_respond',
+          output: 'both',
+          systemPrompt: 'Answer the viewer in one short sentence. Be helpful, warm, and safe for a livestream.'
+        }
+      ],
+      cooldown: 20,
+      userCooldown: 60
+    }
+  },
+  {
     id: 'superfan-vip-pop',
     name: 'Superfan VIP Pop',
     category: 'Alerts',
@@ -372,6 +444,44 @@ export const automationRecipes: AutomationRecipe[] = [
       ],
       cooldown: 2,
       userCooldown: 30
+    }
+  },
+  {
+    id: 'streamerbot-gift-action',
+    name: 'Streamer.bot Gift Action',
+    category: 'Overlays',
+    eventType: 'gift',
+    summary: 'A bridge recipe for creators who want Streamer.bot to fan out extra effects.',
+    outcome: 'Posts a compact gift payload to a local bridge endpoint you can swap for your Streamer.bot setup.',
+    difficulty: 'Advanced',
+    accent: 'cyan',
+    tags: ['streamerbot', 'bridge', 'gift'],
+    simulation: {
+      platform: 'tiktok',
+      type: 'gift',
+      username: 'bridge_tester',
+      displayName: 'Bridge Tester',
+      giftName: 'Rose',
+      giftCount: 3
+    },
+    rule: {
+      name: 'Recipe: Streamer.bot Gift Action',
+      enabled: true,
+      platforms: CORE_PLATFORMS,
+      conditions: [
+        { type: 'event_type', value: 'gift' }
+      ],
+      actions: [
+        {
+          type: 'http_webhook',
+          url: 'http://127.0.0.1:8080/ilystream',
+          method: 'POST',
+          headers: {},
+          body: '{"source":"ilyStream","event":"gift","platform":"{platform}","username":"{username}","giftName":"{giftName}","giftCount":"{giftCount}"}'
+        }
+      ],
+      cooldown: 2,
+      userCooldown: 4
     }
   }
 ]

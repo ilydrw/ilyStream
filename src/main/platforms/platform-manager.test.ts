@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ConnectorError } from './base-connector'
-import { PlatformManager } from './platform-manager'
+import { PlatformManager, resolvePlatformAutoReconnect } from './platform-manager'
 
 describe('PlatformManager', () => {
   it('re-emits connector validation failures without triggering an unhandled error event', async () => {
-    const db = { getSetting: vi.fn().mockReturnValue(false) } as any
+    const db = { getAllSettings: vi.fn().mockReturnValue({}) } as any
     const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
     const manager = new PlatformManager(db, tiktokChatSender)
     const errors: ConnectorError[] = []
@@ -29,5 +29,10 @@ describe('PlatformManager', () => {
         recoverable: false
       })
     )
+  })
+
+  it('reads auto reconnect from the nested platform setting', () => {
+    expect(resolvePlatformAutoReconnect({ platform: { autoReconnect: true } })).toBe(true)
+    expect(resolvePlatformAutoReconnect({ platform: { autoReconnect: false } })).toBe(false)
   })
 })

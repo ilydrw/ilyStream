@@ -255,6 +255,10 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     const container = document.getElementById('v5-alert-stage');
     const alertQueue = [];
     const seenAlertIds = new Set();
+    const playedAudioIds = new Set();
+    const audioCache = new Map();
+    const AUDIO_CACHE_LIMIT = 32;
+    const PLAYED_AUDIO_LIMIT = 500;
     const bootTime = Date.now() - 10000;
     let isShowing = false;
     let pollingTimer = null;
@@ -275,15 +279,82 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     function queueAlert(alert) {
       if (!shouldShow(alert)) return;
       markSeen(alert);
+      playAlertAudioOnce(alert);
       showAlert(alert);
+    }
+
+    function rememberLimited(set, value, limit) {
+      if (!value) return;
+      if (set.has(value)) set.delete(value);
+      set.add(value);
+      while (set.size > limit) {
+        const oldest = set.values().next().value;
+        set.delete(oldest);
+      }
+    }
+
+    function getAudioKey(alert) {
+      if (!alert || !alert.audioUrl) return '';
+      return String(alert.id || alert.createdAt || '') + ':' + String(alert.audioUrl);
+    }
+
+    function prepareAlertAudio(url) {
+      if (!url) return null;
+
+      let cached = audioCache.get(url);
+      if (!cached) {
+        cached = new Audio(url);
+        cached.preload = 'auto';
+        audioCache.set(url, cached);
+
+        try {
+          cached.load();
+        } catch (error) {
+          console.warn('[alerts] Audio preload failed:', error);
+        }
+
+        while (audioCache.size > AUDIO_CACHE_LIMIT) {
+          const oldestKey = audioCache.keys().next().value;
+          const oldestAudio = audioCache.get(oldestKey);
+          audioCache.delete(oldestKey);
+          try {
+            oldestAudio.pause();
+            oldestAudio.removeAttribute('src');
+            oldestAudio.load();
+          } catch {}
+        }
+      }
+
+      return cached;
+    }
+
+    function playAlertAudioOnce(alert) {
+      const audioKey = getAudioKey(alert);
+      if (!audioKey || playedAudioIds.has(audioKey)) return;
+      rememberLimited(playedAudioIds, audioKey, PLAYED_AUDIO_LIMIT);
+      playAlertAudio(alert);
     }
 
     function playAlertAudio(alert) {
       if (!alert.audioUrl) return;
 
-      const audio = new Audio(alert.audioUrl);
+      const preparedAudio = prepareAlertAudio(alert.audioUrl);
+      const audio = preparedAudio ? preparedAudio.cloneNode(true) : new Audio(alert.audioUrl);
+      audio.preload = 'auto';
       audio.volume = clampNumber(alert.audioVolume, 0, 1, 1);
-      audio.play().catch(function(error) { console.error('[alerts] Audio failed:', error); });
+      const cleanup = function() {
+        try {
+          audio.removeAttribute('src');
+          audio.load();
+        } catch {}
+      };
+
+      audio.addEventListener('ended', cleanup, { once: true });
+      audio.addEventListener('error', cleanup, { once: true });
+      audio.play().catch(function(error) {
+        cleanup();
+        console.error('[alerts] Audio failed:', error);
+      });
     }
 
     function showAlert(alert) {
@@ -297,7 +368,6 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       const hasVisual = Boolean(alert.imageUrl || alertHtml.trim());
 
       if (!hasVisual) {
-        playAlertAudio(alert);
         isShowing = false;
         if (alertQueue.length > 0) {
           showAlert(alertQueue.shift());
@@ -350,8 +420,6 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       alertContent.innerHTML = innerHtml.join('');
       wrapper.appendChild(alertContent);
       container.appendChild(wrapper);
-
-      playAlertAudio(alert);
 
       setTimeout(function() {
         wrapper.classList.add('active');

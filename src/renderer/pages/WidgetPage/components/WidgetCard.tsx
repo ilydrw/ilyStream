@@ -1,6 +1,6 @@
 import {IconTrash, IconCheck, IconCopy, IconExternalLink, IconLayout, IconSettings} from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
-import { WIDGET_TEMPLATES } from '../constants'
+import { appendPreviewFlag, getWidgetPreviewFrame, getWidgetTemplate } from '../widget-customization'
 
 export function WidgetCard({
   widget,
@@ -17,14 +17,9 @@ export function WidgetCard({
   onConfigure: () => void
   onDelete: () => void
 }) {
-  const template = WIDGET_TEMPLATES.find((t) => t.type === widget.type)
+  const template = getWidgetTemplate(widget.type)
   const Icon = template?.icon ?? IconLayout
-  const previewConfig = widget.config as Record<string, unknown>
-  const isVerticalPreview = previewConfig.aspectRatio === 'tiktok'
-  const previewAspectRatio =
-    isVerticalPreview ? '9 / 16' :
-    previewConfig.aspectRatio === 'landscape' ? '16 / 9' :
-    '16 / 9'
+  const previewFrame = getWidgetPreviewFrame(widget.config)
 
   return (
     <section className="app-section-card glass overflow-hidden flex flex-col">
@@ -78,14 +73,14 @@ export function WidgetCard({
             {url ? (
               <div className="absolute inset-2 pointer-events-none opacity-80 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
                 <div
-                  className={isVerticalPreview
+                  className={previewFrame.isVertical
                     ? 'relative h-full max-w-full overflow-hidden rounded-md border border-white/10 bg-black/50 shadow-lg'
                     : 'absolute inset-0 overflow-hidden'
                   }
-                  style={isVerticalPreview ? { aspectRatio: previewAspectRatio } : undefined}
+                  style={previewFrame.isVertical ? { aspectRatio: previewFrame.aspectRatio } : undefined}
                 >
                   <iframe
-                    src={`${url}?preview=1`}
+                    src={appendPreviewFlag(url)}
                     title={`${widget.name} preview`}
                     className="absolute top-0 left-0 w-[400%] h-[400%] border-none"
                     style={{

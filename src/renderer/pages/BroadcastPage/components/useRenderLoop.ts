@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { StudioScene } from '../../../../shared/studio'
+import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
 import {
   croppedSourceRect,
@@ -29,6 +29,7 @@ interface RenderLoopOptions {
   encoderWorkerRef: React.RefObject<Worker | null>
   horizontalEncoderWorkerRef: React.RefObject<Worker | null>
   verticalEncoderWorkerRef: React.RefObject<Worker | null>
+  virtualCameraEncoderWorkerRef: React.RefObject<Worker | null>
   streamOutputs: CanvasStreamOutput[]
   canvasWidth: number
   canvasHeight: number
@@ -47,7 +48,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
     canvasRef, secondaryPreviewCanvasRef, activeScene, aspectRatio,
     outputFps, outputActive, previewMode, videoRefs,
     mediaFrameCache, browserFrameCache, imageCache,
-    audioClockRef, encoderWorkerRef, horizontalEncoderWorkerRef, verticalEncoderWorkerRef,
+    audioClockRef, encoderWorkerRef, horizontalEncoderWorkerRef, verticalEncoderWorkerRef, virtualCameraEncoderWorkerRef,
     streamOutputs, canvasWidth, canvasHeight, captureInputFormat,
     dualVerticalOverlayEnabled = false,
     isVisible = true
@@ -57,9 +58,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
   const fpsRef = useRef({ count: 0, globalCount: 0, lastTime: performance.now() })
   const horizontalCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const verticalCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const virtualCameraCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const virtualCameraStageCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const compositedCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const horizontalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const verticalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
+  const virtualCameraCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const dualVerticalOverlayRef = useRef({ lastAt: 0, busy: false })
   const transitionCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const chromaCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -574,6 +578,61 @@ export function useRenderLoop(options: RenderLoopOptions) {
       } catch (err) { console.error('Capture failed', err) }
     }
 
+    const drawCanvasFit = (
+      sourceCanvas: HTMLCanvasElement,
+      outputCtx: CanvasRenderingContext2D,
+      outputCanvas: HTMLCanvasElement
+    ) => {
+      outputCtx.fillStyle = '#000'
+      outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height)
+
+      const scale = Math.min(outputCanvas.width / sourceCanvas.width, outputCanvas.height / sourceCanvas.height)
+      const drawWidth = Math.round(sourceCanvas.width * scale)
+      const drawHeight = Math.round(sourceCanvas.height * scale)
+      const drawX = Math.round((outputCanvas.width - drawWidth) / 2)
+      const drawY = Math.round((outputCanvas.height - drawHeight) / 2)
+      outputCtx.drawImage(sourceCanvas, drawX, drawY, drawWidth, drawHeight)
+    }
+
+    const getVirtualCameraStageRatio = (virtualCam: CanvasStreamOutput): '16:9' | '9:16' => {
+      const feed = virtualCam.feed
+      if (feed?.mode === 'source') return '16:9'
+      if (feed?.layout === 'portrait') return '9:16'
+      if (feed?.layout === 'landscape') return '16:9'
+      return aspectRatio
+    }
+
+    const getVirtualCameraSourceScene = (
+      sourceLayer: StudioLayer,
+      virtualCam: CanvasStreamOutput,
+      stageCanvas: HTMLCanvasElement
+    ): StudioScene => {
+      const fullFrameLayer: StudioLayer = {
+        ...sourceLayer,
+        zIndex: 0,
+        config: {
+          ...sourceLayer.config,
+          fitMode: virtualCam.feed?.sourceFitMode ?? 'cover'
+        },
+        x: 0,
+        y: 0,
+        width: stageCanvas.width,
+        height: stageCanvas.height,
+        rotation: 0,
+        visible: true,
+        locked: false,
+        portraitX: 0,
+        portraitY: 0,
+        portraitWidth: stageCanvas.width,
+        portraitHeight: stageCanvas.height,
+        portraitRotation: 0,
+        portraitVisible: true,
+        portraitLocked: false
+      }
+
+      return { ...activeScene, layers: [fullFrameLayer] }
+    }
+
     // Secondary preview is purely visual — cap it at 30 fps regardless of monitor
     // refresh, since drawing the same scene a second time at 60+ Hz is the most
     // wasteful work in the loop when the user has dual-portrait/landscape on.
@@ -675,6 +734,39 @@ export function useRenderLoop(options: RenderLoopOptions) {
             if (vert) postFrameToWorker(verticalEncoderWorkerRef.current, verticalCanvasRef.current)
             if (overlayEnabled) maybeCaptureDualVerticalOverlay(verticalCanvasRef.current, now)
           }
+        }
+      }
+
+      const virtualCam = streamOutputs.find(o => o.id === 'virtual-camera-session' && o.active)
+      if (virtualCam && shouldCapture(virtualCameraCaptureRef.current, virtualCam.fps, now)) {
+        if (!virtualCameraCanvasRef.current) virtualCameraCanvasRef.current = document.createElement('canvas')
+        if (!virtualCameraStageCanvasRef.current) virtualCameraStageCanvasRef.current = document.createElement('canvas')
+
+        const stageCanvas = virtualCameraStageCanvasRef.current
+        const stageRatio = getVirtualCameraStageRatio(virtualCam)
+        stageCanvas.width = stageRatio === '9:16' ? 1080 : 1920
+        stageCanvas.height = stageRatio === '9:16' ? 1920 : 1080
+        const stageCtx = stageCanvas.getContext('2d', { alpha: false })
+
+        const outputCanvas = virtualCameraCanvasRef.current
+        outputCanvas.width = virtualCam.width
+        outputCanvas.height = virtualCam.height
+        const outputCtx = outputCanvas.getContext('2d', { alpha: false })
+
+        if (stageCtx && outputCtx) {
+          const feed = virtualCam.feed
+          const sourceLayer = feed?.mode === 'source' && feed.sourceLayerId
+            ? activeScene.layers.find(layer => layer.id === feed.sourceLayerId)
+            : null
+
+          if (sourceLayer) {
+            drawScene(stageCtx, stageCanvas, stageRatio, getVirtualCameraSourceScene(sourceLayer, virtualCam, stageCanvas))
+          } else {
+            drawScene(stageCtx, stageCanvas, stageRatio)
+          }
+
+          drawCanvasFit(stageCanvas, outputCtx, outputCanvas)
+          postFrameToWorker(virtualCameraEncoderWorkerRef.current, outputCanvas)
         }
       }
 

@@ -1,3 +1,4 @@
+import { type ComponentType } from 'react'
 import { type Widget } from '../../../../../shared/widgets'
 import { ChatConfigEditor } from './ChatConfigEditor'
 import { FollowerGoalConfigEditor } from './FollowerGoalConfigEditor'
@@ -16,62 +17,43 @@ import { LikesTrackerConfigEditor } from './LikesTrackerConfigEditor'
 import { AlertsConfigEditor } from './AlertsConfigEditor'
 import { LeaderboardConfigEditor } from './LeaderboardConfigEditor'
 
+type ConfigEditorProps = {
+  draft: Widget
+  onChange: (next: Widget) => void
+  onPreview?: (next: Widget) => void
+}
+
+type ConfigEditorComponent = ComponentType<ConfigEditorProps>
+
+const CONFIG_EDITORS = {
+  'now-playing': NowPlayingConfigEditor,
+  chat: ChatConfigEditor,
+  'follower-goal': FollowerGoalConfigEditor,
+  socials: SocialsConfigEditor,
+  'screen-border': BorderConfigEditor,
+  'event-particles': ParticleConfigEditor,
+  'gift-overlays': ParticleConfigEditor,
+  'falling-roses': RoseConfigEditor,
+  particles: ParticlesConfigEditor,
+  'discord-promo': DiscordPromoConfigEditor,
+  'node-network': NodeNetworkConfigEditor,
+  'latest-gifter': LatestGifterConfigEditor,
+  physics: PhysicsConfigEditor,
+  'chat-unified': ChatUnifiedConfigEditor,
+  'likes-tracker': LikesTrackerConfigEditor,
+  alerts: AlertsConfigEditor,
+  leaderboard: LeaderboardConfigEditor
+} satisfies Partial<Record<Widget['type'], ConfigEditorComponent>>
+
 export function ConfigEditor({
   draft,
   onChange,
   onPreview
-}: {
-  draft: Widget
-  onChange: (next: Widget) => void
-  onPreview?: (next: Widget) => void
-}) {
-  if (draft.type === 'now-playing') {
-    return <NowPlayingConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'chat') {
-    return <ChatConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'follower-goal') {
-    return <FollowerGoalConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'socials') {
-    return <SocialsConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'screen-border') {
-    return <BorderConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'event-particles' || draft.type === 'gift-overlays') {
-    return <ParticleConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'falling-roses') {
-    return <RoseConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'particles') {
-    return <ParticlesConfigEditor draft={draft} onChange={onChange} onPreview={onPreview} />
-  }
-  if (draft.type === 'discord-promo') {
-    return <DiscordPromoConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'node-network') {
-    return <NodeNetworkConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'latest-gifter') {
-    return <LatestGifterConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'physics') {
-    return <PhysicsConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'chat-unified') {
-    return <ChatUnifiedConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'likes-tracker') {
-    return <LikesTrackerConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'alerts') {
-    return <AlertsConfigEditor draft={draft} onChange={onChange} />
-  }
-  if (draft.type === 'leaderboard') {
-    return <LeaderboardConfigEditor draft={draft} onChange={onChange} />
+}: ConfigEditorProps) {
+  const Editor = CONFIG_EDITORS[draft.type]
+
+  if (Editor) {
+    return <Editor draft={draft} onChange={onChange} onPreview={onPreview} />
   }
 
   return (

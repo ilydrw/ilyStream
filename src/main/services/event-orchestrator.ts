@@ -16,7 +16,15 @@ import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { StreamingService } from './streaming-service'
 import { BrowserWindow } from 'electron'
-import type { AnyStreamEvent } from '../platforms/types'
+import { ChatRelayService } from '../chat/chat-relay-service'
+import { LoyaltyService } from '../loyalty/loyalty-service'
+import type { SpotifySongRequest } from '../../shared/spotify-types'
+import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
+import type { AnyStreamEvent, Platform } from '../platforms/types'
+
+const HOST_CHAT_MESSAGE_MAX_LENGTH = 140
+const HOST_CHAT_PLATFORMS: Platform[] = ['tiktok', 'twitch', 'youtube', 'kick']
+const HOST_CHAT_PLATFORM_SET = new Set<string>(HOST_CHAT_PLATFORMS)
 
 export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
@@ -29,6 +37,7 @@ export class EventOrchestrator {
     private overlayServer: OverlayServer,
     private eventSoundService: EventSoundService,
     private spotifyService: SpotifyService,
+    private chatRelayService: ChatRelayService,
     private ttsEngine: TTSEngine,
     private hueService: HueService,
     private triggerEngine: TriggerEngine,
@@ -36,6 +45,7 @@ export class EventOrchestrator {
     private voicemodService: VoicemodService,
     private vtubeService: VTubeService,
     private economyService: EconomyService,
+    private loyaltyService: LoyaltyService,
     private statsService: StatsService,
     private goveeService: GoveeService,
     private lightingManager: LightingManagerService,
@@ -59,6 +69,7 @@ export class EventOrchestrator {
     this.triggerEngine.on('action:vtube', (action) => this.handleVTubeAction(action))
     this.triggerEngine.on('action:discord', (action, event) => this.handleDiscordAction(action, event))
     this.triggerEngine.on('action:physics', (action, event) => this.handlePhysicsAction(action, event))
+    this.triggerEngine.on('action:send-chat', (action, event) => this.handleSendChatAction(action, event))
     this.triggerEngine.on('action:show-alert', (alert) => this.overlayServer.pushAlert(alert, 'all'))
     this.triggerEngine.on('action:play-sound', (action) => {
       this.eventSoundService.playSound(action.soundId, action.volume || 1)
@@ -100,6 +111,10 @@ export class EventOrchestrator {
       }
     })
 
+    this.loyaltyService.on('level-up', (event: LoyaltyLevelUpEvent) => {
+      this.handleLoyaltyLevelUp(event)
+    })
+
     // 12. Spotify -> Overlay Bridge
     this.spotifyService.on('now-playing', (payload) => {
       try {
@@ -115,9 +130,16 @@ export class EventOrchestrator {
     this.spotifyService.on('song-requested', (request) => {
       try {
         this.recordSongRequested(request)
+        this.loyaltyService.recordSongRequest({
+          username: request.requestedBy,
+          platform: request.platform,
+          displayName: request.displayName
+        })
       } catch (err) {
         console.error('[EventOrchestrator] Song request stats recording failed:', err)
       }
+
+      void this.sendHostChatMessage(request.platform, this.buildSongRequestConfirmation(request))
     })
 
     // Initial sync. Wrap because a throw here would skip the success log and
@@ -195,6 +217,11 @@ export class EventOrchestrator {
       this.statsService.recordEvent(event)
     })
 
+    // 10b. Loyalty XP and levels
+    await this.runEventStage('loyalty', () => {
+      this.loyaltyService.recordEvent(event)
+    })
+
     // 11. DB Pruning (Throttle)
     await this.runEventStage('event history pruning', () => {
       if (Date.now() % 100 === 0) {
@@ -211,7 +238,7 @@ export class EventOrchestrator {
     }
   }
 
-  private recordSongRequested(request: any): void {
+  private recordSongRequested(request: SpotifySongRequest): void {
     if (!request || typeof request.id !== 'string') return
 
     // We de-dupe to ensure we don't count the same request multiple times if events overlap
@@ -230,6 +257,66 @@ export class EventOrchestrator {
     if (this.countedSongRequestIds.size > 5000) {
       this.countedSongRequestIds = new Set(Array.from(this.countedSongRequestIds).slice(-2500))
     }
+  }
+
+  private async sendHostChatMessage(platform: unknown, message: string): Promise<void> {
+    const text = this.truncateHostChatMessage(message)
+    if (!text || !this.areHostChatResponsesEnabled() || !isHostChatPlatform(platform)) {
+      return
+    }
+
+    const capability = this.platformManager.getChatCapabilities()[platform]
+    if (!capability?.canSend) {
+      return
+    }
+
+    try {
+      const results = await this.chatRelayService.sendManualMessage([platform], text)
+      const failure = results.find((result) => !result.ok)
+      if (failure) {
+        console.warn(
+          `[EventOrchestrator] Host chat response failed for ${failure.platform}: ${failure.error || 'Unknown error'}`
+        )
+      }
+    } catch (err) {
+      console.error('[EventOrchestrator] Host chat response failed:', err)
+    }
+  }
+
+  private areHostChatResponsesEnabled(): boolean {
+    try {
+      return resolveAppSettings(this.db.getAllSettings()).chat.hostResponsesEnabled
+    } catch {
+      return true
+    }
+  }
+
+  private buildSongRequestConfirmation(request: SpotifySongRequest): string {
+    const requester = this.cleanHostChatText(request.displayName || request.requestedBy) || 'viewer'
+    const trackName = this.cleanHostChatText(request.track?.name) || 'song'
+    const artists = Array.isArray(request.track?.artists)
+      ? request.track.artists.map((artist) => this.cleanHostChatText(artist)).filter(Boolean).join(', ')
+      : ''
+    const trackLabel = artists ? `${trackName} by ${artists}` : trackName
+
+    return `Queued "${trackLabel}" for ${requester}.`
+  }
+
+  private getEventDisplayName(event: any): string {
+    return this.cleanHostChatText(event?.user?.displayName || event?.user?.username) || 'viewer'
+  }
+
+  private cleanHostChatText(value: unknown): string {
+    return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+  }
+
+  private truncateHostChatMessage(message: string): string {
+    const normalized = this.cleanHostChatText(message)
+    if (normalized.length <= HOST_CHAT_MESSAGE_MAX_LENGTH) {
+      return normalized
+    }
+
+    return `${normalized.slice(0, HOST_CHAT_MESSAGE_MAX_LENGTH - 3).trimEnd()}...`
   }
 
   private handleVoicemodAction(action: any): void {
@@ -270,6 +357,31 @@ export class EventOrchestrator {
       })
     } catch (err) {
       console.error('[Discord] Webhook failed:', err)
+    }
+  }
+
+  private handleSendChatAction(action: any, event: AnyStreamEvent): void {
+    const targetPlatform = isHostChatPlatform(action.platform) ? action.platform : event.platform
+    const message = this.cleanHostChatText(action.message || action.template)
+    if (!message) return
+
+    void this.sendHostChatMessage(targetPlatform, message)
+  }
+
+  private handleLoyaltyLevelUp(event: LoyaltyLevelUpEvent): void {
+    const message = `${event.displayName} hit level ${event.level}!`
+    void this.sendHostChatMessage(event.platform, message)
+
+    try {
+      this.overlayServer.pushAlert({
+        type: 'show_alert',
+        template: `<strong>${escapeAlertHtml(event.displayName)}</strong> hit level ${event.level}!`,
+        durationMs: 4200,
+        animationIn: 'zoom',
+        animationOut: 'fade'
+      }, 'all')
+    } catch (err) {
+      console.error('[EventOrchestrator] Loyalty level alert failed:', err)
     }
   }
 
@@ -456,28 +568,57 @@ export class EventOrchestrator {
       if (seconds > 0) this.economyService.addTimeToSubathon(seconds)
     } else if (event.type === 'chat') {
       const msg = event.message.trim().toLowerCase()
+      const displayName = this.getEventDisplayName(event)
       if (msg === '!get') {
-        this.economyService.claimPointsDrop(event.user.username, event.platform)
+        const claimed = this.economyService.claimPointsDrop(event.user.username, event.platform)
+        if (claimed) {
+          void this.sendHostChatMessage(event.platform, `${displayName} claimed the points drop!`)
+        }
       } else if (msg === '!points') {
-        this.economyService.getPoints(event.user.username, event.platform).then(pts => {
-          // Speak points or send to chat
-          this.ttsEngine.speak(`${event.user.displayName}, you have ${pts} points.`)
-        })
+        this.economyService.getPoints(event.user.username, event.platform)
+          .then(pts => {
+            const response = `${displayName}, you have ${pts} points.`
+            this.ttsEngine.speak(response)
+            void this.sendHostChatMessage(event.platform, response)
+          })
+          .catch(err => console.error('[EventOrchestrator] Points lookup failed:', err))
       } else if (msg === '!spin') {
-        this.economyService.spendPoints(event.user.username, event.platform, 5).then(success => {
-          if (success) {
-            const win = Math.random() > 0.7 ? 20 : 0
-            if (win > 0) {
-              this.economyService.addPoints(event.user.username, event.platform, win)
-              this.ttsEngine.speak(`JACKPOT! ${event.user.displayName} won ${win} points!`)
+        this.economyService.spendPoints(event.user.username, event.platform, 5)
+          .then(success => {
+            let response: string
+            if (success) {
+              const win = Math.random() > 0.7 ? 20 : 0
+              if (win > 0) {
+                this.economyService.addPoints(event.user.username, event.platform, win)
+                response = `JACKPOT! ${displayName} won ${win} points!`
+              } else {
+                response = `Sorry ${displayName}, better luck next time.`
+              }
             } else {
-              this.ttsEngine.speak(`Sorry ${event.user.displayName}, better luck next time.`)
+              response = `${displayName}, you need 5 points to spin.`
             }
-          } else {
-            this.ttsEngine.speak(`${event.user.displayName}, you need 5 points to spin.`)
-          }
-        })
+            this.ttsEngine.speak(response)
+            void this.sendHostChatMessage(event.platform, response)
+          })
+          .catch(err => console.error('[EventOrchestrator] Spin command failed:', err))
       }
     }
   }
+}
+
+function isHostChatPlatform(value: unknown): value is Platform {
+  return typeof value === 'string' && HOST_CHAT_PLATFORM_SET.has(value)
+}
+
+function escapeAlertHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&': return '&amp;'
+      case '<': return '&lt;'
+      case '>': return '&gt;'
+      case '"': return '&quot;'
+      case "'": return '&#x27;'
+      default: return char
+    }
+  })
 }

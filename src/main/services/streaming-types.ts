@@ -34,6 +34,10 @@ export interface VideoFramePayload {
   data: Uint8Array
   isKeyFrame?: boolean
   timestamp?: number
+  width?: number
+  height?: number
+  stride?: number
+  format?: 'h264' | 'mjpeg' | 'bgra'
 }
 
 export interface AudioFramePayload {

@@ -124,6 +124,7 @@ const api = {
   ai: {
     generateResponse: (message: string, context: { username: string; platform: string }) =>
       ipcRenderer.invoke('ai:generate-response', message, context),
+    getStreamInsights: () => ipcRenderer.invoke('ai:get-stream-insights'),
     testConnection: () => ipcRenderer.invoke('ai:test-connection')
   },
 

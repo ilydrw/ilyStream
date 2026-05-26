@@ -6,7 +6,7 @@ import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
 import type { LayerType, StudioLayer } from '../../../shared/studio'
 import { CanvasEditor } from './components/CanvasEditor'
-import type { CanvasEditorHandle } from './components/CanvasEditor.types'
+import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceFitMode, VirtualCameraSourceOption } from './components/CanvasEditor.types'
 import { ContextMenu } from '../../components/ui/ContextMenu'
 import { AddSourceModal } from './components/AddSourceModal'
 import { getOptimizedCaptureInputFormat, pickAvcCodecString, type BroadcastLayoutId, type BroadcastLayoutMode, buildStreamPlatforms } from './utils/streaming-config'
@@ -38,6 +38,54 @@ function formatDuration(totalSeconds: number): string {
 type ProjectorAspectRatio = '16:9' | '9:16'
 const LANDSCAPE_STAGE = { width: 1920, height: 1080 }
 const PORTRAIT_STAGE = { width: 1080, height: 1920 }
+const VIRTUAL_CAMERA_FEED_STORAGE_KEY = 'ilystream-virtual-camera-feed'
+const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
+  mode: 'layout',
+  layout: 'current',
+  sourceFitMode: 'cover'
+}
+
+function isVirtualCameraSourceFitMode(value: unknown): value is VirtualCameraSourceFitMode {
+  return value === 'contain' || value === 'cover' || value === 'stretch'
+}
+
+function normalizeVirtualCameraFeed(value: unknown): VirtualCameraFeedConfig {
+  const raw = value && typeof value === 'object' ? value as Partial<VirtualCameraFeedConfig> : {}
+  const mode = raw.mode === 'source' ? 'source' : 'layout'
+  const layout =
+    raw.layout === 'landscape' || raw.layout === 'portrait' || raw.layout === 'current'
+      ? raw.layout
+      : DEFAULT_VIRTUAL_CAMERA_FEED.layout
+  const sourceFitMode = isVirtualCameraSourceFitMode(raw.sourceFitMode)
+    ? raw.sourceFitMode
+    : DEFAULT_VIRTUAL_CAMERA_FEED.sourceFitMode
+  const sourceLayerId = typeof raw.sourceLayerId === 'string' && raw.sourceLayerId.length > 0
+    ? raw.sourceLayerId
+    : undefined
+
+  return sourceLayerId
+    ? { mode, layout, sourceFitMode, sourceLayerId }
+    : { mode, layout, sourceFitMode }
+}
+
+function loadVirtualCameraFeed(): VirtualCameraFeedConfig {
+  if (typeof window === 'undefined') return DEFAULT_VIRTUAL_CAMERA_FEED
+  try {
+    const raw = window.localStorage.getItem(VIRTUAL_CAMERA_FEED_STORAGE_KEY)
+    return raw ? normalizeVirtualCameraFeed(JSON.parse(raw)) : DEFAULT_VIRTUAL_CAMERA_FEED
+  } catch {
+    return DEFAULT_VIRTUAL_CAMERA_FEED
+  }
+}
+
+function saveVirtualCameraFeed(feed: VirtualCameraFeedConfig) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(VIRTUAL_CAMERA_FEED_STORAGE_KEY, JSON.stringify(normalizeVirtualCameraFeed(feed)))
+  } catch {
+    // Renderer preference persistence is best-effort.
+  }
+}
 
 function getLayoutModeForAspectRatio(aspectRatio: ProjectorAspectRatio): BroadcastLayoutMode {
   return aspectRatio === '9:16' ? 'vertical' : 'horizontal'
@@ -91,6 +139,7 @@ export default function BroadcastPage() {
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null)
   const [obsStatus, setObsStatus] = useState<any>(null)
   const [virtualCameraInfo, setVirtualCameraInfo] = useState<any>(null)
+  const [virtualCameraFeed, setVirtualCameraFeed] = useState<VirtualCameraFeedConfig>(loadVirtualCameraFeed)
   const [broadcastLayoutMode, setBroadcastLayoutMode] = useState<BroadcastLayoutMode>(() => getLayoutModeForAspectRatio(store.aspectRatio))
   const [layoutAssignments, setLayoutAssignments] = useState<Record<BroadcastLayoutId, string[]>>({ horizontal: [], vertical: [] })
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
@@ -122,6 +171,32 @@ export default function BroadcastPage() {
     const scene = store.scenes.find(s => s.id === store.activeSceneId) || store.scenes[0]
     return scene
   }, [store.scenes, store.activeSceneId])
+
+  const virtualCameraSourceOptions = useMemo<VirtualCameraSourceOption[]>(() => {
+    return activeScene.layers
+      .filter(layer => layer.type !== 'audio')
+      .map(layer => ({
+        id: layer.id,
+        name: layer.name || layer.type,
+        type: layer.type
+      }))
+  }, [activeScene.layers])
+
+  useEffect(() => {
+    setVirtualCameraFeed(current => {
+      if (current.mode !== 'source') return current
+      if (current.sourceLayerId && virtualCameraSourceOptions.some(option => option.id === current.sourceLayerId)) return current
+
+      const fallbackSource = virtualCameraSourceOptions[0]
+      return fallbackSource
+        ? { ...current, sourceLayerId: fallbackSource.id }
+        : { mode: 'layout', layout: current.layout, sourceFitMode: current.sourceFitMode }
+    })
+  }, [virtualCameraSourceOptions])
+
+  useEffect(() => {
+    saveVirtualCameraFeed(virtualCameraFeed)
+  }, [virtualCameraFeed])
 
   const previewScene = useMemo(() => {
     const scene = store.scenes.find(s => s.id === store.previewSceneId) || store.scenes[0]
@@ -193,26 +268,25 @@ export default function BroadcastPage() {
   const activeCanvasStreamOutputs = useMemo(() => {
 
 
-    const outputs = [
+    const outputs: CanvasStreamOutput[] = [
       { id: 'horizontal' as const, active: isStreaming && activeLayoutAssignments.horizontal.length > 0, width: 1920, height: 1080, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.horizontal, codec: pickAvcCodecString(1920, 1080, outputConfig.fps) },
       { id: 'vertical' as const, active: isStreaming && activeLayoutAssignments.vertical.length > 0, width: 1080, height: 1920, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.vertical, codec: pickAvcCodecString(1080, 1920, outputConfig.fps) }
     ]
 
     if (virtualCameraInfo?.state === 'active') {
-      const isVertical = store.aspectRatio === '9:16'
       outputs.push({
-        id: 'virtual-camera-session' as any,
+        id: 'virtual-camera-session' as const,
         active: true,
-        width: isVertical ? 1080 : 1920,
-        height: isVertical ? 1920 : 1080,
-        fps: outputConfig.fps,
-        bitrateKbps: 10000,
-        inputFormat: isVertical ? layoutInputFormats.vertical : layoutInputFormats.horizontal,
-        codec: pickAvcCodecString(isVertical ? 1080 : 1920, isVertical ? 1920 : 1080, outputConfig.fps)
+        width: 1280,
+        height: 720,
+        fps: Math.min(30, outputConfig.fps),
+        bitrateKbps: 0,
+        inputFormat: 'bgra',
+        feed: virtualCameraFeed
       })
     }
     return outputs
-  }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, virtualCameraInfo, store.aspectRatio])
+  }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, virtualCameraFeed, virtualCameraInfo, store.aspectRatio])
 
   const { streamReady, forceRefreshMedia } = useMediaManagement({
     activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
@@ -452,6 +526,28 @@ export default function BroadcastPage() {
     setShowSourceModal(false)
   }, [activeScene, previewScene, store, widgets])
 
+  const applyTikTokStarterLayout = useCallback(() => {
+    changeBroadcastLayoutMode('vertical')
+
+    const targetScene = store.studioMode ? previewScene : activeScene
+    if (!targetScene) return
+
+    const existingWidgetIds = new Set(
+      targetScene.layers
+        .filter((layer) => layer.type === 'widget')
+        .map((layer) => layer.config?.widgetId)
+        .filter(Boolean)
+    )
+    const starterWidgetTypes = ['chat-unified', 'alerts', 'now-playing', 'likes-tracker', 'physics']
+
+    for (const widgetType of starterWidgetTypes) {
+      const widget = widgets.find((candidate) => candidate.type === widgetType)
+      if (!widget || existingWidgetIds.has(widget.id)) continue
+      addSource('widget', { widgetId: widget.id, widgetType: widget.type }, widget.name)
+      existingWidgetIds.add(widget.id)
+    }
+  }, [activeScene, addSource, changeBroadcastLayoutMode, previewScene, store.studioMode, widgets])
+
   // Streaming Handlers
   const startBroadcast = async () => {
     setStreamError(null)
@@ -518,9 +614,25 @@ export default function BroadcastPage() {
 
   const toggleVirtualCamera = async () => {
     if (!virtualCameraInfo) return
+    if (virtualCameraInfo.state === 'unsupported' || virtualCameraInfo.canStart === false) {
+      setStreamError(virtualCameraInfo.driverHint || virtualCameraInfo.lastError || 'Virtual camera driver is not available')
+      return
+    }
+
+    const refreshVirtualCameraInfo = async () => {
+      if (window.api?.virtualCamera) setVirtualCameraInfo(await window.api.virtualCamera.getStatus())
+    }
+
     if (virtualCameraInfo.state === 'active') {
-      await window.api.virtualCamera.stop()
-    } else {
+      try {
+        await window.api.virtualCamera.stop()
+      } finally {
+        await refreshVirtualCameraInfo()
+      }
+      return
+    }
+
+    try {
       const context = audioEngine.getContext()
       await window.api.virtualCamera.start({
         width: store.canvasWidth,
@@ -529,6 +641,10 @@ export default function BroadcastPage() {
         bitrateKbps: outputConfig.bitrateKbps,
         audioSampleRate: context.sampleRate
       })
+    } catch (err) {
+      setStreamError(err instanceof Error ? err.message : String(err))
+    } finally {
+      await refreshVirtualCameraInfo()
     }
   }
 
@@ -583,6 +699,7 @@ export default function BroadcastPage() {
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
         showLeftSidebar={showLeftSidebar} onToggleLeftSidebar={() => setShowLeftSidebar(!showLeftSidebar)} showRightSidebar={showRightSidebar} onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
         broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={changeBroadcastLayoutMode}
+        onApplyTikTokPreset={applyTikTokStarterLayout}
         undo={store.undo} redo={store.redo} canUndo={store.past.length > 0} canRedo={store.future.length > 0}
         onTakeScreenshot={() => canvasRef.current?.takeScreenshot()} onStartRecording={startRecording} onStopRecording={stopRecording}
         onForceRefreshMedia={forceRefreshMedia} monitors={monitors} selectedMonitorId={selectedMonitorId} onSetSelectedMonitorId={setSelectedMonitorId}
@@ -603,6 +720,8 @@ export default function BroadcastPage() {
         }}
         obsStatus={obsStatus} onToggleObsVirtualCamera={toggleObsVirtualCamera}
         virtualCameraInfo={virtualCameraInfo} onToggleVirtualCamera={toggleVirtualCamera}
+        virtualCameraFeed={virtualCameraFeed} onVirtualCameraFeedChange={setVirtualCameraFeed}
+        virtualCameraSourceOptions={virtualCameraSourceOptions}
         platforms={platforms} layoutAssignments={layoutAssignments}
         onToggleLayoutAssignment={(l, id) => {
           const layoutKey = l as any;

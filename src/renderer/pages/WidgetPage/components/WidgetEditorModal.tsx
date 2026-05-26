@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { IconRefresh } from '@tabler/icons-react'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
 import { WidgetThemeSection } from './ConfigEditors/WidgetThemeSection'
 import { Modal } from '../../../components/ui/Modal'
+import { buildWidgetPreviewUrl, getWidgetPreviewFrame } from '../widget-customization'
 
 export function WidgetEditorModal({
   widget,
@@ -21,47 +22,17 @@ export function WidgetEditorModal({
   const [saving, setSaving] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
   const previewWidget = previewOverride ?? draft
-  const previewConfig = previewWidget.config as Record<string, unknown>
-  const isVerticalPreview = previewConfig.aspectRatio === 'tiktok'
-  const previewAspectRatio =
-    isVerticalPreview ? '9 / 16' :
-    previewConfig.aspectRatio === 'landscape' ? '16 / 9' :
-    '16 / 9'
-  const previewResolution =
-    isVerticalPreview ? '1080 x 1920' :
-    previewConfig.aspectRatio === 'landscape' ? '1920 x 1080' :
-    'Responsive canvas'
+  const previewFrame = getWidgetPreviewFrame(previewWidget.config)
 
   useEffect(() => {
     setDraft(widget)
     setPreviewOverride(null)
   }, [widget.id])
 
-  // Debounce the config update for the iframe URL to avoid flicker while dragging sliders
-  const [debouncedConfig, setDebouncedConfig] = useState(previewWidget.config)
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
-
-  useEffect(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedConfig(previewWidget.config)
-    }, 400) // 400ms delay for a snappy but stable feel
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    }
-  }, [previewWidget.config])
+  const debouncedConfig = useDebouncedValue(previewWidget.config, 400)
 
   const previewUrl = useMemo(() => {
-    if (!overlayPort) return null
-    const base = `http://127.0.0.1:${overlayPort}/overlay/${previewWidget.id}`
-    try {
-      // Use debouncedConfig for the URL to avoid flickering iframe reloads
-      const configJson = JSON.stringify(debouncedConfig)
-      const encoded = btoa(unescape(encodeURIComponent(configJson)))
-      return `${base}?config=${encoded}&preview=1`
-    } catch (e) {
-      return base
-    }
+    return buildWidgetPreviewUrl(previewWidget, overlayPort, debouncedConfig)
   }, [overlayPort, previewWidget.id, debouncedConfig])
 
   const handleDraftChange = (next: Widget) => {
@@ -128,10 +99,10 @@ export function WidgetEditorModal({
           <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
             {previewUrl ? (
               <div
-                className={`relative shadow-2xl transition-all duration-500 ease-in-out ${isVerticalPreview ? '' : 'w-full max-w-[920px]'}`}
-                style={isVerticalPreview
-                  ? { height: 'calc(100% - 56px)', maxWidth: '100%', aspectRatio: previewAspectRatio }
-                  : { aspectRatio: previewAspectRatio, maxHeight: 'calc(100% - 56px)' }
+                className={`relative shadow-2xl transition-all duration-500 ease-in-out ${previewFrame.isVertical ? '' : 'w-full max-w-[920px]'}`}
+                style={previewFrame.isVertical
+                  ? { height: 'calc(100% - 56px)', maxWidth: '100%', aspectRatio: previewFrame.aspectRatio }
+                  : { aspectRatio: previewFrame.aspectRatio, maxHeight: 'calc(100% - 56px)' }
                 }
               >
                 <div
@@ -156,7 +127,7 @@ export function WidgetEditorModal({
                 {/* Resolution Badge */}
                 <div className="absolute -bottom-8 left-0 right-0 flex justify-center">
                   <span className="text-[10px] font-black uppercase tracking-normal text-white/10">
-                    {previewResolution}
+                    {previewFrame.resolutionLabel}
                   </span>
                 </div>
               </div>
@@ -187,4 +158,15 @@ export function WidgetEditorModal({
       </div>
     </Modal>
   )
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+
+  return debouncedValue
 }

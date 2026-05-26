@@ -42,6 +42,7 @@ export const ACTION_TYPE_OPTIONS: Array<{ value: Action['type']; label: string }
   { value: 'obs_set_source_visibility', label: 'OBS: Set Source Visibility' },
   { value: 'obs_toggle_source_visibility', label: 'OBS: Toggle Source Visibility' },
   { value: 'http_webhook', label: 'HTTP Webhook' },
+  { value: 'send_chat', label: 'Send Host Chat' },
   { value: 'run_command', label: 'Run Command' },
   { value: 'ai_respond', label: 'AI: Smart Response' },
   { value: 'voicemod_voice', label: 'Voicemod: Set Voice' },
@@ -110,6 +111,12 @@ export function createDefaultAction(type: Action['type'] = 'tts'): Action {
         method: 'POST',
         headers: {},
         body: '{"username":"{username}","message":"{message}"}'
+      }
+    case 'send_chat':
+      return {
+        type: 'send_chat',
+        template: 'Thanks {username}.',
+        platform: 'source'
       }
     case 'obs_set_scene':
       return {
@@ -272,6 +279,11 @@ export function getTriggerValidationErrors(rule: TriggerRule): string[] {
           errors.push('Webhook actions need a URL.')
         }
         break
+      case 'send_chat':
+        if (action.template.trim().length === 0) {
+          errors.push('Send chat actions need a message template.')
+        }
+        break
       case 'obs_set_scene':
         if (action.sceneName.trim().length === 0) {
           errors.push('OBS set scene actions need a scene name.')
@@ -335,6 +347,8 @@ export function describeAction(action: Action): string {
       return `Show alert for ${Math.round(action.durationMs / 1000)}s`
     case 'http_webhook':
       return `Send ${action.method} to ${action.url || '(set URL)'}`
+    case 'send_chat':
+      return `Send host chat: "${action.template || 'message'}"`
     case 'obs_set_scene':
       return `Switch OBS to ${action.sceneName || '(set scene)'}`
     case 'obs_set_source_visibility':

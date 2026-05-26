@@ -93,6 +93,35 @@ describe('EventSoundService', () => {
     }
   })
 
+  it('does not hold final gift alerts for the old half-second debounce', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => ({ alertClientCount: 0 }))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings({
+        ...DEFAULT_APP_SETTINGS,
+        eventSoundGiftEnabled: true,
+        eventSoundGiftSoundId: 'gift.mp3',
+        eventSoundGiftVolume: 0.65
+      })
+
+      service.processEvent(makeGiftEvent())
+      vi.advanceTimersByTime(149)
+      expect(overlayServer.pushAlert).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(1)
+      expect(overlayServer.pushAlert).toHaveBeenCalledTimes(1)
+      expect(soundboard.playSound).toHaveBeenCalledWith('gift.mp3', 0.65)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('routes category-scoped alert sound ids to the overlay (not the renderer)', () => {
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { BaseConnector } from '../base-connector'
+import { BaseConnector, formatConnectorErrorMessage } from '../base-connector'
 import {
   Platform,
   TikTokConfig,
@@ -31,7 +31,6 @@ export class TikTokConnector extends BaseConnector {
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const tiktokConfig = config as TikTokConfig
     const username = tiktokConfig.username.replace(/^@/, '')
-    console.log(`[TikTokConnector] Attempting to connect to @${username}...`)
 
     const { WebcastPushConnection } = await import('tiktok-live-connector')
 
@@ -49,8 +48,6 @@ export class TikTokConnector extends BaseConnector {
       if (token !== this.connectionToken) return // Abort if a newer connection attempt started
 
       try {
-        console.log(`[TikTokConnector] Attempting connection via: ${candidate.name}`)
-
         const connection = new WebcastPushConnection(username, candidate.options)
         this.connection = connection
 
@@ -75,9 +72,8 @@ export class TikTokConnector extends BaseConnector {
         return // SUCCESS
       } catch (err: any) {
         lastError = err
-        const errMsg = err.message || String(err)
-        console.warn(`[TikTokConnector] Candidate ${candidate.name} failed:`, errMsg)
-        this.cleanupConnection()
+        const errMsg = formatConnectorErrorMessage(err)
+        this.cleanupConnection({ invalidateToken: false })
 
         if (isFatalTikTokConnectionErrorMessage(errMsg)) {
           break // Don't try other candidates if it's a fatal error (like invalid user)
@@ -86,19 +82,27 @@ export class TikTokConnector extends BaseConnector {
     }
 
     if (lastError) {
-      this.handleError(lastError, 'connect', true)
+      throw lastError
     }
+    throw new Error('TikTok connection failed')
   }
 
   protected async doDisconnect(): Promise<void> { this.cleanupConnection() }
 
   override getChatCapability(): PlatformChatCapability {
-    return this.chatSender?.getStatus().isChatReady ? { platform: 'tiktok', canSend: true } : { platform: 'tiktok', canSend: false, reason: 'Chat sender not ready' }
+    const senderStatus = this.chatSender?.getStatus()
+    return senderStatus?.isChatReady
+      ? { platform: 'tiktok', canSend: true }
+      : {
+          platform: 'tiktok',
+          canSend: false,
+          reason: senderStatus?.statusMessage || 'Open the TikTok host chat sender'
+        }
   }
 
   override async sendChatMessage(text: string): Promise<void> {
     if (await this.chatSender.sendMessage(text)) return
-    throw new Error('TikTok chat sending failed')
+    throw new Error(this.chatSender.getStatus().lastError || 'TikTok chat sending failed')
   }
 
   private setupEventListeners(connection: any): void {
@@ -144,12 +148,17 @@ export class TikTokConnector extends BaseConnector {
     })
 
     connection.on('error', (err: any) => {
+      if (this.status === 'connecting') {
+        return
+      }
       this.onRecoverableError(err, 'connection')
     })
   }
 
-  private cleanupConnection(): void {
-    this.connectionToken++
+  private cleanupConnection(options: { invalidateToken?: boolean } = {}): void {
+    if (options.invalidateToken !== false) {
+      this.connectionToken++
+    }
     if (this.connection) try { this.connection.disconnect() } catch {}
     this.connection = null
   }

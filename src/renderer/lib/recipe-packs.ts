@@ -9,7 +9,7 @@ import {
 
 export const RECIPE_PACK_TYPE = 'ilystream.trigger-pack'
 export const RECIPE_PACK_SCHEMA_VERSION = 1
-export const RECIPE_PACK_COMPATIBLE_APP_VERSION = '0.0.13'
+export const RECIPE_PACK_COMPATIBLE_APP_VERSION = '0.0.14'
 
 export interface RecipePackMetadata {
   id: string
@@ -88,6 +88,13 @@ export const starterRecipePacks: RecipePack[] = [
     description: 'Simple command-triggered feedback loops you can expand into a larger command library.',
     tags: ['chat', 'commands', 'tts'],
     recipeIds: ['hello-command-hook', 'spotify-request-spotlight']
+  }),
+  createStarterPack({
+    id: 'starter-tikfinity-challenger',
+    name: 'TikFinity Challenger Starter',
+    description: 'Host chat replies, AI question handling, gifts, and bridge-ready fanout in one starter pack.',
+    tags: ['tiktok', 'host chat', 'ai', 'streamerbot'],
+    recipeIds: ['song-request-host-reply', 'ai-question-catcher', 'gift-gg-celebration', 'streamerbot-gift-action']
   })
 ]
 
@@ -225,6 +232,13 @@ function detectActionRisks(ruleName: string, action: Action): RecipePackRisk[] {
         ruleName,
         actionType: action.type,
         message: `Sends data to ${action.url || '(unset webhook URL)'}`
+      }]
+    case 'send_chat':
+      return [{
+        severity: 'medium',
+        ruleName,
+        actionType: action.type,
+        message: 'Sends a message from the host account when the platform sender is ready.'
       }]
     case 'discord_embed':
       return [{

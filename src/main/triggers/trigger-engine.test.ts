@@ -149,6 +149,33 @@ describe('TriggerEngine', () => {
     expect(receipt.testPayload).toEqual(expect.objectContaining({ type: 'chat', message: 'receipt check' }))
   })
 
+  it('fills templates for host chat send actions', async () => {
+    const { engine } = createEngine()
+    const sendChat = vi.fn()
+    engine.on('action:send-chat', sendChat)
+    engine.updateRule({
+      ...createRule('send-chat-rule', 0),
+      actions: [{
+        type: 'send_chat',
+        template: 'Thanks {username}: {message}',
+        platform: 'source'
+      }]
+    })
+
+    const receiptPromise = onceReceipt(engine)
+    engine.evaluate(createChatEvent('song request queued'))
+    const receipt = await receiptPromise
+
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Thanks Example User: song request queued',
+        platform: 'twitch'
+      }),
+      expect.objectContaining({ id: 'event-1' })
+    )
+    expect(receipt.rules[0].actions[0]).toEqual(expect.objectContaining({ status: 'ran', type: 'send_chat' }))
+  })
+
   it('explains why a rule did not match', async () => {
     const { engine } = createEngine()
     const receiptPromise = onceReceipt(engine)

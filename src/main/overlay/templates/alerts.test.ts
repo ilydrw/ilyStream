@@ -17,4 +17,16 @@ describe('alerts overlay template', () => {
     expect(html).not.toContain('id="keep-alive"')
     expect(html).not.toContain('rendering-heartbeat')
   })
+
+  it('plays alert audio when an alert is received instead of when its visual dequeues', () => {
+    const html = buildAlertsOverlayHtml(widget, false)
+    const queueAudioCall = html.indexOf('playAlertAudioOnce(alert);')
+    const showAlertCall = html.indexOf('showAlert(alert);')
+
+    expect(queueAudioCall).toBeGreaterThan(-1)
+    expect(showAlertCall).toBeGreaterThan(-1)
+    expect(queueAudioCall).toBeLessThan(showAlertCall)
+    expect(html).toContain('const playedAudioIds = new Set();')
+    expect(html).toContain('const audioCache = new Map();')
+  })
 })

@@ -11,6 +11,7 @@ import type {
   ViewerCountEvent
 } from '../types'
 import { estimateTikTokCreatorGiftCents } from '../../../shared/tiktok-revenue'
+import { decodeHtmlEntities } from '../../../shared/html-entities'
 
 export class TikTokMapper {
   mapUser(data: any): UserInfo {
@@ -106,11 +107,11 @@ export class TikTokMapper {
       type: 'gift',
       raw: data,
       user: this.mapUser(data),
-      giftName: gift?.name || data?.giftName || 'Gift',
+      giftName: decodeHtmlEntities(gift?.name || data?.giftName || 'Gift'),
       giftId: String(gift?.id || data?.giftId || '0'),
       giftCount: data.repeatCount || data.giftCount || 1,
       monetaryValue: estimateTikTokCreatorGiftCents(diamondCount),
-      isCombo: isTikTokGiftComboInProgress(data.repeatEnd)
+      isCombo: isTikTokGiftComboInProgress(data)
     }
   }
 
@@ -210,7 +211,17 @@ export class TikTokMapper {
   }
 }
 
-function isTikTokGiftComboInProgress(repeatEnd: unknown): boolean {
+function isTikTokGiftComboInProgress(data: any): boolean {
+  const repeatEnd = data?.repeatEnd
+  const giftType = Number(
+    data?.giftType ??
+      data?.gift?.giftType ??
+      data?.giftDetails?.giftType ??
+      data?.extendedGiftInfo?.giftType
+  )
+  const isRepeatableGift = !Number.isFinite(giftType) || giftType === 1
+
+  if (!isRepeatableGift) return false
   return repeatEnd === false || repeatEnd === 0 || repeatEnd === 'false'
 }
 

@@ -20,11 +20,26 @@ export interface VirtualCameraInfo {
   state: VirtualCameraState;
   lastError?: string;
   deviceName?: string;
+  canStart: boolean;
+  needsDriver?: boolean;
+  driverHint?: string;
+  nativeControlAvailable?: boolean;
+  nativeControlPath?: string;
+  nativeMediaSourceAvailable?: boolean;
+  nativeMediaSourcePath?: string;
+  nativeFrameBridgeAvailable?: boolean;
+  nativeFrameBridgePath?: string;
+  mediaSourceRegistered?: boolean;
 }
 
 export interface StartVirtualCameraOptions {
   // Optional: allow specifying platform override, or device path.
   outputId?: string; // For future multiplexing with scenes
   preferredPlatform?: VirtualCameraPlatform;
+  deviceName?: string;
+  width?: number;
+  height?: number;
   fps?: number;
+  bitrateKbps?: number;
+  audioSampleRate?: number;
 }

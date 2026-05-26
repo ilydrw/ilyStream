@@ -66,6 +66,7 @@ export function OutboundSidebar({
                   key={`target-${p}`}
                   onClick={() => onToggleTarget(p)}
                   disabled={!cap.canSend}
+                  title={cap.canSend ? `Send to ${PLATFORM_LABELS[p]}` : cap.reason}
                   className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-bold transition-all ${
                     selected ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90'
                   } disabled:opacity-30 disabled:cursor-not-allowed`}

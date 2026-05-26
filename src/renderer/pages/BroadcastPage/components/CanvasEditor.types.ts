@@ -1,8 +1,25 @@
 import type { MutableRefObject } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 
-export type CanvasOutputLayoutId = 'horizontal' | 'vertical'
+export type CanvasOutputLayoutId = 'horizontal' | 'vertical' | 'virtual-camera-session'
+export type CanvasOutputInputFormat = 'h264' | 'mjpeg' | 'bgra'
 export type CanvasPreviewMode = 'single' | 'horizontal' | 'vertical' | 'dual' | 'dual-portrait' | 'dual-horizontal'
+export type VirtualCameraFeedMode = 'layout' | 'source'
+export type VirtualCameraFeedLayout = 'current' | 'landscape' | 'portrait'
+export type VirtualCameraSourceFitMode = 'contain' | 'cover' | 'stretch'
+
+export interface VirtualCameraFeedConfig {
+  mode: VirtualCameraFeedMode
+  layout: VirtualCameraFeedLayout
+  sourceFitMode: VirtualCameraSourceFitMode
+  sourceLayerId?: string
+}
+
+export interface VirtualCameraSourceOption {
+  id: string
+  name: string
+  type: string
+}
 
 export interface CanvasStreamOutput {
   id: CanvasOutputLayoutId
@@ -11,8 +28,9 @@ export interface CanvasStreamOutput {
   height: number
   fps: number
   bitrateKbps: number
-  inputFormat: 'h264' | 'mjpeg'
+  inputFormat: CanvasOutputInputFormat
   codec?: string
+  feed?: VirtualCameraFeedConfig
 }
 
 export interface CanvasEditorProps {

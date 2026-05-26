@@ -31,6 +31,9 @@ import { VirtualCameraService } from './virtual-camera-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { TikTokChatSender } from '../platforms/tiktok/tiktok-chat-sender'
 import { RecordingsService } from './recordings-service'
+import { LoyaltyService } from '../loyalty/loyalty-service'
+import { StreamIntelligenceService } from '../ai/stream-intelligence-service'
+import { StreamerbotBridgeService } from './streamerbot-bridge-service'
 
 
 export class ServiceRegistry {
@@ -54,9 +57,12 @@ export class ServiceRegistry {
   public memoryService: MemoryService
   public remoteAuthService: RemoteAuthService
   public economyService: EconomyService
+  public loyaltyService: LoyaltyService
   public streamingService: StreamingService
   public browserSourceService: BrowserSourceService
   public statsService: StatsService
+  public streamIntelligenceService: StreamIntelligenceService
+  public streamerbotBridgeService: StreamerbotBridgeService
   public deviceApi: DeviceApi
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
@@ -80,14 +86,18 @@ export class ServiceRegistry {
     this.memoryService = new MemoryService(this.db)
     this.remoteAuthService = new RemoteAuthService(this.db)
     this.economyService = new EconomyService(this.db)
+    this.loyaltyService = new LoyaltyService(this.db)
     this.hueService = new HueService(this.db)
     this.triggerEngine = new TriggerEngine(this.ttsEngine, this.aiService)
+    this.triggerEngine.loadRules(this.db.getAllTriggers())
     this.overlayServer = new OverlayServer()
     this.eventSoundService = new EventSoundService(this.soundboardService, this.overlayServer)
     this.obsService = new OBSService()
     this.streamingService = new StreamingService()
     this.browserSourceService = new BrowserSourceService()
     this.statsService = new StatsService(this.db)
+    this.streamIntelligenceService = new StreamIntelligenceService()
+    this.streamerbotBridgeService = new StreamerbotBridgeService()
     this.goveeService = new GoveeService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
     this.lightingManager = new LightingManagerService()
@@ -117,6 +127,7 @@ export class ServiceRegistry {
       this.overlayServer,
       this.eventSoundService,
       this.spotifyService,
+      this.chatRelayService,
       this.ttsEngine,
       this.hueService,
       this.triggerEngine,
@@ -124,6 +135,7 @@ export class ServiceRegistry {
       this.voicemodService,
       this.vtubeService,
       this.economyService,
+      this.loyaltyService,
       this.statsService,
       this.goveeService,
       this.lightingManager,
@@ -149,6 +161,15 @@ export class ServiceRegistry {
     // Broadcast recording state to DeskThing / Overlays
     this.streamingService.on('status', (status) => {
       this.overlayServer.broadcastRecordingState(status.recording, this.streamingService.getRecordingOutputPath() || undefined)
+    })
+
+    this.platformManager.on('event', (event) => {
+      this.streamIntelligenceService.recordEvent(event)
+      this.streamerbotBridgeService.forwardEvent(event)
+    })
+
+    this.triggerEngine.on('receipt', (receipt) => {
+      this.streamerbotBridgeService.forwardAutomationReceipt(receipt)
     })
   }
 
@@ -182,15 +203,27 @@ export class ServiceRegistry {
       // Find the PID of whatever is listening on our port without shell interpolation.
       const { stdout } = await execFileAsync('netstat', ['-ano'])
       const lines = stdout.split('\n')
+      const pidsToKill = new Set<string>()
 
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
-        if (parts.length >= 5 && parts[1].includes(`:${port}`) && parts[3] === 'LISTENING') {
-          const pid = parts[4]
-          if (pid && pid !== '0' && parseInt(pid) !== process.pid) {
-            console.log(`[services] Killing zombie process ${pid} on port ${port}...`)
-            await execFileAsync('taskkill', ['/F', '/PID', pid])
+        const localAddress = parts[1]
+        const state = parts[3]
+        const pid = parts[4]
+        if (parts.length >= 5 && localAddress.endsWith(`:${port}`) && state === 'LISTENING') {
+          const pidNumber = Number(pid)
+          if (pid && pid !== '0' && Number.isInteger(pidNumber) && pidNumber !== process.pid) {
+            pidsToKill.add(pid)
           }
+        }
+      }
+
+      for (const pid of pidsToKill) {
+        try {
+          console.log(`[services] Killing zombie process ${pid} on port ${port}...`)
+          await execFileAsync('taskkill', ['/F', '/PID', pid])
+        } catch {
+          // Another row may have referenced a process that already exited.
         }
       }
     } catch (err) {
@@ -214,6 +247,7 @@ export class ServiceRegistry {
       ['event-sound settings', () => this.eventSoundService.applySettings(settings)],
       ['voicemod settings', () => this.voicemodService.applySettings(settings)],
       ['vtube settings', () => this.vtubeService.applySettings(settings)],
+      ['streamerbot settings', () => this.streamerbotBridgeService.applySettings(settings.integrations.streamerbot)],
       ['voice profiles', () => this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())]
     ]
 
@@ -268,6 +302,7 @@ export class ServiceRegistry {
   async dispose(): Promise<void> {
     this.chatRelayService.dispose()
     this.economyService.dispose()
+    this.streamerbotBridgeService.dispose()
     await this.spotifyService.dispose()
     await this.lightingManager.dispose()
     this.tiktokChatSender.closeWindow()
@@ -275,7 +310,8 @@ export class ServiceRegistry {
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),
       this.obsService.disconnect(),
-      this.platformManager.disconnectAll()
+      this.platformManager.disconnectAll(),
+      this.virtualCameraService.stop()
     ])
     this.db.close()
   }

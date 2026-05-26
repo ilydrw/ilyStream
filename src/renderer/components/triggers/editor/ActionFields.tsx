@@ -214,6 +214,34 @@ export function ActionFields({
         </div>
       )
 
+    case 'send_chat':
+      return (
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <FieldBlock label="Message Template">
+            <textarea
+              value={action.template}
+              onChange={(event) => onChange({ ...action, template: event.target.value })}
+              rows={4}
+              placeholder="Thanks {username}. Your request is queued."
+              className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-accent resize-y"
+            />
+          </FieldBlock>
+          <FieldBlock label="Destination">
+            <select
+              value={action.platform || 'source'}
+              onChange={(event) => onChange({ ...action, platform: event.target.value as any })}
+              className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
+            >
+              <option value="source">Source Platform</option>
+              <option value="tiktok">TikTok</option>
+              <option value="twitch">Twitch</option>
+              <option value="youtube">YouTube</option>
+              <option value="kick">Kick</option>
+            </select>
+          </FieldBlock>
+        </div>
+      )
+
     case 'obs_set_scene':
       return (
         <FieldBlock label="Scene Name">

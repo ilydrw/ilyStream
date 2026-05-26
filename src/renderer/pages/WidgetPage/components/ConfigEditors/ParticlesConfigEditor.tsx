@@ -14,6 +14,9 @@ import { NumberInput } from '../../../../components/ui/Inputs'
 import { Field, SwitchRow, ColorRow, Section } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
 
+const PARTICLE_LAYER_KEYS = ['followerHearts', 'fallingRoses', 'galaxy', 'ggs', 'heartMe'] as const
+type ParticleLayerKey = typeof PARTICLE_LAYER_KEYS[number]
+
 // ---- shared sub-components ------------------------------------------------
 
 function LayerRow({
@@ -232,8 +235,9 @@ export function ParticlesConfigEditor({
   const update = (partial: Partial<ParticlesWidgetConfig>) =>
     onChange({ ...draft, config: { ...cfg, ...partial } })
 
-  const previewLayer = (layer: keyof ParticlesWidgetConfig) => {
+  const previewLayer = (layer: ParticleLayerKey) => {
     const nextConfig: ParticlesWidgetConfig = {
+      ...cfg,
       followerHearts: { ...cfg.followerHearts, enabled: layer === 'followerHearts' },
       fallingRoses: { ...cfg.fallingRoses, enabled: layer === 'fallingRoses' },
       galaxy: { ...cfg.galaxy, enabled: layer === 'galaxy' },
@@ -244,7 +248,7 @@ export function ParticlesConfigEditor({
     onPreview?.({ ...draft, config: nextConfig })
   }
 
-  const activeCount = [cfg.followerHearts, cfg.fallingRoses, cfg.galaxy, cfg.ggs, cfg.heartMe]
+  const activeCount = PARTICLE_LAYER_KEYS.map((layer) => cfg[layer])
     .filter((l) => l.enabled).length
 
   return (

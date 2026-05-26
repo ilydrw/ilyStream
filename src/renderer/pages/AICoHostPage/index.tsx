@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {IconRobot, IconCpu, IconBolt, IconKey, IconWorld, IconMessage, IconPower, IconActivity, IconTerminal2} from '@tabler/icons-react'
-import { Toggle } from '../../components/ui/Inputs'
 import { toast } from '../../components/ui/Toast'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
+import type { StreamInsightSnapshot } from '../../../shared/stream-insights'
 import AICoHostIcon from '../../assets/ai-co-host.svg'
 
 export default function AICoHostPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected')
+  const [insights, setInsights] = useState<StreamInsightSnapshot | null>(null)
 
   useEffect(() => {
+    if (!window.api?.settings) {
+      setSettings(resolveAppSettings())
+      return
+    }
+
     window.api.settings.getAll().then((s: any) => {
       setSettings(resolveAppSettings(s))
     })
@@ -23,13 +29,39 @@ export default function AICoHostPage() {
     return unsubscribe
   }, [])
 
+  useEffect(() => {
+    if (!window.api?.ai?.getStreamInsights) return
+
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const nextInsights = await window.api.ai.getStreamInsights()
+        if (!cancelled) setInsights(nextInsights)
+      } catch {
+        if (!cancelled) setInsights(null)
+      }
+    }
+
+    void refresh()
+    const interval = window.setInterval(refresh, 5000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
   const onUpdate = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     if (!settings) return
     setSettings((prev) => (prev ? { ...prev, [key]: value } : null))
-    window.api.settings.set(key as string, value)
+    void window.api?.settings?.set?.(key as string, value)
   }
 
   const handleTestConnection = async () => {
+    if (!window.api?.ai) {
+      toast.error('AI bridge is only available in the Electron app')
+      return
+    }
+
     if (!settings?.aiEndpoint) {
       toast.error('Endpoint URL is required')
       return
@@ -231,19 +263,61 @@ export default function AICoHostPage() {
             </div>
 
             <div className="app-section-content">
-              <p className="text-xs text-white/40 leading-relaxed font-medium mb-6">
-                AI will automatically respond to audience questions after 12 seconds of human silence.
-              </p>
-              <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Autopilot Mode</span>
-                  <Toggle value={true} onChange={() => {}} />
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                <InsightStat label="Chat/Min" value={insights?.chatPerMinute?.toFixed(1) ?? '0.0'} />
+                <InsightStat label="Active" value={String(insights?.activeViewers ?? 0)} />
+                <InsightStat label="Trend" value={insights?.trend ?? 'quiet'} />
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <div className="flex items-start gap-3">
+                    <IconTerminal2 size={15} className="mt-0.5 text-[#d035f1]" />
+                    <p className="text-xs text-white/50 leading-relaxed font-medium">
+                      {insights?.recommendation || 'Waiting for stream events before recommending the next move.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-3">Top Terms</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(insights?.topTerms.length ? insights.topTerms : ['waiting']).map((term) => (
+                      <span key={term} className="rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/45">
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-3">Top Chatters</p>
+                  <div className="space-y-2">
+                    {(insights?.topChatters.length ? insights.topChatters : []).map((chatter) => (
+                      <div key={`${chatter.platform}:${chatter.username}`} className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white/55">{chatter.displayName}</span>
+                        <span className="font-mono text-white/25">{chatter.count}</span>
+                      </div>
+                    ))}
+                    {!insights?.topChatters.length && (
+                      <p className="text-xs font-medium text-white/25">No chatter data yet.</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function InsightStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/5 bg-black/30 p-3">
+      <p className="text-[9px] font-black uppercase tracking-widest text-white/20">{label}</p>
+      <p className="mt-2 truncate text-sm font-black text-white/70">{value}</p>
     </div>
   )
 }

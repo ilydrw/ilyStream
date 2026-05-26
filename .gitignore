@@ -2,6 +2,10 @@ node_modules/
 out/
 dist/
 build/
+native/virtual-camera/bin/
+native/virtual-camera/obj/
+native/virtual-camera/packages/
+native/virtual-camera/media-source/x64/
 coverage/
 src/node_modules/
 src/renderer/utils/native-audio/build/

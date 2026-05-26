@@ -123,6 +123,7 @@ export interface AlertSettings {
 export interface ChatSettings {
   maxMessages: number
   autoRelayEnabled: boolean
+  hostResponsesEnabled: boolean
   relayTagMode: RelayTagMode
   autoRelayPlatforms: RelayPlatformParticipation
 }
@@ -165,6 +166,7 @@ export interface IntegrationSettings {
   voicemod: { enabled: boolean; host: string; apiKey: string }
   vtube: { enabled: boolean; host: string; port: number; token: string }
   discord: { enabled: boolean; webhookUrl: string; botToken: string }
+  streamerbot: { enabled: boolean; wsUrl: string }
 }
 
 export interface UISettings {
@@ -206,10 +208,13 @@ export interface AppSettings {
   interfaceDensity: InterfaceDensity
   reducedMotion: boolean
   chatMaxMessages: number
+  chatHostResponsesEnabled: boolean
   obsHost: string
   obsPort: number
   obsPassword: string
   obsEnabled: boolean
+  streamerbotEnabled: boolean
+  streamerbotWsUrl: string
   streamingWidth: number
   streamingHeight: number
   aiEnabled: boolean
@@ -233,8 +238,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     superfan: { enabled: true, assetId: '', template: '{displayName} joined the Superfan club!', color: '#fef3c7', backgroundColor: 'rgba(0, 0, 0, 0.05)', borderColor: 'gradient', fontSize: 46, fontWeight: 800, textShadow: '0 4px 12px rgba(0,0,0,0.5)', layout: 'stacked', animationIn: 'zoom', animationOut: 'fade', durationMs: 5000, imageTop: 0, imageLeft: 0, soundEnabled: true, soundId: '', soundVolume: 1 },
     top: 10, left: 50
   },
-  chat: { maxMessages: 500, autoRelayEnabled: false, relayTagMode: 'platform-and-user', autoRelayPlatforms: DEFAULT_AUTO_RELAY_PLATFORMS },
-  ai: { enabled: false, apiKey: '', model: 'gpt-4', endpoint: 'https://api.antigravity.com/v1/chat/completions', systemPrompt: 'You are ilyStream AI...', maxTokens: 500 },
+  chat: { maxMessages: 500, autoRelayEnabled: false, hostResponsesEnabled: true, relayTagMode: 'platform-and-user', autoRelayPlatforms: DEFAULT_AUTO_RELAY_PLATFORMS },
+  ai: {
+    enabled: false,
+    apiKey: '',
+    model: 'gpt-4',
+    endpoint: 'https://api.antigravity.com/v1/chat/completions',
+    systemPrompt: 'You are an upbeat ilyStream co-host. Keep replies short, specific, playful, and safe for a broad audience.',
+    maxTokens: 500
+  },
   spotify: { clientId: '', accessToken: '', refreshToken: '', tokenExpiresAt: 0, songRequestsEnabled: true, playEnabled: true, skipEnabled: true, allowExplicit: true, maxQueueLength: 0, maxPerUser: 3, userId: '', displayName: '', votesRequired: 3 },
   goals: {
     follower: { enabled: false, title: 'Follower Goal', target: 100, color: '#00a3ff' },
@@ -247,7 +259,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     hue: { bridgeIp: '', username: '', selectedLightIds: [], flashOnFollow: true, flashOnGift: true, flashDurationMs: 5000 },
     voicemod: { enabled: false, host: '127.0.0.1', apiKey: '' },
     vtube: { enabled: false, host: '127.0.0.1', port: 8001, token: '' },
-    discord: { enabled: false, webhookUrl: '', botToken: '' }
+    discord: { enabled: false, webhookUrl: '', botToken: '' },
+    streamerbot: { enabled: false, wsUrl: 'ws://127.0.0.1:8080' }
   },
   ui: { theme: 'dark', accentColor: '#19c8ff', density: 'comfortable', reducedMotion: false },
   streaming: { enabled: false, rtmpUrl: 'rtmp://...', streamKey: '', bitrate: 6000, fps: 60, width: 1920, height: 1080 },
@@ -262,10 +275,13 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   interfaceDensity: 'comfortable',
   reducedMotion: false,
   chatMaxMessages: 500,
+  chatHostResponsesEnabled: true,
   obsHost: '127.0.0.1',
   obsPort: 4455,
   obsPassword: '',
   obsEnabled: false,
+  streamerbotEnabled: false,
+  streamerbotWsUrl: 'ws://127.0.0.1:8080',
   streamingWidth: 1920,
   streamingHeight: 1080,
   aiEnabled: false,
@@ -340,6 +356,7 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     chat: {
       maxMessages: get('chatMaxMessages', flatValues.chat?.maxMessages ?? s.chat.maxMessages),
       autoRelayEnabled: get('chatAutoRelayEnabled', flatValues.chat?.autoRelayEnabled ?? s.chat.autoRelayEnabled),
+      hostResponsesEnabled: get('chatHostResponsesEnabled', flatValues.chat?.hostResponsesEnabled ?? s.chat.hostResponsesEnabled),
       relayTagMode: get('chatRelayTagMode', flatValues.chat?.relayTagMode ?? s.chat.relayTagMode),
       autoRelayPlatforms: (flatValues.chat?.autoRelayPlatforms ?? s.chat.autoRelayPlatforms) as RelayPlatformParticipation
     },
@@ -380,6 +397,10 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         enabled: get('discordEnabled', flatValues.integrations?.discord?.enabled ?? s.integrations.discord.enabled),
         webhookUrl: get('discordWebhookUrl', flatValues.integrations?.discord?.webhookUrl ?? s.integrations.discord.webhookUrl),
         botToken: get('discordBotToken', flatValues.integrations?.discord?.botToken ?? s.integrations.discord.botToken)
+      },
+      streamerbot: {
+        enabled: get('streamerbotEnabled', flatValues.integrations?.streamerbot?.enabled ?? s.integrations.streamerbot.enabled),
+        wsUrl: get('streamerbotWsUrl', flatValues.integrations?.streamerbot?.wsUrl ?? s.integrations.streamerbot.wsUrl)
       }
     },
     tts: {
@@ -544,10 +565,13 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     interfaceDensity: nested.ui.density,
     reducedMotion: nested.ui.reducedMotion,
     chatMaxMessages: nested.chat.maxMessages,
+    chatHostResponsesEnabled: nested.chat.hostResponsesEnabled,
     obsHost: nested.integrations.obs.host,
     obsPort: nested.integrations.obs.port,
     obsPassword: nested.integrations.obs.password,
     obsEnabled: nested.integrations.obs.enabled,
+    streamerbotEnabled: nested.integrations.streamerbot.enabled,
+    streamerbotWsUrl: nested.integrations.streamerbot.wsUrl,
     streamingWidth: nested.streaming.width,
     streamingHeight: nested.streaming.height,
     aiEnabled: nested.ai.enabled,

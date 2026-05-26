@@ -78,6 +78,11 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     outputId: 'vertical', format: verticalOutput?.inputFormat ?? captureInputFormat, fps: verticalOutput?.fps ?? outputFps,
     bitrate: verticalOutput?.bitrateKbps ?? outputBitrateKbps, width: verticalOutput?.width ?? 1080, height: verticalOutput?.height ?? 1920, codec: verticalOutput?.codec
   }, () => { if (isStreaming) void window.api?.streaming?.stop?.() })
+  const virtualCameraOutput = streamOutputs.find(output => output.id === 'virtual-camera-session')
+  const { workerRef: virtualCameraEncoderWorkerRef } = useVideoEncoder(!isPreview && Boolean(virtualCameraOutput?.active), {
+    outputId: 'virtual-camera-session', format: virtualCameraOutput?.inputFormat ?? 'bgra', fps: virtualCameraOutput?.fps ?? outputFps,
+    bitrate: virtualCameraOutput?.bitrateKbps ?? outputBitrateKbps, width: virtualCameraOutput?.width ?? 1280, height: virtualCameraOutput?.height ?? 720, codec: virtualCameraOutput?.codec
+  }, () => { if (virtualCameraOutput?.active) void window.api?.virtualCamera?.stop?.() })
 
   // Audio IconClock Sync
   useEffect(() => {
@@ -97,7 +102,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const { fps } = useRenderLoop({
     canvasRef, secondaryPreviewCanvasRef, activeScene, aspectRatio, outputFps, outputActive, previewMode,
     videoRefs, mediaFrameCache, browserFrameCache, imageCache, audioClockRef, encoderWorkerRef,
-    horizontalEncoderWorkerRef, verticalEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
+    horizontalEncoderWorkerRef, verticalEncoderWorkerRef, virtualCameraEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
     captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible
   })
 

@@ -14,6 +14,7 @@ import { YouTubeConnector } from './youtube/youtube-connector'
 import { KickConnector } from './kick/kick-connector'
 import { Database } from '../db/database'
 import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
+import { resolveAppSettings } from '../../shared/app-settings'
 
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
@@ -31,7 +32,7 @@ export class PlatformManager extends EventEmitter {
       new KickConnector()
     ]
 
-    const autoReconnect = !!this.db.getSetting('platformAutoReconnect')
+    const autoReconnect = resolvePlatformAutoReconnect(this.db.getAllSettings?.() || {})
 
     for (const connector of platforms) {
       this.connectors.set(connector.platform, connector)
@@ -157,4 +158,8 @@ export class PlatformManager extends EventEmitter {
   getViewerCounts(): Record<Platform, number> {
     return { ...this.viewerCounts } as Record<Platform, number>
   }
+}
+
+export function resolvePlatformAutoReconnect(settings: Record<string, unknown>): boolean {
+  return resolveAppSettings(settings).platform.autoReconnect
 }

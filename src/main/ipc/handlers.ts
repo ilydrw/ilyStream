@@ -89,6 +89,10 @@ export function registerIpcHandlers(
     if (!changedKeys || changedKeys.some(k => k.startsWith('govee') || k.includes('govee'))) {
       services.goveeService.applySettings(settings)
     }
+
+    if (!changedKeys || changedKeys.some(k => k.startsWith('streamerbot'))) {
+      services.streamerbotBridgeService.applySettings(settings.integrations.streamerbot)
+    }
     
     if (!changedKeys || changedKeys.includes('platformAutoReconnect')) {
       platformManager.setAutoReconnect(settings.platform.autoReconnect)
@@ -123,9 +127,9 @@ export function registerIpcHandlers(
   registerSpotifyHandlers(window, spotifyService)
   registerHueHandlers(hueService, services.goveeService)
   registerWindowHandlers(window)
-  registerAIHandlers(aiService)
+  registerAIHandlers(aiService, services.streamIntelligenceService)
   registerRemoteAuthHandlers(remoteAuthService)
-  registerStreamingHandlers(services.streamingService)
+  registerStreamingHandlers(services.streamingService, services.virtualCameraService)
   registerStudioHandlers(db, overlayServer, services.browserSourceService)
   registerStatsHandlers(services.statsService)
   registerDeviceHandlers(services.deviceApi)

@@ -5,8 +5,9 @@ import {
   type RecordingConfig,
   type VideoFramePayload
 } from '../../services/streaming-service'
+import type { VirtualCameraService } from '../../services/virtual-camera-service'
 
-export function registerStreamingHandlers(streamingService: StreamingService): void {
+export function registerStreamingHandlers(streamingService: StreamingService, virtualCameraService?: VirtualCameraService): void {
   ipcMain.handle('streaming:start', async (_event, config: StreamConfig) => {
     try {
       await streamingService.startStream(config)
@@ -56,10 +57,21 @@ export function registerStreamingHandlers(streamingService: StreamingService): v
 
   // The high-frequency frame feeding handler
   ipcMain.on('streaming:feed-frame', (_event, frameData: Buffer | VideoFramePayload) => {
+    if (isVirtualCameraFrame(frameData)) {
+      virtualCameraService?.feedVideoFrame(frameData)
+      return
+    }
+
     streamingService.feedVideoFrame(frameData)
   })
 
   ipcMain.on('streaming:feed-audio', (_event, audioData: Buffer) => {
     streamingService.feedAudioFrame(audioData)
   })
+}
+
+function isVirtualCameraFrame(frameData: Buffer | VideoFramePayload): frameData is VideoFramePayload {
+  return !Buffer.isBuffer(frameData) &&
+    frameData?.outputId === 'virtual-camera-session' &&
+    frameData?.format === 'bgra'
 }

@@ -204,3 +204,43 @@ describe('resolveAppSettings Spotify aliases', () => {
     expect(settings.spotifyMaxPerUser).toBe(2)
   })
 })
+
+describe('resolveAppSettings chat aliases', () => {
+  it('returns the host chat response toggle from flat and nested settings', () => {
+    const defaults = resolveAppSettings()
+    const flat = resolveAppSettings({ chatHostResponsesEnabled: false })
+    const nested = resolveAppSettings({ chat: { hostResponsesEnabled: false } })
+
+    expect(defaults.chat.hostResponsesEnabled).toBe(true)
+    expect(defaults.chatHostResponsesEnabled).toBe(true)
+    expect(flat.chat.hostResponsesEnabled).toBe(false)
+    expect(flat.chatHostResponsesEnabled).toBe(false)
+    expect(nested.chat.hostResponsesEnabled).toBe(false)
+    expect(nested.chatHostResponsesEnabled).toBe(false)
+  })
+})
+
+describe('resolveAppSettings Streamer.bot aliases', () => {
+  it('returns bridge settings from flat and nested settings', () => {
+    const defaults = resolveAppSettings()
+    const flat = resolveAppSettings({
+      streamerbotEnabled: true,
+      streamerbotWsUrl: 'ws://localhost:9090'
+    })
+    const nested = resolveAppSettings({
+      integrations: {
+        streamerbot: {
+          enabled: true,
+          wsUrl: 'ws://192.168.0.2:8080'
+        }
+      }
+    })
+
+    expect(defaults.integrations.streamerbot.enabled).toBe(false)
+    expect(defaults.streamerbotWsUrl).toBe('ws://127.0.0.1:8080')
+    expect(flat.integrations.streamerbot.enabled).toBe(true)
+    expect(flat.streamerbotWsUrl).toBe('ws://localhost:9090')
+    expect(nested.streamerbotEnabled).toBe(true)
+    expect(nested.integrations.streamerbot.wsUrl).toBe('ws://192.168.0.2:8080')
+  })
+})

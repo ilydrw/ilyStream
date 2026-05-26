@@ -29,34 +29,63 @@ function makeOrchestrator(
   overrides: {
     handleStreamEvent?: ReturnType<typeof vi.fn>
     recordEvent?: ReturnType<typeof vi.fn>
+    sendManualMessage?: ReturnType<typeof vi.fn>
+    settings?: Record<string, unknown>
+    capabilities?: Record<string, { platform: string; canSend: boolean; reason?: string }>
   } = {}
 ) {
-  const platformManager = new EventEmitter()
+  const platformManager = Object.assign(new EventEmitter(), {
+    getChatCapabilities: vi.fn(() => overrides.capabilities || {
+      tiktok: { platform: 'tiktok', canSend: false, reason: 'Not ready' },
+      twitch: { platform: 'twitch', canSend: true },
+      youtube: { platform: 'youtube', canSend: false, reason: 'Not connected' },
+      kick: { platform: 'kick', canSend: false, reason: 'Not connected' }
+    })
+  })
   const overlayServer = Object.assign(new EventEmitter(), {
     handleStreamEvent: overrides.handleStreamEvent || vi.fn(),
-    setNowPlaying: vi.fn()
+    setNowPlaying: vi.fn(),
+    pushAlert: vi.fn()
   })
   const spotifyService = Object.assign(new EventEmitter(), {
     processEvent: vi.fn().mockResolvedValue(spotifyHandled),
     getNowPlaying: vi.fn(() => ({ queue: [] }))
   })
-  const ttsEngine = { processEvent: vi.fn() }
+  const chatRelayService = {
+    sendManualMessage: overrides.sendManualMessage || vi.fn().mockResolvedValue([{ platform: 'twitch', ok: true }])
+  }
+  const ttsEngine = { processEvent: vi.fn(), speak: vi.fn() }
+  const economyService = Object.assign(new EventEmitter(), {
+    claimPointsDrop: vi.fn(),
+    getPoints: vi.fn().mockResolvedValue(0),
+    spendPoints: vi.fn().mockResolvedValue(false),
+    addPoints: vi.fn()
+  })
+  const loyaltyService = Object.assign(new EventEmitter(), {
+    recordEvent: vi.fn(),
+    recordSongRequest: vi.fn()
+  })
 
-  const statsService = { recordEvent: overrides.recordEvent || vi.fn() }
+  const statsService = {
+    recordEvent: overrides.recordEvent || vi.fn(),
+    recordSongRequest: vi.fn()
+  }
 
   const orchestrator = new EventOrchestrator(
     platformManager as any,
-    { addEvent: vi.fn(), pruneEventHistory: vi.fn(), getAllSettings: vi.fn(() => ({})) } as any,
+    { addEvent: vi.fn(), pruneEventHistory: vi.fn(), getAllSettings: vi.fn(() => overrides.settings || {}) } as any,
     overlayServer as any,
     { processEvent: vi.fn() } as any,
     spotifyService as any,
+    chatRelayService as any,
     ttsEngine as any,
     {} as any,
     Object.assign(new EventEmitter(), { evaluate: vi.fn() }) as any,
     { handleTrigger: vi.fn() } as any,
     {} as any,
     {} as any,
-    Object.assign(new EventEmitter()) as any,
+    economyService as any,
+    loyaltyService as any,
     statsService as any,
     {} as any,
     { getState: vi.fn(() => ({ devices: [] })) } as any,
@@ -64,7 +93,7 @@ function makeOrchestrator(
   )
 
   orchestrator.init()
-  return { orchestrator, platformManager, spotifyService, ttsEngine, statsService, overlayServer }
+  return { orchestrator, platformManager, spotifyService, chatRelayService, ttsEngine, statsService, overlayServer, economyService, loyaltyService }
 }
 
 async function flushAsyncHandlers() {
@@ -123,5 +152,47 @@ describe('EventOrchestrator Spotify handling', () => {
 
     expect(overlayServer.handleStreamEvent).toHaveBeenCalledTimes(1)
     expect(spotifyService.processEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a host chat confirmation when Spotify queues a song request', async () => {
+    const { spotifyService, chatRelayService } = makeOrchestrator(false)
+
+    spotifyService.emit('song-requested', {
+      id: 'request-1',
+      requestedBy: 'viewer',
+      displayName: 'Viewer',
+      platform: 'twitch',
+      track: {
+        name: 'Tiny Dancer',
+        artists: ['Elton John']
+      }
+    })
+    await flushAsyncHandlers()
+
+    expect(chatRelayService.sendManualMessage).toHaveBeenCalledWith(
+      ['twitch'],
+      'Queued "Tiny Dancer by Elton John" for Viewer.'
+    )
+  })
+
+  it('respects the host chat response setting for song request confirmations', async () => {
+    const sendManualMessage = vi.fn().mockResolvedValue([{ platform: 'twitch', ok: true }])
+    const { spotifyService } = makeOrchestrator(false, {
+      sendManualMessage,
+      settings: { chatHostResponsesEnabled: false }
+    })
+
+    spotifyService.emit('song-requested', {
+      id: 'request-2',
+      requestedBy: 'viewer',
+      platform: 'twitch',
+      track: {
+        name: 'Tiny Dancer',
+        artists: ['Elton John']
+      }
+    })
+    await flushAsyncHandlers()
+
+    expect(sendManualMessage).not.toHaveBeenCalled()
   })
 })

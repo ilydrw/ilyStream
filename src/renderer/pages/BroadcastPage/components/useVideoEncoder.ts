@@ -5,7 +5,7 @@ export function useVideoEncoder(
   outputActive: boolean,
   config: {
     outputId?: string
-    format: 'h264' | 'mjpeg'
+    format: 'h264' | 'mjpeg' | 'bgra'
     fps: number
     bitrate: number
     width: number
@@ -36,7 +36,11 @@ export function useVideoEncoder(
           outputId: config.outputId,
           data: new Uint8Array(buffer),
           isKeyFrame: isKey === true,
-          timestamp: timestamp
+          timestamp: timestamp,
+          width: config.width,
+          height: config.height,
+          stride: config.format === 'bgra' ? config.width * 4 : undefined,
+          format: config.format
         } as any)
       } else if (type === 'error') {
         console.error('[VideoEncoder] Worker failed:', message)

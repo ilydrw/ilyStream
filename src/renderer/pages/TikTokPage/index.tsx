@@ -1,7 +1,8 @@
-import {IconBrowser, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
+import {IconAlertCircle, IconBrowser, IconCircleCheck, IconMessage2, IconPlayerPlay, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
+import type { TikTokSenderStatus } from '../../../main/platforms/tiktok/tiktok-chat-sender'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -14,9 +15,19 @@ const FIELDS = [
   { key: 'username', label: 'TikTok username', type: 'text', placeholder: '@username' },
   { key: 'sessionId', label: 'Session ID', type: 'password', placeholder: 'Optional for sending' },
   { key: 'ttTargetIdc', label: 'tt-target-idc', type: 'text', placeholder: 'useast1a' },
-  { key: 'signApiKey', label: 'Sign API key', type: 'password', placeholder: 'Required for TikTok sendMessage' },
+  { key: 'signApiKey', label: 'Sign API key', type: 'password', placeholder: 'Optional connector signing key' },
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'TikTok stream key' }
 ]
+
+const DEFAULT_SENDER_STATUS: TikTokSenderStatus = {
+  isWindowOpen: false,
+  isLoggedIn: false,
+  isChatReady: false,
+  isOnTikTok: false,
+  statusMessage: 'Open the TikTok host chat sender',
+  maxMessageLength: 150,
+  sendCooldownMs: 1500
+}
 
 export default function TikTokPage() {
   const statuses = useConnectionStore((s) => s.statuses)
@@ -26,7 +37,8 @@ export default function TikTokPage() {
   const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, string>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
-  const [senderStatus, setSenderStatus] = useState({ isWindowOpen: false, isChatReady: false })
+  const [senderStatus, setSenderStatus] = useState<TikTokSenderStatus>(DEFAULT_SENDER_STATUS)
+  const [senderTest, setSenderTest] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; message?: string }>({ state: 'idle' })
 
   const status = statuses[PLATFORM_ID] || 'disconnected'
   const error = errors[PLATFORM_ID] || null
@@ -35,19 +47,29 @@ export default function TikTokPage() {
   const isConnecting = status === 'connecting'
 
   useEffect(() => {
+    if (!window.api?.platform) return
+
     window.api.platform.getConfigs().then((configs) => {
-      if (configs[PLATFORM_ID]) {
-        setConfig(configs[PLATFORM_ID])
+      const platformConfig = Array.isArray(configs)
+        ? configs.find((item: any) => item?.platform === PLATFORM_ID)
+        : configs?.[PLATFORM_ID]
+      if (platformConfig) {
+        setConfig(platformConfig)
       }
     })
 
     const updateCaps = () => {
       window.api.platform.getChatCapabilities().then((caps) => {
-        if (caps[PLATFORM_ID]) {
-          setCanSend(caps[PLATFORM_ID])
+        const capability = Array.isArray(caps)
+          ? caps.find((item: any) => item?.platform === PLATFORM_ID)
+          : caps?.[PLATFORM_ID]
+        if (capability) {
+          setCanSend(capability)
         }
       })
-      window.api.platform.tiktok.getSenderStatus().then(setSenderStatus)
+      window.api.platform.tiktok?.getSenderStatus?.().then((status: TikTokSenderStatus) => {
+        setSenderStatus({ ...DEFAULT_SENDER_STATUS, ...status })
+      })
     }
 
     updateCaps()
@@ -59,8 +81,49 @@ export default function TikTokPage() {
     () => recentEvents.filter((event) => event.platform === PLATFORM_ID).slice(0, 15),
     [recentEvents]
   )
+  const senderChecks = [
+    { label: 'Window', ok: senderStatus.isWindowOpen },
+    { label: 'TikTok', ok: senderStatus.isOnTikTok },
+    { label: 'Logged in', ok: senderStatus.isLoggedIn },
+    { label: 'Chat ready', ok: senderStatus.isChatReady }
+  ]
+  const senderStatusClass = senderStatus.isChatReady
+    ? 'bg-success/10 text-success'
+    : senderStatus.isWindowOpen
+      ? 'bg-warning/10 text-warning'
+      : 'bg-white/5 text-white/40'
+  const senderCooldownSeconds = senderStatus.nextSendAvailableAt
+    ? Math.max(0, Math.ceil((senderStatus.nextSendAvailableAt - Date.now()) / 1000))
+    : 0
+  const senderSetupSteps = [
+    {
+      label: 'Open sender window',
+      detail: senderStatus.isWindowOpen ? 'Window is available' : 'Launch the visible sender browser',
+      ok: senderStatus.isWindowOpen
+    },
+    {
+      label: 'Sign in to TikTok',
+      detail: senderStatus.isLoggedIn ? 'Host account detected' : 'Complete login in the visible TikTok window',
+      ok: senderStatus.isLoggedIn
+    },
+    {
+      label: 'Open LIVE chat',
+      detail: senderStatus.isChatReady ? 'Chat input is ready' : 'Navigate to LIVE Studio chat or chat pop-out',
+      ok: senderStatus.isChatReady
+    },
+    {
+      label: 'Send test message',
+      detail: senderTest.state === 'sent'
+        ? 'Test message sent'
+        : senderTest.state === 'failed'
+          ? senderTest.message || 'Test failed'
+          : 'Verify the session before enabling chat recipes',
+      ok: senderTest.state === 'sent'
+    }
+  ]
 
   const handleConnect = async () => {
+    if (!window.api?.platform) return
     try {
       await window.api.platform.connect({
         platform: PLATFORM_ID,
@@ -73,6 +136,7 @@ export default function TikTokPage() {
   }
 
   const handleDisconnect = async () => {
+    if (!window.api?.platform) return
     await window.api.platform.disconnect(PLATFORM_ID)
   }
 
@@ -81,11 +145,32 @@ export default function TikTokPage() {
   }
 
   const handleOpenSender = async () => {
+    if (!window.api?.platform?.tiktok) return
     await window.api.platform.tiktok.openSender()
   }
 
   const handleCloseSender = async () => {
+    if (!window.api?.platform?.tiktok) return
     await window.api.platform.tiktok.closeSender()
+  }
+
+  const handleTestSender = async () => {
+    if (!window.api?.platform) return
+    setSenderTest({ state: 'sending' })
+    try {
+      const results = await window.api.platform.sendChatMessage({
+        platforms: ['tiktok'],
+        text: 'ilyStream sender test'
+      })
+      const result = results?.[0]
+      if (result?.ok) {
+        setSenderTest({ state: 'sent', message: 'Test message sent.' })
+      } else {
+        setSenderTest({ state: 'failed', message: result?.error || 'TikTok sender was not ready.' })
+      }
+    } catch (err: any) {
+      setSenderTest({ state: 'failed', message: err?.message || 'Could not send the test message.' })
+    }
   }
 
   return (
@@ -208,19 +293,18 @@ export default function TikTokPage() {
             <div className="app-section-head">
               <div>
                 <h2>Host Chat Sender</h2>
-                <p>Visible session for sending chat messages as the host.</p>
+                <p>Visible browser session for sending messages from the host account.</p>
               </div>
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${senderStatus.isChatReady ? 'bg-success/10 text-success' : 'bg-white/5 text-white/40'}`}>
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${senderStatusClass}`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${senderStatus.isChatReady ? 'bg-success animate-pulse' : 'bg-white/20'}`} />
-                {senderStatus.isChatReady ? 'Ready' : 'Not Connected'}
+                {senderStatus.isChatReady ? 'Ready' : 'Setup Needed'}
               </div>
             </div>
             <div className="p-8">
               <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 mb-6">
                 <p className="text-sm text-white/50 leading-relaxed mb-4">
-                  To send messages as yourself (the host), you must log in via the manual session window. 
-                  Once logged in, navigate to your <strong className="text-white">LIVE Dashboard</strong> or 
-                  open your <strong className="text-white">Chat Pop-out</strong>.
+                  To send messages as yourself, log in inside the sender window and keep it on the LIVE dashboard or chat pop-out.
+                  ilyStream only controls that visible session after you authenticate it.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
@@ -229,9 +313,66 @@ export default function TikTokPage() {
                   </div>
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
                     <IconWifi size={16} className="text-white/40" />
-                    <span className="text-xs font-bold text-white/70">Direct Injection</span>
+                    <span className="text-xs font-bold text-white/70">Visible Browser Control</span>
+                  </div>
+                  <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
+                    <IconSend size={16} className="text-white/40" />
+                    <span className="text-xs font-bold text-white/70">{senderStatus.maxMessageLength} char cap</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="mb-6 grid gap-3">
+                {senderSetupSteps.map((step, index) => (
+                  <div
+                    key={step.label}
+                    className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                      step.ok ? 'border-success/20 bg-success/5' : 'border-white/5 bg-white/[0.02]'
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-black ${
+                      step.ok ? 'border-success/40 text-success' : 'border-white/10 text-white/30'
+                    }`}>
+                      {step.ok ? <IconCircleCheck size={14} /> : index + 1}
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-black uppercase tracking-widest ${step.ok ? 'text-success' : 'text-white/55'}`}>
+                        {step.label}
+                      </p>
+                      <p className={`mt-1 text-[11px] font-semibold ${senderTest.state === 'failed' && step.label === 'Send test message' ? 'text-danger/80' : 'text-white/35'}`}>
+                        {step.detail}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {senderChecks.map((check) => (
+                  <div
+                    key={check.label}
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                      check.ok ? 'border-success/20 bg-success/5 text-success' : 'border-white/5 bg-white/[0.02] text-white/35'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-widest">{check.label}</span>
+                    <span className="text-xs font-black">{check.ok ? 'OK' : '-'}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-6 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-xs font-bold text-white/60">{senderStatus.statusMessage}</p>
+                  {senderCooldownSeconds > 0 && (
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/25">
+                      Cooldown {senderCooldownSeconds}s
+                    </span>
+                  )}
+                </div>
+                {senderStatus.lastError && (
+                  <p className="mt-2 text-[10px] font-semibold text-danger/80">{senderStatus.lastError}</p>
+                )}
               </div>
               
               <div className="flex items-center gap-4">
@@ -249,6 +390,15 @@ export default function TikTokPage() {
                     Close
                   </button>
                 )}
+                <button
+                  onClick={handleTestSender}
+                  disabled={!senderStatus.isChatReady || senderTest.state === 'sending'}
+                  className="app-button-secondary !h-12 !px-6 text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={senderStatus.isChatReady ? 'Send a short TikTok test message' : 'Finish sender setup before testing'}
+                >
+                  {senderTest.state === 'sending' ? <IconAlertCircle size={16} /> : <IconPlayerPlay size={16} />}
+                  Test
+                </button>
               </div>
             </div>
           </section>

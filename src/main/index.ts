@@ -31,6 +31,12 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+if (is.dev) {
+  app.commandLine.appendSwitch('disable-http-cache')
+  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+  app.commandLine.appendSwitch('disk-cache-size', '0')
+  app.commandLine.appendSwitch('media-cache-size', '0')
+}
 
 // Global service registry
 let services: ServiceRegistry | null = null
@@ -259,22 +265,21 @@ function createWindow(): void {
     console.log('[main] Main window recovered from unresponsive state.')
   })
 
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    // Electron 30+ uses a single object for params. Earlier versions use multiple arguments.
-    let logMessage = message
-    let logLevel = level
-    let logLine = line
-    let logSource = sourceId
-
-    if (typeof level === 'object' && level !== null) {
-      const details = level as any
-      logLevel = details.level
-      logMessage = details.message
-      logLine = details.line
-      logSource = details.sourceId
+  mainWindow.webContents.on('console-message', (event) => {
+    const details = event as Electron.Event & {
+      level?: number | string
+      message?: string
+      line?: number
+      lineNumber?: number
+      sourceId?: string
     }
-
-    const label = ['debug', 'info', 'warning', 'error'][logLevel as number] || 'log'
+    const logLevel = details.level ?? 'info'
+    const logMessage = details.message ?? ''
+    const logLine = details.lineNumber ?? details.line
+    const logSource = details.sourceId
+    const label = typeof logLevel === 'number'
+      ? ['debug', 'info', 'warning', 'error'][logLevel] || 'log'
+      : logLevel
     console.log(`[renderer:${label}] ${logMessage}${logSource ? ` (${logSource}:${logLine})` : ''}`)
   })
 

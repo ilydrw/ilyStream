@@ -67,6 +67,8 @@ export const SCHEMA_SQL = `
     username TEXT,
     platform TEXT,
     points INTEGER DEFAULT 0,
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
     total_likes INTEGER DEFAULT 0,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (username, platform)
@@ -192,6 +194,8 @@ export function runMigrations(db: BetterSqlite3.Database) {
   ensureColumn(db, 'voice_profiles', 'provider', `TEXT NOT NULL DEFAULT '${DEFAULT_TTS_PROVIDER}'`)
   ensureColumn(db, 'voice_profiles', 'kokoro_voice', `TEXT NOT NULL DEFAULT '${DEFAULT_KOKORO_VOICE}'`)
   ensureColumn(db, 'voice_profiles', 'meta_json', `TEXT NOT NULL DEFAULT '{}'`)
+  ensureColumn(db, 'economy_users', 'xp', 'INTEGER DEFAULT 0')
+  ensureColumn(db, 'economy_users', 'level', 'INTEGER DEFAULT 1')
 
   // One-time data fix: prior versions allowed total_follows to climb past 1
   // when the same user fired multiple follow events (TikTok social spam,

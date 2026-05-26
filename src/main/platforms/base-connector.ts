@@ -114,7 +114,7 @@ export abstract class BaseConnector extends EventEmitter {
   }
 
   protected handleError(error: unknown, context: string, recoverable = true): void {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = formatConnectorErrorMessage(error)
     console.error(`[${this.platform}] ${context}: ${message}`)
     this.lastError = { platform: this.platform, context, message, recoverable, timestamp: new Date() }
     this.setStatus('error')
@@ -170,4 +170,31 @@ export abstract class BaseConnector extends EventEmitter {
 
   setAutoReconnect(enabled: boolean): void { this.autoReconnect = enabled }
   setMaxReconnectAttempts(max: number): void { this.maxReconnectAttempts = max }
+}
+
+export function formatConnectorErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || error.name
+  }
+
+  if (typeof error === 'string') return error
+  if (error === null) return 'null'
+  if (error === undefined) return 'undefined'
+  if (typeof error !== 'object') return String(error)
+
+  const record = error as Record<string, unknown>
+  for (const key of ['message', 'error', 'reason', 'statusText', 'code']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  }
+
+  try {
+    const json = JSON.stringify(record, (_key, value) => (
+      typeof value === 'bigint' ? value.toString() : value
+    ))
+    if (json && json !== '{}') return json
+  } catch {}
+
+  return Object.prototype.toString.call(error)
 }

@@ -6,6 +6,7 @@ import { WidgetCard } from './components/WidgetCard'
 import { NewWidgetModal } from './components/NewWidgetModal'
 import { WidgetEditorModal } from './components/WidgetEditorModal'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { buildWidgetOverlayUrl, createWidgetFromTemplate } from './widget-customization'
 
 export default function WidgetPage() {
   const [widgets, setWidgets] = useState<Widget[]>([])
@@ -69,16 +70,11 @@ export default function WidgetPage() {
 
   const createWidget = async (template: WidgetTemplate) => {
     if (!window.api?.widgets) {
-      console.error('window.api.widgets is not available');
-      return;
+      console.error('window.api.widgets is not available')
+      return
     }
 
-    const widget: Widget = {
-      id: crypto.randomUUID(),
-      name: `${template.label}`,
-      type: template.type,
-      config: template.defaultConfig
-    }
+    const widget = createWidgetFromTemplate(template)
 
     try {
       await window.api.widgets.save(widget)
@@ -92,7 +88,7 @@ export default function WidgetPage() {
   }
 
   const saveWidget = async (widget: Widget) => {
-    if (!window.api?.widgets) return;
+    if (!window.api?.widgets) return
     try {
       await window.api.widgets.save(widget)
       setWidgets((prev) => prev.map((w) => (w.id === widget.id ? widget : w)))
@@ -102,7 +98,7 @@ export default function WidgetPage() {
   }
 
   const deleteWidget = async (id: string) => {
-    if (!window.api?.widgets) return;
+    if (!window.api?.widgets) return
     if (!confirm('Delete this widget? OBS browser sources pointing at this URL will go blank.')) {
       return
     }
@@ -115,8 +111,7 @@ export default function WidgetPage() {
   }
 
   const overlayUrlFor = (id: string) => {
-    if (!overlayPort) return null
-    return `http://127.0.0.1:${overlayPort}/overlay/${id}`
+    return buildWidgetOverlayUrl(id, overlayPort)
   }
 
   const copyUrl = (id: string) => {

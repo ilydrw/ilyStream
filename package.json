@@ -1,18 +1,21 @@
 {
   "name": "ilystream",
   "productName": "ilyStream",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "type": "module",
   "description": "Multi-platform livestream management interface with custom TTS",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build:native-audio": "npm exec -- node-gyp rebuild --directory=src/renderer/utils/native-audio",
+    "build:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/build.ps1",
+    "install:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/install.ps1",
+    "uninstall:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/uninstall.ps1",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build:native-audio && npm run build && electron-builder --win --publish never",
-    "release": "npm run build:native-audio && npm run build && electron-builder --win --publish always",
+    "package": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish never",
+    "release": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish always",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -36,6 +39,18 @@
       {
         "from": "resources/ilyStream-AppIcon.ico",
         "to": "ilyStream-AppIcon.ico"
+      },
+      {
+        "from": "native/virtual-camera/bin/x64/Release/IlyStreamVirtualCameraRegistrar.exe",
+        "to": "native/virtual-camera/IlyStreamVirtualCameraRegistrar.exe"
+      },
+      {
+        "from": "native/virtual-camera/bin/x64/Release/IlyStreamVirtualCameraBridge.exe",
+        "to": "native/virtual-camera/IlyStreamVirtualCameraBridge.exe"
+      },
+      {
+        "from": "native/virtual-camera/bin/x64/Release/VirtualCameraMediaSource.dll",
+        "to": "native/virtual-camera/VirtualCameraMediaSource.dll"
       }
     ],
     "win": {

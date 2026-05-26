@@ -64,6 +64,14 @@ export class ActionExecutor extends EventEmitter {
       case 'http_webhook':
         return this.executeWebhook(action, event)
 
+      case 'send_chat':
+        this.emit('send-chat', {
+          ...action,
+          platform: action.platform === 'source' ? event.platform : action.platform || event.platform,
+          message: this.fillTemplate(action.template, event)
+        }, event)
+        return { status: 'ran', summary: describeAction(action) }
+
       case 'run_command':
         this.emit('run-command', action, event)
         return { status: 'ran', summary: describeAction(action) }
@@ -240,6 +248,8 @@ function describeAction(action: Action): string {
       return `Show alert for ${Math.round(action.durationMs / 1000)}s`
     case 'http_webhook':
       return `Send ${action.method} to ${action.url || '(set URL)'}`
+    case 'send_chat':
+      return `Send chat: "${action.template || 'message'}"`
     case 'run_command':
       return `Run "${action.command || 'command'}"`
     case 'obs_set_scene':

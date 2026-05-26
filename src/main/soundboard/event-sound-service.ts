@@ -6,6 +6,7 @@ import type { AlertRule } from '../../shared/alert-rules'
 
 type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
+const GIFT_ALERT_AGGREGATION_MS = 150
 const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
 
 export class EventSoundService {
@@ -88,7 +89,7 @@ export class EventSoundService {
             }
             this.handleAlert('Gift', aggregatedEvent as any)
           }
-        }, 500)
+        }, GIFT_ALERT_AGGREGATION_MS)
       })
     }
   }
