@@ -7,6 +7,7 @@ import { is } from '@electron-toolkit/utils'
 import { Database } from '../../db/database'
 import { OverlayServer } from '../../overlay/overlay-server'
 import { BrowserSourceService, type BrowserSourceCaptureConfig } from '../../services/browser-source-service'
+import { sendToRenderer } from '../safe-send'
 
 let pendingDisplayMediaRequest: {
   sourceId: string
@@ -318,9 +319,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     console.log(`[StudioHandlers] Global Scene Change requested: ${sceneId}`)
     // Broadcast to all renderer windows so they can update their local stores
     BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed()) {
-        win.webContents.send('studio:active-scene-changed', sceneId)
-      }
+      sendToRenderer(win, 'studio:active-scene-changed', sceneId)
     })
     return true
   })

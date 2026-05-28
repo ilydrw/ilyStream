@@ -244,3 +244,39 @@ describe('resolveAppSettings Streamer.bot aliases', () => {
     expect(nested.integrations.streamerbot.wsUrl).toBe('ws://192.168.0.2:8080')
   })
 })
+
+describe('resolveAppSettings streaming aliases', () => {
+  it('returns broadcast defaults from flat and nested settings', () => {
+    const defaults = resolveAppSettings()
+    const flat = resolveAppSettings({
+      streamingRtmpUrl: 'rtmp://example.test/app',
+      streamingStreamKey: 'stream-key',
+      streamingBitrate: 4300,
+      streamingFps: 30
+    })
+    const nested = resolveAppSettings({
+      streaming: {
+        enabled: true,
+        rtmpUrl: 'rtmp://nested.test/app',
+        streamKey: 'nested-key',
+        bitrate: 5200,
+        fps: 60,
+        width: 1920,
+        height: 1080
+      }
+    })
+
+    expect(defaults.streaming.bitrate).toBe(4500)
+    expect(defaults.streaming.fps).toBe(30)
+    expect(flat.streaming.rtmpUrl).toBe('rtmp://example.test/app')
+    expect(flat.streaming.streamKey).toBe('stream-key')
+    expect(flat.streaming.bitrate).toBe(4300)
+    expect(flat.streaming.fps).toBe(30)
+    expect(flat.streamingBitrate).toBe(4300)
+    expect(flat.streamingFps).toBe(30)
+    expect(nested.streamingRtmpUrl).toBe('rtmp://nested.test/app')
+    expect(nested.streamingStreamKey).toBe('nested-key')
+    expect(nested.streamingBitrate).toBe(5200)
+    expect(nested.streamingFps).toBe(60)
+  })
+})

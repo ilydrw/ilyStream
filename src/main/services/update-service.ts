@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import log from 'electron-log'
 import pkg from 'electron-updater'
+import { sendToRenderer } from '../ipc/safe-send'
 const { autoUpdater } = pkg
 
 type UpdateState =
@@ -24,8 +25,7 @@ let configured = false
 
 function emitUpdateStatus(getWindow: () => BrowserWindow | null, payload: UpdatePayload): void {
   const window = getWindow()
-  if (!window || window.isDestroyed()) return
-  window.webContents.send('system:update-status', payload)
+  sendToRenderer(window, 'system:update-status', payload)
 }
 
 function scheduleUpdateCheck(getWindow: () => BrowserWindow | null): void {

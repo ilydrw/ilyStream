@@ -21,6 +21,7 @@ import { LoyaltyService } from '../loyalty/loyalty-service'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
 import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
 import type { AnyStreamEvent, Platform } from '../platforms/types'
+import { sendToRenderer } from '../ipc/safe-send'
 
 const HOST_CHAT_MESSAGE_MAX_LENGTH = 140
 const HOST_CHAT_PLATFORMS: Platform[] = ['tiktok', 'twitch', 'youtube', 'kick']
@@ -530,9 +531,7 @@ export class EventOrchestrator {
         if (action.payload?.sceneId) {
           console.log(`[EventOrchestrator] Triggering Scene Change: ${action.payload.sceneId}`)
           BrowserWindow.getAllWindows().forEach(win => {
-            if (!win.isDestroyed()) {
-              win.webContents.send('studio:active-scene-changed', action.payload.sceneId)
-            }
+            sendToRenderer(win, 'studio:active-scene-changed', action.payload.sceneId)
           })
         }
         break

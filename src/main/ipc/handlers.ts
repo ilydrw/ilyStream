@@ -22,6 +22,7 @@ import { registerDeviceHandlers } from './handlers/device-handlers'
 import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 import { registerLightingHandlers } from './handlers/lighting-handlers'
+import { sendToRenderer } from './safe-send'
 
 export function registerIpcHandlers(
   window: BrowserWindow,
@@ -45,15 +46,11 @@ export function registerIpcHandlers(
   } = services
 
   const emitSettingsChanged = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('settings:changed', resolveAppSettings(db.getAllSettings()))
-    }
+    sendToRenderer(window, 'settings:changed', resolveAppSettings(db.getAllSettings()))
   }
 
   const emitOBSStatusChanged = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('obs:status-changed', obsService.getStatus())
-    }
+    sendToRenderer(window, 'obs:status-changed', obsService.getStatus())
   }
 
   obsService.on('status', emitOBSStatusChanged)

@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron'
+import { sendToRenderer } from '../ipc/safe-send'
 
 export interface BrowserSourceCaptureConfig {
   id: string
@@ -39,7 +40,7 @@ export class BrowserSourceService {
 
     const safeUrl = resolveSafeBrowserSourceUrl(config.url)
     if (!safeUrl) {
-      owner.webContents.send('browser-source:error', {
+      sendToRenderer(owner, 'browser-source:error', {
         id: config.id,
         message: `Unsupported browser source URL: ${config.url}`
       })
@@ -87,7 +88,7 @@ export class BrowserSourceService {
       const size = image.getSize()
       const bitmap = image.toBitmap()
 
-      capture.owner.webContents.send('browser-source:frame', {
+      sendToRenderer(capture.owner, 'browser-source:frame', {
         id: capture.id,
         width: size.width,
         height: size.height,
@@ -97,22 +98,18 @@ export class BrowserSourceService {
     })
 
     window.webContents.on('render-process-gone', (_event, details) => {
-      if (!owner.isDestroyed()) {
-        owner.webContents.send('browser-source:error', {
-          id: config.id,
-          message: `Browser source renderer exited: ${details.reason}`
-        })
-      }
+      sendToRenderer(owner, 'browser-source:error', {
+        id: config.id,
+        message: `Browser source renderer exited: ${details.reason}`
+      })
       this.stopByKey(key)
     })
 
     window.webContents.on('did-fail-load', (_event, _code, description, validatedURL) => {
-      if (!owner.isDestroyed()) {
-        owner.webContents.send('browser-source:error', {
-          id: config.id,
-          message: `${description}: ${validatedURL}`
-        })
-      }
+      sendToRenderer(owner, 'browser-source:error', {
+        id: config.id,
+        message: `${description}: ${validatedURL}`
+      })
     })
 
     this.captures.set(key, {
@@ -142,7 +139,7 @@ export class BrowserSourceService {
 
     const safeUrl = resolveSafeBrowserSourceUrl(config.url)
     if (!safeUrl) {
-      owner.webContents.send('browser-source:error', {
+      sendToRenderer(owner, 'browser-source:error', {
         id: config.id,
         message: `Unsupported browser source URL: ${config.url}`
       })

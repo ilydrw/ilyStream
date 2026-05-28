@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { TTSEngine } from '../../tts/tts-engine'
 import { Database } from '../../db/database'
 import { AppSettingKey, resolveAppSettings, resolveAppSetting } from '../../../shared/app-settings'
+import { sendToRenderer } from '../safe-send'
 
 export function registerTTSHandlers(
   window: BrowserWindow,
@@ -10,9 +11,7 @@ export function registerTTSHandlers(
   updateSetting: <K extends AppSettingKey>(key: K, value: unknown) => Promise<unknown>
 ) {
   const emitVoiceProfilesChanged = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('voice:changed', ttsEngine.getVoiceProfiles().getAll())
-    }
+    sendToRenderer(window, 'voice:changed', ttsEngine.getVoiceProfiles().getAll())
   }
 
   const clearDeletedVoiceProfileAssignments = (deletedProfileId: string) => {

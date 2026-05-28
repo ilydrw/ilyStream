@@ -9,7 +9,7 @@ import {
 
 export const RECIPE_PACK_TYPE = 'ilystream.trigger-pack'
 export const RECIPE_PACK_SCHEMA_VERSION = 1
-export const RECIPE_PACK_COMPATIBLE_APP_VERSION = '0.0.19'
+export const RECIPE_PACK_COMPATIBLE_APP_VERSION = '0.0.20'
 
 export interface RecipePackMetadata {
   id: string

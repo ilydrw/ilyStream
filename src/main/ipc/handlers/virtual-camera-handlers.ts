@@ -2,6 +2,7 @@
 import { ipcMain } from 'electron'
 import { ServiceRegistry } from '../../services/service-registry'
 import { StartVirtualCameraOptions } from '../../../shared/virtual-camera'
+import { sendToRenderer } from '../safe-send'
 
 export function registerVirtualCameraHandlers(registry: ServiceRegistry) {
   ipcMain.handle('virtualcamera:start', async (_, options?: StartVirtualCameraOptions) => {
@@ -26,7 +27,7 @@ export function registerVirtualCameraHandlers(registry: ServiceRegistry) {
     // Usually, this is handled by a window manager or by broadcasting to all BrowserWindow instances.
     const { BrowserWindow } = require('electron')
     BrowserWindow.getAllWindows().forEach(win => {
-      win.webContents.send('virtualcamera:status-changed', status)
+      sendToRenderer(win, 'virtualcamera:status-changed', status)
     })
   })
 }

@@ -1,26 +1,21 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { SpotifyService } from '../../spotify/spotify-service'
+import { sendToRenderer } from '../safe-send'
 
 export function registerSpotifyHandlers(
   window: BrowserWindow,
   spotifyService: SpotifyService
 ) {
   const emitSpotifyStatus = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('spotify:status-changed', spotifyService.getStatus())
-    }
+    sendToRenderer(window, 'spotify:status-changed', spotifyService.getStatus())
   }
 
   const emitSpotifyQueue = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('spotify:queue-update', spotifyService.getQueue())
-    }
+    sendToRenderer(window, 'spotify:queue-update', spotifyService.getQueue())
   }
 
   const emitNowPlaying = () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('spotify:now-playing', spotifyService.getNowPlaying())
-    }
+    sendToRenderer(window, 'spotify:now-playing', spotifyService.getNowPlaying())
   }
 
   spotifyService.on('status', emitSpotifyStatus)

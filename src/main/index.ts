@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc/handlers'
 import { setupEventForwarding } from './ipc/events'
 import { setupLogger } from './lib/logger'
 import { setupAutoUpdates, disposeAutoUpdates } from './services/update-service'
+import { sendToRenderer } from './ipc/safe-send'
 import { registerAssetProtocol } from './lib/asset-protocol'
 import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
@@ -305,8 +306,7 @@ function startHealthWatchdog(): void {
   if (healthWatchdogTimer) return
 
   healthWatchdogTimer = setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('system:ping')
+    if (sendToRenderer(mainWindow, 'system:ping')) {
       console.log('[watchdog] Sent ping to renderer.')
     }
   }, 60000)

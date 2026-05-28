@@ -1,6 +1,7 @@
 // src/main/ipc/handlers/lighting-handlers.ts
 import { ipcMain, BrowserWindow } from 'electron'
 import { LightingManagerService } from '../../services/lighting/lighting-manager'
+import { sendToRenderer } from '../safe-send'
 
 export function registerLightingHandlers(
   window: BrowserWindow,
@@ -21,8 +22,6 @@ export function registerLightingHandlers(
   })
 
   lightingManager.on('state-change', (state) => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('lighting:state-changed', state)
-    }
+    sendToRenderer(window, 'lighting:state-changed', state)
   })
 }

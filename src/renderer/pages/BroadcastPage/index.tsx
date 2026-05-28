@@ -49,6 +49,8 @@ const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
 
 const DEFAULT_BROADCAST_FPS = Math.min(60, Math.max(1, DEFAULT_APP_SETTINGS.streaming.fps))
 const DEFAULT_BROADCAST_BITRATE_KBPS = DEFAULT_APP_SETTINGS.streaming.bitrate
+const TWITCH_SAFE_FPS = 30
+const TWITCH_SAFE_BITRATE_KBPS = 4500
 
 function clampBroadcastFps(value: unknown): number {
   const fps = Number(value)
@@ -76,6 +78,32 @@ async function loadBroadcastOutputConfig(): Promise<{ fps: number; bitrateKbps: 
       bitrateKbps: clampBroadcastBitrateKbps(DEFAULT_BROADCAST_BITRATE_KBPS)
     }
   }
+}
+
+function usesTwitchIngest(destination: { platform?: { id?: string; url?: string } }): boolean {
+  const id = String(destination.platform?.id || '').toLowerCase()
+  const url = String(destination.platform?.url || '').toLowerCase()
+  return id === 'twitch' || url.includes('twitch.tv') || url.includes('global-contribute.live-video.net')
+}
+
+function applyDestinationOutputCaps(
+  config: { fps: number; bitrateKbps: number },
+  destinations: Array<{ platform?: { id?: string; name?: string; url?: string } }>
+): { fps: number; bitrateKbps: number } {
+  if (!destinations.some(usesTwitchIngest)) return config
+
+  const capped = {
+    fps: Math.min(config.fps, TWITCH_SAFE_FPS),
+    bitrateKbps: Math.min(config.bitrateKbps, TWITCH_SAFE_BITRATE_KBPS)
+  }
+
+  if (capped.fps !== config.fps || capped.bitrateKbps !== config.bitrateKbps) {
+    console.warn(
+      `[BroadcastPage] Applying Twitch-safe output cap: ${capped.fps} FPS / ${capped.bitrateKbps} Kbps`
+    )
+  }
+
+  return capped
 }
 
 function isVirtualCameraSourceFitMode(value: unknown): value is VirtualCameraSourceFitMode {
@@ -676,7 +704,8 @@ export default function BroadcastPage() {
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
-    const { fps, bitrateKbps } = await loadBroadcastOutputConfig()
+    const configuredOutput = await loadBroadcastOutputConfig()
+    const { fps, bitrateKbps } = applyDestinationOutputCaps(configuredOutput, destinations)
     console.log(`[BroadcastPage] Starting broadcast at ${fps} FPS / ${bitrateKbps} Kbps`)
     setOutputConfig({ fps, bitrateKbps })
     const hIn = await getOptimizedCaptureInputFormat(1920, 1080, fps, bitrateKbps * 1000); setCaptureInputFormat(hIn)
