@@ -47,9 +47,6 @@ interface RenderLoopOptions {
 
 const DUAL_VERTICAL_OVERLAY_FPS = 20
 const DUAL_VERTICAL_OVERLAY_JPEG_QUALITY = 0.7
-const IDLE_PREVIEW_RENDER_FPS = 30
-const MAX_ACTIVE_RENDER_FPS = 60
-const SECONDARY_PREVIEW_FPS = 20
 
 export function useRenderLoop(options: RenderLoopOptions) {
   const {
@@ -127,16 +124,17 @@ export function useRenderLoop(options: RenderLoopOptions) {
 
     let frameId: number
     const configuredOutputFps = Math.max(1, Math.min(60, Math.round(outputFps || 30)))
-    const activeRenderFps = Math.min(MAX_ACTIVE_RENDER_FPS, Math.max(30, configuredOutputFps))
+    const minRenderFps = outputActive ? Math.min(60, Math.max(30, configuredOutputFps)) : 30
+    const maxRenderFps = 60
+    let targetRenderFps = maxRenderFps
+    let targetFrameMs = 1000 / targetRenderFps
     let lastRenderAt = 0
     let isHibernated = false
 
-    const isWorkActive = () => outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
-    const getTargetFrameMs = () => 1000 / (isWorkActive() ? activeRenderFps : IDLE_PREVIEW_RENDER_FPS)
-
     const checkHibernation = () => {
       // Hibernate if page is hidden AND we aren't doing any work that requires frames (streaming, recording, etc)
-      const shouldHibernate = !isVisible && !isWorkActive()
+      const workActive = outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
+      const shouldHibernate = !isVisible && !workActive
 
       if (shouldHibernate !== isHibernated) {
         isHibernated = shouldHibernate
@@ -197,7 +195,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
           const fitMode = resolveSourceFitMode(l)
 
           if (isVbEnabled && isCamera && video && video.readyState >= 2) {
-            segmentationService.processVideo(l.id, video, 15)
+            segmentationService.processVideo(l.id, video)
           }
 
           // --- DRAW BACKGROUND ---
@@ -262,13 +260,10 @@ export function useRenderLoop(options: RenderLoopOptions) {
           if (hasChromaKey) {
             if (!chromaCanvasRef.current) chromaCanvasRef.current = document.createElement('canvas')
             const cc = chromaCanvasRef.current
-            const ccWidth = Math.max(1, Math.round(dl.width))
-            const ccHeight = Math.max(1, Math.round(dl.height))
-            if (cc.width !== ccWidth) cc.width = ccWidth
-            if (cc.height !== ccHeight) cc.height = ccHeight
+            cc.width = dl.width
+            cc.height = dl.height
             const cCtx = cc.getContext('2d', { alpha: true, willReadFrequently: true })
             if (cCtx) {
-              cCtx.clearRect(0, 0, cc.width, cc.height)
               drawTarget = cCtx
               drawX = 0
               drawY = 0
@@ -283,18 +278,16 @@ export function useRenderLoop(options: RenderLoopOptions) {
                 // DRAW WITH MASK
                 if (!chromaCanvasRef.current) chromaCanvasRef.current = document.createElement('canvas')
                 const cc = chromaCanvasRef.current
-                const ccWidth = Math.max(1, Math.round(dl.width))
-                const ccHeight = Math.max(1, Math.round(dl.height))
-                if (cc.width !== ccWidth) cc.width = ccWidth
-                if (cc.height !== ccHeight) cc.height = ccHeight
+                cc.width = dl.width
+                cc.height = dl.height
                 const cCtx = cc.getContext('2d', { alpha: true })
                 if (cCtx) {
-                  cCtx.clearRect(0, 0, cc.width, cc.height)
+                  cCtx.clearRect(0, 0, dl.width, dl.height)
                   drawFittedSource(
                     cCtx,
                     video,
                     croppedSourceRect(video.videoWidth, video.videoHeight, layout.crop),
-                    { x: 0, y: 0, width: cc.width, height: cc.height },
+                    { x: 0, y: 0, width: dl.width, height: dl.height },
                     fitMode
                   )
                   cCtx.globalCompositeOperation = 'destination-in'
@@ -302,12 +295,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
                     cCtx,
                     maskResult.mask,
                     croppedSourceRect(maskResult.width, maskResult.height, layout.crop),
-                    { x: 0, y: 0, width: cc.width, height: cc.height },
+                    { x: 0, y: 0, width: dl.width, height: dl.height },
                     fitMode
                   )
                   cCtx.globalCompositeOperation = 'source-over'
 
-                  targetCtx.drawImage(cc, dl.x - cx, dl.y - cy, dl.width, dl.height)
+                  targetCtx.drawImage(cc, dl.x - cx, dl.y - cy)
                 }
               } else {
                 drawFittedSource(
@@ -362,8 +355,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
 
           if (hasChromaKey && drawTarget !== targetCtx) {
             const cCtx = drawTarget as CanvasRenderingContext2D
-            const chromaCanvas = chromaCanvasRef.current!
-            const imgData = cCtx.getImageData(0, 0, chromaCanvas.width, chromaCanvas.height)
+            const imgData = cCtx.getImageData(0, 0, dl.width, dl.height)
             const data = imgData.data
 
             const hex = e.chromaKey!.color.replace('#', '')
@@ -393,7 +385,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
               }
             }
             cCtx.putImageData(imgData, 0, 0)
-            targetCtx.drawImage(chromaCanvas, dl.x - cx, dl.y - cy, dl.width, dl.height)
+            targetCtx.drawImage(chromaCanvasRef.current!, dl.x - cx, dl.y - cy)
           }
         }
 
@@ -663,6 +655,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
     // refresh, since drawing the same scene a second time at 60+ Hz is the most
     // wasteful work in the loop when the user has dual-portrait/landscape on.
     const secondaryCaptureRef = { lastAt: 0 }
+    const SECONDARY_PREVIEW_FPS = 30
+
     // Draws a scene into any target canvas, honoring active transitions
     // (stinger / fade). Previously this lived inline and only ran for the
     // primary preview, so stream output captures lost the transition visuals.
@@ -707,7 +701,11 @@ export function useRenderLoop(options: RenderLoopOptions) {
       if (checkHibernation()) return
 
       const now = performance.now()
-      if (lastRenderAt > 0 && now - lastRenderAt < getTargetFrameMs() - 1.5) {
+      // Smooth Preview Optimization:
+      // We skip the global 60fps throttle to allow the preview to run at the monitor's native refresh rate (e.g. 144Hz).
+      // Capture work is gated per-output below.
+      const shouldThrottle = outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
+      if (shouldThrottle && lastRenderAt > 0 && now - lastRenderAt < targetFrameMs - 1.5) {
         frameId = requestAnimationFrame(render); return
       }
       lastRenderAt = now

@@ -18,7 +18,7 @@ export function Header() {
           <Logo size={18} />
         </span>
         <span className="app-topbar-wordmark">ilyStream</span>
-        <span className="app-topbar-version ml-2">0.0.17</span>
+        <span className="app-topbar-version ml-2">0.0.18</span>
       </div>
 
       <div className="app-topbar-route" aria-live="polite">

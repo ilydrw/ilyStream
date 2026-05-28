@@ -24,7 +24,7 @@ interface BrowserSourceCapture {
 const MAX_CAPTURE_EDGE = 1920
 const MAX_CAPTURE_PIXELS = 1920 * 1080
 const MAX_CAPTURE_FPS = 60
-const DEFAULT_CAPTURE_FPS = 15
+const DEFAULT_CAPTURE_FPS = 60
 
 export class BrowserSourceService {
   private captures = new Map<string, BrowserSourceCapture>()

@@ -5,9 +5,6 @@ import { reconcileFxChain } from '../../../utils/audio-fx'
 import { audioEngine, createChannelModeStage, sanitizeChannelMode, type ChannelModeStage } from '../../../utils/audio-engine'
 import { buildLowLatencyAudioConstraints } from '../utils/media-init'
 
-const MASTER_VOLUME_UPDATE_FPS = 30
-const MASTER_VOLUME_UPDATE_INTERVAL_MS = 1000 / MASTER_VOLUME_UPDATE_FPS
-
 interface TrackNodes {
   channelMode: ChannelModeStage
   gain: GainNode
@@ -162,15 +159,8 @@ export function useBroadcastAudio(
     const freqData = new Uint8Array(masterAnalyzer.frequencyBinCount)
     let smoothedVolume = 0
     let analyzeFrameId: number
-    let lastVolumeUpdateAt = 0
-    const updateVolume = (timestamp = performance.now()) => {
+    const updateVolume = () => {
       if (!audioCtxRef.current) return
-      if (timestamp - lastVolumeUpdateAt < MASTER_VOLUME_UPDATE_INTERVAL_MS) {
-        analyzeFrameId = requestAnimationFrame(updateVolume)
-        return
-      }
-      lastVolumeUpdateAt = timestamp
-
       const currentSmoothing = smoothingRef.current
       masterAnalyzer.getByteFrequencyData(freqData)
       let sum = 0

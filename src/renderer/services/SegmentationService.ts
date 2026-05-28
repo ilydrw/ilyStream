@@ -28,14 +28,11 @@ const MEDIAPIPE_ASSETS: Record<string, string> = {
   'selfie_segmentation_solution_wasm_bin.wasm': selfieSegmentationWasmUrl
 }
 
-const DEFAULT_SEGMENTATION_FPS = 15
-
 class SegmentationService {
   private static instance: SegmentationService
   private engine: SelfieSegmentation | null = null
   private resultsCache: Map<string, SegmentationResult> = new Map()
   private processing: Set<string> = new Set()
-  private lastProcessAt: Map<string, number> = new Map()
   private initialized = false
 
   private constructor() {}
@@ -62,17 +59,11 @@ class SegmentationService {
 
     this.engine.onResults((results: Results) => {
       const id = (results.image as any).id || 'default'
-      const cached = this.resultsCache.get(id)
-      const canvas = cached?.mask &&
-        cached.mask.width === results.segmentationMask.width &&
-        cached.mask.height === results.segmentationMask.height
-        ? cached.mask
-        : document.createElement('canvas')
-      if (canvas.width !== results.segmentationMask.width) canvas.width = results.segmentationMask.width
-      if (canvas.height !== results.segmentationMask.height) canvas.height = results.segmentationMask.height
+      const canvas = document.createElement('canvas')
+      canvas.width = results.segmentationMask.width
+      canvas.height = results.segmentationMask.height
       const ctx = canvas.getContext('2d')
       if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(results.segmentationMask, 0, 0)
       }
 
@@ -88,21 +79,16 @@ class SegmentationService {
     this.initialized = true
   }
 
-  async processVideo(id: string, video: HTMLVideoElement, maxFps = DEFAULT_SEGMENTATION_FPS) {
+  async processVideo(id: string, video: HTMLVideoElement) {
     if (!this.initialized) await this.initialize()
     if (!this.engine) return
 
     if (this.processing.has(id)) return
-    const now = Date.now()
-    const intervalMs = 1000 / Math.max(1, Math.min(30, Math.round(maxFps || DEFAULT_SEGMENTATION_FPS)))
-    const lastAt = this.lastProcessAt.get(id) || 0
-    if (now - lastAt < intervalMs) return
 
     // Assign ID to image for tracking in onResults
     ;(video as any).id = id
 
     this.processing.add(id)
-    this.lastProcessAt.set(id, now)
     try {
       await this.engine.send({ image: video })
     } catch (err) {
