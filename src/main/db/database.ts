@@ -250,13 +250,18 @@ export class Database {
     return row ? { ...decryptConfig(parseJson(row.config_json, {})), platform: p, enabled: row.enabled === 1 } as AnyPlatformConfig : null
   }
 
-  getAllPlatformConfigs(): AnyPlatformConfig[] {
+  getAllPlatformConfigs(): Partial<Record<Platform, AnyPlatformConfig>> {
     const rows = this.db.prepare('SELECT platform, config_json, enabled FROM platform_configs').all() as any[]
-    return rows.map(row => ({
-      ...decryptConfig(parseJson(row.config_json, {})),
-      platform: row.platform as Platform,
-      enabled: row.enabled === 1
-    })) as AnyPlatformConfig[]
+    const configs: Partial<Record<Platform, AnyPlatformConfig>> = {}
+    for (const row of rows) {
+      const platform = row.platform as Platform
+      configs[platform] = {
+        ...decryptConfig(parseJson(row.config_json, {})),
+        platform,
+        enabled: row.enabled === 1
+      } as AnyPlatformConfig
+    }
+    return configs
   }
 
   savePlatformConfig(c: AnyPlatformConfig): void {

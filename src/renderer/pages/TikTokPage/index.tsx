@@ -3,6 +3,7 @@ import { IconCircleCheck, IconPlayerPlay } from '../../components/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
+import { getPlatformCapability, getPlatformConfig } from '../../lib/platform-configs'
 import type { TikTokSenderStatus } from '../../../main/platforms/tiktok/tiktok-chat-sender'
 import { 
   PlatformPageHeader, 
@@ -51,22 +52,14 @@ export default function TikTokPage() {
     if (!window.api?.platform) return
 
     window.api.platform.getConfigs().then((configs) => {
-      const platformConfig = Array.isArray(configs)
-        ? configs.find((item: any) => item?.platform === PLATFORM_ID)
-        : configs?.[PLATFORM_ID]
-      if (platformConfig) {
-        setConfig(platformConfig)
-      }
+      const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
+      if (platformConfig) setConfig(platformConfig)
     })
 
     const updateCaps = () => {
       window.api.platform.getChatCapabilities().then((caps) => {
-        const capability = Array.isArray(caps)
-          ? caps.find((item: any) => item?.platform === PLATFORM_ID)
-          : caps?.[PLATFORM_ID]
-        if (capability) {
-          setCanSend(capability)
-        }
+        const capability = getPlatformCapability(caps, PLATFORM_ID)
+        if (capability) setCanSend(capability)
       })
       window.api.platform.tiktok?.getSenderStatus?.().then((status: TikTokSenderStatus) => {
         setSenderStatus({ ...DEFAULT_SENDER_STATUS, ...status })

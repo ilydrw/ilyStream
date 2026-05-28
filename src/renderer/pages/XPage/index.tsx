@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {IconMessage2, IconRadio, IconSend, IconBrandTwitter, IconWifi, IconBolt} from '@tabler/icons-react'
 import { useConnectionStore } from '../../stores/connection-store'
+import { getPlatformConfig } from '../../lib/platform-configs'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -8,7 +9,7 @@ import {
   DiagnosticLine 
 } from '../../components/platforms/PlatformPageLayout'
 
-const PLATFORM_ID: Platform = 'x'
+const PLATFORM_ID = 'x'
 const FIELDS = [
   { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'X Developer API Key' },
   { key: 'apiSecret', label: 'API Secret', type: 'password', placeholder: 'X Developer API Secret' },
@@ -30,9 +31,8 @@ export default function XPage() {
 
   useEffect(() => {
     window.api.platform.getConfigs().then((configs) => {
-      if (configs[PLATFORM_ID]) {
-        setConfig(configs[PLATFORM_ID])
-      }
+      const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
+      if (platformConfig) setConfig(platformConfig)
     })
   }, [status])
 

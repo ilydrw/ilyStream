@@ -26,6 +26,7 @@ import { RecordingSettingsModal } from './components/RecordingSettingsModal'
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
 import { usePageVisibility } from '../../hooks/usePageVisibility'
+import { toPlatformConfigMap } from '../../lib/platform-configs'
 
 function formatDuration(totalSeconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds))
@@ -475,8 +476,7 @@ export default function BroadcastPage() {
       const list = await navigator.mediaDevices.enumerateDevices(); setDevices(list)
       if (window.api?.widgets) setWidgets(await window.api.widgets.getAll())
       if (window.api?.platform) {
-        const configArray = await window.api.platform.getConfigs()
-        const configs = configArray.reduce((acc: any, c: any) => ({ ...acc, [c.platform]: c }), {})
+        const configs = toPlatformConfigMap(await window.api.platform.getConfigs())
         setPlatforms(buildStreamPlatforms(configs))
       }
       if (window.api?.streaming) {
@@ -534,8 +534,7 @@ export default function BroadcastPage() {
   useEffect(() => {
     if (!window.api?.on) return
     const update = async () => {
-      const configArray = await window.api.platform.getConfigs()
-      const configs = configArray.reduce((acc: any, c: any) => ({ ...acc, [c.platform]: c }), {})
+      const configs = toPlatformConfigMap(await window.api.platform.getConfigs())
       setPlatforms(buildStreamPlatforms(configs))
     }
     return window.api.on('platform:status-change', update)

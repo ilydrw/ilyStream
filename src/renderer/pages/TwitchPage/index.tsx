@@ -1,6 +1,7 @@
 import {IconMessage2, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
+import { getPlatformCapability, getPlatformConfig } from '../../lib/platform-configs'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -34,15 +35,13 @@ export default function TwitchPage() {
 
   useEffect(() => {
     window.api.platform.getConfigs().then((configs) => {
-      if (configs[PLATFORM_ID]) {
-        setConfig(configs[PLATFORM_ID])
-      }
+      const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
+      if (platformConfig) setConfig(platformConfig)
     })
 
     window.api.platform.getChatCapabilities().then((caps) => {
-      if (caps[PLATFORM_ID]) {
-        setCanSend(caps[PLATFORM_ID])
-      }
+      const capability = getPlatformCapability(caps, PLATFORM_ID)
+      if (capability) setCanSend(capability)
     })
   }, [status])
 

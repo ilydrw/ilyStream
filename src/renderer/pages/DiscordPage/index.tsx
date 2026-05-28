@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {IconBell, IconLayout, IconMessage, IconSend, IconShieldCheck, IconWifi} from '@tabler/icons-react'
 import { useConnectionStore } from '../../stores/connection-store'
+import { getPlatformConfig } from '../../lib/platform-configs'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -8,7 +9,7 @@ import {
   DiagnosticLine 
 } from '../../components/platforms/PlatformPageLayout'
 
-const PLATFORM_ID: Platform = 'discord'
+const PLATFORM_ID = 'discord'
 const FIELDS = [
   { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://discord.com/api/webhooks/...' },
   { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Discord Bot Token' },
@@ -29,9 +30,8 @@ export default function DiscordPage() {
 
   useEffect(() => {
     window.api.platform.getConfigs().then((configs) => {
-      if (configs[PLATFORM_ID]) {
-        setConfig(configs[PLATFORM_ID])
-      }
+      const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
+      if (platformConfig) setConfig(platformConfig)
     })
   }, [status])
 
