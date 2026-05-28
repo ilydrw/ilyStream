@@ -29,6 +29,10 @@ export class StreamSession extends EventEmitter {
   private videoPumpIntervalMs: number
   private videoBuffer: PipeBuffer | null = null
   private audioBuffer: PipeBuffer | null = null
+  private healthTimer: ReturnType<typeof setInterval> | null = null
+  private lastHealthReportAt = Date.now()
+  private lastVideoDroppedChunks = 0
+  private lastAudioDroppedChunks = 0
   public framesSinceLastReport = 0
   public lastFrameReceivedAt: number = 0
 
@@ -54,6 +58,7 @@ export class StreamSession extends EventEmitter {
     }
 
     this.setupListeners()
+    this.startHealthWatchdog()
   }
 
   private setupListeners() {
@@ -86,6 +91,7 @@ export class StreamSession extends EventEmitter {
 
     this.process.on('close', (code, signal) => {
       this.stopPump()
+      this.stopHealthWatchdog()
       this.videoBuffer?.detach()
       this.videoBuffer = null
       this.audioBuffer?.detach()
@@ -112,6 +118,56 @@ export class StreamSession extends EventEmitter {
       clearInterval(this.videoPumpTimer)
       this.videoPumpTimer = null
     }
+  }
+
+  private startHealthWatchdog() {
+    this.stopHealthWatchdog()
+    this.lastHealthReportAt = Date.now()
+    this.healthTimer = setInterval(() => this.reportHealth(), 5000)
+    ;(this.healthTimer as any)?.unref?.()
+  }
+
+  private stopHealthWatchdog() {
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer)
+      this.healthTimer = null
+    }
+  }
+
+  private reportHealth() {
+    const now = Date.now()
+    const elapsedSeconds = Math.max(1, (now - this.lastHealthReportAt) / 1000)
+    const receivedFps = this.framesSinceLastReport / elapsedSeconds
+    const expectedFps = Math.max(1, Math.min(60, Math.round(this.config.fps || 30)))
+    const stats = this.getDropStats()
+    const parts = [`${receivedFps.toFixed(1)}/${expectedFps} fps received`]
+
+    if (this.frameQueue.length > 0) {
+      parts.push(`pending frames=${this.frameQueue.length}`)
+    }
+
+    if (stats.video) {
+      const videoDrops = stats.video.droppedChunks - this.lastVideoDroppedChunks
+      const queuedMb = stats.video.queuedBytes / 1024 / 1024
+      parts.push(`video queue=${queuedMb.toFixed(2)} MB/${stats.video.queuedChunks} chunks`)
+      if (videoDrops > 0) parts.push(`video drops +${videoDrops}`)
+      this.lastVideoDroppedChunks = stats.video.droppedChunks
+    }
+
+    if (stats.audio) {
+      const audioDrops = stats.audio.droppedChunks - this.lastAudioDroppedChunks
+      const queuedKb = stats.audio.queuedBytes / 1024
+      parts.push(`audio queue=${queuedKb.toFixed(1)} KB/${stats.audio.queuedChunks} chunks`)
+      if (audioDrops > 0) parts.push(`audio drops +${audioDrops}`)
+      this.lastAudioDroppedChunks = stats.audio.droppedChunks
+    }
+
+    const staleMs = this.lastFrameReceivedAt > 0 ? now - this.lastFrameReceivedAt : 0
+    if (staleMs > 2000) parts.push(`last frame ${Math.round(staleMs)} ms ago`)
+
+    console.log(`[Streaming:${this.config.id}] health — ${parts.join(' — ')}`)
+    this.framesSinceLastReport = 0
+    this.lastHealthReportAt = now
   }
 
   private pumpVideo() {
@@ -151,6 +207,7 @@ export class StreamSession extends EventEmitter {
   public stop() {
     this.failureEmitted = true
     this.stopPump()
+    this.stopHealthWatchdog()
     this.videoBuffer?.detach()
     this.videoBuffer = null
     this.audioBuffer?.detach()

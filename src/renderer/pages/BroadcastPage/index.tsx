@@ -6,6 +6,7 @@ import { IconPencil, IconCopy, IconTrash, IconX } from '../../components/ui/icon
 import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
 import type { LayerType, StudioLayer } from '../../../shared/studio'
+import { DEFAULT_APP_SETTINGS, resolveAppSettings } from '../../../shared/app-settings'
 import { CanvasEditor } from './components/CanvasEditor'
 import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceFitMode, VirtualCameraSourceOption } from './components/CanvasEditor.types'
 import { ContextMenu } from '../../components/ui/ContextMenu'
@@ -44,6 +45,37 @@ const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
   mode: 'layout',
   layout: 'current',
   sourceFitMode: 'cover'
+}
+
+const DEFAULT_BROADCAST_FPS = Math.min(60, Math.max(1, DEFAULT_APP_SETTINGS.streaming.fps))
+const DEFAULT_BROADCAST_BITRATE_KBPS = DEFAULT_APP_SETTINGS.streaming.bitrate
+
+function clampBroadcastFps(value: unknown): number {
+  const fps = Number(value)
+  const fallback = Number.isFinite(DEFAULT_BROADCAST_FPS) ? DEFAULT_BROADCAST_FPS : 60
+  return Math.max(1, Math.min(60, Math.round(Number.isFinite(fps) ? fps : fallback)))
+}
+
+function clampBroadcastBitrateKbps(value: unknown): number {
+  const bitrate = Number(value)
+  const fallback = Number.isFinite(DEFAULT_BROADCAST_BITRATE_KBPS) ? DEFAULT_BROADCAST_BITRATE_KBPS : 6000
+  return Math.max(500, Math.min(51000, Math.round(Number.isFinite(bitrate) ? bitrate : fallback)))
+}
+
+async function loadBroadcastOutputConfig(): Promise<{ fps: number; bitrateKbps: number }> {
+  try {
+    const settings = resolveAppSettings(await window.api.settings.getAll())
+    return {
+      fps: clampBroadcastFps(settings.streaming.fps),
+      bitrateKbps: clampBroadcastBitrateKbps(settings.streaming.bitrate)
+    }
+  } catch (err) {
+    console.warn('[BroadcastPage] Failed to load broadcast defaults; using safe fallback:', err)
+    return {
+      fps: clampBroadcastFps(DEFAULT_BROADCAST_FPS),
+      bitrateKbps: clampBroadcastBitrateKbps(DEFAULT_BROADCAST_BITRATE_KBPS)
+    }
+  }
 }
 
 function isVirtualCameraSourceFitMode(value: unknown): value is VirtualCameraSourceFitMode {
@@ -270,8 +302,8 @@ export default function BroadcastPage() {
 
 
     const outputs: CanvasStreamOutput[] = [
-      { id: 'horizontal' as const, active: isStreaming && activeLayoutAssignments.horizontal.length > 0, width: 1920, height: 1080, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.horizontal, codec: pickAvcCodecString(1920, 1080, outputConfig.fps) },
-      { id: 'vertical' as const, active: isStreaming && activeLayoutAssignments.vertical.length > 0, width: 1080, height: 1920, fps: outputConfig.fps, bitrateKbps: 6000, inputFormat: layoutInputFormats.vertical, codec: pickAvcCodecString(1080, 1920, outputConfig.fps) }
+      { id: 'horizontal' as const, active: isStreaming && activeLayoutAssignments.horizontal.length > 0, width: 1920, height: 1080, fps: outputConfig.fps, bitrateKbps: outputConfig.bitrateKbps, inputFormat: layoutInputFormats.horizontal, codec: pickAvcCodecString(1920, 1080, outputConfig.fps) },
+      { id: 'vertical' as const, active: isStreaming && activeLayoutAssignments.vertical.length > 0, width: 1080, height: 1920, fps: outputConfig.fps, bitrateKbps: outputConfig.bitrateKbps, inputFormat: layoutInputFormats.vertical, codec: pickAvcCodecString(1080, 1920, outputConfig.fps) }
     ]
 
     if (virtualCameraInfo?.state === 'active') {
@@ -287,7 +319,7 @@ export default function BroadcastPage() {
       })
     }
     return outputs
-  }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, virtualCameraFeed, virtualCameraInfo, store.aspectRatio])
+  }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, outputConfig.bitrateKbps, virtualCameraFeed, virtualCameraInfo, store.aspectRatio])
 
   const { streamReady, forceRefreshMedia } = useMediaManagement({
     activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
@@ -644,12 +676,14 @@ export default function BroadcastPage() {
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
-    const fps = 30; setOutputConfig({ fps, bitrateKbps: 6000 })
-    const hIn = await getOptimizedCaptureInputFormat(1920, 1080, fps, 6000000); setCaptureInputFormat(hIn)
-    const vIn = await getOptimizedCaptureInputFormat(1080, 1920, fps, 6000000)
+    const { fps, bitrateKbps } = await loadBroadcastOutputConfig()
+    console.log(`[BroadcastPage] Starting broadcast at ${fps} FPS / ${bitrateKbps} Kbps`)
+    setOutputConfig({ fps, bitrateKbps })
+    const hIn = await getOptimizedCaptureInputFormat(1920, 1080, fps, bitrateKbps * 1000); setCaptureInputFormat(hIn)
+    const vIn = await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
     setLayoutInputFormats({ horizontal: hIn, vertical: vIn })
 
-    const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps: 6000, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
+    const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
     if (res.every(r => r.success)) { setIsStreaming(true); setStatus('Live') } else setStreamError('Failed to start one or more outputs')
   }
 

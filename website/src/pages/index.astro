@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.18';
+const latestVersion = '0.0.19';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -50,7 +50,7 @@ const releaseNotes = [
   'Broadcast Hotfix: Restored the known-good media render path after the v0.0.17 preview/source loading regression.',
   'Dual-Stream Performance: Going live to a horizontal and vertical destination at the same time now shares a single scene composite per tick, cutting renderer CPU during dual streaming.',
   'Transition Fidelity: Scene transitions (fade and stinger) now render into stream output captures, not just the local preview.',
-  'Website Refresh: Download links, getting-started docs, and companion docs all point at the v0.0.18 release set.',
+  'Broadcast Quality: Live outputs now honor Broadcast Defaults for bitrate and FPS, with RTMP health logs for frame and pipe drops.',
 ];
 
 const docPreviews = [
