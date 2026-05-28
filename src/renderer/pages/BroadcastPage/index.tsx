@@ -707,8 +707,14 @@ export default function BroadcastPage() {
     const { fps, bitrateKbps } = applyDestinationOutputCaps(configuredOutput, destinations)
     console.log(`[BroadcastPage] Starting broadcast at ${fps} FPS / ${bitrateKbps} Kbps`)
     setOutputConfig({ fps, bitrateKbps })
-    const hIn = await getOptimizedCaptureInputFormat(1920, 1080, fps, bitrateKbps * 1000); setCaptureInputFormat(hIn)
-    const vIn = await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
+    const useReliablePipe = destinations.some(usesTwitchIngest)
+    const hIn = useReliablePipe
+      ? 'mjpeg'
+      : await getOptimizedCaptureInputFormat(1920, 1080, fps, bitrateKbps * 1000)
+    setCaptureInputFormat(hIn)
+    const vIn = useReliablePipe
+      ? 'mjpeg'
+      : await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
     setLayoutInputFormats({ horizontal: hIn, vertical: vIn })
 
     const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))

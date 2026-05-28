@@ -108,6 +108,10 @@ self.onmessage = async (e) => {
       emitBgraFrame(frame)
       return
     }
+    if (captureFormat === 'mjpeg') {
+      void emitJpegFrameFromVideoFrame(frame)
+      return
+    }
     encodeVideoFrame(frame)
     return
   }
@@ -269,6 +273,29 @@ async function emitJpegFrame() {
   } catch (err) {
     console.error(' MJPEG encode error:', err)
   } finally {
+    jpegEncodeInFlight = false
+  }
+}
+
+async function emitJpegFrameFromVideoFrame(frame: VideoFrame) {
+  if (!ctx || !offscreenCanvas || jpegEncodeInFlight) {
+    frame.close()
+    return
+  }
+
+  jpegEncodeInFlight = true
+  try {
+    ctx.clearRect(0, 0, cw, ch)
+    ctx.drawImage(frame, 0, 0, cw, ch)
+    frameCountTotal++
+    const timestamp = frame.timestamp ?? Math.round((frameCountTotal / streamFps) * 1_000_000)
+    const blob = await offscreenCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.84 })
+    const buffer = await blob.arrayBuffer()
+    self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
+  } catch (err) {
+    self.postMessage({ type: 'error', message: String(err) })
+  } finally {
+    frame.close()
     jpegEncodeInFlight = false
   }
 }
