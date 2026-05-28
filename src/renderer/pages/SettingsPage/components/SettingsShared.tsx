@@ -1,5 +1,5 @@
 import React, { ReactNode, useState } from 'react'
-import {IconCheck, IconCopy} from '@tabler/icons-react'
+import { IconCheck, IconCopy } from '../../../components/ui/icons'
 import type { OBSRuntimeStatus } from '../../../../shared/obs'
 import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 
@@ -7,7 +7,7 @@ export function SettingRow({ label, hint, children }: { label: string; hint?: st
   return (
     <div className="flex flex-col gap-4 py-8 border-b border-white/[0.03] last:border-0 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0 md:pr-10">
-        <h4 className="text-sm font-bold text-white mb-1">{label}</h4>
+        <h4 className="text-sm font-semibold text-white mb-1">{label}</h4>
         {hint && <p className="text-xs text-white/20 leading-relaxed">{hint}</p>}
       </div>
       <div className="flex-shrink-0">{children}</div>
@@ -82,8 +82,8 @@ export function Metric({
         {icon}
       </div>
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-1">{label}</p>
-        <p className="text-xl font-black text-white tracking-tight">{value}</p>
+        <p className="text-[10px] font-medium tracking-normal text-white/30 mb-1">{label}</p>
+        <p className="text-xl font-semibold text-white tracking-tight">{value}</p>
       </div>
     </div>
   )
@@ -92,7 +92,7 @@ export function Metric({
 export function RuntimeValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-xs font-medium">
-      <span className="text-white/20 uppercase tracking-widest">{label}</span>
+      <span className="text-white/20 tracking-tight">{label}</span>
       <span className="text-white/60 font-mono truncate ml-4">{value}</span>
     </div>
   )
@@ -120,7 +120,7 @@ export function RuntimeLink({
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-black uppercase tracking-widest text-white/20 mb-1">{label}</p>
+        <p className="text-xs font-semibold tracking-tight text-white/20 mb-1">{label}</p>
         <p className="text-sm text-accent font-mono truncate hover:underline cursor-pointer" onClick={() => window.open(target, '_blank')}>
           {target}
         </p>
@@ -136,7 +136,7 @@ export function RuntimeLink({
 }
 
 export function StatusBadge({ status }: { status: OverlayRuntimeStatus | null }) {
-  const baseClasses = "px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border transition-all"
+  const baseClasses = "px-3 py-1 rounded-md text-[12px] font-medium tracking-tight border transition-colors"
   
   if (!status) {
     return <span className={`${baseClasses} bg-white/5 border-white/5 text-white/20`}>Overlay</span>
@@ -150,7 +150,7 @@ export function StatusBadge({ status }: { status: OverlayRuntimeStatus | null })
 }
 
 export function OBSStatusBadge({ status }: { status: OBSRuntimeStatus | null }) {
-  const baseClasses = "px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border transition-all"
+  const baseClasses = "px-3 py-1 rounded-md text-[12px] font-medium tracking-tight border transition-colors"
   
   if (!status) {
     return <span className={`${baseClasses} bg-white/5 border-white/5 text-white/20`}>OBS Studio</span>

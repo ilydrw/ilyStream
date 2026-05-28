@@ -7,17 +7,11 @@ export function Toggle({ value, onChange, disabled = false }: { value: boolean; 
       disabled={disabled}
       role="switch"
       aria-checked={value}
-      className={`relative h-6 w-11 rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        value
-          ? 'bg-brand-gradient shadow-glow'
-          : 'bg-white/10 shadow-inner'
-      } ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
+      className={`relative h-5 w-9 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#19c8ff] focus-visible:ring-offset-2 focus-visible:ring-offset-background ${ value ? 'bg-accent' : 'bg-white/10' } ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <span
-        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all duration-500 ${
-          value ? 'left-6' : 'left-1'
-        }`}
-        style={{ transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.4)] transition-all duration-200 ${ value ? 'left-[18px]' : 'left-0.5' }`}
+        style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
       />
     </button>
   )
@@ -50,7 +44,7 @@ export function NumberInput({
       min={min}
       max={max}
       step={step}
-      className={`app-input font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
+      className={`app-input font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#19c8ff] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }
@@ -74,7 +68,7 @@ export function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={`app-input text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d035f1] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
+      className={`app-input text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#19c8ff] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all ${className}`}
     />
   )
 }

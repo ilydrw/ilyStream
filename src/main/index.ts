@@ -1,14 +1,15 @@
-import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage, net, dialog } from 'electron'
-import { dirname, isAbsolute, join, relative, resolve } from 'path'
+import { app, BrowserWindow, protocol, Tray, Menu, nativeImage } from 'electron'
+import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { appendFileSync, existsSync, mkdirSync } from 'fs'
-import { stat } from 'fs/promises'
-import { pathToFileURL } from 'url'
+import { existsSync, mkdirSync } from 'fs'
 import { ServiceRegistry } from './services/service-registry'
 import { registerIpcHandlers } from './ipc/handlers'
 import { setupEventForwarding } from './ipc/events'
 import { setupLogger } from './lib/logger'
 import { setupAutoUpdates, disposeAutoUpdates } from './services/update-service'
+import { registerAssetProtocol } from './lib/asset-protocol'
+import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
+import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
 
 // Global logger setup
 setupLogger()
@@ -31,6 +32,10 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+// Chromium's Windows Media Foundation backend can spam native stderr with
+// per-frame camera buffer warnings even when the stream recovers. Keep those
+// native logs from drowning out ilyStream's own diagnostics.
+app.commandLine.appendSwitch('log-level', '3')
 if (is.dev) {
   app.commandLine.appendSwitch('disable-http-cache')
   app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
@@ -62,52 +67,6 @@ let healthWatchdogTimer: ReturnType<typeof setInterval> | null = null
 let historyPruneTimer: ReturnType<typeof setInterval> | null = null
 let isQuitting = false
 
-function isSafeExternalUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'https:' || url.protocol === 'mailto:') return true
-    if (url.protocol !== 'http:') return false
-    return ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
-  } catch {
-    return false
-  }
-}
-
-function isSameOriginUrl(value: string, baseUrl: string): boolean {
-  try {
-    return new URL(value).origin === new URL(baseUrl).origin
-  } catch {
-    return false
-  }
-}
-
-function openExternalSafely(value: string): void {
-  if (!isSafeExternalUrl(value)) {
-    console.warn(`[main] Blocked unsafe external URL: ${value}`)
-    return
-  }
-
-  void shell.openExternal(value)
-}
-
-function isSafePathWithin(root: string, filePath: string): boolean {
-  const relativePath = relative(resolve(root), resolve(filePath))
-  return relativePath !== '' && !relativePath.startsWith('..') && !isAbsolute(relativePath)
-}
-
-function resolveAssetPath(root: string, assetId: string): string | null {
-  const filePath = resolve(root, assetId)
-  return isSafePathWithin(root, filePath) ? filePath : null
-}
-
-async function isReadableFile(filePath: string): Promise<boolean> {
-  try {
-    return (await stat(filePath)).isFile()
-  } catch {
-    return false
-  }
-}
-
 function resolveBundledResource(...segments: string[]): string | null {
   const candidates = [
     join(__dirname, '../../resources', ...segments),
@@ -125,97 +84,12 @@ function createAppIcon() {
   return iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
 }
 
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.stack || `${error.name}: ${error.message}`
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return String(error)
-  }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function getCrashLogPath(): string | null {
-  try {
-    return join(app.getPath('userData'), 'logs', 'main-crash.log')
-  } catch {
-    return null
-  }
-}
-
-function writeCrashLog(label: string, error: unknown): void {
-  const crashLogPath = getCrashLogPath()
-  if (!crashLogPath) return
-  try {
-    mkdirSync(dirname(crashLogPath), { recursive: true })
-    appendFileSync(
-      crashLogPath,
-      `[${new Date().toISOString()}] ${label}\n${formatError(error)}\n\n`,
-      'utf8'
-    )
-  } catch {
-    /* best effort */
-  }
-}
-
-function reportFatalError(label: string, error: unknown): void {
-  console.error(`[main] ${label}:`, error)
-  writeCrashLog(label, error)
-  if (mainWindow && !mainWindow.isDestroyed() && !startupError) return
-  try {
-    dialog.showErrorBox('ilyStream startup error', `${label}\n\n${formatError(error)}`)
-  } catch {
-    /* best effort */
-  }
-}
-
-function buildStartupErrorHtml(error: unknown): string {
-  const crashLogPath = getCrashLogPath()
-  const details = escapeHtml(formatError(error))
-  const logLine = crashLogPath
-    ? `<p>Crash log: <code>${escapeHtml(crashLogPath)}</code></p>`
-    : ''
-
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>ilyStream startup error</title>
-  <style>
-    html, body { margin: 0; height: 100%; background: #0f1115; color: #f6f7fb; font-family: Inter, Segoe UI, sans-serif; }
-    body { display: grid; place-items: center; padding: 32px; box-sizing: border-box; }
-    main { width: min(760px, 100%); border: 1px solid rgba(255,255,255,.12); background: #151821; border-radius: 12px; padding: 28px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
-    h1 { margin: 0 0 8px; font-size: 24px; }
-    p { color: rgba(246,247,251,.72); line-height: 1.5; }
-    pre { white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: 16px; color: #ffb4b4; max-height: 320px; overflow: auto; }
-    code { color: #7dd3fc; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>ilyStream could not finish starting.</h1>
-    <p>The main window opened, but a startup service failed before the app could attach its controls.</p>
-    ${logLine}
-    <pre>${details}</pre>
-  </main>
-</body>
-</html>`
-}
-
 process.on('uncaughtException', (error) => {
-  reportFatalError('Uncaught exception', error)
+  reportFatalError('Uncaught exception', error, mainWindow, startupError)
 })
 
 process.on('unhandledRejection', (reason) => {
-  reportFatalError('Unhandled promise rejection', reason)
+  reportFatalError('Unhandled promise rejection', reason, mainWindow, startupError)
 })
 
 function createWindow(): void {
@@ -249,7 +123,6 @@ function createWindow(): void {
     console.log('[main] UI visible. Initializing services in background...')
     initPromise.then(() => {
         console.log('[main] Services initialized successfully.')
-        // Start health watchdog after services are up
         startHealthWatchdog()
       })
       .catch((error) => {
@@ -337,16 +210,6 @@ function createWindow(): void {
   }
 }
 
-function isProductionAppFileUrl(value: string, loadUrl: string): boolean {
-  try {
-    const url = new URL(value)
-    const appUrl = new URL(pathToFileURL(loadUrl).toString())
-    return url.protocol === 'file:' && url.pathname === appUrl.pathname
-  } catch {
-    return false
-  }
-}
-
 function createTray(): void {
   const icon = createAppIcon()
   if (icon.isEmpty()) return
@@ -359,67 +222,6 @@ function createTray(): void {
     ])
   )
   tray.on('double-click', () => mainWindow?.show())
-}
-
-function registerAssetProtocol(): void {
-  protocol.handle('asset', async (request) => {
-    try {
-      const url = new URL(request.url)
-      let assetId = decodeURIComponent(url.hostname + url.pathname)
-      assetId = assetId.replace(/^\/+/, '').replace(/\/+$/, '')
-
-      if (assetId.startsWith('app/')) {
-        assetId = assetId.slice(4)
-      }
-
-      console.log(`[AssetProtocol] Resolving: ${assetId}`)
-
-      let assetPath: string | null = null
-      // 1. AppData Assets (Try root, then sounds/assets subdirs)
-      const userData = app.getPath('userData')
-      const userRoots = [
-        userData,
-        join(userData, 'sounds'),
-        join(userData, 'assets')
-      ]
-
-      for (const root of userRoots) {
-        const filePath = resolveAssetPath(root, assetId)
-        if (filePath && await isReadableFile(filePath)) {
-          assetPath = filePath
-          break
-        }
-      }
-
-      // 4. Resources
-      if (!assetPath) {
-        const resourceRoots = [
-          join(__dirname, '../../resources'),
-          join(app.getAppPath(), 'resources'),
-          process.resourcesPath,
-          join(process.resourcesPath, 'resources'),
-          join(process.cwd(), 'resources')
-        ]
-        for (const root of resourceRoots) {
-          const filePath = resolveAssetPath(root, assetId)
-          if (filePath && await isReadableFile(filePath)) {
-            assetPath = filePath
-            break
-          }
-        }
-      }
-
-      if (assetPath) {
-        return net.fetch(pathToFileURL(assetPath).toString())
-      }
-
-      console.warn(`[AssetProtocol] Asset not found: ${assetId}`)
-      return new Response('Not Found', { status: 404 })
-    } catch (err) {
-      console.error('[AssetProtocol] Error:', err)
-      return new Response('Internal Error', { status: 500 })
-    }
-  })
 }
 
 app.whenReady().then(async () => {
@@ -477,12 +279,9 @@ function startHealthWatchdog(): void {
   healthWatchdogTimer = setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('system:ping')
-
-      // We don't wait for a response here to avoid blocking main
-      // but we can log the attempt.
       console.log('[watchdog] Sent ping to renderer.')
     }
-  }, 60000) // Ping every minute
+  }, 60000)
 }
 
 function stopBackgroundTimers(): void {
@@ -497,7 +296,6 @@ function stopBackgroundTimers(): void {
 }
 
 app.on('window-all-closed', () => {
-  // Minimize to tray behavior could go here, but app.quit() is requested for now
 })
 
 app.on('before-quit', (event) => {

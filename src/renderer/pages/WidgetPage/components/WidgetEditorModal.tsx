@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { IconRefresh } from '@tabler/icons-react'
+import { IconRefresh } from '../../../components/ui/icons'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
 import { WidgetThemeSection } from './ConfigEditors/WidgetThemeSection'
@@ -66,10 +66,10 @@ export function WidgetEditorModal({
             type="text"
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-1.5 text-sm font-bold text-white focus:border-accent/50 focus:outline-none w-64 transition-all"
+            className="bg-white/5 border border-white/10 rounded-xl px-4 py-1.5 text-sm font-semibold text-white focus:border-accent/50 focus:outline-none w-64 transition-all"
             placeholder="Widget name"
           />
-          <span className="text-2xs font-black uppercase tracking-normal text-white/20">
+          <span className="text-2xs font-semibold tracking-normal text-white/20">
             {draft.type}
           </span>
         </div>
@@ -106,7 +106,7 @@ export function WidgetEditorModal({
                 }
               >
                 <div
-                  className="absolute inset-0 rounded-2xl overflow-hidden border border-white/10 shadow-glow"
+                  className="absolute inset-0 rounded-md overflow-hidden border border-white/10"
                   style={{
                     backgroundColor: '#07080b',
                     backgroundImage:
@@ -126,30 +126,30 @@ export function WidgetEditorModal({
 
                 {/* Resolution Badge */}
                 <div className="absolute -bottom-8 left-0 right-0 flex justify-center">
-                  <span className="text-[10px] font-black uppercase tracking-normal text-white/10">
+                  <span className="text-[10px] font-semibold tracking-normal text-white/10">
                     {previewFrame.resolutionLabel}
                   </span>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4 text-center">
-                <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-white/10 mb-2">
+                <div className="w-16 h-16 rounded-lg bg-white/[0.03] border border-white/5 flex items-center justify-center text-white/10 mb-2">
                   <IconRefresh size={32} />
                 </div>
-                <div className="text-sm font-bold text-white/30">Overlay Server Offline</div>
+                <div className="text-sm font-semibold text-white/30">Overlay Server Offline</div>
                 <div className="text-xs text-white/10 max-w-[200px]">Start the server from Settings to enable live preview.</div>
               </div>
             )}
           </div>
 
-          <div className="p-6 border-t border-white/5 flex items-center justify-end gap-3 bg-black/40 backdrop-blur-md">
-            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-bold text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer">
+          <div className="p-6 border-t border-white/5 flex items-center justify-end gap-3 bg-black/40">
+            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-semibold text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer">
               Discard
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-8 py-2.5 rounded-xl bg-brand-gradient text-white text-xs font-black uppercase tracking-normal hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-accent/20"
+              className="px-8 py-2.5 rounded-xl bg-accent text-white text-xs font-semibold tracking-normal hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {saving ? 'Saving...' : 'Apply Changes'}
             </button>

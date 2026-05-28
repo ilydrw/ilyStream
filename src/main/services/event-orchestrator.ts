@@ -184,9 +184,9 @@ export class EventOrchestrator {
     })
 
     // 5. TTS (only if not a spotify command or if configured)
-    if (!handledBySpotify) {
+    if (!handledBySpotify && shouldRouteEventToTts(event)) {
       await this.runEventStage('tts', () => {
-        console.log(`[orchestrator] Sending to TTS engine...`)
+        console.log(`[orchestrator] Sending ${event.type} to TTS engine...`)
         this.ttsEngine.processEvent(event)
       })
     }
@@ -608,6 +608,10 @@ export class EventOrchestrator {
 
 function isHostChatPlatform(value: unknown): value is Platform {
   return typeof value === 'string' && HOST_CHAT_PLATFORM_SET.has(value)
+}
+
+function shouldRouteEventToTts(event: AnyStreamEvent): boolean {
+  return event.type === 'chat' || event.type === 'subscription'
 }
 
 function escapeAlertHtml(value: string): string {

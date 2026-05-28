@@ -1,4 +1,5 @@
-import { IconTerminal2, IconTrash, IconArrowDown, IconSearch, IconCopy, IconDownload, IconFilter } from '@tabler/icons-react'
+import { IconTerminal2, IconArrowDown, IconFilter } from '@tabler/icons-react'
+import { IconTrash, IconSearch, IconCopy, IconDownload } from '../../../components/ui/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogStore, type LogLevel, type LogEntry } from '../../../stores/log-store'
 
@@ -246,24 +247,20 @@ export function ConsoleSection() {
           <div>
             <h2 className="flex items-center gap-2">
               Console
-              {paused && <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase tracking-widest border border-amber-500/20">Paused</span>}
+              {paused && <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded tracking-tight border border-amber-500/20">Paused</span>}
             </h2>
             <p>Real-time application log feed with severity and module filtering.</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[10px] font-bold text-white/20 tabular-nums uppercase tracking-widest">
+            <span className="text-[10px] font-semibold text-white/20 tabular-nums tracking-tight">
               {filteredEntries.length.toLocaleString()} of {entries.length.toLocaleString()} visible
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPaused(p => !p)}
-                className={`rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  paused
-                    ? 'border-amber-500 bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]'
-                    : 'border-accent/20 bg-accent/10 text-accent hover:border-accent/40'
-                }`}
+                className={`rounded-full border px-3 py-1 text-[9px] font-semibold tracking-tight transition-all ${ paused ? 'border-amber-500 bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'border-accent/20 bg-accent/10 text-accent hover:border-accent/40' }`}
               >
                 {paused ? 'Resume Feed' : 'Pause'}
               </button>
@@ -277,14 +274,10 @@ export function ConsoleSection() {
         <div className="flex flex-col border-b border-white/[0.05]">
           {/* Level Bar */}
           <div className="flex items-center gap-2 px-6 py-3 bg-white/[0.02] flex-wrap">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/20 mr-2 select-none">Levels</span>
+            <span className="text-[9px] font-semibold tracking-tight text-white/20 mr-2 select-none">Levels</span>
             <button
               onClick={toggleAllLevels}
-              className={`h-7 px-3 rounded-lg ring-1 text-[8px] font-black uppercase tracking-widest transition-all ${
-                enabledLevels.size === LOG_LEVELS.length
-                  ? 'bg-accent/20 ring-accent/40 text-accent'
-                  : 'bg-white/[0.03] ring-white/[0.06] text-white/28 hover:text-white/50'
-              }`}
+              className={`h-7 px-3 rounded-lg ring-1 text-[8px] font-semibold tracking-tight transition-all ${ enabledLevels.size === LOG_LEVELS.length ? 'bg-accent/20 ring-accent/40 text-accent' : 'bg-white/[0.03] ring-white/[0.06] text-white/28 hover:text-white/50' }`}
             >
               All
             </button>
@@ -295,14 +288,14 @@ export function ConsoleSection() {
                 <button
                   key={level.key}
                   onClick={() => toggleLevel(level.key)}
-                  className={`h-7 px-3 rounded-lg ring-1 text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                  className={`h-7 px-3 rounded-lg ring-1 text-[11px] font-medium tracking-tight transition-all flex items-center gap-2 ${
                     active
                       ? `${level.bg} ${level.ring} ${level.color}`
                       : 'bg-white/[0.01] ring-white/[0.04] text-white/20 hover:text-white/40 hover:bg-white/[0.03]'
                   }`}
                 >
                   {level.label}
-                  <span className={`text-[7px] tabular-nums font-bold ${active ? 'opacity-60' : 'opacity-30'}`}>
+                  <span className={`text-[7px] tabular-nums font-semibold ${active ? 'opacity-60' : 'opacity-30'}`}>
                     {counts[level.key]}
                   </span>
                 </button>
@@ -312,14 +305,14 @@ export function ConsoleSection() {
 
           {/* Category Bar */}
           <div className="flex items-center gap-2 px-6 py-3 bg-white/[0.01] flex-wrap border-t border-white/[0.03]">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/20 mr-2 select-none">Groups</span>
+            <span className="text-[9px] font-semibold tracking-tight text-white/20 mr-2 select-none">Groups</span>
             {CATEGORIES.map(cat => {
               const active = enabledCategories.has(cat)
               return (
                 <button
                   key={cat}
                   onClick={() => toggleCategory(cat)}
-                  className={`h-7 px-4 rounded-lg ring-1 text-[8px] font-black uppercase tracking-widest transition-all ${
+                  className={`h-7 px-4 rounded-lg ring-1 text-[11px] font-medium tracking-tight transition-all ${
                     active
                       ? `${CATEGORY_ICONS[cat]}`
                       : 'bg-white/[0.01] ring-white/[0.04] text-white/20 hover:text-white/40'
@@ -349,9 +342,7 @@ export function ConsoleSection() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsSearchOpen(s => !s)}
-                className={`h-8 w-8 rounded-lg ring-1 transition-all flex items-center justify-center ${
-                  isSearchOpen ? 'bg-accent/20 ring-accent/40 text-accent' : 'bg-white/[0.03] ring-white/[0.06] text-white/30 hover:text-white/60 hover:bg-white/[0.06]'
-                }`}
+                className={`h-8 w-8 rounded-lg ring-1 transition-all flex items-center justify-center ${ isSearchOpen ? 'bg-accent/20 ring-accent/40 text-accent' : 'bg-white/[0.03] ring-white/[0.06] text-white/30 hover:text-white/60 hover:bg-white/[0.06]' }`}
                 title="Toggle Search"
               >
                 <IconSearch size={14} />
@@ -363,7 +354,7 @@ export function ConsoleSection() {
                 title="Simulate incoming chat event"
               >
                 <IconTerminal2 size={14} />
-                <span className="text-[9px] font-black uppercase tracking-widest">Simulate</span>
+                <span className="text-[9px] font-semibold tracking-tight">Simulate</span>
               </button>
 
               <div className="w-px h-4 bg-white/5 mx-1" />
@@ -408,8 +399,8 @@ export function ConsoleSection() {
                   <IconTerminal2 size={48} />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-black uppercase tracking-widest">No Log Entries</p>
-                  <p className="text-[10px] text-white/20 mt-1 uppercase tracking-wider">
+                  <p className="text-sm font-semibold tracking-tight">No Log Entries</p>
+                  <p className="text-[10px] text-white/20 mt-1 tracking-wider">
                     {entries.length === 0 ? 'Awaiting application events...' : 'Try adjusting filters or search query'}
                   </p>
                 </div>
@@ -420,22 +411,20 @@ export function ConsoleSection() {
                   {filteredEntries.map(entry => (
                     <tr
                       key={entry.id}
-                      className={`group hover:bg-white/[0.03] transition-colors ${
-                        entry.level === 'error' ? 'bg-red-500/[0.05]' : entry.level === 'warn' ? 'bg-amber-500/[0.03]' : ''
-                      }`}
+                      className={`group hover:bg-white/[0.03] transition-colors ${ entry.level === 'error' ? 'bg-red-500/[0.05]' : entry.level === 'warn' ? 'bg-amber-500/[0.03]' : '' }`}
                     >
                       {/* Timestamp */}
-                      <td className="py-1 pr-4 text-white/10 whitespace-nowrap align-top select-none w-[1%] font-bold tabular-nums">
+                      <td className="py-1 pr-4 text-white/10 whitespace-nowrap align-top select-none w-[1%] font-semibold tabular-nums">
                         {formatTime(entry.timestamp)}
                       </td>
 
                       {/* Source */}
                       <td className="py-1 pr-4 align-top w-[1%]">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-white/[0.03] border border-white/[0.05] ${CATEGORY_COLORS[entry.category as Category]}`}>
+                          <span className={`text-[9px] font-semibold tracking-tight px-1.5 py-0.5 rounded-sm bg-white/[0.03] border border-white/[0.05] ${CATEGORY_COLORS[entry.category as Category]}`}>
                             {entry.category}
                           </span>
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-white/20">
+                          <span className="text-[9px] font-semibold tracking-tight text-white/20">
                             {entry.source}
                           </span>
                         </div>
@@ -443,7 +432,7 @@ export function ConsoleSection() {
 
                       {/* Level */}
                       <td className="py-1 pr-4 align-top w-[1%]">
-                        <span className={`text-[9px] font-black uppercase tracking-wider ${LEVEL_COLORS[entry.level]}`}>
+                        <span className={`text-[9px] font-semibold tracking-wider ${LEVEL_COLORS[entry.level]}`}>
                           {entry.level}
                         </span>
                       </td>
@@ -473,7 +462,7 @@ export function ConsoleSection() {
                     setAutoScroll(true)
                   }
                 }}
-                className="flex items-center gap-2 px-4 h-10 rounded-full bg-brand-gradient text-white font-black text-[10px] uppercase tracking-widest shadow-glow hover:scale-105 active:scale-95 transition-all"
+                className="flex items-center gap-2 px-4 h-10 rounded-full bg-accent text-white font-semibold text-[10px] tracking-tight hover:scale-105 active:scale-95 transition-all"
               >
                 <IconArrowDown size={14} />
                 New Events Below
@@ -487,11 +476,11 @@ export function ConsoleSection() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Runtime Active</span>
+              <span className="text-[9px] font-semibold text-white/40 tracking-tight">Runtime Active</span>
             </div>
-            <span className="text-[9px] font-bold text-white/10 uppercase tracking-widest">System Architecture</span>
+            <span className="text-[9px] font-semibold text-white/10 tracking-tight">System Architecture</span>
           </div>
-          <span className="text-[9px] font-black text-white/15 uppercase tracking-widest">ilyStream v0.0.7 Console</span>
+          <span className="text-[9px] font-semibold text-white/15 tracking-tight">ilyStream v0.0.7 Console</span>
         </div>
       </div>
     </section>

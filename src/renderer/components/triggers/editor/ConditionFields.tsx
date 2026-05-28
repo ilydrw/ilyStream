@@ -56,11 +56,7 @@ export function ConditionFields({
           <FieldBlock label="Case Sensitive">
             <button
               onClick={() => onChange({ ...condition, caseSensitive: !condition.caseSensitive })}
-              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                condition.caseSensitive
-                  ? 'bg-accent/15 text-accent border border-accent/30'
-                  : 'bg-card border border-border text-muted hover:bg-card-hover'
-              }`}
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${ condition.caseSensitive ? 'bg-accent/15 text-accent border border-accent/30' : 'bg-card border border-border text-muted hover:bg-card-hover' }`}
             >
               {condition.caseSensitive ? 'Enabled' : 'Disabled'}
             </button>

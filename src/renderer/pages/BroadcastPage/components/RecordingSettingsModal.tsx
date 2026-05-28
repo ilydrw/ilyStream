@@ -1,6 +1,7 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { IconX, IconSettings, IconDeviceFloppy, IconVideo, IconMusic, IconSparkles } from '@tabler/icons-react'
+import { IconSettings, IconVideo, IconMusic, IconSparkles } from '@tabler/icons-react'
+import { IconX, IconDeviceFloppy } from '../../../components/ui/icons'
 import { useStudioStore } from '../../../stores/studio-store'
 
 interface RecordingSettingsModalProps {
@@ -31,8 +32,8 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                 <IconSettings size={20} />
               </div>
               <div>
-                <h2 className="text-lg font-black uppercase tracking-tight text-white">Recording Settings</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mt-0.5">Advanced Production Config</p>
+                <h2 className="text-lg font-semibold tracking-tight text-white">Recording Settings</h2>
+                <p className="text-[10px] font-semibold tracking-tight text-white/20 mt-0.5">Advanced Production Config</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 rounded-xl text-white/20 hover:text-white hover:bg-white/5 transition-all">
@@ -44,7 +45,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
           <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
             {/* Format & Container */}
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/40">
+              <div className="flex items-center gap-2 text-[10px] font-semibold tracking-tight text-white/40">
                 <IconVideo size={14} /> Video Container
               </div>
               <div className="grid grid-cols-4 gap-2">
@@ -52,7 +53,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                   <button
                     key={fmt}
                     onClick={() => setRecordingSettings({ container: fmt })}
-                    className={`py-3 rounded-xl border font-black uppercase text-[11px] tracking-widest transition-all ${recordingSettings.container === fmt ? 'bg-accent border-accent text-white shadow-lg shadow-accent/20' : 'bg-white/5 border-white/10 text-white/30 hover:border-white/20'}`}
+                    className={`py-3 rounded-xl border font-semibold text-[11px] tracking-tight transition-all ${recordingSettings.container === fmt ? 'bg-accent border-accent text-white ' : 'bg-white/5 border-white/10 text-white/30 hover:border-white/20'}`}
                   >
                     {fmt}
                   </button>
@@ -65,7 +66,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
 
             {/* Encoder */}
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/40">
+              <div className="flex items-center gap-2 text-[10px] font-semibold tracking-tight text-white/40">
                 <IconSparkles size={14} /> Video Encoder
               </div>
               <div className="space-y-2">
@@ -82,8 +83,8 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                     className={`w-full px-4 py-3 rounded-xl border flex items-center justify-between transition-all ${recordingSettings.encoder === enc.id ? 'bg-white/10 border-accent/40 text-white shadow-inner' : 'bg-white/5 border-white/5 text-white/30 hover:bg-white/10'}`}
                   >
                     <div className="text-left">
-                      <div className="text-[11px] font-black uppercase tracking-tight">{enc.name}</div>
-                      <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest">{enc.desc}</div>
+                      <div className="text-[11px] font-semibold tracking-tight">{enc.name}</div>
+                      <div className="text-[9px] font-semibold text-white/20 tracking-tight">{enc.desc}</div>
                     </div>
                     {recordingSettings.encoder === enc.id && <div className="w-2 h-2 rounded-full bg-accent animate-pulse shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)]" />}
                   </button>
@@ -93,14 +94,14 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
 
             {/* Audio Reactivity */}
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/40">
+              <div className="flex items-center gap-2 text-[10px] font-semibold tracking-tight text-white/40">
                 <IconMusic size={14} /> Audio Reactivity
               </div>
-              <div className="p-5 rounded-2xl bg-white/5 border border-white/5 space-y-5">
+              <div className="p-5 rounded-md bg-white/5 border border-white/5 space-y-5">
                 <div className="space-y-4">
                   <div className="flex justify-between items-end">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Smoothing (EMA)</label>
-                    <span className="text-[10px] font-mono font-black text-accent">{Math.round(smoothing * 100)}%</span>
+                    <label className="text-[10px] font-semibold tracking-tight text-white/40">Smoothing (EMA)</label>
+                    <span className="text-[10px] font-mono font-semibold text-accent">{Math.round(smoothing * 100)}%</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <input
@@ -110,7 +111,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                       className="flex-1 accent-accent"
                     />
                   </div>
-                  <p className="text-[8px] text-white/15 leading-relaxed font-bold uppercase tracking-wider">
+                  <p className="text-[8px] text-white/15 leading-relaxed font-semibold tracking-wider">
                     Higher = smoother & slower pulses. Lower = snappier & more aggressive.
                   </p>
                 </div>
@@ -120,7 +121,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
             {/* Quality & Bitrate */}
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-4">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-white/40">Video Quality (CRF)</label>
+                <label className="block text-[10px] font-semibold tracking-tight text-white/40">Video Quality (CRF)</label>
                 <div className="flex items-center gap-4">
                   <input
                     type="range" min="0" max="51" step="1"
@@ -128,13 +129,13 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                     onChange={(e) => setRecordingSettings({ crf: Number(e.target.value) })}
                     className="flex-1 accent-accent"
                   />
-                  <span className="text-xs font-black font-mono text-white/80 w-6 text-center">{recordingSettings.crf}</span>
+                  <span className="text-xs font-semibold font-mono text-white/80 w-6 text-center">{recordingSettings.crf}</span>
                 </div>
-                <p className="text-[8px] text-white/15 leading-relaxed font-bold uppercase tracking-wider">Lower is higher quality. 18-23 is typical.</p>
+                <p className="text-[8px] text-white/15 leading-relaxed font-semibold tracking-wider">Lower is higher quality. 18-23 is typical.</p>
               </div>
 
               <div className="space-y-4">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-white/40">Audio Bitrate (kbps)</label>
+                <label className="block text-[10px] font-semibold tracking-tight text-white/40">Audio Bitrate (kbps)</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[128, 160, 192, 320].map(br => (
                     <button
@@ -154,7 +155,7 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
           <div className="px-8 py-6 border-t border-white/5 bg-black/40 flex items-center justify-end">
             <button
               onClick={onClose}
-              className="px-8 py-3 bg-accent text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-accent/20 hover:brightness-110 active:scale-95 transition-all text-xs"
+              className="px-8 py-3 bg-accent text-white font-semibold tracking-tight rounded-md hover:brightness-110 active:scale-95 transition-all text-xs"
             >
               Apply Settings
             </button>

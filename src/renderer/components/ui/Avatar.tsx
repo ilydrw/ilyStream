@@ -27,13 +27,7 @@ export function Avatar({ url, name, size = 'md', className = '' }: AvatarProps) 
 
   return (
     <div 
-      className={`
-        shrink-0 rounded-full overflow-hidden border border-white/10 
-        bg-white/5 flex items-center justify-center font-bold text-white/40
-        ring-1 ring-white/5 shadow-inner shadow-black/40
-        ${sizeClasses[size]} 
-        ${className}
-      `}
+      className={`shrink-0 rounded-full overflow-hidden border border-white/10 bg-white/5 flex items-center justify-center font-semibold text-white/40 ring-1 ring-white/5 shadow-inner shadow-black/40 ${sizeClasses[size]} ${className}`}
     >
       {url && !error ? (
         <img

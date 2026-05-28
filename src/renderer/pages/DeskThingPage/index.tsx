@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import {IconDeviceMobile, IconPlus, IconTrash, IconCopy, IconCheck, IconClock, IconCpu, IconMusic, IconLayoutGrid} from '@tabler/icons-react'
+import { IconDeviceMobile, IconClock, IconCpu, IconMusic, IconLayoutGrid } from '@tabler/icons-react'
+import { IconPlus, IconTrash, IconCopy, IconCheck } from '../../components/ui/icons'
 import type { PairCode, PairedDevice } from '../../../shared/device-api'
 import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { DeskThingIcon } from '../../components/ui/DeskThingIcon'
@@ -122,8 +123,8 @@ export default function DeskThingPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex flex-col items-end px-3">
-            <span className="text-[10px] font-black tracking-widest text-white/20">Paired</span>
-            <span className="text-2xl font-black tabular-nums text-white">{devices.length}</span>
+            <span className="text-[10px] font-semibold tracking-tight text-white/20">Paired</span>
+            <span className="text-2xl font-semibold tabular-nums text-white">{devices.length}</span>
           </div>
         </div>
       </header>
@@ -162,7 +163,7 @@ export default function DeskThingPage() {
           <button
             onClick={startPair}
             disabled={!!pair}
-            className="app-button-primary !h-10 !px-6 text-xs font-bold flex items-center gap-2"
+            className="app-button-primary !h-10 !px-6 text-xs font-semibold flex items-center gap-2"
           >
             <IconPlus size={14} />
             Pair new device
@@ -173,11 +174,11 @@ export default function DeskThingPage() {
           <div className="p-8 border-t border-white/5 bg-white/[0.01]">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
               <div className="flex flex-col gap-2">
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                <div className="text-[10px] font-semibold tracking-tight text-white/40">
                   Enter this code on your device
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="text-5xl font-black font-mono tabular-nums text-accent tracking-[0.2em]">
+                  <div className="text-5xl font-semibold font-mono tabular-nums text-accent tracking-normal">
                     {pair.code}
                   </div>
                   <button
@@ -188,14 +189,14 @@ export default function DeskThingPage() {
                     {copied === 'code' ? <IconCheck size={14} /> : <IconCopy size={14} />}
                   </button>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-white/40">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white/40">
                   <IconClock size={11} />
                   Expires in {pairExpiresIn}s
                 </div>
               </div>
 
               <div className="flex-1 min-w-0 space-y-2">
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                <div className="text-[10px] font-semibold tracking-tight text-white/40">
                   DeskThing address
                 </div>
                 {pairAddress ? (
@@ -220,7 +221,7 @@ export default function DeskThingPage() {
                       <button
                         key={host}
                         onClick={() => handleCopy(host, 'address')}
-                        className="text-[10px] font-bold text-white/35 hover:text-white/70 bg-white/[0.03] border border-white/5 rounded px-2 py-1 transition"
+                        className="text-[10px] font-semibold text-white/35 hover:text-white/70 bg-white/[0.03] border border-white/5 rounded px-2 py-1 transition"
                         title="Copy alternate address"
                       >
                         {host}
@@ -269,18 +270,18 @@ export default function DeskThingPage() {
                     <CarThingIcon size={128} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-2xl font-black text-white truncate mb-2">{device.label}</div>
+                    <div className="text-2xl font-semibold text-white truncate mb-2">{device.label}</div>
                     <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-                      <div className="flex items-center gap-2.5 text-[11px] font-black uppercase tracking-widest text-white/20">
+                      <div className="flex items-center gap-2.5 text-[11px] font-semibold tracking-tight text-white/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-accent" />
                         ID: {device.token.slice(-8)}
                       </div>
-                      <div className="flex items-center gap-2.5 text-[11px] font-black uppercase tracking-widest text-white/20">
+                      <div className="flex items-center gap-2.5 text-[11px] font-semibold tracking-tight text-white/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-white/10" />
                         Added {formatRelative(device.createdAt)}
                       </div>
                       {device.lastUsed && (
-                        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-accent/40">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold tracking-tight text-accent/40">
                           <span className="w-1.5 h-1.5 rounded-full bg-accent/30" />
                           Online {formatRelative(device.lastUsed)}
                         </div>
@@ -289,7 +290,7 @@ export default function DeskThingPage() {
                   </div>
                   <button
                     onClick={() => revokeDevice(device.token)}
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white/5 text-white/30 hover:bg-danger/20 hover:text-danger transition-all opacity-0 group-hover:opacity-100"
+                    className="w-12 h-12 rounded-md flex items-center justify-center bg-white/5 text-white/30 hover:bg-danger/20 hover:text-danger transition-all opacity-0 group-hover:opacity-100"
                     title="Revoke device"
                   >
                     <IconTrash size={18} />
@@ -316,7 +317,7 @@ function FeatureCard({
   return (
     <div className="app-section-card glass !p-6">
       <div className="text-accent mb-3">{icon}</div>
-      <div className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">{label}</div>
+      <div className="text-[10px] font-semibold tracking-tight text-white/40 mb-2">{label}</div>
       <p className="text-xs text-white/60 leading-relaxed">{description}</p>
     </div>
   )

@@ -17,7 +17,7 @@ export function StatusBadge({ status, reconnect }: { status: string; reconnect?:
       : status.toUpperCase()
 
   return (
-    <span className={`flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.15em] ${styles[status] || styles.disconnected}`}>
+    <span className={`flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-normal ${styles[status] || styles.disconnected}`}>
       {status === 'connected' && (
         <span className="relative flex h-1.5 w-1.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-40" />
@@ -49,8 +49,8 @@ export function Metric({
         {icon}
       </div>
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-white/30 mb-2">{label}</p>
-        <p className={`text-3xl font-bold font-mono ${tone === 'danger' ? 'text-danger' : 'text-white'}`}>{value}</p>
+        <p className="text-[10px] font-semibold tracking-normal text-white/30 mb-2">{label}</p>
+        <p className={`text-3xl font-semibold font-mono ${tone === 'danger' ? 'text-danger' : 'text-white'}`}>{value}</p>
       </div>
     </div>
   )
@@ -77,8 +77,8 @@ export function DiagnosticLine({
     <div className={`flex items-center gap-4 p-5 rounded-xl border ${toneClasses[tone]} transition-all`}>
       <div className="flex-shrink-0">{icon}</div>
       <div className="min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.12em] opacity-40 mb-1">{label}</p>
-        <p className="text-sm font-bold truncate leading-none">{value}</p>
+        <p className="text-[10px] font-semibold tracking-normal opacity-40 mb-1">{label}</p>
+        <p className="text-sm font-semibold truncate leading-none">{value}</p>
       </div>
     </div>
   )

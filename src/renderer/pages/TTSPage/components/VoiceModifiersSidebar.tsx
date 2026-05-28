@@ -29,7 +29,7 @@ export function VoiceModifiersSidebar({
           {/* IconRadio IconFilter */}
           <div className="flex items-center justify-between gap-6">
             <div className="min-w-0">
-              <h4 className="text-sm font-bold text-white mb-0.5">Voice Filters</h4>
+              <h4 className="text-sm font-semibold text-white mb-0.5">Voice Filters</h4>
               <p className="text-xs text-white/40">High-pass + slight crunch for a broadcast feel.</p>
             </div>
             <Toggle 
@@ -41,7 +41,7 @@ export function VoiceModifiersSidebar({
           {/* Speed Ramping */}
           <div className="flex items-center justify-between gap-6">
             <div className="min-w-0">
-              <h4 className="text-sm font-bold text-white mb-0.5">Speed Ramping</h4>
+              <h4 className="text-sm font-semibold text-white mb-0.5">Speed Ramping</h4>
               <p className="text-xs text-white/40">Speed up for excitement (!) or slow for drama (...).</p>
             </div>
             <Toggle 
@@ -52,17 +52,13 @@ export function VoiceModifiersSidebar({
 
           {/* Pitch Shifting */}
           <div className="flex flex-col gap-3">
-            <label className="text-xs font-black uppercase tracking-widest text-white/40">Pitch Shift Mode</label>
+            <label className="text-xs font-semibold tracking-tight text-white/40">Pitch Shift Mode</label>
             <div className="grid grid-cols-2 gap-2">
               {(['low', 'normal', 'high', 'dynamic'] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => onUpdateModifiers({ pitchShifting: mode })}
-                  className={`px-4 py-3 rounded-xl border text-xs font-bold transition-all ${
-                    voiceModifiers.pitchShifting === mode
-                      ? 'bg-white border-white text-black'
-                      : 'bg-white/[0.03] border-white/5 text-white/40 hover:border-white/15'
-                  }`}
+                  className={`px-4 py-3 rounded-xl border text-xs font-semibold transition-all ${ voiceModifiers.pitchShifting === mode ? 'bg-white border-white text-black' : 'bg-white/[0.03] border-white/5 text-white/40 hover:border-white/15' }`}
                 >
                   {mode.charAt(0).toUpperCase() + mode.slice(1)}
                 </button>

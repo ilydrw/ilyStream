@@ -1,29 +1,5 @@
-import {
-  IconRadio,
-  IconMenu2,
-  IconDeviceDesktop,
-  IconDeviceMobile,
-  IconStack2,
-  IconRotate2,
-  IconRotateClockwise2,
-  IconCamera,
-  IconCircle,
-  IconRefresh,
-  IconVideo,
-  IconSquare,
-  IconPlayerPlay,
-  IconChevronRight,
-  IconChevronLeft,
-  IconPlus,
-  IconLayoutGrid,
-  IconKeyboard,
-  IconSettings,
-  IconBroadcast,
-  IconScreenShare,
-  IconActivity,
-  IconChevronDown,
-  IconSparkles
-} from '@tabler/icons-react'
+import { IconRadio, IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconCircle, IconVideo, IconSquare, IconLayoutGrid, IconKeyboard, IconSettings, IconBroadcast, IconScreenShare, IconActivity, IconSparkles } from '@tabler/icons-react'
+import { IconRefresh, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown } from '../../../components/ui/icons'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -106,21 +82,23 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   }))
   const virtualCameraLoading = !virtualCameraInfo
   const virtualCameraStarting = virtualCameraInfo?.state === 'starting'
+  const virtualCameraInstallAvailable = Boolean(virtualCameraInfo?.canInstallDriver)
   const virtualCameraDisabled =
     virtualCameraLoading ||
     virtualCameraStarting ||
-    virtualCameraInfo?.state === 'unsupported' ||
-    virtualCameraInfo?.canStart === false
+    ((virtualCameraInfo?.state === 'unsupported' || virtualCameraInfo?.canStart === false) && !virtualCameraInstallAvailable)
   const virtualCameraLabel =
     virtualCameraLoading ? 'Checking' :
     virtualCameraInfo?.state === 'active' ? 'Streaming' :
     virtualCameraStarting ? 'Starting' :
+    virtualCameraInstallAvailable ? 'Install driver' :
     virtualCameraDisabled ? 'Driver needed' :
     virtualCameraInfo?.state === 'error' ? 'Error' :
     'Ready'
   const virtualCameraTooltip =
     virtualCameraLoading ? 'Checking ilyStream Virtual Camera status' :
     virtualCameraStarting ? 'Starting ilyStream Virtual Camera' :
+    virtualCameraInstallAvailable ? (virtualCameraInfo?.installDriverHint || 'Install ilyStream Virtual Camera') :
     virtualCameraDisabled ? (virtualCameraInfo?.driverHint || virtualCameraInfo?.lastError || 'Virtual camera unavailable') :
     virtualCameraInfo?.state === 'active' ? 'Stop ilyStream Virtual Camera' :
     'Start ilyStream Virtual Camera'
@@ -138,10 +116,10 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   }
 
   return (
-    <header className="relative z-[900] shrink-0 h-20 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-visible border-b border-white/[0.04] bg-[#080808]/80 backdrop-blur-xl" style={{ WebkitAppRegion: 'drag' } as any}>
+    <header className="relative z-[900] shrink-0 h-16 px-3 xl:px-4 2xl:px-6 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 xl:gap-3 2xl:gap-4 overflow-visible border-b border-white/[0.05] bg-[#0E1014]" style={{ WebkitAppRegion: 'drag' } as any}>
       {/* Workspace Group */}
       <div className="min-w-0 flex items-center gap-2 xl:gap-3 2xl:gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="flex bg-transparent rounded-md p-0.5 border border-white/[0.05]">
           <Tooltip content={showLeftSidebar ? "Hide Navigation" : "Show Navigation"} position="bottom">
             <button
               onClick={onToggleLeftSidebar}
@@ -154,7 +132,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
 
         <div className="hidden xl:block h-8 w-px bg-white/5 mx-1" />
 
-        <div className="min-w-0 flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="min-w-0 flex bg-transparent rounded-md p-0.5 border border-white/[0.05]">
           <Select
             value={broadcastLayoutMode}
             onChange={onLayoutModeChange}
@@ -166,14 +144,14 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               { value: 'dual-portrait', label: 'Dual Vertical', icon: <IconStack2 size={15} className="rotate-90" /> }
             ]}
             className="w-28 2xl:w-36"
-            buttonClassName="h-9 bg-transparent border-0 rounded-xl px-2 2xl:px-3 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
+            buttonClassName="h-9 bg-transparent border-0 rounded-xl px-2 2xl:px-3 hover:bg-white/5 transition-all text-[12px] font-medium tracking-tight text-white/40 hover:text-white"
           />
           <div className="w-px h-6 bg-white/5 mx-1 self-center" />
           <button
             onClick={onToggleStudioMode}
-            className={`shrink-0 px-2 2xl:px-3 h-9 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border ${studioMode ? 'bg-brand-gradient border-transparent text-white shadow-lg shadow-accent/20 shadow-glow' : 'text-white/30 border-transparent hover:text-white hover:bg-white/5'}`}
+            className={`shrink-0 px-2 2xl:px-3 h-9 rounded-md transition-colors text-[13px] font-medium tracking-tight flex items-center gap-2 ${studioMode ? 'bg-accent/15 text-accent' : 'text-white/55 hover:text-white hover:bg-white/[0.03]'}`}
           >
-            <div className={`w-2 h-2 rounded-full ${studioMode ? 'bg-white animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-white/10'}`} />
+            <div className={`w-2 h-2 rounded-full ${studioMode ? 'bg-accent animate-pulse' : 'bg-white/10'}`} />
             <span className="hidden 2xl:inline">Studio</span>
           </button>
           <Tooltip content="Apply TikTok overlay kit" position="bottom">
@@ -188,13 +166,13 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
       </div>
 
       {/* Telemetry & Center Group */}
-      <div className="justify-self-center min-w-0 max-w-full flex items-center gap-3 2xl:gap-8 py-2 px-3 2xl:px-6 bg-white/[0.02] border border-white/5 rounded-2xl 2xl:rounded-full backdrop-blur-md">
+      <div className="justify-self-center min-w-0 max-w-full flex items-center gap-3 2xl:gap-8 py-2 px-3 2xl:px-6 bg-white/[0.02] border border-white/5 rounded-md 2xl:rounded-full">
         <div className="min-w-0 flex items-center gap-3 2xl:gap-6">
           <div className="flex flex-col items-center">
-            <span className="hidden 2xl:block text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Status</span>
+            <span className="hidden 2xl:block text-[11px] font-medium tracking-normal text-white/20 mb-1">Status</span>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-success animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`} />
-              <span className={`max-w-20 truncate text-[10px] 2xl:text-[11px] font-black uppercase tracking-widest ${isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'}`}>
+              <span className={`max-w-20 truncate text-[10px] 2xl:text-[11px] font-semibold tracking-tight ${isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'}`}>
                 {isStreaming ? 'Streaming' : isRecording ? 'Recording' : 'Offline'}
               </span>
             </div>
@@ -203,8 +181,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <div className="w-px h-7 2xl:h-8 bg-white/5" />
 
           <div className="flex flex-col items-center">
-            <span className="hidden 2xl:block text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Session</span>
-            <span className="text-[10px] 2xl:text-[11px] font-mono font-bold text-white/80 tabular-nums">
+            <span className="hidden 2xl:block text-[11px] font-medium tracking-normal text-white/20 mb-1">Session</span>
+            <span className="text-[10px] 2xl:text-[11px] font-mono font-semibold text-white/80 tabular-nums">
               {isRecording || isStreaming ? recordingTime : '00:00:00'}
             </span>
           </div>
@@ -212,10 +190,10 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <div className="hidden 2xl:block w-px h-8 bg-white/5" />
 
           <div className="hidden 2xl:flex flex-col items-center">
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">Health</span>
+            <span className="text-[11px] font-medium tracking-normal text-white/20 mb-1">Health</span>
             <div className="flex items-center gap-1.5">
               <IconActivity size={12} className="text-accent/60" />
-              <span className="text-[11px] font-bold text-white/60">Stable</span>
+              <span className="text-[11px] font-semibold text-white/60">Stable</span>
             </div>
           </div>
         </div>
@@ -224,7 +202,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
       {/* Control Room Group */}
       <div className="justify-self-end min-w-0 flex items-center gap-2 2xl:gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
         {/* Production Tools */}
-        <div className="hidden 2xl:flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="hidden 2xl:flex bg-transparent rounded-md p-0.5 border border-white/[0.05]">
           <Tooltip content="Undo (Ctrl+Z)" position="bottom">
             <button onClick={undo} disabled={!canUndo} className="p-2.5 rounded-lg text-white/20 hover:text-white disabled:opacity-5 transition-all"><IconRotate2 size={18} /></button>
           </Tooltip>
@@ -252,17 +230,11 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <button
             onClick={onToggleVirtualCamera}
             disabled={virtualCameraDisabled}
-            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-2xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-20 disabled:cursor-not-allowed ${
-              virtualCameraInfo?.state === 'active'
-                ? 'bg-accent/20 border-accent/40 text-accent shadow-lg shadow-accent/10'
-                : virtualCameraLoading || virtualCameraStarting
-                  ? 'bg-white/10 border-white/20 text-white/80'
-                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'
-            }`}
+            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-md border transition-all flex items-center gap-2 text-[12px] font-medium tracking-tight disabled:opacity-20 disabled:cursor-not-allowed ${ virtualCameraInfo?.state === 'active' ? 'bg-accent/20 border-accent/40 text-accent ' : virtualCameraLoading || virtualCameraStarting ? 'bg-white/10 border-white/20 text-white/80' : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10' }`}
           >
             <IconVideo size={18} />
             <span className="hidden xl:inline">
-              {virtualCameraInfo?.state === 'active' ? 'Cam Live' : virtualCameraLoading ? 'Checking' : 'Cam'}
+              {virtualCameraInfo?.state === 'active' ? 'Cam Live' : virtualCameraInstallAvailable ? 'Install Cam' : virtualCameraLoading ? 'Checking' : 'Cam'}
             </span>
             {virtualCameraInfo?.state === 'active' && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
             {(virtualCameraLoading || virtualCameraStarting) && <div className="w-2 h-2 rounded-full bg-white/50 animate-pulse" />}
@@ -273,7 +245,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
         <div className="relative">
           <button
             onClick={() => setShowOutputsMenu(!showOutputsMenu)}
-            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-2xl border transition-all flex items-center gap-2 2xl:gap-3 text-[10px] font-black uppercase tracking-widest ${showOutputsMenu ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
+            className={`h-10 2xl:h-11 px-3 2xl:px-4 rounded-md border transition-all flex items-center gap-2 2xl:gap-3 text-[12px] font-medium tracking-tight ${showOutputsMenu ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
           >
             <IconScreenShare size={18} />
             <span className="hidden 2xl:inline">Outputs</span>
@@ -288,10 +260,10 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute right-0 mt-3 w-72 bg-[#0c0c0e] border border-white/10 rounded-3xl shadow-2xl p-4 flex flex-col gap-2 z-[700] backdrop-blur-2xl"
+                  className="absolute right-0 mt-3 w-72 bg-[#0c0c0e] border border-white/10 rounded-lg shadow-2xl p-4 flex flex-col gap-2 z-[700]"
                 >
                   <div className="px-3 pb-3 border-b border-white/5 mb-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">External Projections</p>
+                    <p className="text-[12px] font-medium tracking-tight text-white/20">External Projections</p>
                   </div>
 
                   <div className="space-y-1">
@@ -304,8 +276,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                           <IconDeviceDesktop size={16} />
                         </div>
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-tight text-white/80">Fullscreen Projector</p>
-                          <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest">Monitor Output</p>
+                          <p className="text-[13px] font-semibold tracking-tight text-white/80">Fullscreen Projector</p>
+                          <p className="text-[9px] font-semibold text-white/20 tracking-tight">Monitor Output</p>
                         </div>
                       </div>
                     </button>
@@ -321,8 +293,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                           <IconVideo size={16} />
                         </div>
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-tight text-white/80">ilyStream Virtual Cam</p>
-                          <p className={`text-[9px] font-bold uppercase tracking-widest ${virtualCameraInfo?.state === 'active' ? 'text-accent' : 'text-white/20'}`}>
+                          <p className="text-[13px] font-semibold tracking-tight text-white/80">ilyStream Virtual Cam</p>
+                          <p className={`text-[11px] font-normal tracking-normal ${virtualCameraInfo?.state === 'active' ? 'text-accent' : 'text-white/20'}`}>
                             {virtualCameraLabel}
                           </p>
                         </div>
@@ -331,13 +303,13 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                       {(virtualCameraLoading || virtualCameraStarting) && <div className="w-2 h-2 rounded-full bg-white/50 animate-pulse" />}
                     </button>
 
-                    <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5 space-y-3">
+                    <div className="p-3 rounded-md bg-white/[0.025] border border-white/5 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
                           <IconLayoutGrid size={14} className="text-white/30 shrink-0" />
-                          <span className="text-[10px] font-black uppercase tracking-widest text-white/30">Virtual Cam Feed</span>
+                          <span className="text-[12px] font-medium tracking-tight text-white/30">Virtual Cam Feed</span>
                         </div>
-                        <span className="max-w-[104px] truncate text-[9px] font-bold uppercase tracking-widest text-accent/80">
+                        <span className="max-w-[104px] truncate text-[11px] font-normal tracking-normal text-accent/80">
                           {virtualCameraFeed.mode === 'source' ? selectedVirtualCameraSource?.name || 'Source' : 'Layout'}
                         </span>
                       </div>
@@ -346,11 +318,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                         <button
                           type="button"
                           onClick={() => updateVirtualCameraFeedMode('layout')}
-                          className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
-                            virtualCameraFeed.mode === 'layout'
-                              ? 'bg-white/10 text-white shadow-sm'
-                              : 'text-white/30 hover:text-white hover:bg-white/5'
-                          }`}
+                          className={`h-8 rounded-lg text-[11px] font-medium tracking-normal transition-all flex items-center justify-center gap-1.5 ${ virtualCameraFeed.mode === 'layout' ? 'bg-white/10 text-white shadow-sm' : 'text-white/30 hover:text-white hover:bg-white/5' }`}
                         >
                           <IconLayoutGrid size={13} /> Layout
                         </button>
@@ -358,11 +326,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                           type="button"
                           onClick={() => updateVirtualCameraFeedMode('source')}
                           disabled={virtualCameraSourceOptions.length === 0}
-                          className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 disabled:opacity-20 disabled:cursor-not-allowed ${
-                            virtualCameraFeed.mode === 'source'
-                              ? 'bg-white/10 text-white shadow-sm'
-                              : 'text-white/30 hover:text-white hover:bg-white/5'
-                          }`}
+                          className={`h-8 rounded-lg text-[11px] font-medium tracking-normal transition-all flex items-center justify-center gap-1.5 disabled:opacity-20 disabled:cursor-not-allowed ${ virtualCameraFeed.mode === 'source' ? 'bg-white/10 text-white shadow-sm' : 'text-white/30 hover:text-white hover:bg-white/5' }`}
                         >
                           <IconVideo size={13} /> Source
                         </button>
@@ -376,7 +340,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                             options={virtualCameraSourceSelectOptions}
                             placeholder="Choose source"
                             className="w-full"
-                            buttonClassName="h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] font-bold uppercase tracking-widest text-white/70 hover:text-white"
+                            buttonClassName="h-9 bg-white/[0.03] border border-white/[0.05] rounded-md px-3 text-[12px] font-medium tracking-tight text-white/55 hover:text-white"
                             maxListHeight={220}
                           />
                           <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/30 border border-white/5">
@@ -389,11 +353,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                                 key={option.value}
                                 type="button"
                                 onClick={() => updateVirtualCameraSourceFitMode(option.value)}
-                                className={`h-8 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                                  virtualCameraFeed.sourceFitMode === option.value
-                                    ? 'bg-white/10 text-white shadow-sm'
-                                    : 'text-white/30 hover:text-white hover:bg-white/5'
-                                }`}
+                                className={`h-8 rounded-lg text-[11px] font-medium tracking-normal transition-all ${ virtualCameraFeed.sourceFitMode === option.value ? 'bg-white/10 text-white shadow-sm' : 'text-white/30 hover:text-white hover:bg-white/5' }`}
                               >
                                 {option.label}
                               </button>
@@ -410,7 +370,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                             { value: 'portrait', label: 'Portrait', icon: <IconDeviceMobile size={14} /> }
                           ]}
                           className="w-full"
-                          buttonClassName="h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] font-bold uppercase tracking-widest text-white/70 hover:text-white"
+                          buttonClassName="h-9 bg-white/[0.03] border border-white/[0.05] rounded-md px-3 text-[12px] font-medium tracking-tight text-white/55 hover:text-white"
                         />
                       )}
                     </div>
@@ -425,8 +385,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
                           <IconVideo size={16} />
                         </div>
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-tight text-white/80">OBS Virtual Camera</p>
-                          <p className={`text-[9px] font-bold uppercase tracking-widest ${obsStatus?.virtualCameraActive ? 'text-success' : 'text-white/20'}`}>
+                          <p className="text-[13px] font-semibold tracking-tight text-white/80">OBS Virtual Camera</p>
+                          <p className={`text-[11px] font-normal tracking-normal ${obsStatus?.virtualCameraActive ? 'text-success' : 'text-white/20'}`}>
                             {obsStatus?.virtualCameraActive ? 'Active' : 'Connected'}
                           </p>
                         </div>
@@ -440,7 +400,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
         </div>
 
         {/* Stream Block */}
-        <div className="min-w-0 flex bg-white/5 rounded-2xl p-1 border border-white/10">
+        <div className="min-w-0 flex bg-transparent rounded-md p-0.5 border border-white/[0.05]">
           <Select
             value={platforms.find(p => layoutAssignments.horizontal.includes(p.id) || layoutAssignments.vertical.includes(p.id))?.id || (customRtmpUrl ? 'custom' : '')}
             onChange={(val) => {
@@ -461,7 +421,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               { value: 'custom', label: 'Custom RTMP', icon: <IconPlus size={14} /> }
             ]}
             className="w-32 2xl:w-44"
-            buttonClassName="h-10 2xl:h-11 bg-transparent border-0 px-2 2xl:px-4 text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all"
+            buttonClassName="h-10 2xl:h-11 bg-transparent border-0 px-2 2xl:px-4 text-[12px] font-medium tracking-tight text-white/60 hover:text-white transition-all"
             placeholder="Destination"
           />
 
@@ -470,7 +430,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           {isStreaming ? (
             <button
               onClick={onStopBroadcast}
-              className="h-10 2xl:h-11 px-4 2xl:px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/30 transition-all flex items-center gap-2 2xl:gap-3"
+              className="h-10 2xl:h-11 px-4 2xl:px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[12px] font-medium tracking-tight hover:bg-red-500/30 transition-all flex items-center gap-2 2xl:gap-3"
             >
               <IconSquare size={12} className="fill-current" /> Stop
             </button>
@@ -478,16 +438,16 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             <button
               onClick={onStartBroadcast}
               disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())}
-              className="h-10 2xl:h-11 px-4 2xl:px-8 rounded-xl bg-brand-gradient text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 2xl:gap-3 shadow-lg shadow-accent/20 disabled:opacity-20 disabled:cursor-not-allowed shadow-glow"
+              className="h-9 2xl:h-10 px-4 2xl:px-6 rounded-md bg-accent text-[#04111a] text-[13px] font-semibold tracking-tight hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <IconBroadcast size={16} /> Go Live
+              <IconBroadcast size={14} /> Go live
             </button>
           )}
         </div>
 
         <button
           onClick={onToggleRightSidebar}
-          className={`p-2.5 2xl:p-3 rounded-2xl border transition-all ${showRightSidebar ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`}
+          className={`p-2.5 2xl:p-3 rounded-md border transition-all ${showRightSidebar ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`}
         >
           {showRightSidebar ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />}
         </button>

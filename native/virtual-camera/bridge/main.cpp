@@ -43,8 +43,11 @@ public:
         securityAttributes.nLength = sizeof(securityAttributes);
         securityAttributes.bInheritHandle = FALSE;
 
+        // The bridge is created by the desktop app and read by Windows'
+        // camera stack. Keep write access scoped to the owner/admin/system
+        // instead of exposing the feed as a world-writable mapping.
         if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                L"D:P(A;;GA;;;WD)",
+                L"D:P(A;;GA;;;OW)(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;LS)(A;;GR;;;NS)(A;;GR;;;AC)",
                 SDDL_REVISION_1,
                 &m_securityDescriptor,
                 nullptr))

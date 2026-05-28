@@ -1,6 +1,7 @@
 import { AnyStreamEvent } from '../platforms/types'
 import type { OverlayAlertItem, OverlayFeedItem } from '../../shared/overlay'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
+import { decodeHtmlEntities } from '../../shared/html-entities'
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -130,11 +131,12 @@ export function eventToOverlayFeedItem(event: AnyStreamEvent): OverlayFeedItem |
 export function shouldBroadcastParticleEvent(event: AnyStreamEvent): boolean {
   // TikTok sends in-progress combo/streak updates as repeated gift events.
   // Particle overlays are heavy, so only the final non-combo gift should burst.
-  return event.type !== 'gift' || !event.isCombo
+  if (event.type === 'gift') return !event.isCombo
+  return event.type === 'follow' || event.type === 'like'
 }
 
 export function sanitizeOverlayHtml(html: string): string {
-  return escapeHtml(String(html || ''))
+  return escapeHtml(decodeHtmlEntities(html))
     .replace(/&lt;br\s*\/?&gt;/gi, '<br />')
 }
 

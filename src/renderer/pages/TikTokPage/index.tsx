@@ -1,4 +1,5 @@
-import {IconAlertCircle, IconBrowser, IconCircleCheck, IconMessage2, IconPlayerPlay, IconRadio, IconSend, IconUsers, IconWifi} from '@tabler/icons-react'
+import { IconAlertCircle, IconBrowser, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi } from '@tabler/icons-react'
+import { IconCircleCheck, IconPlayerPlay } from '../../components/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -216,7 +217,7 @@ export default function TikTokPage() {
             <div className="grid gap-6 p-8 md:grid-cols-2 bg-white/[0.01]">
               {FIELDS.map((field) => (
                 <div key={field.key} className="flex flex-col gap-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30">{field.label}</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30">{field.label}</label>
                   <input
                     type={field.type}
                     placeholder={field.placeholder}
@@ -231,26 +232,26 @@ export default function TikTokPage() {
 
             {error && (
               <div className="px-8 py-4 bg-danger/10 border-y border-danger/20">
-                <p className="text-xs font-bold text-danger leading-relaxed">{error}</p>
+                <p className="text-xs font-semibold text-danger leading-relaxed">{error}</p>
               </div>
             )}
 
             <div className="flex items-center justify-end gap-6 p-8 border-t border-white/5 mt-auto">
               {isConnected ? (
-                <button onClick={handleDisconnect} className="app-button-danger !h-10 !px-8 text-sm font-bold">
+                <button onClick={handleDisconnect} className="app-button-danger !h-10 !px-8 text-sm font-semibold">
                   Disconnect TikTok
                 </button>
               ) : isConnecting ? (
                 <div className="flex items-center gap-4">
                   <button
                     onClick={handleDisconnect}
-                    className="app-button-secondary !h-10 !px-6 text-sm font-bold"
+                    className="app-button-secondary !h-10 !px-6 text-sm font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     disabled
-                    className="app-button-primary !h-10 !px-8 text-sm font-bold opacity-50 cursor-not-allowed"
+                    className="app-button-primary !h-10 !px-8 text-sm font-semibold opacity-50 cursor-not-allowed"
                   >
                     Establishing...
                   </button>
@@ -258,7 +259,7 @@ export default function TikTokPage() {
               ) : (
                 <button
                   onClick={handleConnect}
-                  className="app-button-primary !h-10 !px-8 text-sm font-bold"
+                  className="app-button-primary !h-10 !px-8 text-sm font-semibold"
                 >
                   Connect Service
                 </button>
@@ -295,7 +296,7 @@ export default function TikTokPage() {
                 <h2>Host Chat Sender</h2>
                 <p>Visible browser session for sending messages from the host account.</p>
               </div>
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${senderStatusClass}`}>
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-semibold tracking-tight ${senderStatusClass}`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${senderStatus.isChatReady ? 'bg-success animate-pulse' : 'bg-white/20'}`} />
                 {senderStatus.isChatReady ? 'Ready' : 'Setup Needed'}
               </div>
@@ -309,15 +310,15 @@ export default function TikTokPage() {
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
                     <IconBrowser size={16} className="text-white/40" />
-                    <span className="text-xs font-bold text-white/70">Isolated Session</span>
+                    <span className="text-xs font-semibold text-white/70">Isolated Session</span>
                   </div>
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
                     <IconWifi size={16} className="text-white/40" />
-                    <span className="text-xs font-bold text-white/70">Visible Browser Control</span>
+                    <span className="text-xs font-semibold text-white/70">Visible Browser Control</span>
                   </div>
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
                     <IconSend size={16} className="text-white/40" />
-                    <span className="text-xs font-bold text-white/70">{senderStatus.maxMessageLength} char cap</span>
+                    <span className="text-xs font-semibold text-white/70">{senderStatus.maxMessageLength} char cap</span>
                   </div>
                 </div>
               </div>
@@ -326,17 +327,13 @@ export default function TikTokPage() {
                 {senderSetupSteps.map((step, index) => (
                   <div
                     key={step.label}
-                    className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
-                      step.ok ? 'border-success/20 bg-success/5' : 'border-white/5 bg-white/[0.02]'
-                    }`}
+                    className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${ step.ok ? 'border-success/20 bg-success/5' : 'border-white/5 bg-white/[0.02]' }`}
                   >
-                    <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-black ${
-                      step.ok ? 'border-success/40 text-success' : 'border-white/10 text-white/30'
-                    }`}>
+                    <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${ step.ok ? 'border-success/40 text-success' : 'border-white/10 text-white/30' }`}>
                       {step.ok ? <IconCircleCheck size={14} /> : index + 1}
                     </div>
                     <div className="min-w-0">
-                      <p className={`text-xs font-black uppercase tracking-widest ${step.ok ? 'text-success' : 'text-white/55'}`}>
+                      <p className={`text-xs font-semibold tracking-tight ${step.ok ? 'text-success' : 'text-white/55'}`}>
                         {step.label}
                       </p>
                       <p className={`mt-1 text-[11px] font-semibold ${senderTest.state === 'failed' && step.label === 'Send test message' ? 'text-danger/80' : 'text-white/35'}`}>
@@ -351,21 +348,19 @@ export default function TikTokPage() {
                 {senderChecks.map((check) => (
                   <div
                     key={check.label}
-                    className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
-                      check.ok ? 'border-success/20 bg-success/5 text-success' : 'border-white/5 bg-white/[0.02] text-white/35'
-                    }`}
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2 ${ check.ok ? 'border-success/20 bg-success/5 text-success' : 'border-white/5 bg-white/[0.02] text-white/35' }`}
                   >
-                    <span className="text-[10px] font-black uppercase tracking-widest">{check.label}</span>
-                    <span className="text-xs font-black">{check.ok ? 'OK' : '-'}</span>
+                    <span className="text-[10px] font-semibold tracking-tight">{check.label}</span>
+                    <span className="text-xs font-semibold">{check.ok ? 'OK' : '-'}</span>
                   </div>
                 ))}
               </div>
 
               <div className="mb-6 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
                 <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs font-bold text-white/60">{senderStatus.statusMessage}</p>
+                  <p className="text-xs font-semibold text-white/60">{senderStatus.statusMessage}</p>
                   {senderCooldownSeconds > 0 && (
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/25">
+                    <span className="text-[10px] font-semibold tracking-tight text-white/25">
                       Cooldown {senderCooldownSeconds}s
                     </span>
                   )}
@@ -378,14 +373,14 @@ export default function TikTokPage() {
               <div className="flex items-center gap-4">
                 <button 
                   onClick={handleOpenSender}
-                  className="app-button-primary !h-12 flex-1 !px-8 text-sm font-black uppercase tracking-widest"
+                  className="app-button-primary !h-12 flex-1 !px-8 text-sm font-semibold tracking-tight"
                 >
                   {senderStatus.isWindowOpen ? 'Focus Sender Window' : 'Open Chat Session'}
                 </button>
                 {senderStatus.isWindowOpen && (
                   <button 
                     onClick={handleCloseSender}
-                    className="app-button-secondary !h-12 !px-8 text-sm font-bold"
+                    className="app-button-secondary !h-12 !px-8 text-sm font-semibold"
                   >
                     Close
                   </button>
@@ -393,7 +388,7 @@ export default function TikTokPage() {
                 <button
                   onClick={handleTestSender}
                   disabled={!senderStatus.isChatReady || senderTest.state === 'sending'}
-                  className="app-button-secondary !h-12 !px-6 text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="app-button-secondary !h-12 !px-6 text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
                   title={senderStatus.isChatReady ? 'Send a short TikTok test message' : 'Finish sender setup before testing'}
                 >
                   {senderTest.state === 'sending' ? <IconAlertCircle size={16} /> : <IconPlayerPlay size={16} />}
@@ -410,7 +405,7 @@ export default function TikTokPage() {
               <IconMessage2 size={18} className="text-accent" />
               <h2 className="!text-lg">Event Feed</h2>
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Live Stream</span>
+            <span className="text-[10px] font-semibold tracking-tight text-white/20">Live Stream</span>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[500px]">
@@ -424,7 +419,7 @@ export default function TikTokPage() {
                 {platformEvents.map((event) => (
                   <div key={event.id} className="p-6 hover:bg-white/[0.02] transition-colors group">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="px-2 py-0.5 rounded bg-accent/10 text-accent text-[10px] font-black uppercase tracking-tighter">
+                      <span className="px-2 py-0.5 rounded bg-accent/10 text-accent text-[10px] font-semibold tracking-tighter">
                         {event.type}
                       </span>
                       <span className="text-[10px] font-mono text-white/20 group-hover:text-white/40">

@@ -100,11 +100,7 @@ export function PhysicsConfigEditor({
               <button
                 key={r}
                 onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.aspectRatio === r
-                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-accent text-white border-transparent ' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {r === 'auto' ? 'Auto' : r === 'tiktok' ? '9:16' : '16:9'}
               </button>

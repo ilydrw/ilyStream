@@ -25,25 +25,21 @@ export function TriggerRuleCard({
   onDelete: () => void
 }) {
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 transition-all hover:bg-white/[0.03] hover:border-white/10 group">
+    <div className="bg-white/[0.02] border border-white/5 rounded-md p-6 transition-all hover:bg-white/[0.03] hover:border-white/10 group">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
         <div className="flex items-center gap-6 flex-1">
           <button
             onClick={onToggle}
-            className={`w-12 h-6 rounded-full transition-all relative shrink-0 border border-white/10 ${
-              trigger.enabled ? 'bg-white' : 'bg-white/5'
-            }`}
+            className={`w-12 h-6 rounded-full transition-all relative shrink-0 border border-white/10 ${ trigger.enabled ? 'bg-white' : 'bg-white/5' }`}
           >
             <div
-              className={`w-4 h-4 rounded-full absolute top-1 transition-all ${
-                trigger.enabled ? 'left-7 bg-black' : 'left-1 bg-white/40'
-              }`}
+              className={`w-4 h-4 rounded-full absolute top-1 transition-all ${ trigger.enabled ? 'left-7 bg-black' : 'left-1 bg-white/40' }`}
             />
           </button>
 
           <div className="min-width-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h4 className="font-black text-lg tracking-tight text-white">{trigger.name}</h4>
+              <h4 className="font-semibold text-lg tracking-tight text-white">{trigger.name}</h4>
               <div className={trigger.enabled ? 'app-chip-accent' : 'app-chip'}>
                 {trigger.enabled ? 'Active' : 'Paused'}
               </div>
@@ -52,16 +48,16 @@ export function TriggerRuleCard({
               {trigger.platforms.map((platform) => (
                 <span
                   key={platform}
-                  className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${platformBadgeStyles[platform]}`}
+                  className={`text-[9px] font-semibold tracking-tight px-2 py-0.5 rounded border ${platformBadgeStyles[platform]}`}
                 >
                   {PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform}
                 </span>
               ))}
               <div className="h-4 w-[1px] bg-white/10 mx-1 hidden sm:block" />
-              <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
+              <span className="text-[10px] font-semibold text-white/40 tracking-wider">
                 {trigger.conditions.length} Conditions
               </span>
-              <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
+              <span className="text-[10px] font-semibold text-white/40 tracking-wider">
                 • {trigger.actions.length} Actions
               </span>
             </div>

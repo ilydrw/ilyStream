@@ -37,7 +37,7 @@ export function AutoRelaySidebar({
       </div>
       <div className="app-section-content">
         <div className="flex flex-col gap-2 mb-6">
-          <label className="text-xs font-black tracking-widest text-white/50">Relay Format</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Relay Format</label>
           <select
             value={chatRelayTagMode}
             onChange={(e) => onUpdateRelaySetting('chatRelayTagMode', e.target.value as RelayTagMode)}
@@ -51,7 +51,7 @@ export function AutoRelaySidebar({
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className="text-xs font-black tracking-widest text-white/50">Mirror From</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Mirror From</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(chatAutoRelayPlatforms) as Platform[]).map((p) => {
               const enabled = chatAutoRelayPlatforms[p]
@@ -59,9 +59,7 @@ export function AutoRelaySidebar({
                 <button
                   key={`relay-toggle-${p}`}
                   onClick={() => onUpdateRelaySetting('chatAutoRelayPlatforms', { ...chatAutoRelayPlatforms, [p]: !enabled })}
-                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-bold transition-all ${
-                    enabled ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90'
-                  }`}
+                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-semibold transition-all ${ enabled ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90' }`}
                 >
                   <PlatformLogo platform={p} size={14} />
                   {PLATFORM_LABELS[p]}

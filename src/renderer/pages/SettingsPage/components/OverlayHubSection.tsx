@@ -29,7 +29,7 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
         <div className="flex flex-col gap-6 p-8">
           <div className="flex items-center justify-between py-6">
             <div className="pr-10">
-              <h4 className="text-sm font-bold text-white mb-1">Server Port</h4>
+              <h4 className="text-sm font-semibold text-white mb-1">Server Port</h4>
               <p className="text-xs text-white/20 leading-relaxed">Target port for local web telemetry assets.</p>
             </div>
             <div className="flex-shrink-0">
@@ -42,9 +42,9 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
             </div>
           </div>
 
-          <div className="mt-4 p-8 rounded-3xl bg-black/40 border border-white/5 space-y-6 group hover:border-white/10 transition-all">
+          <div className="mt-4 p-8 rounded-lg bg-black/40 border border-white/5 space-y-6 group hover:border-white/10 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-widest text-white/30">Local Deployment</span>
+              <span className="text-xs font-semibold tracking-tight text-white/30">Local Deployment</span>
               <StatusBadge status={overlayStatus} />
             </div>
             <div className="space-y-4">

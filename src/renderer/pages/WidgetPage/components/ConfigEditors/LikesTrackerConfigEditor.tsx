@@ -91,11 +91,7 @@ export function LikesTrackerConfigEditor({
                 key={shape}
                 type="button"
                 onClick={() => update('avatarShape', shape)}
-                className={`h-9 rounded-lg border text-[10px] font-black uppercase tracking-normal transition-all ${
-                  config.avatarShape === shape
-                    ? 'border-[#d035f1]/70 bg-[#d035f1]/20 text-white shadow-glow'
-                    : 'border-white/10 bg-white/[0.03] text-white/40 hover:border-white/20 hover:text-white/70'
-                }`}
+                className={`h-9 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ config.avatarShape === shape ? 'border-[#d035f1]/70 bg-[#d035f1]/20 text-white ' : 'border-white/10 bg-white/[0.03] text-white/40 hover:border-white/20 hover:text-white/70' }`}
               >
                 {shape}
               </button>

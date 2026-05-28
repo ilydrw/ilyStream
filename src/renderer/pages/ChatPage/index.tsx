@@ -1,4 +1,4 @@
-import {IconMessages, IconTrash} from '@tabler/icons-react'
+import { IconChat } from '../../components/ui/icons'
 import { useMemo, useRef } from 'react'
 import type { Platform } from '../../../main/platforms/types'
 import { useChatStore } from '../../stores/chat-store'
@@ -43,7 +43,7 @@ export default function ChatPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <IconMessages size={32} className="text-accent" />
+            <IconChat size={20} className="text-accent" />
           </div>
           <div>
             <h1>Unified Chat</h1>

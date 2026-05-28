@@ -12,7 +12,6 @@ import {
   resolveBrowserSourceUrl
 } from './components/CanvasEditor.utils'
 import {
-  buildCameraConstraints,
   getMediaSignature,
   disposeMediaElement,
   ManagedMediaElement
@@ -55,6 +54,11 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
   const browserBlankHoldFrames = useRef(45)
   const browserWorkerBusy = useRef<Record<string, boolean>>({})
   const latestBrowserBitmaps = useRef<Record<string, any>>({})
+  // Most recently received ImageBitmap mirroring the broadcast window's
+  // composed canvas. When set, the render loop blits this instead of
+  // running its own layer composition (which would draw camera placeholders
+  // because the projector renderer can't open the cameras itself).
+  const latestMirrorBitmapRef = useRef<ImageBitmap | null>(null)
 
   const activeScene = useMemo(() => {
     const scene = scenes.find(s => s.id === sceneId) || scenes[0]
@@ -67,10 +71,12 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
 
   useEffect(() => {
+    // Do NOT call getUserMedia here just to populate labels — it briefly
+    // grabs the default camera and races the main window's capture pipeline,
+    // causing AbortError/NotReadableError there. enumerateDevices alone is
+    // enough for matching by deviceId; labels are not required.
     const updateDevices = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null)
-        stream?.getTracks().forEach(t => t.stop())
         const devs = await navigator.mediaDevices.enumerateDevices()
         setDevices(devs)
       } catch (err) {
@@ -266,34 +272,32 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
       }
     }
     for (const layer of activeScene.layers) {
-      if ((layer.type === 'camera' || layer.type === 'display') && !videoRefs.current[layer.id] && !pendingMedia.current.has(layer.id)) {
+      // Camera layers are not opened here: USB cameras are exclusive to one
+      // process and the main BroadcastPage window already holds them. The
+      // projector receives MediaStreamTrack readables from the broadcast
+      // window via Insertable Streams (see the request-streams effect below).
+      if (layer.type === 'display' && !videoRefs.current[layer.id] && !pendingMedia.current.has(layer.id)) {
         pendingMedia.current.add(layer.id)
         const sig = getMediaSignature(layer, devices)
         const startStream = async () => {
           try {
-            let stream: MediaStream
-            if (layer.type === 'display') {
-               let sourceId = String(layer.config.desktopSourceId || '')
-               const sourceName = String(layer.config.desktopSourceName || '')
-               if (sourceName && window.api?.studio?.getDesktopSources) {
-                 const sources = await window.api.studio.getDesktopSources()
-                 const match =
-                   sources.find((source: { name: string; id: string }) => source.name === sourceName) ||
-                   sources.find((source: { name: string; id: string }) => source.name.toLowerCase().includes(sourceName.toLowerCase()))
-                 sourceId = match?.id || sourceId
-               }
-               if (sourceId && window.api?.studio?.prepareDisplayCapture) {
-                 const prepared = await window.api.studio.prepareDisplayCapture({ sourceId, withAudio: false, audioOnly: false })
-                 if (!prepared?.success) throw new Error(prepared?.error || 'Could not prepare desktop capture')
-               }
-               stream = await navigator.mediaDevices.getDisplayMedia({
-                  video: { width: canvasWidth, height: canvasHeight, frameRate: 30 },
-                  audio: false
-                } as MediaStreamConstraints)
-            } else {
-               const constraints = buildCameraConstraints(layer, devices)
-               stream = await navigator.mediaDevices.getUserMedia(constraints)
+            let sourceId = String(layer.config.desktopSourceId || '')
+            const sourceName = String(layer.config.desktopSourceName || '')
+            if (sourceName && window.api?.studio?.getDesktopSources) {
+              const sources = await window.api.studio.getDesktopSources()
+              const match =
+                sources.find((source: { name: string; id: string }) => source.name === sourceName) ||
+                sources.find((source: { name: string; id: string }) => source.name.toLowerCase().includes(sourceName.toLowerCase()))
+              sourceId = match?.id || sourceId
             }
+            if (sourceId && window.api?.studio?.prepareDisplayCapture) {
+              const prepared = await window.api.studio.prepareDisplayCapture({ sourceId, withAudio: false, audioOnly: false })
+              if (!prepared?.success) throw new Error(prepared?.error || 'Could not prepare desktop capture')
+            }
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+              video: { width: canvasWidth, height: canvasHeight, frameRate: 30 },
+              audio: false
+            } as MediaStreamConstraints)
             const video = document.createElement('video')
             video.srcObject = stream; video.muted = true; video.setAttribute('playsinline', ''); await video.play()
             const managed = video as ManagedMediaElement
@@ -301,7 +305,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
             managed.__ilyCleanup = () => { stream.getTracks().forEach(t => t.stop()) }
             videoRefs.current[layer.id] = video
           } catch (err) {
-            console.error('[Projector] Failed to start media stream for layer', layer.id, err)
+            console.error('[Projector] Failed to start display capture for layer', layer.id, err)
             pendingMedia.current.delete(layer.id)
           }
         }
@@ -309,6 +313,51 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
       }
     }
   }, [activeScene, canvasWidth, canvasHeight, devices])
+
+  // Mirror-mode: the broadcast window streams its composed canvas to us as
+  // ImageBitmap frames (USB cameras are exclusive to that process, so we
+  // can't open them ourselves). The render loop checks `latestMirrorBitmapRef`
+  // and draws it instead of compositing layers when a frame is available.
+  useEffect(() => {
+    let receivedPort: MessagePort | null = null
+
+    const handler = (event: MessageEvent) => {
+      if (event.source !== window) return
+      if ((event.data as any)?.__ilyProjectorChannel !== 'mirror-sink') return
+      const port = event.ports[0]
+      if (!port) return
+      receivedPort = port
+      port.onmessage = (msg) => {
+        const bitmap = (msg.data as any)?.bitmap
+        if (!bitmap) return
+        const previous = latestMirrorBitmapRef.current
+        latestMirrorBitmapRef.current = bitmap
+        if (previous) {
+          try { previous.close() } catch {}
+        }
+      }
+      port.start()
+    }
+    window.addEventListener('message', handler)
+
+    const api = (window as any).api?.studio
+    if (api?.requestProjectorMirror) {
+      api.requestProjectorMirror(aspectRatio)
+    } else {
+      console.warn('[Projector] api.studio.requestProjectorMirror unavailable; falling back to local composition')
+    }
+
+    return () => {
+      window.removeEventListener('message', handler)
+      try { receivedPort?.postMessage('__close') } catch {}
+      try { receivedPort?.close() } catch {}
+      const last = latestMirrorBitmapRef.current
+      latestMirrorBitmapRef.current = null
+      if (last) {
+        try { last.close() } catch {}
+      }
+    }
+  }, [])
 
   useEffect(() => {
     let frameId: number
@@ -341,6 +390,24 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
 
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Short-circuit: if the broadcast window is mirroring its composed
+      // canvas to us, just draw that and skip our local layer composition.
+      const mirror = latestMirrorBitmapRef.current
+      if (mirror) {
+        const canvasRatio = canvas.width / canvas.height
+        const bitmapRatio = mirror.width / mirror.height
+        let dw = canvas.width, dh = canvas.height, dx = 0, dy = 0
+        if (bitmapRatio > canvasRatio) {
+          dh = canvas.width / bitmapRatio
+          dy = (canvas.height - dh) / 2
+        } else {
+          dw = canvas.height * bitmapRatio
+          dx = (canvas.width - dw) / 2
+        }
+        ctx.drawImage(mirror, dx, dy, dw, dh)
+        frameId = requestAnimationFrame(render); return
+      }
 
       const currentScene = activeSceneRef.current
       if (!currentScene) { frameId = requestAnimationFrame(render); return }

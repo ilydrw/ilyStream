@@ -3,7 +3,7 @@ import { EventEmitter } from 'events'
 import type { Writable } from 'stream'
 import { PipeBuffer } from './pipe-buffer'
 
-const AUDIO_PIPE_QUEUE_BYTES = 32 * 1024
+const AUDIO_PIPE_QUEUE_BYTES = 8 * 1024 // ~21 ms at 48 kHz stereo f32
 const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
 
 export class FFmpegProcessManager extends EventEmitter {

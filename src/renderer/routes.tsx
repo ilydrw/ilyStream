@@ -1,23 +1,21 @@
 import { lazy, LazyExoticComponent } from 'react'
-import type { Icon } from '@tabler/icons-react'
 import {
-  IconLayoutDashboard,
-  IconStack2,
-  IconMessages,
-  IconMessage2,
-  IconBell,
-  IconMusic,
+  IconBroadcast,
+  IconVideo,
+  IconChat,
+  IconTTS,
+  IconTriggerRelay,
+  IconTerminal,
+  IconAlert,
+  IconSoundboard,
+  IconFx,
   IconSettings,
-  IconVolume,
-  IconMicrophone,
-  IconBolt,
-  IconRadio,
-  IconActivity,
-  IconTerminal2,
-  IconVideo
-} from '@tabler/icons-react'
+  IconStats,
+  IconWidgets
+} from './components/ui/icons/nav'
 
-import AICoHostIconFile from './assets/ai-co-host.svg'
+import { DashboardIcon } from './components/ui/icons/DashboardIcon'
+import { AICoHostIcon } from './components/ui/icons/AICoHostIcon'
 import { SpotifyIcon } from './components/ui/SpotifyIcon'
 import { HueIcon } from './components/ui/HueIcon'
 import { GoveeIcon } from './components/ui/GoveeIcon'
@@ -71,7 +69,10 @@ const DiscordIcon = ({ size, className }: { size?: number; className?: string })
   <div className={className}><PlatformLogo platform="discord" size={size} /></div>
 )
 const AICoHostNavIcon = ({ size, className }: { size?: number; className?: string }) => (
-  <img src={AICoHostIconFile} width={size} height={size} className={`object-contain ${className}`} alt="" />
+  <AICoHostIcon size={size} className={className} />
+)
+const DashboardNavIcon = ({ size, className }: { size?: number; className?: string }) => (
+  <DashboardIcon size={size} className={className} />
 )
 const BroadcastRoutePlaceholder = lazy(() => Promise.resolve({ default: () => null }))
 
@@ -91,7 +92,7 @@ export const routes: AppRoute[] = [
     label: 'Dashboard',
     description: 'Monitor platform health, audience activity, and automation readiness from one place.',
     section: 'operate',
-    icon: IconLayoutDashboard,
+    icon: DashboardNavIcon,
     component: lazy(() => import('./pages/DashboardPage'))
   },
   {
@@ -99,7 +100,7 @@ export const routes: AppRoute[] = [
     label: 'Stats',
     description: 'Lifetime totals across every platform — likes, gifts, follows, song requests, and per-user breakdowns.',
     section: 'operate',
-    icon: IconActivity,
+    icon: IconStats,
     component: lazy(() => import('./pages/StatsPage'))
   },
   {
@@ -107,7 +108,7 @@ export const routes: AppRoute[] = [
     label: 'Live Broadcast',
     description: 'Control your live scene, monitor stream health, and manage sources in real-time.',
     section: 'operate',
-    icon: IconRadio,
+    icon: IconBroadcast,
     component: BroadcastRoutePlaceholder
   },
   {
@@ -123,7 +124,7 @@ export const routes: AppRoute[] = [
     label: 'Unified Chat',
     description: 'Merge live chat, relay responses across services, and keep moderators aligned.',
     section: 'operate',
-    icon: IconMessages,
+    icon: IconChat,
     component: lazy(() => import('./pages/ChatPage'))
   },
   {
@@ -131,7 +132,7 @@ export const routes: AppRoute[] = [
     label: 'TTS',
     description: 'Tune text-to-speech behavior, queue flow, and voice delivery while you are live.',
     section: 'operate',
-    icon: IconMessage2,
+    icon: IconTTS,
     component: lazy(() => import('./pages/TTSPage'))
   },
   {
@@ -139,7 +140,7 @@ export const routes: AppRoute[] = [
     label: 'Triggers',
     description: 'Control reactions, alerts, webhooks, and spoken moments with event-driven rules.',
     section: 'operate',
-    icon: IconBolt,
+    icon: IconTriggerRelay,
     component: lazy(() => import('./pages/TriggersPage'))
   },
   {
@@ -147,7 +148,7 @@ export const routes: AppRoute[] = [
     label: 'Event Lab',
     description: 'Inspect live stream events, overlay packets, device broadcasts, and replay local test events.',
     section: 'operate',
-    icon: IconTerminal2,
+    icon: IconTerminal,
     component: lazy(() => import('./pages/EventLabPage'))
   },
   {
@@ -163,7 +164,7 @@ export const routes: AppRoute[] = [
     label: 'Alerts',
     description: 'Upload MP3/WAV files and route gifts, follows, and trigger events to local alert sounds.',
     section: 'operate',
-    icon: IconBell,
+    icon: IconAlert,
     component: lazy(() => import('./pages/AlertsPage/index'))
   },
   {
@@ -171,7 +172,7 @@ export const routes: AppRoute[] = [
     label: 'Soundboard',
     description: 'A Stream Deck styled layout for triggering sound effects and studio actions instantly.',
     section: 'operate',
-    icon: IconMusic,
+    icon: IconSoundboard,
     component: lazy(() => import('./pages/SoundboardPage'))
   },
   {
@@ -179,7 +180,7 @@ export const routes: AppRoute[] = [
     label: 'Voice FX',
     description: 'Transform your voice with studio-grade real-time filters. Alien, Robot, and custom pitch shifting.',
     section: 'operate',
-    icon: IconMicrophone,
+    icon: IconFx,
     component: lazy(() => import('./pages/VoiceEffectsPage'))
   },
   {
@@ -371,7 +372,7 @@ export const routes: AppRoute[] = [
     label: 'Console',
     description: 'Real-time application log viewer with level filtering, search, and export.',
     section: 'configure',
-    icon: IconTerminal2,
+    icon: IconTerminal,
     component: lazy(() => import('./pages/ConsolePage'))
   },
   {
@@ -387,7 +388,7 @@ export const routes: AppRoute[] = [
     label: 'Widgets',
     description: 'Configure interactive overlays, goals, and visual alerts for your stream.',
     section: 'configure',
-    icon: IconStack2,
+    icon: IconWidgets,
     component: lazy(() => import('./pages/WidgetPage'))
   }
 ]

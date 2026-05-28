@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
-import { 
-  getMediaSignature, 
-  resolveCameraAudioDeviceId, 
-  disposeMediaElement, 
+import {
+  getMediaSignature,
+  resolveCameraAudioDeviceId,
+  disposeMediaElement,
   buildCameraConstraints,
   buildRawAudioConstraints,
   createStabilizedCameraStream,
@@ -35,6 +35,22 @@ export function useMediaManagement(options: MediaManagementOptions) {
   const lastMediaSignatures = useRef<Record<string, string>>({})
   const sessionDisplaySourceIds = useRef(new Set<string>())
   const lastMediaInitTimes = useRef<Record<string, number>>({})
+  const retryTimers = useRef<Record<string, ReturnType<typeof window.setTimeout>>>({})
+  const activeSceneRef = useRef(activeScene)
+  const layerAudioSignature = activeScene.layers
+    .map(layer => `${layer.id}:${layer.name}:${layer.type}:${layer.config.deviceId || ''}:${layer.config.audioDeviceId || ''}:${layer.config.audioMixerHidden || ''}`)
+    .join('|')
+
+  useEffect(() => {
+    activeSceneRef.current = activeScene
+  }, [activeScene])
+
+  const clearRetryTimer = useCallback((layerId: string) => {
+    const timer = retryTimers.current[layerId]
+    if (!timer) return
+    window.clearTimeout(timer)
+    delete retryTimers.current[layerId]
+  }, [])
 
   const initMedia = useCallback(async (layer: StudioLayer, attempt = 0, passedSignature?: string) => {
     const { id: layerId, type } = layer
@@ -56,7 +72,7 @@ export function useMediaManagement(options: MediaManagementOptions) {
     const cleanupFns: Array<() => void> = []
 
     try {
-      let stream: MediaStream
+      let stream: MediaStream | null = null
 
       if (type === 'display' || (type === 'audio' && layer.config.audioOnlyDisplayCapture)) {
         let effectiveSourceId = String(layer.config.desktopSourceId || '')
@@ -101,7 +117,12 @@ export function useMediaManagement(options: MediaManagementOptions) {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: { width: { ideal: canvasWidth }, height: { ideal: canvasHeight }, frameRate: { ideal: 30 } },
           audio: (type === 'audio' || layer.config.captureAudio === true) ? {
-            autoGainControl: false, echoCancellation: false, noiseSuppression: false, channelCount: { ideal: 2 }
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: { ideal: 2 },
+            sampleRate: { ideal: 48000 },
+            latency: { ideal: 0 }
           } : false
         } as any)
         
@@ -117,11 +138,26 @@ export function useMediaManagement(options: MediaManagementOptions) {
         const audioTracks = stream.getAudioTracks()
         if (audioTracks.length > 0) {
           const track = audioTracks[0]
+          // Diagnostic: surface the device that Chromium actually opened.
+          // If this label doesn't match what the layer config asked for, the
+          // deviceId resolution is wrong and the mic will be silent.
+          try {
+            const settings = track.getSettings()
+            const matched = devices.find(d => d.deviceId === settings.deviceId)
+            console.log(`[MediaManagement] ${type} layer "${layer.name}" opened track`, {
+              requestedDeviceId: layer.config.deviceId,
+              actualDeviceId: settings.deviceId,
+              actualLabel: matched?.label || track.label,
+              channelCount: settings.channelCount,
+              sampleRate: settings.sampleRate
+            })
+          } catch {}
           track.enabled = true
           track.onended = () => {
             lastMediaSignatures.current[layerId] = ''
             setTimeout(() => {
-              if (scenes.some(s => s.layers.some(l => l.id === layerId))) void initMedia(layer, 0)
+              const currentLayer = activeSceneRef.current.layers.find(l => l.id === layerId)
+              if (currentLayer) void initMedia(currentLayer, 0)
             }, 2000)
           }
           if (!(window as any).__ilyMicStreams) (window as any).__ilyMicStreams = {}
@@ -131,6 +167,7 @@ export function useMediaManagement(options: MediaManagementOptions) {
       }
 
       const el = document.createElement(type === 'audio' ? 'audio' : 'video')
+      if (!stream) throw new Error(`No media stream returned for ${layer.name || type}`)
       const outputStream = (type === 'camera' || type === 'display') && layer.config.stabilize !== false
         ? createStabilizedCameraStream(stream, { width: canvasWidth, height: canvasHeight, fps: 30 }, layer.name)
         : { stream, cleanup: () => stream.getTracks().forEach(t => t.stop()) }
@@ -147,30 +184,67 @@ export function useMediaManagement(options: MediaManagementOptions) {
       lastMediaSignatures.current[layerId] = signature
       managed.__ilyCleanup = () => cleanupFns.splice(0).forEach(cleanup => cleanup())
       
+      clearRetryTimer(layerId)
       if (existing) disposeMediaElement(existing)
       videoRefs.current[layerId] = managed as any
       setStreamReady(c => c + 1)
     } catch (err) {
       console.error(`[MediaManagement] Failed to init ${type} ${layer.name}: ${err}`)
+      cleanupFns.splice(0).forEach(cleanup => cleanup())
+      stream?.getTracks().forEach(track => track.stop())
+      // Clear the signature so the useEffect can re-trigger init on the next
+      // render. Some devices (e.g. cheap UVC webcams) routinely need several
+      // open attempts before MediaFoundation hands back frames; the bounded
+      // setTimeout retries below plus useEffect-driven retries are what made
+      // these cameras work in the first place.
       if (lastMediaSignatures.current[layerId] === signature) delete lastMediaSignatures.current[layerId]
       if (attempt < 3 && isTransientMediaError(err)) {
-        setTimeout(() => void initMedia(layer, attempt + 1), 1000 * (attempt + 1))
+        clearRetryTimer(layerId)
+        retryTimers.current[layerId] = window.setTimeout(() => {
+          delete retryTimers.current[layerId]
+          const currentLayer = activeSceneRef.current.layers.find(l => l.id === layerId)
+          if (!currentLayer) return
+          void initMedia(currentLayer, attempt + 1, getMediaSignature(currentLayer, devices))
+        }, 1000 * (attempt + 1))
       }
     } finally {
       pendingMedia.current.delete(layerId)
     }
-  }, [activeScene.id, devices, canvasWidth, canvasHeight, updateLayer, scenes, videoRefs])
+  }, [activeScene.id, devices, canvasWidth, canvasHeight, updateLayer, scenes, videoRefs, clearRetryTimer])
 
   const forceRefreshMedia = useCallback(() => {
     Object.values(videoRefs.current).forEach(el => disposeMediaElement(el as ManagedMediaElement))
     videoRefs.current = {}
     pendingMedia.current.clear()
+    Object.keys(retryTimers.current).forEach(clearRetryTimer)
     activeScene.layers.filter(l => l.type === 'display').forEach(l => sessionDisplaySourceIds.current.add(l.id))
     setStreamReady(c => c + 1)
     activeScene.layers.forEach(l => {
       if (l.type === 'camera' || l.type === 'audio' || (l.type === 'display' && sessionDisplaySourceIds.current.has(l.id))) void initMedia(l)
     })
-  }, [activeScene.layers, initMedia, videoRefs])
+  }, [activeScene.layers, initMedia, videoRefs, clearRetryTimer])
+
+  useEffect(() => {
+    if (!activeScene) return
+    const activeLayerIds = new Set(activeScene.layers.map(layer => layer.id))
+
+    for (const [layerId, el] of Object.entries(videoRefs.current)) {
+      const layer = activeScene.layers.find(item => item.id === layerId)
+      const nextSignature = layer ? getMediaSignature(layer, devices) : null
+      const shouldDispose =
+        !activeLayerIds.has(layerId) ||
+        !layer ||
+        (el as ManagedMediaElement).__ilySignature !== nextSignature
+
+      if (!shouldDispose) continue
+
+      clearRetryTimer(layerId)
+      disposeMediaElement(el as ManagedMediaElement)
+      delete videoRefs.current[layerId]
+      delete lastMediaSignatures.current[layerId]
+      pendingMedia.current.delete(layerId)
+    }
+  }, [activeScene, devices, videoRefs, clearRetryTimer])
 
   useEffect(() => {
     if (!activeScene) return
@@ -187,6 +261,14 @@ export function useMediaManagement(options: MediaManagementOptions) {
     })
   }, [activeScene.id, devices, initMedia])
 
+  useEffect(() => () => {
+    Object.keys(retryTimers.current).forEach(clearRetryTimer)
+    Object.values(videoRefs.current).forEach(el => disposeMediaElement(el as ManagedMediaElement))
+    videoRefs.current = {}
+    pendingMedia.current.clear()
+    lastMediaSignatures.current = {}
+  }, [videoRefs, clearRetryTimer])
+
   // Audio Mixer Sync
   useEffect(() => {
     if (!activeScene) return
@@ -200,13 +282,30 @@ export function useMediaManagement(options: MediaManagementOptions) {
             channelMode: (layer.type === 'camera' || (layer.type === 'audio' && layer.config.audioOnlyDisplayCapture)) ? 'stereo' : 'mono',
             deviceId: layer.type === 'camera' ? resolveCameraAudioDeviceId(layer, devices) : layer.config.deviceId
           })
-        } else if (existing.name !== layer.name) {
-          // Sync name changes from layers to mixer tracks
-          addAudioSource(layer.id, { name: layer.name })
+        } else {
+          const nextDeviceId = layer.type === 'camera'
+            ? resolveCameraAudioDeviceId(layer, devices)
+            : layer.config.deviceId
+          const nextType = layer.type === 'audio'
+            ? (layer.config.audioOnlyDisplayCapture ? 'system' : 'mic')
+            : 'layer'
+          const nextChannelMode = (layer.type === 'camera' || (layer.type === 'audio' && layer.config.audioOnlyDisplayCapture))
+            ? 'stereo'
+            : 'mono'
+          const updates: Record<string, unknown> = {}
+
+          if (existing.name !== layer.name) updates.name = layer.name
+          if (existing.deviceId !== nextDeviceId) updates.deviceId = nextDeviceId
+          if (existing.type !== nextType) updates.type = nextType
+          if (existing.channelMode !== nextChannelMode) updates.channelMode = nextChannelMode
+
+          if (Object.keys(updates).length > 0) {
+            addAudioSource(layer.id, updates)
+          }
         }
       }
     })
-  }, [activeScene.id, devices, audioSources.length, activeScene.layers.map(l => l.name).join(',')])
+  }, [activeScene.id, devices, audioSources.length, layerAudioSignature])
 
   return { streamReady, forceRefreshMedia, initMedia }
 }

@@ -1,4 +1,5 @@
-import {IconTrash, IconCheck, IconCopy, IconExternalLink, IconLayout, IconSettings} from '@tabler/icons-react'
+import { IconLayout, IconSettings } from '@tabler/icons-react'
+import { IconTrash, IconCheck, IconCopy, IconExternalLink } from '../../../components/ui/icons'
 import { type Widget } from '../../../../shared/widgets'
 import { appendPreviewFlag, getWidgetPreviewFrame, getWidgetTemplate } from '../widget-customization'
 
@@ -29,8 +30,8 @@ export function WidgetCard({
             <Icon size={18} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white truncate">{widget.name}</h3>
-            <p className="text-[10px] uppercase tracking-normal text-white/30 mt-0.5">
+            <h3 className="text-sm font-semibold text-white truncate">{widget.name}</h3>
+            <p className="text-[10px] tracking-normal text-white/30 mt-0.5">
               {template?.label ?? widget.type}
             </p>
           </div>
@@ -49,7 +50,7 @@ export function WidgetCard({
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-normal text-white/30">Browser source URL</span>
+            <span className="text-[10px] font-semibold tracking-normal text-white/30">Browser source URL</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-black/40 border border-white/5 font-mono text-[11px] text-white/60 min-w-0">
             <span className="truncate flex-1" title={url ?? ''}>
@@ -92,11 +93,11 @@ export function WidgetCard({
                 </div>
               </div>
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-[8px] font-black text-white/10 uppercase tracking-normal gap-2">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-[8px] font-semibold text-white/10 tracking-normal gap-2">
                 <span>Preview Offline</span>
               </div>
             )}
-            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-normal ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
+            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-semibold tracking-normal ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
                <div className={`w-1 h-1 rounded-full ${url ? 'bg-[#d035f1] animate-pulse' : 'bg-white/20'}`} />
                {url ? 'Preview' : 'Offline'}
             </div>
@@ -106,7 +107,7 @@ export function WidgetCard({
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onConfigure} className="flex-1 app-button-primary !h-10 text-xs font-bold">
+          <button onClick={onConfigure} className="flex-1 app-button-primary !h-10 text-xs font-semibold">
             <IconSettings size={14} className="mr-2 opacity-60" />
             Configure
           </button>

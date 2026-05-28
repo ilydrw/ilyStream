@@ -1,7 +1,7 @@
 {
   "name": "ilystream",
   "productName": "ilyStream",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "type": "module",
   "description": "Multi-platform livestream management interface with custom TTS",
   "main": "./out/main/index.js",
@@ -51,6 +51,14 @@
       {
         "from": "native/virtual-camera/bin/x64/Release/VirtualCameraMediaSource.dll",
         "to": "native/virtual-camera/VirtualCameraMediaSource.dll"
+      },
+      {
+        "from": "native/virtual-camera/install.ps1",
+        "to": "native/virtual-camera/install.ps1"
+      },
+      {
+        "from": "native/virtual-camera/uninstall.ps1",
+        "to": "native/virtual-camera/uninstall.ps1"
       }
     ],
     "win": {

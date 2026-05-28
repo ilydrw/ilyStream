@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconPencil, IconCopy, IconTrash, IconCast, IconSparkles, IconVideo, IconKeyboard, IconX} from '@tabler/icons-react'
+import { IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconCast, IconSparkles, IconVideo, IconKeyboard } from '@tabler/icons-react'
+import { IconPencil, IconCopy, IconTrash, IconX } from '../../components/ui/icons'
 
 import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
@@ -294,6 +295,94 @@ export default function BroadcastPage() {
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources
   })
 
+  // Tracks aspect ratios currently being mirrored to projector windows so we
+  // can force the matching output canvas to render on demand. Without this,
+  // a 9:16 projector opened in horizontal-only mode would have no vertical
+  // canvas to capture from.
+  const [activeMirrorAspects, setActiveMirrorAspects] = useState({ horizontal: 0, vertical: 0 })
+
+  // Projector windows can't hold the cameras this window owns, so we mirror
+  // our already-composed scene canvas to them as ImageBitmap frames. Unlike
+  // VideoFrame, ImageBitmap is cross-process structured-cloneable in
+  // Chromium, so this transfer actually works between BrowserWindows.
+  useEffect(() => {
+    const activePorts = new Set<MessagePort>()
+    const portCaptureTimers = new Map<MessagePort, number>()
+    const portAspects = new Map<MessagePort, '16:9' | '9:16' | undefined>()
+
+    const refCount = (delta: 1 | -1, aspect: '16:9' | '9:16' | undefined) => {
+      if (aspect === '9:16') setActiveMirrorAspects(prev => ({ ...prev, vertical: Math.max(0, prev.vertical + delta) }))
+      else if (aspect === '16:9') setActiveMirrorAspects(prev => ({ ...prev, horizontal: Math.max(0, prev.horizontal + delta) }))
+    }
+
+    const startCaptureLoop = (port: MessagePort, aspectRatio?: '16:9' | '9:16') => {
+      let stopped = false
+      const cleanup = () => {
+        if (stopped) return
+        stopped = true
+        const timer = portCaptureTimers.get(port)
+        if (timer) window.clearTimeout(timer)
+        portCaptureTimers.delete(port)
+        activePorts.delete(port)
+        refCount(-1, portAspects.get(port))
+        portAspects.delete(port)
+      }
+      port.addEventListener('messageerror', cleanup)
+      port.addEventListener('message', (msg) => {
+        if (msg.data === '__close') cleanup()
+      })
+
+      const tick = async () => {
+        if (stopped) return
+        // Prefer the per-aspect output canvas (so a projector asking for the
+        // vertical view gets the 9:16 render, not the dual editor canvas).
+        // Fall back to the main editor canvas if the requested aspect canvas
+        // isn't being rendered right now.
+        const canvas =
+          (aspectRatio && canvasRef.current?.getOutputCanvas(aspectRatio)) ||
+          canvasRef.current?.getCanvas() ||
+          null
+        if (canvas && canvas.width > 0 && canvas.height > 0) {
+          try {
+            const bitmap = await createImageBitmap(canvas)
+            port.postMessage({ bitmap }, [bitmap])
+          } catch {
+            // Canvas may have been resized or detached between frames; skip.
+          }
+        }
+        portCaptureTimers.set(port, window.setTimeout(tick, 33))
+      }
+      void tick()
+    }
+
+    const handler = (event: MessageEvent) => {
+      if (event.source !== window) return
+      if ((event.data as any)?.__ilyProjectorChannel !== 'mirror-source') return
+      const port = event.ports[0]
+      if (!port) return
+      const aspectRatio = (event.data as any)?.payload?.aspectRatio as '16:9' | '9:16' | undefined
+      activePorts.add(port)
+      portAspects.set(port, aspectRatio)
+      refCount(1, aspectRatio)
+      port.start()
+      startCaptureLoop(port, aspectRatio)
+    }
+    window.addEventListener('message', handler)
+
+    return () => {
+      window.removeEventListener('message', handler)
+      for (const timer of portCaptureTimers.values()) window.clearTimeout(timer)
+      portCaptureTimers.clear()
+      for (const port of activePorts) {
+        try { port.close() } catch {}
+      }
+      activePorts.clear()
+      // Wipe per-aspect ref counts; no projector ports are alive anymore.
+      portAspects.clear()
+      setActiveMirrorAspects({ horizontal: 0, vertical: 0 })
+    }
+  }, [])
+
   // Resize Handlers
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -505,7 +594,7 @@ export default function BroadcastPage() {
     const layerConfig = widgetPreset?.config
       ? { ...config, ...widgetPreset.config }
       : config
-    const locked = widgetPreset?.locked ?? (type === 'audio')
+    const locked = widgetPreset?.locked ?? false
 
     store.addLayer(targetScene.id, {
       type,
@@ -614,13 +703,25 @@ export default function BroadcastPage() {
 
   const toggleVirtualCamera = async () => {
     if (!virtualCameraInfo) return
-    if (virtualCameraInfo.state === 'unsupported' || virtualCameraInfo.canStart === false) {
-      setStreamError(virtualCameraInfo.driverHint || virtualCameraInfo.lastError || 'Virtual camera driver is not available')
-      return
-    }
-
     const refreshVirtualCameraInfo = async () => {
       if (window.api?.virtualCamera) setVirtualCameraInfo(await window.api.virtualCamera.getStatus())
+    }
+
+    if (virtualCameraInfo.state === 'unsupported' || virtualCameraInfo.canStart === false) {
+      if (virtualCameraInfo.canInstallDriver && window.api?.virtualCamera?.installDriver) {
+        try {
+          setStreamError(virtualCameraInfo.installDriverHint || 'Windows will ask for administrator permission to install ilyStream Virtual Camera.')
+          await window.api.virtualCamera.installDriver()
+        } catch (err) {
+          setStreamError(err instanceof Error ? err.message : String(err))
+        } finally {
+          await refreshVirtualCameraInfo()
+        }
+        return
+      }
+
+      setStreamError(virtualCameraInfo.driverHint || virtualCameraInfo.lastError || 'Virtual camera driver is not available')
+      return
     }
 
     if (virtualCameraInfo.state === 'active') {
@@ -774,8 +875,8 @@ export default function BroadcastPage() {
           {store.studioMode ? (
             <div className="flex-1 flex min-w-0 h-full gap-4 p-4">
               {/* Preview Canvas (Left) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-white/5 bg-black/20 rounded-2xl overflow-hidden relative group">
-                <div className="absolute top-4 left-4 z-10 px-3 py-1 bg-accent/80 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">Preview</div>
+              <div className="flex-1 flex flex-col min-w-0 border border-white/5 bg-black/20 rounded-md overflow-hidden relative group">
+                <div className="absolute top-4 left-4 z-10 px-3 py-1 bg-accent/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg">Preview</div>
                 <CanvasEditor
                   activeScene={previewScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -796,20 +897,20 @@ export default function BroadcastPage() {
                 <div className="flex flex-col items-center gap-1">
                   <button
                     onClick={() => store.transition('fade')}
-                    className="w-16 h-16 rounded-2xl bg-brand-gradient text-white flex flex-col items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-accent/20 border border-white/10 group shadow-glow"
+                    className="w-16 h-16 rounded-md bg-accent text-white flex flex-col items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all border border-white/10 group"
                   >
                     <IconArrowsMove size={24} className="group-hover:rotate-180 transition-transform duration-500" />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Fade</span>
+                    <span className="text-[10px] font-semibold tracking-tighter">Fade</span>
                   </button>
                   <div className="flex flex-col items-center gap-0.5 mt-1">
                     <input
                       type="number"
                       value={store.transitionDuration}
                       onChange={(e) => store.setTransitionDuration(Number(e.target.value))}
-                      className="w-12 bg-white/5 border border-white/10 rounded text-[9px] font-bold text-center text-white/50 focus:text-accent focus:border-accent/50 outline-none transition-all"
+                      className="w-12 bg-white/5 border border-white/10 rounded text-[9px] font-semibold text-center text-white/50 focus:text-accent focus:border-accent/50 outline-none transition-all"
                       title="Transition Duration (ms)"
                     />
-                    <span className="text-[7px] font-black uppercase tracking-widest text-white/20">ms</span>
+                    <span className="text-[7px] font-semibold tracking-tight text-white/20">ms</span>
                   </div>
                 </div>
 
@@ -817,7 +918,7 @@ export default function BroadcastPage() {
 
                 <button
                   onClick={() => store.transition('cut')}
-                  className="w-16 py-3 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 text-[9px] font-black uppercase tracking-widest transition-all border border-white/5"
+                  className="w-16 py-3 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 text-[9px] font-semibold tracking-tight transition-all border border-white/5"
                 >
                   Cut
                 </button>
@@ -830,18 +931,14 @@ export default function BroadcastPage() {
                       if (!store.stingerSettings.path) setShowStingerConfig(true)
                       else store.transition('stinger')
                     }}
-                    className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all border border-white/10 group ${
-                      store.stingerSettings.path
-                        ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:brightness-110'
-                        : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40'
-                    }`}
+                    className={`w-16 h-16 rounded-md flex flex-col items-center justify-center gap-1 transition-all border border-white/10 group ${ store.stingerSettings.path ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:brightness-110' : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40' }`}
                   >
                     <IconVideo size={24} />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Stinger</span>
+                    <span className="text-[10px] font-semibold tracking-tighter">Stinger</span>
                   </button>
                   <button
                     onClick={() => setShowStingerConfig(true)}
-                    className="text-[8px] font-black uppercase tracking-widest text-white/20 hover:text-white/60 transition-colors"
+                    className="text-[8px] font-semibold tracking-tight text-white/20 hover:text-white/60 transition-colors"
                   >
                     Setup
                   </button>
@@ -850,8 +947,8 @@ export default function BroadcastPage() {
 
 
               {/* Program Canvas (Right) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-red-500/20 bg-black/20 rounded-2xl overflow-hidden relative group">
-                <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">Live</div>
+              <div className="flex-1 flex flex-col min-w-0 border border-red-500/20 bg-black/20 rounded-md overflow-hidden relative group">
+                <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-red-500/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg animate-pulse">Live</div>
                 <CanvasEditor
                   activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -860,6 +957,8 @@ export default function BroadcastPage() {
                   streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                   previewMode="single" selectionContext={selectionContext}
                   dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
+                  forceVerticalCanvas={activeMirrorAspects.vertical > 0}
+                  forceHorizontalCanvas={activeMirrorAspects.horizontal > 0}
                   onSelectionContextChange={changeSelectionContext}
                   onContextMenu={(e, l, ctx) => {
                     changeSelectionContext(ctx)
@@ -879,6 +978,8 @@ export default function BroadcastPage() {
                 streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                 previewMode={broadcastLayoutMode} selectionContext={selectionContext}
                 dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
+                forceVerticalCanvas={activeMirrorAspects.vertical > 0}
+                forceHorizontalCanvas={activeMirrorAspects.horizontal > 0}
                 onSelectionContextChange={changeSelectionContext}
                 onContextMenu={(e, l, ctx) => {
                   changeSelectionContext(ctx)
@@ -932,15 +1033,15 @@ export default function BroadcastPage() {
       {/* Stinger Config Modal */}
       {showStingerConfig && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
-          <div className="w-[400px] bg-[#0c0c0e] rounded-3xl border border-white/10 shadow-2xl p-8 flex flex-col gap-6">
+          <div className="w-[400px] bg-[#0c0c0e] rounded-lg border border-white/10 shadow-2xl p-8 flex flex-col gap-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-black uppercase tracking-tighter text-white">Stinger Setup</h2>
+              <h2 className="text-xl font-semibold tracking-tighter text-white">Stinger Setup</h2>
               <button onClick={() => setShowStingerConfig(false)} className="text-white/20 hover:text-white">Close</button>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Video File (.webm / .mp4)</label>
+                <label className="text-[10px] font-semibold tracking-tight text-white/40">Video File (.webm / .mp4)</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -954,7 +1055,7 @@ export default function BroadcastPage() {
                       const res = await (window as any).api.assets.pickFile({ filters: [{ name: 'Videos', extensions: ['webm', 'mp4', 'mov'] }] })
                       if (res) store.setStingerPath(res)
                     }}
-                    className="px-4 bg-brand-gradient text-white rounded-xl font-bold text-xs shadow-glow"
+                    className="px-4 bg-accent text-white rounded-xl font-semibold text-xs"
                   >
                     Pick
                   </button>
@@ -963,7 +1064,7 @@ export default function BroadcastPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Total Duration (ms)</label>
+                  <label className="text-[10px] font-semibold tracking-tight text-white/40">Total Duration (ms)</label>
                   <input
                     type="number"
                     value={store.stingerSettings.duration}
@@ -972,7 +1073,7 @@ export default function BroadcastPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Cut Point (ms)</label>
+                  <label className="text-[10px] font-semibold tracking-tight text-white/40">Cut Point (ms)</label>
                   <input
                     type="number"
                     value={store.stingerSettings.cutPoint}
@@ -983,16 +1084,16 @@ export default function BroadcastPage() {
               </div>
             </div>
 
-            <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl flex gap-3 items-center">
+            <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-md flex gap-3 items-center">
               <IconSparkles className="text-purple-400" size={20} />
               <p className="text-[10px] leading-relaxed text-purple-200/60 font-medium">
-                The <span className="text-purple-300 font-bold">Cut Point</span> is when the actual scene switch happens. Set it to when the stinger video completely covers the screen.
+                The <span className="text-purple-300 font-semibold">Cut Point</span> is when the actual scene switch happens. Set it to when the stinger video completely covers the screen.
               </p>
             </div>
 
             <button
               onClick={() => setShowStingerConfig(false)}
-              className="w-full py-4 bg-brand-gradient text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-accent/20 hover:brightness-110 active:scale-95 transition-all shadow-glow"
+              className="w-full py-4 bg-accent text-white font-semibold tracking-tight rounded-md hover:brightness-110 active:scale-95 transition-all"
             >
               Done
             </button>
@@ -1007,16 +1108,16 @@ export default function BroadcastPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-[#0c0c0e]/90 backdrop-blur-xl border border-white/10 rounded-[32px] p-10 shadow-2xl shadow-black/50 w-[800px]"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-[#0c0c0e]/90 border border-white/10 rounded-[32px] p-10 shadow-2xl shadow-black/50 w-[800px]"
           >
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-2xl bg-purple-500/20 text-purple-400">
+                <div className="p-3 rounded-md bg-purple-500/20 text-purple-400">
                   <IconKeyboard size={24} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black uppercase tracking-tighter text-white">Production Shortcuts</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mt-1">Master your broadcast with global keys</p>
+                  <h2 className="text-xl font-semibold tracking-tighter text-white">Production Shortcuts</h2>
+                  <p className="text-[10px] font-semibold tracking-tight text-white/20 mt-1">Master your broadcast with global keys</p>
                 </div>
               </div>
               <button onClick={() => setShowHotkeys(false)} className="p-3 rounded-xl bg-white/5 text-white/20 hover:text-white transition-all">
@@ -1040,24 +1141,24 @@ export default function BroadcastPage() {
               ].map(hk => (
                 <div key={hk.key} className="flex items-center justify-between py-3 border-b border-white/5 group hover:border-white/10 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="min-w-[60px] h-8 flex items-center justify-center bg-white/10 rounded-lg border border-white/10 text-[11px] font-black font-mono text-accent">
+                    <div className="min-w-[60px] h-8 flex items-center justify-center bg-white/10 rounded-lg border border-white/10 text-[11px] font-semibold font-mono text-accent">
                       {hk.key}
                     </div>
                     <div>
-                      <p className="text-[12px] font-black uppercase tracking-tight text-white/80">{hk.label}</p>
-                      <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest mt-0.5">{hk.desc}</p>
+                      <p className="text-[12px] font-semibold tracking-tight text-white/80">{hk.label}</p>
+                      <p className="text-[9px] font-semibold text-white/20 tracking-tight mt-0.5">{hk.desc}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-10 p-5 rounded-2xl bg-purple-500/5 border border-purple-500/10 flex items-center gap-4">
+            <div className="mt-10 p-5 rounded-md bg-purple-500/5 border border-purple-500/10 flex items-center gap-4">
               <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
                 <IconSparkles size={18} />
               </div>
               <p className="text-[11px] text-purple-200/40 font-medium leading-relaxed italic">
-                Pro Tip: Use <span className="text-purple-400 font-bold">Studio Mode</span> to prepare your next shot in Preview before transitioning it to the Live Program.
+                Pro Tip: Use <span className="text-purple-400 font-semibold">Studio Mode</span> to prepare your next shot in Preview before transitioning it to the Live Program.
               </p>
             </div>
           </motion.div>
@@ -1077,7 +1178,7 @@ export default function BroadcastPage() {
           x={sourceContextMenu.x} y={sourceContextMenu.y}
           onClose={() => setSourceContextMenu(null)}
           items={sourceContextMenu.layer ? [
-            {
+            ...(sourceContextMenu.layer.type !== 'audio' ? [{
               id: 'fit',
               label: `Fit to Screen (${sourceContextMenu.aspectRatio === '9:16' ? 'Vertical' : 'Horizontal'})`,
               icon: <IconMaximize size={18} />,
@@ -1113,17 +1214,17 @@ export default function BroadcastPage() {
                   })
                 }
               }
-            },
-            {
+            }] : []),
+            ...(sourceContextMenu.layer.type !== 'audio' ? [{
               id: 'enhance',
               label: 'Enhance',
               icon: <IconSparkles size={18} />,
-              disabled: !(sourceContextMenu.layer!.type === 'camera' || sourceContextMenu.layer!.type === 'display' || sourceContextMenu.layer!.type === 'image'),
+              disabled: !(sourceContextMenu.layer.type === 'camera' || sourceContextMenu.layer.type === 'display' || sourceContextMenu.layer.type === 'image'),
               onClick: () => {
                 store.setShowEnhancementModal(true, sourceContextMenu.layer?.id || null)
               }
-            },
-            {
+            }] : []),
+            ...(sourceContextMenu.layer.type !== 'audio' ? [{
               id: 'project-layout',
               label: 'Project Layout',
               icon: <IconCast size={18} />,
@@ -1151,7 +1252,7 @@ export default function BroadcastPage() {
                   aspectRatio: sourceContextMenu.aspectRatio
                 })
               })) : [{ id: 'no-monitors', label: 'No Monitors Detected', disabled: true }]
-            },
+            }] : []),
             { id: 'delete', label: 'Delete', icon: <IconTrash size={18} />, danger: true, onClick: () => store.removeLayer(sourceContextMenu.sceneId, sourceContextMenu.layer!.id) }
           ] : [
             {

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { IconX } from '@tabler/icons-react'
+import { IconX } from './icons'
 import { cn } from '../../lib/utils'
 
 interface ModalProps {
@@ -36,30 +36,30 @@ export function Modal({ open, onClose, title, children, className, headerActions
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.98, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            exit={{ opacity: 0, scale: 0.98, y: 8 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "relative w-full max-w-2xl bg-[#0c0c0c] border border-white/10 rounded-3xl overflow-hidden shadow-2xl z-[1001] flex flex-col",
+              "relative w-full max-w-2xl bg-[#0E1014] border border-white/[0.05] rounded-[10px] overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.6)] z-[1001] flex flex-col",
               className
             )}
           >
             {(title || onClose) && (
-              <div className="p-6 border-b border-white/5 flex items-center justify-between bg-black/20 shrink-0">
+              <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   {headerActions}
-                  {title && <h2 className="text-lg font-black text-white">{title}</h2>}
+                  {title && <h2 className="text-[15px] font-semibold tracking-tight text-white">{title}</h2>}
                 </div>
                 {onClose && (
-                  <button 
-                    onClick={onClose} 
-                    className="p-2 rounded-lg hover:bg-white/5 text-white/20 hover:text-white transition-all cursor-pointer"
+                  <button
+                    onClick={onClose}
+                    className="w-8 h-8 grid place-items-center rounded-md hover:bg-white/[0.04] text-white/55 hover:text-white transition-colors cursor-pointer"
                   >
-                    <IconX size={18} />
+                    <IconX size={16} />
                   </button>
                 )}
               </div>

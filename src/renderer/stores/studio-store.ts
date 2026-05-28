@@ -104,10 +104,15 @@ function normalizeAudioSource(source: AudioSource): AudioSource {
     volume: clamp(Number(source.volume ?? 0.8), 0, 2),
     muted: Boolean(source.muted),
     monitoring: Boolean(source.monitoring),
+    locked: source.id === 'mic-audio' ? false : source.locked,
     channelMode: normalizeChannelMode((source as any).channelMode, fallbackMode),
     pan: clamp(Number(source.pan ?? 0), -1, 1),
     filters: Array.isArray(source.filters) ? source.filters : ((source as any).fxChain || [])
   }
+}
+
+function requiredDefaultAudioSources(): AudioSource[] {
+  return DEFAULT_STUDIO_STATE.audioSources.filter(source => source.locked)
 }
 
 const syncChannel = new BroadcastChannel('ilystream-studio-sync')
@@ -571,7 +576,7 @@ export const useStudioStore = create<StudioStore>()(
               // Ensure default locked sources (Soundboard, TTS) survive rehydration
               if (dbState.audioSources) {
                 dbState.audioSources = dbState.audioSources.map(normalizeAudioSource)
-                const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+                const defaultSources = requiredDefaultAudioSources()
                 for (const def of defaultSources) {
                   if (!dbState.audioSources.find((s: any) => s.id === def.id)) {
                     dbState.audioSources.push(normalizeAudioSource(def))
@@ -586,7 +591,7 @@ export const useStudioStore = create<StudioStore>()(
         state.audioSources = (state.audioSources || []).map(normalizeAudioSource)
 
         // Ensure default locked sources (Soundboard, TTS) are always present
-        const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+        const defaultSources = requiredDefaultAudioSources()
         for (const def of defaultSources) {
           if (!state.audioSources.find(s => s.id === def.id)) {
             state.audioSources.push(normalizeAudioSource(def))
@@ -614,7 +619,7 @@ export const useStudioStore = create<StudioStore>()(
                   // Only update the parts we partialize
                   isSyncing = true
                   const syncedSources = (parsed.state.audioSources || []).map(normalizeAudioSource)
-                  const defaultSources = DEFAULT_STUDIO_STATE.audioSources
+                  const defaultSources = requiredDefaultAudioSources()
                   for (const def of defaultSources) {
                     if (!syncedSources.find((s: any) => s.id === def.id)) {
                       syncedSources.push(normalizeAudioSource(def))

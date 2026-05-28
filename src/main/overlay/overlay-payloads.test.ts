@@ -82,6 +82,11 @@ describe('overlay payload helpers', () => {
     expect(sanitizeOverlayHtml('hello<br />world')).toBe('hello<br />world')
   })
 
+  it('normalizes pre-escaped apostrophes in alert text without double escaping them', () => {
+    expect(sanitizeOverlayHtml("You&#39;re Awesome")).toBe('You&#39;re Awesome')
+    expect(sanitizeOverlayHtml("You&#39're Awesome")).toBe('You&#39;re Awesome')
+  })
+
   it('suppresses particle bursts for in-progress gift streak updates', () => {
     const baseGift: GiftEvent = {
       id: 'gift-1',
@@ -107,6 +112,26 @@ describe('overlay payload helpers', () => {
 
     expect(shouldBroadcastParticleEvent(baseGift)).toBe(false)
     expect(shouldBroadcastParticleEvent({ ...baseGift, isCombo: false })).toBe(true)
+  })
+
+  it('keeps count telemetry out of particle widgets', () => {
+    expect(shouldBroadcastParticleEvent({
+      id: 'viewer-count-1',
+      platform: 'twitch',
+      timestamp: new Date('2026-04-10T10:10:00.000Z'),
+      type: 'viewer-count',
+      raw: {},
+      count: 7
+    } as any)).toBe(false)
+
+    expect(shouldBroadcastParticleEvent({
+      id: 'follower-count-1',
+      platform: 'twitch',
+      timestamp: new Date('2026-04-10T10:10:00.000Z'),
+      type: 'follower-count',
+      raw: {},
+      count: 42
+    } as any)).toBe(false)
   })
 
   it('does not map likes into generic overlay feed items', () => {

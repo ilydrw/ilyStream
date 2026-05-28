@@ -13,24 +13,25 @@ export function Button({
   ...props
 }: ButtonProps) {
   const variants = {
-    primary: 'bg-brand-gradient text-white shadow-lg shadow-glow hover:brightness-110 transition-all',
-    secondary: 'bg-white/10 text-white hover:bg-white/20',
-    outline: 'border border-border bg-transparent hover:bg-white/5 text-foreground',
-    ghost: 'bg-transparent hover:bg-white/5 text-muted hover:text-foreground',
-    danger: 'bg-danger text-white hover:bg-danger/90 shadow-lg shadow-danger/20'
+    primary: 'bg-accent text-[#04111a] hover:bg-accent-hover transition-colors',
+    secondary: 'bg-white/[0.03] border border-white/[0.05] text-white hover:bg-white/[0.06] hover:border-white/[0.12]',
+    outline: 'border border-white/[0.05] bg-transparent hover:bg-white/[0.03] hover:border-white/[0.12] text-foreground',
+    ghost: 'bg-transparent hover:bg-white/[0.03] text-muted hover:text-foreground',
+    danger: 'bg-[#e11d48] text-white hover:bg-[#f43f5e]'
   }
 
   const sizes = {
-    sm: 'h-8 px-3 text-xs',
-    md: 'h-10 px-4 text-sm',
-    lg: 'h-12 px-6 text-base',
-    icon: 'h-10 w-10 flex items-center justify-center'
+    sm: 'h-7 px-2.5 text-xs',
+    md: 'h-[34px] px-3.5 text-[13px]',
+    lg: 'h-10 px-5 text-[14px]',
+    icon: 'h-[34px] w-[34px] flex items-center justify-center'
   }
 
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-xl font-medium transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'inline-flex items-center justify-center rounded-md font-medium transition-colors active:translate-y-px disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        variant === 'primary' && 'font-semibold',
         variants[variant],
         sizes[size],
         className

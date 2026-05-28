@@ -43,12 +43,12 @@ export default function InstagramPage() {
                 <IconCamera size={40} className="text-white" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold mb-4">Ready to go Live?</h2>
+            <h2 className="text-2xl font-semibold mb-4">Ready to go Live?</h2>
             <p className="text-white/40 max-w-md mb-10">
               Instagram Live requires a Professional or Creator account. 
               Once linked, you can stream directly from IlyStream using your dedicated Stream Key.
             </p>
-            <button className="px-12 py-4 rounded-2xl bg-gradient-to-r from-pink-600 to-orange-600 text-white font-black text-xs uppercase tracking-widest hover:scale-[1.05] transition-transform">
+            <button className="px-12 py-4 rounded-md bg-gradient-to-r from-pink-600 to-orange-600 text-white font-semibold text-xs tracking-tight hover:scale-[1.05] transition-transform">
               Connect Instagram Account
             </button>
           </section>
@@ -65,8 +65,8 @@ function Metric({ icon, label, value }: { icon: React.ReactNode, label: string, 
         {icon}
       </div>
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-white/30 mb-2">{label}</p>
-        <p className="text-4xl font-bold font-mono text-white">{value}</p>
+        <p className="text-xs font-semibold tracking-tight text-white/30 mb-2">{label}</p>
+        <p className="text-4xl font-semibold font-mono text-white">{value}</p>
       </div>
     </div>
   )

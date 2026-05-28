@@ -1,4 +1,4 @@
-import {IconChevronDown, IconCheck} from '@tabler/icons-react'
+import { IconChevronDown, IconCheck } from './icons'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface SelectOption {
@@ -141,13 +141,13 @@ export function Select({
           ref={listRef}
           role="listbox"
           tabIndex={-1}
-          className="titlebar-no-drag absolute z-50 left-0 right-0 mt-2 rounded-xl border border-white/10 bg-[#0f1216]/95 backdrop-blur-xl shadow-2xl overflow-y-auto custom-scrollbar ring-1 ring-white/5 animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150"
+          className="titlebar-no-drag absolute z-50 left-0 right-0 mt-1 rounded-md border border-white/[0.08] bg-[#0E1014] shadow-[0_12px_32px_rgba(0,0,0,0.5)] overflow-y-auto custom-scrollbar py-1 animate-in fade-in slide-in-from-top-1 duration-100"
           style={{ maxHeight: maxListHeight }}
         >
           {grouped.map((section, groupIndex) => (
             <div key={`grp-${groupIndex}`}>
               {section.group && (
-                <div className="px-3 pt-3 pb-1 text-[10px] font-black uppercase tracking-widest text-white/30">
+                <div className="px-3 pt-2.5 pb-1 text-[11px] font-medium text-white/55">
                   {section.group}
                 </div>
               )}
@@ -168,28 +168,20 @@ export function Select({
                       setOpen(false)
                     }}
                     onMouseEnter={() => setHighlight(index)}
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-left transition-colors ${
-                      option.disabled
-                        ? 'text-white/20 cursor-not-allowed'
-                        : isActive
-                          ? 'bg-white/[0.08] text-white'
-                          : isHighlighted
-                            ? 'bg-white/[0.04] text-white'
-                            : 'text-white/70 hover:bg-white/[0.03] hover:text-white'
-                    }`}
+                    className={`w-full flex items-center justify-between gap-2.5 px-3 py-1.5 text-[13px] text-left transition-colors ${ option.disabled ? 'text-white/32 cursor-not-allowed' : isActive ? 'bg-white/[0.06] text-white' : isHighlighted ? 'bg-white/[0.03] text-white' : 'text-white/55 hover:bg-white/[0.025] hover:text-white' }`}
                   >
                     <span className="flex items-center gap-2 truncate">
                       {option.icon}
                       {option.label}
                     </span>
-                    {isActive && <IconCheck size={14} className="shrink-0 text-white" />}
+                    {isActive && <IconCheck size={13} className="shrink-0 text-accent" />}
                   </button>
                 )
               })}
             </div>
           ))}
           {options.length === 0 && (
-            <div className="px-4 py-6 text-center text-xs text-white/30">No options available.</div>
+            <div className="px-3 py-4 text-center text-[12px] text-white/32">No options available.</div>
           )}
         </div>
       )}

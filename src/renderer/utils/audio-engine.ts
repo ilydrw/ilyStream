@@ -3,6 +3,7 @@ import { AudioSource } from "../../shared/studio";
 class AudioEngine {
   private context: AudioContext | null = null;
   private broadcastBus: AudioNode | null = null;
+  private masterMeterNodes: MasterMeterNodes | null = null;
   private ttsDestination: MediaStreamAudioDestinationNode | null = null;
   private soundboardDestination: MediaStreamAudioDestinationNode | null = null;
   private ttsGain: GainNode | null = null;
@@ -11,10 +12,27 @@ class AudioEngine {
 
   getContext(): AudioContext {
     if (!this.context || this.context.state === 'closed') {
-      this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
-        latencyHint: 'interactive'
-      });
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      const contextOptions: AudioContextOptions[] = [
+        { latencyHint: 0.003, sampleRate: 48000 },
+        { latencyHint: 'interactive', sampleRate: 48000 },
+        { latencyHint: 'interactive' }
+      ];
+
+      for (const options of contextOptions) {
+        try {
+          this.context = new AudioContextCtor(options);
+          break;
+        } catch {
+          this.context = null;
+        }
+      }
+
+      if (!this.context) this.context = new AudioContextCtor();
+
       // Clear gain nodes so they are recreated with the new context
+      this.broadcastBus = null;
+      this.masterMeterNodes = null;
       this.ttsGain = null;
       this.soundboardGain = null;
       this.ttsDestination = null;
@@ -28,7 +46,16 @@ class AudioEngine {
         });
       }
       
-      console.log('[AudioEngine] Context initialized:', this.context.sampleRate, 'Hz');
+      const baseLatencyMs = typeof this.context.baseLatency === 'number'
+        ? Math.round(this.context.baseLatency * 1000)
+        : null;
+      const outputLatencyMs = typeof (this.context as any).outputLatency === 'number'
+        ? Math.round((this.context as any).outputLatency * 1000)
+        : null;
+      console.log('[AudioEngine] Context initialized:', this.context.sampleRate, 'Hz', {
+        baseLatencyMs,
+        outputLatencyMs
+      });
     }
     
     if (this.context.state === 'suspended') {
@@ -44,6 +71,14 @@ class AudioEngine {
 
   getBroadcastBus(): AudioNode | null {
     return this.broadcastBus;
+  }
+
+  setMasterMeterNodes(nodes: MasterMeterNodes | null): void {
+    this.masterMeterNodes = nodes;
+  }
+
+  getMasterMeterNodes(): MasterMeterNodes | null {
+    return this.masterMeterNodes;
   }
   
   getTtsBus(): AudioNode {
@@ -115,6 +150,11 @@ class AudioEngine {
 
 export const audioEngine = new AudioEngine();
 
+export interface MasterMeterNodes {
+  left: AnalyserNode;
+  right: AnalyserNode;
+}
+
 export interface ChannelModeStage {
   input: AudioNode;
   output: AudioNode;
@@ -131,9 +171,16 @@ export function createChannelModeStage(ctx: AudioContext, mode: 'mono' | 'stereo
   const connect = (m: 'mono' | 'stereo') => {
     input.disconnect();
     if (m === 'mono') {
+      // Sum L+R into a single mono signal, then duplicate to both output
+      // channels. Stereo USB interfaces (e.g. Focusrite Scarlett) expose a
+      // two-channel stream even when the mic is plugged into only one input;
+      // picking only channel 0 here silently drops mics wired to input 2.
+      // ChannelMergerNode sums multiple connections into the same input.
       input.connect(splitter);
       splitter.connect(merger, 0, 0);
+      splitter.connect(merger, 1, 0);
       splitter.connect(merger, 0, 1);
+      splitter.connect(merger, 1, 1);
       merger.connect(output);
     } else {
       input.connect(output);

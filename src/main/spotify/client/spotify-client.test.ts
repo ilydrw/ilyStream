@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SpotifyClient } from './spotify-client'
+import { SpotifyApiError, SpotifyClient } from './spotify-client'
 
 describe('SpotifyClient', () => {
   afterEach(() => {
@@ -79,5 +79,22 @@ describe('SpotifyClient', () => {
       })
     )
     expect(queue?.queue?.[0]?.name).toBe('Next Song')
+  })
+
+  it('surfaces Spotify rate-limit retry timing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, {
+      status: 429,
+      headers: { 'Retry-After': '17' }
+    }))
+
+    const client = new SpotifyClient()
+    client.setAccessToken('access-token')
+
+    await expect(client.getPlaybackState()).rejects.toMatchObject({
+      name: 'SpotifyApiError',
+      message: 'Playback state fetch failed (429)',
+      status: 429,
+      retryAfterMs: 17_000
+    } satisfies Partial<SpotifyApiError>)
   })
 })

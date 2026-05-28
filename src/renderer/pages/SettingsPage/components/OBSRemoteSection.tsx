@@ -59,9 +59,9 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
             />
           </SettingRow>
 
-          <div className="mt-4 p-8 rounded-3xl bg-black/40 border border-white/5 space-y-5 group hover:border-white/10 transition-all">
+          <div className="mt-4 p-8 rounded-lg bg-black/40 border border-white/5 space-y-5 group hover:border-white/10 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-widest text-white/30">Runtime Status</span>
+              <span className="text-xs font-semibold tracking-tight text-white/30">Runtime Status</span>
               <OBSStatusBadge status={obsStatus} />
             </div>
             <div className="space-y-3">
@@ -72,7 +72,7 @@ export function OBSRemoteSection({ settings, obsStatus, onUpdate, onConnect }: O
             <button
               onClick={onConnect}
               disabled={!settings.integrations.obs.enabled}
-              className="app-button w-full !h-12 !text-xs font-black uppercase tracking-widest bg-brand-gradient text-white border-transparent shadow-glow"
+              className="app-button w-full !h-12 !text-xs font-semibold tracking-tight bg-accent text-white border-transparent"
             >
               {obsStatus?.connecting ? 'Linking...' : 'Save & Connect'}
             </button>

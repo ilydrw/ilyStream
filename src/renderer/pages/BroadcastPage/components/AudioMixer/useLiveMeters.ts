@@ -5,7 +5,7 @@ import {
   sanitizeChannelMode
 } from '../../../../utils/audio-engine'
 import { reconcileFxChain } from '../../../../utils/audio-fx'
-import { resolveCameraAudioDeviceId } from '../../utils/media-init'
+import { buildLowLatencyAudioConstraints, resolveCameraAudioDeviceId } from '../../utils/media-init'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
 import { type MeterFrame, type LiveMeterNode, cleanupLiveMeterNode } from './utils'
 
@@ -22,6 +22,10 @@ export function useLiveMeters(
   const peaksRef = useRef<Record<string, { value: number; lastAt: number }>>({})
   const micStreams = useRef<Record<string, MediaStream>>({})
   const pendingMics = useRef<Set<string>>(new Set())
+  const masterMeterDataRef = useRef<{ left: Float32Array | null; right: Float32Array | null }>({
+    left: null,
+    right: null
+  })
 
   useEffect(() => {
     let disposed = false
@@ -34,7 +38,7 @@ export function useLiveMeters(
         stream = (window as any).__soundboardStream || null
       } else if (source.id === 'tts-audio') {
         stream = audioEngine.getTtsStream()
-      } else if (source.type === 'mic' && source.deviceId) {
+      } else if (source.type === 'mic') {
         const globalMic = (window as any).__ilyMicStreams?.[source.id]
         if (globalMic) {
           stream = globalMic
@@ -47,6 +51,7 @@ export function useLiveMeters(
             stream = (el?.__ilyRawStream || el?.srcObject) as MediaStream | null
             if (!stream) return
           } else {
+            if (!source.deviceId) return
             if (pendingMics.current.has(source.id)) return
             pendingMics.current.add(source.id)
 
@@ -66,12 +71,7 @@ export function useLiveMeters(
 
               console.log(`[AudioMixer] Initializing standalone mic: ${source.name} (${deviceId})`)
               stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                  deviceId: { exact: deviceId },
-                  echoCancellation: false,
-                  noiseSuppression: false,
-                  autoGainControl: false
-                }
+                audio: buildLowLatencyAudioConstraints(deviceId)
               })
               micStreams.current[source.id] = stream
             } catch (err) {
@@ -209,6 +209,44 @@ export function useLiveMeters(
       let masterL = 0, masterR = 0, masterPeak = 0
       let activeCount = 0
 
+      const readActualMasterMeter = (): MeterFrame | null => {
+        const masterNodes = audioEngine.getMasterMeterNodes()
+        if (!masterNodes) return null
+
+        let dataL = masterMeterDataRef.current.left
+        let dataR = masterMeterDataRef.current.right
+
+        if (!dataL || dataL.length !== masterNodes.left.fftSize) {
+          dataL = new Float32Array(masterNodes.left.fftSize)
+          masterMeterDataRef.current.left = dataL
+        }
+        if (!dataR || dataR.length !== masterNodes.right.fftSize) {
+          dataR = new Float32Array(masterNodes.right.fftSize)
+          masterMeterDataRef.current.right = dataR
+        }
+
+        masterNodes.left.getFloatTimeDomainData(dataL as any)
+        masterNodes.right.getFloatTimeDomainData(dataR as any)
+
+        let sumL = 0, sumR = 0
+        let peakL = 0, peakR = 0
+        const len = Math.min(dataL.length, dataR.length)
+
+        for (let i = 0; i < len; i++) {
+          const sL = dataL[i], sR = dataR[i]
+          sumL += sL * sL
+          sumR += sR * sR
+          if (Math.abs(sL) > peakL) peakL = Math.abs(sL)
+          if (Math.abs(sR) > peakR) peakR = Math.abs(sR)
+        }
+
+        return {
+          left: Math.min(1, Math.sqrt(sumL / len) * 2.2),
+          right: Math.min(1, Math.sqrt(sumR / len) * 2.2),
+          peak: Math.min(1, Math.max(peakL, peakR) * 1.1)
+        }
+      }
+
       for (const source of audioSources) {
         const node = nodesRef.current.get(source.id)
         if (!node) {
@@ -281,11 +319,12 @@ export function useLiveMeters(
         activeCount++
       }
 
-      const masterMeter = {
+      const fallbackMasterMeter = {
         left: activeCount > 0 ? Math.min(1, masterL / Math.sqrt(activeCount)) : 0,
         right: activeCount > 0 ? Math.min(1, masterR / Math.sqrt(activeCount)) : 0,
         peak: masterPeak
       }
+      const masterMeter = readActualMasterMeter() || fallbackMasterMeter
 
       const nowMs = performance.now()
       const masterHold = peaksRef.current.master || { value: 0, lastAt: 0 }
@@ -301,7 +340,15 @@ export function useLiveMeters(
         let elements: any = null
 
         if (id === 'master') {
-          if (!(window as any).__ilyMasterElements) {
+          const cached = (window as any).__ilyMasterElements
+          const hasCachedElements = cached && (
+            (cached.peakL?.length || 0) +
+            (cached.peakR?.length || 0) +
+            (cached.clipL?.length || 0) +
+            (cached.clipR?.length || 0)
+          ) > 0
+
+          if (!hasCachedElements) {
             (window as any).__ilyMasterElements = {
               peakL: Array.from(document.querySelectorAll(`.meter-peak-l-master`)),
               peakR: Array.from(document.querySelectorAll(`.meter-peak-r-master`)),

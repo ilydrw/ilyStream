@@ -49,6 +49,11 @@ export interface CanvasEditorProps {
   dualVerticalOverlayEnabled?: boolean
   isVisible?: boolean
   isPreview?: boolean
+  // Force the per-aspect output canvases to render even when no stream or
+  // overlay needs them. Used by the projector mirror feature so it can grab
+  // a 9:16 (or 16:9) render on demand.
+  forceVerticalCanvas?: boolean
+  forceHorizontalCanvas?: boolean
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
 }
@@ -118,4 +123,9 @@ export interface CachedMediaFrame {
 
 export interface CanvasEditorHandle {
   takeScreenshot: () => Promise<void>
+  getCanvas: () => HTMLCanvasElement | null
+  // Per-aspect offscreen canvases used for dual-output rendering. Returns
+  // null if that aspect isn't currently being rendered (e.g. vertical canvas
+  // is only created when dual mode / vertical stream output is active).
+  getOutputCanvas: (aspect: '16:9' | '9:16') => HTMLCanvasElement | null
 }

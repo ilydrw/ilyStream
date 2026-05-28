@@ -1,4 +1,5 @@
-import {IconMusic, IconPlayerSkipForward, IconTrash, IconUser, IconList, IconPlayerPlay, IconRefresh} from '@tabler/icons-react'
+import { IconMusic, IconPlayerSkipForward, IconUser, IconList } from '@tabler/icons-react'
+import { IconTrash, IconPlayerPlay, IconRefresh } from '../../components/ui/icons'
 import { useEffect, useState } from 'react'
 import type { SpotifySongRequest, SpotifyStatus } from '../../../shared/spotify-types'
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../../shared/app-settings'
@@ -135,13 +136,13 @@ export default function SpotifyPage() {
         </div>
 
         {status?.connected && (
-          <div className="flex items-center gap-4 px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 glass">
+          <div className="flex items-center gap-4 px-4 py-2 rounded-md bg-white/[0.03] border border-white/10 glass">
             <div className="p-2 rounded-lg bg-white/5 text-white/60">
               <IconUser size={16} />
             </div>
             <div className="text-left">
-              <div className="text-[10px] font-black uppercase tracking-widest opacity-40">Connected as</div>
-              <div className="text-xs font-bold text-white">{status.displayName}</div>
+              <div className="text-[10px] font-semibold tracking-tight opacity-40">Connected as</div>
+              <div className="text-xs font-semibold text-white">{status.displayName}</div>
             </div>
           </div>
         )}
@@ -153,21 +154,21 @@ export default function SpotifyPage() {
             <div className="app-section-head flex-col items-center text-center gap-5 py-4">
               <SpotifyIcon size={44} branded />
               <div>
-                <h2 className="text-sm font-black tracking-tight">Account Bridge</h2>
+                <h2 className="text-sm font-semibold tracking-tight">Account Bridge</h2>
                 <p className="text-[10px] opacity-40">{status?.connected ? 'Authentication active' : 'Awaiting authorization'}</p>
               </div>
             </div>
 
             <div className="p-4 pt-0">
               {status?.error && (
-                <div className="mb-4 p-2 rounded bg-danger/10 border border-danger/20 text-[10px] text-danger font-bold text-center uppercase tracking-wider">
+                <div className="mb-4 p-2 rounded bg-danger/10 border border-danger/20 text-[10px] text-danger font-semibold text-center tracking-wider">
                   {status.error}
                 </div>
               )}
               {!status?.connected ? (
                 <div className="flex flex-col gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20">Spotify Client ID</label>
+                    <label className="text-[10px] font-semibold tracking-tight text-white/20">Spotify Client ID</label>
                     <input
                       type="text"
                       className="app-input w-full"
@@ -176,17 +177,17 @@ export default function SpotifyPage() {
                       placeholder="Paste Spotify app Client ID"
                     />
                   </div>
-                  <button onClick={handleConnect} disabled={connecting} className="app-button-primary w-full !h-10 text-[10px] font-black uppercase tracking-widest">
+                  <button onClick={handleConnect} disabled={connecting} className="app-button-primary w-full !h-10 text-[10px] font-semibold tracking-tight">
                     {connecting ? 'Requesting Auth...' : 'Connect Spotify Account'}
                   </button>
-                  {connectError && <p className="text-[10px] text-danger font-bold uppercase tracking-widest text-center">{connectError}</p>}
+                  {connectError && <p className="text-[10px] text-danger font-semibold tracking-tight text-center">{connectError}</p>}
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <button onClick={() => window.api.spotify.disconnect()} className="app-button-danger w-full !h-10 text-[10px] font-black uppercase tracking-widest">
+                  <button onClick={() => window.api.spotify.disconnect()} className="app-button-danger w-full !h-10 text-[10px] font-semibold tracking-tight">
                     Terminate Session
                   </button>
-                  <button onClick={handleRefresh} className="app-button w-full !h-9 text-[9px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity">
+                  <button onClick={handleRefresh} className="app-button w-full !h-9 text-[9px] font-semibold tracking-tight opacity-60 hover:opacity-100 transition-opacity">
                     <IconRefresh size={12} className="mr-1.5" />
                     Refresh Connection
                   </button>
@@ -223,7 +224,7 @@ export default function SpotifyPage() {
 
               <div className="flex items-center justify-between py-3">
                 <div>
-                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Queue Hard Limit</h4>
+                  <h4 className="text-[11px] font-semibold text-white/80 tracking-tight">Queue Hard Limit</h4>
                   <p className="text-[10px] text-white/20">Max tracks in backlog. 0 = unlimited.</p>
                 </div>
                 <NumberInput
@@ -237,7 +238,7 @@ export default function SpotifyPage() {
 
               <div className="flex items-center justify-between py-3">
                 <div>
-                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">Per-User Cap</h4>
+                  <h4 className="text-[11px] font-semibold text-white/80 tracking-tight">Per-User Cap</h4>
                   <p className="text-[10px] text-white/20">Max requests one viewer can hold.</p>
                 </div>
                 <NumberInput
@@ -264,11 +265,11 @@ export default function SpotifyPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => window.api.spotify.skip()} className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest">
+              <button onClick={() => window.api.spotify.skip()} className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight">
                 <IconPlayerSkipForward size={14} className="mr-2" />
                 Skip
               </button>
-              <button onClick={() => window.api.spotify.clearQueue()} className="app-button-danger !h-10 !px-4 text-[10px] font-black uppercase tracking-widest">
+              <button onClick={() => window.api.spotify.clearQueue()} className="app-button-danger !h-10 !px-4 text-[10px] font-semibold tracking-tight">
                 Flush
               </button>
             </div>
@@ -284,13 +285,13 @@ export default function SpotifyPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-40 opacity-10">
                 <IconMusic size={64} className="mb-4" />
-                <p className="text-sm font-bold uppercase tracking-widest">Backlog Clear</p>
+                <p className="text-sm font-semibold tracking-tight">Backlog Clear</p>
               </div>
             )}
 
             {recentQueue.length > 0 && (
               <div className="mt-10">
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/10 mb-4 px-2">History Cache</div>
+                <div className="text-[10px] font-semibold tracking-tight text-white/10 mb-4 px-2">History Cache</div>
                 <div className="flex flex-col gap-2 opacity-40">
                   {recentQueue.map((req) => (
                     <QueueItem key={req.id} req={req} />
@@ -309,7 +310,7 @@ function SpotifySetting({ label, desc, children, disabled }: { label: string; de
   return (
     <div className={`flex items-center justify-between py-3 transition-opacity ${disabled ? 'opacity-20' : ''}`}>
       <div className="max-w-[200px]">
-        <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-widest">{label}</h4>
+        <h4 className="text-[11px] font-semibold text-white/80 tracking-tight">{label}</h4>
         <p className="text-[10px] text-white/20 font-medium leading-tight">{desc}</p>
       </div>
       {children}
@@ -321,9 +322,9 @@ function QueueItem({ req, index, onRemove }: { req: SpotifySongRequest; index?: 
   const duration = `${Math.floor(req.track.durationMs / 60000)}:${Math.floor((req.track.durationMs % 60000) / 1000).toString().padStart(2, '0')}`
 
   return (
-    <div className="flex items-center justify-between p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:border-white/10 hover:bg-white/[0.03] transition-all group">
+    <div className="flex items-center justify-between p-6 rounded-md bg-white/[0.02] border border-white/[0.05] hover:border-white/10 hover:bg-white/[0.03] transition-all group">
       <div className="flex items-center gap-4 min-w-0">
-        {index && <div className="text-[10px] font-black text-white/10 w-4">{index}</div>}
+        {index && <div className="text-[10px] font-semibold text-white/10 w-4">{index}</div>}
         <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-white/5 flex items-center justify-center text-white/20 group-hover:text-white transition-colors shrink-0">
           {req.track.albumArtUrl ? (
             <img src={req.track.albumArtUrl} alt="" className="w-full h-full object-cover" />
@@ -336,8 +337,8 @@ function QueueItem({ req, index, onRemove }: { req: SpotifySongRequest; index?: 
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-bold text-white truncate" title={req.track.name}>{req.track.name}</p>
-            {req.track.explicit && <span className="px-1 py-0.5 rounded-sm bg-white/10 text-[8px] font-black text-white/40 uppercase">E</span>}
+            <p className="text-sm font-semibold text-white truncate" title={req.track.name}>{req.track.name}</p>
+            {req.track.explicit && <span className="px-1 py-0.5 rounded-sm bg-white/10 text-[8px] font-semibold text-white/40">E</span>}
           </div>
           <p className="text-[10px] text-white/30 font-medium truncate">{req.track.artists.join(', ')}</p>
         </div>
@@ -347,7 +348,7 @@ function QueueItem({ req, index, onRemove }: { req: SpotifySongRequest; index?: 
         <div className="hidden md:flex flex-col items-end">
           <div className="flex items-center gap-1.5">
             <PlatformLogo platform={req.platform as any} size={10} />
-            <span className="text-[10px] font-bold text-white/40">{req.requestedBy}</span>
+            <span className="text-[10px] font-semibold text-white/40">{req.requestedBy}</span>
           </div>
           <div className="text-[9px] font-mono text-white/10 mt-0.5">{duration}</div>
         </div>

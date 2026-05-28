@@ -4,15 +4,15 @@ import { SpotifyIcon } from '../../../components/ui/SpotifyIcon'
 
 export function MetricCard({ icon, label, value, subValue, trend, accent = 'text-accent' }: { icon: ReactNode; label: string; value: string; subValue: string; trend: 'up' | 'down' | 'neutral'; accent?: string }) {
   return (
-    <div className="app-section-card glass !p-5 hover:border-white/10 transition-all group min-w-0">
-      <div className={`mb-3 transition-transform duration-300 ${accent}`}>
+    <div className="app-section-card glass !p-5 transition-colors group min-w-0">
+      <div className={`mb-3 ${accent}`}>
         {icon}
       </div>
-      <div className="kicker !opacity-100 mb-1 truncate">
+      <div className="text-[11px] font-medium text-white/55 mb-1 truncate">
         {label}
       </div>
-      <div className="text-xl font-black text-white tabular-nums leading-none mb-1 truncate">{value}</div>
-      <div className={`text-[9px] font-black uppercase tracking-wider truncate ${trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-white/10'}`}>
+      <div className="text-[22px] font-semibold text-white tabular-nums leading-none mb-1.5 truncate tracking-tight">{value}</div>
+      <div className={`text-[11px] font-mono font-medium truncate ${trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-white/32'}`}>
         {subValue}
       </div>
     </div>
@@ -21,21 +21,21 @@ export function MetricCard({ icon, label, value, subValue, trend, accent = 'text
 
 export function QuickLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
   return (
-    <Link to={to} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.015] border border-white/5 hover:bg-accent/5 hover:border-accent/30 hover:text-accent transition-all group">
-      <div className="text-white/20 group-hover:text-accent transition-colors scale-90">
+    <Link to={to} className="flex flex-col items-center justify-center gap-2 px-3 py-4 rounded-md bg-white/[0.025] hover:bg-white/[0.04] transition-colors group">
+      <div className="text-white/55 group-hover:text-accent transition-colors">
         {icon}
       </div>
-      <span className="kicker !opacity-100 group-hover:!text-accent transition-colors">{label}</span>
+      <span className="text-[12px] font-medium text-white/55 group-hover:text-accent transition-colors tracking-tight">{label}</span>
     </Link>
   )
 }
 
 export function HealthRow({ label, value, tone }: { label: string; value: string; tone: 'good' | 'bad' | 'muted' }) {
-  const toneClass = tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-white/20'
+  const toneClass = tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-white/55'
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-[10px] font-black uppercase tracking-widest text-white/20">{label}</span>
-      <span className={`text-xs font-mono font-bold ${toneClass}`}>{value}</span>
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-[12px] font-normal text-white/55">{label}</span>
+      <span className={`text-[12px] font-mono font-medium tabular-nums ${toneClass}`}>{value}</span>
     </div>
   )
 }

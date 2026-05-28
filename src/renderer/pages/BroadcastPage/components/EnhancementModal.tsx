@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { IconX, IconCheck, IconRotateClockwise2, IconSparkles, IconContrast, IconBrightnessUp, IconColorSwatch, IconSunHigh, IconFocus2, IconHistory, IconCircle, IconSquare, IconStar, IconHeart, IconDiamond, IconHexagon, IconArrowsMove, IconBan, IconPhoto, IconPalette, IconBlur, IconArrowsMaximize as IconMaximize } from '@tabler/icons-react'
+import { IconRotateClockwise2, IconSparkles, IconContrast, IconBrightnessUp, IconColorSwatch, IconSunHigh, IconFocus2, IconHistory, IconCircle, IconSquare, IconStar, IconHeart, IconDiamond, IconHexagon, IconArrowsMove, IconBan, IconPhoto, IconPalette, IconBlur, IconArrowsMaximize as IconMaximize } from '@tabler/icons-react'
+import { IconX, IconCheck } from '../../../components/ui/icons'
 import { StudioLayer } from '../../../../shared/studio'
 import { segmentationService } from '../../../services/SegmentationService'
 import { traceShapePath } from './CanvasEditor.utils'
@@ -35,7 +36,7 @@ function EnhancementSlider({ label, icon: Icon, value, onChange, min = 0, max = 
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2 text-white/60">
           <Icon size={14} />
-          <label className="text-[10px] font-black uppercase tracking-widest">{label}</label>
+          <label className="text-[10px] font-semibold tracking-tight">{label}</label>
         </div>
         <span className="text-[10px] font-mono text-white/80">{Math.round(value)}</span>
       </div>
@@ -382,8 +383,8 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             <IconSparkles size={20} />
           </div>
           <div>
-            <h2 className="text-sm font-black text-white uppercase tracking-widest leading-none">Enhance Source</h2>
-            <p className="text-[10px] text-white/30 font-bold uppercase tracking-tight mt-1">{layer.name}</p>
+            <h2 className="text-sm font-semibold text-white tracking-tight leading-none">Enhance Source</h2>
+            <p className="text-[10px] text-white/30 font-semibold tracking-tight mt-1">{layer.name}</p>
           </div>
         </div>
       }
@@ -399,10 +400,10 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={() => setIsDragging(null)}
                 onMouseLeave={() => setIsDragging(null)}
-                className="rounded-2xl shadow-2xl transition-shadow group-hover:shadow-accent/20"
+                className="rounded-md shadow-2xl transition-shadow group-hover:"
               />
-              <div className="absolute top-4 left-4 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                <p className="text-[9px] font-black uppercase text-white/50 tracking-widest flex items-center gap-2">
+              <div className="absolute top-4 left-4 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-3 py-1.5 rounded-full border border-white/10">
+                <p className="text-[9px] font-semibold text-white/50 tracking-tight flex items-center gap-2">
                   <IconArrowsMove size={12} />
                   Drag to Position Mask <span className="text-accent/60 mx-1">•</span> Hold ALT to Pan Source
                 </p>
@@ -415,25 +416,25 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
               onMouseDown={() => setShowOriginal(true)}
               onMouseUp={() => setShowOriginal(false)}
               onMouseLeave={() => setShowOriginal(false)}
-              className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
+              className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white text-[10px] font-semibold tracking-tight transition-all border border-white/5"
             >
               Hold to Compare Original
             </button>
           </div>
         </div>
 
-        <div className="w-[340px] border-l border-white/5 flex flex-col bg-[#0c0d10]/50 backdrop-blur-xl">
+        <div className="w-[340px] border-l border-white/5 flex flex-col bg-[#0c0d10]/50">
           <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
             {/* Focus Engine */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                   <IconFocus2 size={12} className="text-accent" />
                   Focus Engine
                 </h3>
                 <button
                   onClick={() => setLocalEnhancements({ ...localEnhancements, focusCircle: { ...localEnhancements.focusCircle, enabled: !localEnhancements.focusCircle?.enabled, x: 50, y: 50, radius: 30, blur: 50 } })}
-                  className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg transition-all ${localEnhancements.focusCircle?.enabled ? 'bg-brand-gradient text-white shadow-glow' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.focusCircle?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
                 >
                   {localEnhancements.focusCircle?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -469,7 +470,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Master Controls */}
             <div className="space-y-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                 <IconSunHigh size={12} className="text-accent" />
                 Master Controls
               </h3>
@@ -515,7 +516,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             {/* Chroma Key */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                   <IconColorSwatch size={12} className="text-accent" />
                   Chroma Key
                 </h3>
@@ -530,7 +531,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       spill: 10
                     }
                   })}
-                  className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg transition-all ${localEnhancements.chromaKey?.enabled ? 'bg-brand-gradient text-white shadow-glow' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.chromaKey?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
                 >
                   {localEnhancements.chromaKey?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -539,7 +540,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
               {localEnhancements.chromaKey?.enabled && (
                 <div className="space-y-6 animate-in slide-in-from-top-2 duration-300">
                   <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Key Color</label>
+                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Key Color</label>
                     <div className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/5">
                       <input
                         type="color"
@@ -577,7 +578,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             {/* Virtual Background */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                   <IconPhoto size={12} className="text-accent" />
                   Virtual Background
                 </h3>
@@ -593,7 +594,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       scalingMode: 'cover'
                     }
                   })}
-                  className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg transition-all ${localEnhancements.virtualBackground?.enabled ? 'bg-brand-gradient text-white shadow-glow' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.virtualBackground?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
                 >
                   {localEnhancements.virtualBackground?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -610,9 +611,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       <button
                         key={t.id}
                         onClick={() => setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, type: t.id as any } })}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
-                          localEnhancements.virtualBackground?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40'
-                        }`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[9px] font-semibold transition-all ${ localEnhancements.virtualBackground?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
                       >
                         <t.icon size={12} />
                         {t.label}
@@ -627,7 +626,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                           const path = await (window as any).api.studio.selectFile({ filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] })
                           if (path) setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, value: path } })
                         }}
-                        className="w-full h-24 rounded-2xl border-2 border-dashed border-white/10 hover:border-accent/40 bg-white/5 hover:bg-white/10 transition-all flex flex-col items-center justify-center gap-2 group"
+                        className="w-full h-24 rounded-md border-2 border-dashed border-white/10 hover:border-accent/40 bg-white/5 hover:bg-white/10 transition-all flex flex-col items-center justify-center gap-2 group"
                       >
                         {localEnhancements.virtualBackground?.value ? (
                           <div className="text-center px-4">
@@ -637,7 +636,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         ) : (
                           <>
                             <IconPhoto size={24} className="text-white/20 group-hover:text-accent/60 transition-colors" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-white/30">Select Background</p>
+                            <p className="text-[10px] font-semibold tracking-tight text-white/30">Select Background</p>
                           </>
                         )}
                       </button>
@@ -676,7 +675,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                   {localEnhancements.virtualBackground?.type === 'image' && (
                     <div className="space-y-4 pt-4 border-t border-white/5">
-                      <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Scaling Mode</label>
+                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Scaling Mode</label>
                       <div className="flex bg-white/5 p-1 rounded-xl">
                         {[
                           { id: 'cover', label: 'Cover' },
@@ -686,9 +685,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                           <button
                             key={m.id}
                             onClick={() => setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, scalingMode: m.id as any } })}
-                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${
-                              localEnhancements.virtualBackground?.scalingMode === m.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40'
-                            }`}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-semibold transition-all ${ localEnhancements.virtualBackground?.scalingMode === m.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
                           >
                             {m.label}
                           </button>
@@ -702,13 +699,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Source Framing */}
             <div className="space-y-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                 <IconSquare size={12} className="text-accent" />
                 Source Framing
               </h3>
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Application Scope</label>
+                  <label className="text-[9px] font-semibold text-white/40 tracking-tight">Application Scope</label>
                   <div className="flex bg-white/5 p-1 rounded-lg">
                     {[
                       { id: 'both', label: 'All' },
@@ -721,9 +718,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                           const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({ ...localEnhancements, shape: { ...curr, scope: s.id } })
                         }}
-                        className={`px-2 py-1 rounded-md text-[8px] font-black uppercase transition-all ${
-                          (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scope : 'both') === s.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40'
-                        }`}
+                        className={`px-2 py-1 rounded-md text-[8px] font-semibold transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scope : 'both') === s.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
                       >
                         {s.label}
                       </button>
@@ -750,19 +745,15 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         const nextScope = wasUnset && pickingRealShape && aspectContext ? aspectContext : curr.scope
                         setLocalEnhancements({ ...localEnhancements, shape: { ...curr, type: s.id, scope: nextScope } })
                       }}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
-                        (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape) === s.id
-                          ? 'bg-accent/20 border-accent text-accent'
-                          : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white'
-                      }`}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape) === s.id ? 'bg-accent/20 border-accent text-accent' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white' }`}
                     >
                       <s.icon size={16} />
-                      <span className="text-[8px] font-black uppercase mt-1 tracking-tighter">{s.label}</span>
+                      <span className="text-[8px] font-semibold mt-1 tracking-tighter">{s.label}</span>
                     </button>
                   ))}
                 </div>
 
-                <div className="space-y-6 p-4 bg-white/5 rounded-2xl border border-white/5">
+                <div className="space-y-6 p-4 bg-white/5 rounded-md border border-white/5">
                   {(() => {
                     const shapeType = typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape
                     const isHeart = shapeType === 'heart'
@@ -782,7 +773,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   })()}
 
                   <div className="space-y-4 pt-2 border-t border-white/5">
-                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Capture Point (Pan/Zoom)</label>
+                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Capture Point (Pan/Zoom)</label>
                     <div className="grid grid-cols-2 gap-4">
                       <EnhancementSlider
                         label="Capture X" icon={IconArrowsMove}
@@ -804,7 +795,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   </div>
 
                   <div className="space-y-4 pt-2 border-t border-white/5">
-                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Mask Position</label>
+                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Mask Position</label>
                     <div className="grid grid-cols-2 gap-4">
                       <EnhancementSlider
                         label="Mask X" icon={IconX}
@@ -826,7 +817,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   </div>
                   <div className="space-y-4 pt-4 border-t border-white/5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Shape Border</label>
+                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Shape Border</label>
                       <button
                         onClick={() => {
                           const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
@@ -844,9 +835,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                             }
                           })
                         }}
-                        className={`text-[8px] font-black uppercase px-2 py-1 rounded-md transition-all ${
-                          (typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30'
-                        }`}
+                        className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
                       >
                         {(typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'Active' : 'Enable'}
                       </button>
@@ -866,9 +855,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                                 const curr = localEnhancements.shape as any
                                 setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, type: t.id } } })
                               }}
-                              className={`flex-1 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${
-                                localEnhancements.shape?.border?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40'
-                              }`}
+                              className={`flex-1 py-1.5 rounded-lg text-[8px] font-semibold transition-all ${ localEnhancements.shape?.border?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
                             >
                               {t.label}
                             </button>
@@ -908,15 +895,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         )}
 
                         <div className="flex items-center justify-between pt-2">
-                          <label className="text-[10px] font-bold text-white/80">Audio Reactive</label>
+                          <label className="text-[10px] font-semibold text-white/80">Audio Reactive</label>
                           <button
                             onClick={() => {
                               const curr = localEnhancements.shape as any
                               setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, audioReactive: !curr.border?.audioReactive, reactivity: curr.border?.reactivity ?? 100 } } })
                             }}
-                            className={`text-[8px] font-black uppercase px-2 py-1 rounded-md transition-all ${
-                              localEnhancements.shape?.border?.audioReactive ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30'
-                            }`}
+                            className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ localEnhancements.shape?.border?.audioReactive ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
                           >
                             {localEnhancements.shape?.border?.audioReactive ? 'Active' : 'Off'}
                           </button>
@@ -940,7 +925,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                   <div className="space-y-4 pt-4 border-t border-white/5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Drop Shadow</label>
+                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Drop Shadow</label>
                       <button
                         onClick={() => {
                           const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
@@ -958,9 +943,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                             }
                           })
                         }}
-                        className={`text-[8px] font-black uppercase px-2 py-1 rounded-md transition-all ${
-                          (typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30'
-                        }`}
+                        className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
                       >
                         {(typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'Active' : 'Enable'}
                       </button>
@@ -1031,7 +1014,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Style Presets */}
             <div className="space-y-4 pb-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 flex items-center gap-2">
+              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
                 <IconColorSwatch size={12} className="text-accent" />
                 Style Presets
               </h3>
@@ -1040,12 +1023,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   <button
                     key={p.id}
                     onClick={() => setLocalEnhancements({ ...localEnhancements, filterPreset: p.id })}
-                    className={`
-                      px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all border
-                      ${localEnhancements.filterPreset === p.id
-                        ? 'bg-accent border-accent text-black shadow-lg shadow-accent/20 font-black'
-                        : 'bg-white/10 border-white/5 text-white/70 hover:text-white hover:bg-white/20 hover:border-white/10'}
-                    `}
+                    className={`px-3 py-2.5 rounded-xl text-[11px] font-semibold transition-all border ${localEnhancements.filterPreset === p.id ? 'bg-accent border-accent text-black font-semibold' : 'bg-white/10 border-white/5 text-white/70 hover:text-white hover:bg-white/20 hover:border-white/10'}`}
                   >
                     {p.label}
                   </button>
@@ -1055,17 +1033,17 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
           </div>
 
           {/* Footer Actions */}
-          <div className="p-8 border-t border-white/5 grid grid-cols-2 gap-3 bg-black/40 backdrop-blur-md">
+          <div className="p-8 border-t border-white/5 grid grid-cols-2 gap-3 bg-black/40">
             <button
               onClick={() => setLocalEnhancements({})}
-              className="flex items-center justify-center gap-2 h-12 rounded-2xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white transition-all text-xs font-bold border border-white/5 cursor-pointer"
+              className="flex items-center justify-center gap-2 h-12 rounded-md bg-white/5 hover:bg-white/10 text-white/80 hover:text-white transition-all text-xs font-semibold border border-white/5 cursor-pointer"
             >
               <IconHistory size={16} />
               Reset All
             </button>
             <button
               onClick={apply}
-              className="flex items-center justify-center gap-2 h-12 rounded-2xl bg-accent text-black hover:scale-[1.02] active:scale-[0.98] transition-all text-xs font-black uppercase tracking-widest cursor-pointer shadow-lg shadow-accent/20"
+              className="flex items-center justify-center gap-2 h-12 rounded-md bg-accent text-black hover:scale-[1.02] active:scale-[0.98] transition-all text-xs font-semibold tracking-tight cursor-pointer"
             >
               <IconCheck size={18} />
               Save Changes

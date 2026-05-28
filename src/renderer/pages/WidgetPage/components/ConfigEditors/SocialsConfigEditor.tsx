@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import {IconTrash, IconPlus} from '@tabler/icons-react'
+import { IconTrash, IconPlus } from '../../../../components/ui/icons'
 import {
   DEFAULT_SOCIALS_CONFIG,
   type SocialsConfig,
@@ -17,9 +17,9 @@ const SOCIAL_THEME_OPTIONS: Array<{
   label: string
   selectedClass: string
 }> = [
-  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-accent text-white border-transparent ' },
   { id: 'chroma', style: 'chroma', label: 'Chroma', selectedClass: 'bg-gradient-to-r from-red-500 via-yellow-300 via-green-400 to-fuchsia-500 text-white border-transparent' },
-  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-accent text-white border-transparent ' },
   { id: 'gob-the-stopper', style: 'gob-the-stopper', label: 'Gob', selectedClass: 'bg-lime-300 text-black border-lime-200 shadow-[0_0_18px_rgba(182,255,0,0.24)]' }
 ]
 
@@ -77,14 +77,14 @@ export function SocialsConfigEditor({
                   <option value="discord">DC</option>
                   <option value="custom">CS</option>
                 </select>
-                <span className="text-[9px] font-black uppercase text-[#d035f1] pointer-events-none">{acc.platform.slice(0, 2)}</span>
+                <span className="text-[9px] font-semibold text-[#d035f1] pointer-events-none">{acc.platform.slice(0, 2)}</span>
               </div>
 
               <input
                 type="text"
                 value={acc.username}
                 onChange={(e) => updateAccount(acc.id, { username: e.target.value })}
-                className="flex-1 bg-transparent border-none text-xs font-bold text-white/90 outline-none placeholder:text-white/10"
+                className="flex-1 bg-transparent border-none text-xs font-semibold text-white/90 outline-none placeholder:text-white/10"
                 placeholder="@handle"
               />
 
@@ -99,7 +99,7 @@ export function SocialsConfigEditor({
 
           <button
             onClick={addAccount}
-            className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest text-white/20 hover:border-white/20 hover:text-white hover:bg-white/[0.02] transition-all"
+            className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 text-[10px] font-semibold tracking-tight text-white/20 hover:border-white/20 hover:text-white hover:bg-white/[0.02] transition-all"
           >
             <IconPlus size={12} />
             Add Account
@@ -128,11 +128,7 @@ export function SocialsConfigEditor({
               <button
                 key={pos}
                 onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.position === pos
-                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-accent text-white border-transparent ' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {pos.replace('-', ' ')}
               </button>
@@ -165,11 +161,7 @@ export function SocialsConfigEditor({
               <button
                 key={option.id}
                 onClick={() => applyTheme(option.id)}
-                className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
-                  config.style === option.style
-                    ? option.selectedClass
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold tracking-tight border transition-all ${ config.style === option.style ? option.selectedClass : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {option.label}
               </button>

@@ -1,5 +1,6 @@
 import React from 'react'
-import {IconWorld, IconShield, IconActivity, IconShare, IconExternalLink} from '@tabler/icons-react'
+import { IconWorld, IconShield, IconActivity, IconShare } from '@tabler/icons-react'
+import { IconExternalLink } from '../../components/ui/icons'
 import { FacebookIcon } from '../../components/ui/FacebookIcon'
 
 export default function FacebookPage() {
@@ -40,11 +41,11 @@ export default function FacebookPage() {
         <div className="lg:col-span-6">
           <section className="app-section-card glass p-8">
             <div className="app-section-head mb-8">
-              <h3 className="text-lg font-bold">Account Connection</h3>
+              <h3 className="text-lg font-semibold">Account Connection</h3>
               <p className="text-xs text-white/40">Secure OAuth2 authentication via Facebook.</p>
             </div>
             
-            <button className="app-button-primary w-full !h-14 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest bg-[#1877F2] hover:bg-[#166fe5]">
+            <button className="app-button-primary w-full !h-14 flex items-center justify-center gap-3 text-xs font-semibold tracking-tight bg-[#1877F2] hover:bg-[#166fe5]">
               <FacebookIcon size={20} />
               Login with Facebook
             </button>
@@ -58,14 +59,14 @@ export default function FacebookPage() {
 
         <div className="lg:col-span-6">
           <section className="app-section-card glass p-8 h-full">
-            <h3 className="text-sm font-bold mb-4">Stream Settings</h3>
+            <h3 className="text-sm font-semibold mb-4">Stream Settings</h3>
             <div className="space-y-6 opacity-20 pointer-events-none">
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Default Privacy</label>
+                <label className="text-[10px] font-semibold tracking-tight text-white/40">Default Privacy</label>
                 <div className="app-input">Public</div>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Stream Destination</label>
+                <label className="text-[10px] font-semibold tracking-tight text-white/40">Stream Destination</label>
                 <div className="app-input">Gaming Video Creator Page</div>
               </div>
             </div>
@@ -83,8 +84,8 @@ function Metric({ icon, label, value }: { icon: React.ReactNode, label: string, 
         {icon}
       </div>
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-white/30 mb-2">{label}</p>
-        <p className="text-4xl font-bold font-mono text-white">{value}</p>
+        <p className="text-xs font-semibold tracking-tight text-white/30 mb-2">{label}</p>
+        <p className="text-4xl font-semibold font-mono text-white">{value}</p>
       </div>
     </div>
   )

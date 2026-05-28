@@ -1,4 +1,5 @@
-import {IconChevronRight, IconSettings, IconBolt, IconActivity, IconMusic, IconChevronLeft, IconChevronDown} from '@tabler/icons-react'
+import { IconChevronRight, IconChevronLeft, IconChevronDown } from '../ui/icons'
+import { IconActivity, IconMixer, IconTriggerRelay, IconSettings } from '../ui/icons/nav'
 import { useState, useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { NavigationItem } from './navigation'
@@ -45,14 +46,14 @@ const navigationGroups: NavigationGroup[] = [
     id: 'studio',
     label: 'Studio',
     drawerTitle: 'Studio Assets',
-    icon: IconMusic,
+    icon: IconMixer,
     items: [itemByPath('/alerts'), itemByPath('/soundboard'), itemByPath('/voice-effects'), itemByPath('/widgets')]
   },
   {
     id: 'automation',
     label: 'Rules',
     drawerTitle: 'Automation & Logic',
-    icon: IconBolt,
+    icon: IconTriggerRelay,
     items: [itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/event-lab'), itemByPath('/tts')]
   },
   {
@@ -161,7 +162,7 @@ export function Sidebar() {
                 className={`app-rail-item ${isActive ? 'is-active' : ''} ${isPageDirty ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 <div className="app-rail-icon-wrapper">
-                  <Icon size={24} />
+                  <Icon size={18} />
                 </div>
                 <span className="app-rail-label">{group.label}</span>
               </NavLink>
@@ -177,10 +178,10 @@ export function Sidebar() {
               event.stopPropagation()
               toggleSidebar()
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 hover:text-white hover:bg-brand-gradient hover:border-transparent transition-all active:scale-95 shadow-lg shadow-glow"
+            className="w-9 h-9 flex items-center justify-center rounded-md bg-transparent border border-white/[0.05] text-white/40 hover:text-white hover:bg-white/[0.03] hover:border-white/[0.12] transition-colors active:translate-y-px"
             title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
-            {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+            {sidebarCollapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
           </button>
         </div>
       </div>
@@ -188,23 +189,19 @@ export function Sidebar() {
       {/* Secondary Drawer - Collapsible */}
       <div
         aria-hidden={sidebarCollapsed}
-        className={`app-sidebar-drawer titlebar-no-drag flex flex-col overflow-hidden whitespace-nowrap bg-background/80 border-r border-white/5 relative transition-[width,opacity] duration-300 ease-in-out ${
-          sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        }`}
+        className={`app-sidebar-drawer titlebar-no-drag flex flex-col overflow-hidden whitespace-nowrap bg-background/80 border-r border-white/5 relative transition-[width,opacity] duration-300 ease-in-out ${ sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100' }`}
         style={{
           width: sidebarCollapsed ? 0 : 228,
           flexBasis: sidebarCollapsed ? 0 : 228,
           borderRightWidth: sidebarCollapsed ? 0 : 1,
         }}
       >
-        <div className="glass absolute inset-0 pointer-events-none opacity-40" />
-
-        <div className="app-sidebar-brand px-6 py-5 border-b border-white/[0.03] shrink-0">
+        <div className="app-sidebar-brand px-4 py-4 border-b border-white/[0.05] shrink-0">
           <div className="min-w-0">
-            <h1 className="kicker mb-1.5 opacity-100">
+            <h1 className="text-[12px] font-semibold text-white/85 tracking-tight">
               {activeGroup.label}
             </h1>
-            <p className="text-[9px] font-black tracking-[0.1em] text-white/10 uppercase">
+            <p className="text-[11px] font-normal text-white/40 mt-0.5">
               {activeGroup.drawerTitle}
             </p>
           </div>
@@ -213,7 +210,6 @@ export function Sidebar() {
         <nav className="app-drawer-nav flex-1 overflow-y-auto custom-scrollbar" aria-label={`${activeGroup.drawerTitle} navigation`}>
           <div className="app-drawer-heading">
             <h2>{activeGroup.drawerTitle}</h2>
-            <div className="h-px flex-1 bg-white/[0.03] ml-4" />
           </div>
 
           <div className="app-drawer-list">
@@ -224,16 +220,15 @@ export function Sidebar() {
               return (
                 <div key={sIdx} className="flex flex-col">
                   {section.header && (
-                    <div className="flex items-center justify-between px-4 pt-8 pb-3 group/header">
-                      <div className="flex items-center gap-4 flex-1">
-                        <span className="kicker opacity-100">{section.header.label}</span>
-                        <div className="h-px flex-1 bg-white/[0.03]" />
+                    <div className="flex items-center justify-between px-3 pt-5 pb-1.5 group/header">
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className="text-[11px] font-semibold text-white/32 tracking-normal normal-case">{section.header.label}</span>
                       </div>
                       {section.items.length > 6 && (
                         <button
                           type="button"
                           onClick={() => toggleSection(headerLabel)}
-                          className="ml-3 p-1 rounded-md hover:bg-white/5 text-white/20 hover:text-white/60 transition-all active:scale-90"
+                          className="ml-3 p-1 rounded-md hover:bg-white/5 text-white/30 hover:text-white/70 transition-colors active:translate-y-px"
                         >
                           <IconChevronDown
                             size={14}
@@ -244,11 +239,7 @@ export function Sidebar() {
                     </div>
                   )}
 
-                  <div className={`flex flex-col transition-all duration-200 ease-out ${
-                    section.items.length > 6
-                      ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[220px] overflow-y-auto custom-scrollbar-slim')
-                      : ''
-                  }`}>
+                  <div className={`flex flex-col transition-all duration-200 ease-out ${ section.items.length > 6 ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[220px] overflow-y-auto custom-scrollbar-slim') : '' }`}>
                     {section.items.map((item) => {
                       const Icon = item.icon
                       return (
@@ -262,10 +253,9 @@ export function Sidebar() {
                           }
                         >
                           <div className="app-drawer-icon-container">
-                            <Icon size={20} />
+                            <Icon size={16} />
                           </div>
                           <span className="truncate">{item.drawerLabel ?? item.label}</span>
-                          <IconChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-20 transition-opacity" />
                         </NavLink>
                       )
                     })}

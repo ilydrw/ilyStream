@@ -10,29 +10,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-accent);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 8px;
 }
 
 .spotify-header h1 {
-  font-size: 48px;
-  font-weight: 900;
+  font-size: 26px;
+  font-weight: 600;
   margin: 0;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
   color: var(--color-foreground);
 }
 
 .spotify-intro {
-  color: var(--color-muted);
-  font-size: 14px;
-  max-width: 680px;
-  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  max-width: 600px;
+  line-height: 1.5;
   font-weight: 400;
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .spotify-user-badge {
@@ -74,8 +75,8 @@
 }
 
 .spotify-panel-head h2 {
-  font-size: 19px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
 }
@@ -116,12 +117,12 @@
 
 .spotify-field label {
   display: block;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  color: var(--color-muted);
-  margin-bottom: 10px;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 6px;
+  letter-spacing: 0;
 }
 
 .spotify-field-hint {
@@ -296,9 +297,9 @@
 .spotify-song-meta {
   font-size: 11px;
   color: var(--color-accent);
-  font-weight: 750;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .spotify-queue-remove {
@@ -319,12 +320,12 @@
 }
 
 .spotify-queue-skipped-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--color-muted);
-  opacity: 0.6;
-  font-weight: 800;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.32);
+  opacity: 1;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .spotify-empty {
@@ -351,11 +352,11 @@
 
 .spotify-commands h3 {
   font-size: 13px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-muted);
-  margin-bottom: 16px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.005em;
+  color: var(--color-foreground);
+  margin-bottom: 12px;
 }
 
 .spotify-command-row {

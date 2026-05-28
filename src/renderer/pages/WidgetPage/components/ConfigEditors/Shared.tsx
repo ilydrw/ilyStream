@@ -4,7 +4,7 @@ import { Toggle, NumberInput } from '../../../../components/ui/Inputs'
 export function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</h3>
+      <h3 className="text-[10px] font-semibold tracking-tight text-white/40">{label}</h3>
       <div className="flex flex-col gap-3">{children}</div>
     </div>
   )
@@ -14,7 +14,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-bold text-white/80">{label}</span>
+        <span className="text-xs font-semibold text-white/80">{label}</span>
       </div>
       {children}
       {hint && <p className="text-[10px] text-white/30">{hint}</p>}
@@ -36,7 +36,7 @@ export function SwitchRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-xs font-bold text-white/80">{label}</p>
+        <p className="text-xs font-semibold text-white/80">{label}</p>
         {hint && <p className="text-[10px] text-white/30 mt-0.5">{hint}</p>}
       </div>
       <Toggle value={value} onChange={onChange} />
@@ -55,7 +55,7 @@ export function ColorRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs font-bold text-white/80">{label}</span>
+      <span className="text-xs font-semibold text-white/80">{label}</span>
       <div className="flex items-center gap-2">
         <input
           type="color"

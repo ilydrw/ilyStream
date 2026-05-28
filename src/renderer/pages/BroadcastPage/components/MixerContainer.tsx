@@ -1,4 +1,4 @@
-import {IconChevronRight} from '@tabler/icons-react'
+import { IconChevronRight } from '../../../components/ui/icons'
 import { AudioMixer } from './AudioMixer'
 
 interface MixerContainerProps {

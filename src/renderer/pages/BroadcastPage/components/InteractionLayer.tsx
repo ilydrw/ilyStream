@@ -67,7 +67,7 @@ export function InteractionLayer(props: InteractionLayerProps) {
                   <>
                     <button
                       onMouseDown={(e) => onRotateStart(e, layer, props.aspectRatio)}
-                      className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-[#d035f1] bg-[#050505] text-[#d035f1] shadow-lg hover:scale-110 hover:bg-brand-gradient hover:border-transparent hover:text-white transition-all pointer-events-auto z-40 shadow-glow"
+                      className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center justify-center rounded-full border-2 border-[#d035f1] bg-[#050505] text-[#d035f1] shadow-lg hover:scale-110 hover:bg-accent hover:border-transparent hover:text-white transition-all pointer-events-auto z-40"
                     >
                       <IconRotateClockwise2 size={14} />
                     </button>
@@ -100,13 +100,13 @@ export function InteractionLayer(props: InteractionLayerProps) {
                     width: 'max-content'
                   }}
                 >
-                  <div className={`px-2 py-1 ${cropping ? 'bg-emerald-500' : 'bg-brand-gradient'} text-white text-[9px] font-black rounded uppercase tracking-widest shadow-lg whitespace-nowrap shadow-glow`}>
+                  <div className={`px-2 py-1 ${cropping ? 'bg-emerald-500' : 'bg-accent'} text-white text-[9px] font-semibold rounded tracking-tight shadow-lg whitespace-nowrap`}>
                     {isLocked ? `Locked: ${layer.name}` : cropping ? `Cropping: ${layer.name}` : layer.name}
                   </div>
                   {!isLocked && (layer.type === 'widget' || layer.type === 'browser' || layer.type === 'image') && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onAutoCrop(layer) }}
-                      className="px-2 py-1 bg-white text-[#d035f1] hover:bg-brand-gradient hover:text-white transition-all text-[9px] font-black rounded uppercase tracking-widest shadow-lg pointer-events-auto shadow-glow"
+                      className="px-2 py-1 bg-white text-[#d035f1] hover:bg-accent hover:text-white transition-all text-[9px] font-semibold rounded tracking-tight shadow-lg pointer-events-auto"
                     >
                       Auto-Wrap
                     </button>

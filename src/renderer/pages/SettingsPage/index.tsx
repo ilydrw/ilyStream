@@ -1,4 +1,5 @@
-import {IconMovie, IconDatabase, IconDevices, IconPalette, IconDeviceFloppy, IconWifi} from '@tabler/icons-react'
+import { IconMovie, IconDatabase, IconDevices, IconPalette, IconWifi } from '@tabler/icons-react'
+import { IconDeviceFloppy } from '../../components/ui/icons'
 import { useEffect, useState } from 'react'
 import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../../shared/obs'

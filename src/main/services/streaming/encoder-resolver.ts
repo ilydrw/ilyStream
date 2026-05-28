@@ -36,6 +36,8 @@ export class StreamingEncoderResolver {
   ): string[] {
     const args = ['-c:v', encoder]
 
+    if (encoder === 'copy') return args
+
     if (encoder === 'libx264') {
       if (mode === 'stream') {
         args.push('-preset', 'veryfast')

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import {IconSearch, IconUsers, IconLink as LinkIcon, IconUnlink, IconChevronLeft, IconChevronRight, IconChevronDown, IconX} from '@tabler/icons-react'
+import { IconUsers, IconUnlink } from '@tabler/icons-react'
+import { IconSearch, IconLink as LinkIcon, IconChevronLeft, IconChevronRight, IconChevronDown, IconX } from '../../../components/ui/icons'
 import type { UserIdentity, UserStatSortKey, UserStat } from '../../../shared/stats'
 import type { Platform } from '../../../main/platforms/types'
 import { Avatar } from '../../../components/ui/Avatar'
@@ -43,7 +44,7 @@ interface UserStatTableProps {
 function InlineMetric({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, padding: '6px 10px', minWidth: 0 }}>
-      <div style={{ fontSize: 8, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(255,255,255,0.2)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 8, fontWeight: 500, letterSpacing: '0', color: 'rgba(255,255,255,0.2)', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 13, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, letterSpacing: '-0.02em', color: color }}>{value}</div>
     </div>
   )
@@ -82,7 +83,7 @@ function InlineUserDetail({
                         <PlatformLogo platform={p} size={10} />
                       </div>
                     ))}
-                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(255,255,255,0.2)', marginLeft: 2 }}>
+                    <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0', color: 'rgba(255,255,255,0.2)', marginLeft: 2 }}>
                       {identity.accounts.length > 1 ? 'Unified Identity' : PLATFORM_LABELS[identity.primaryPlatform]}
                     </span>
                   </div>
@@ -113,7 +114,7 @@ function InlineUserDetail({
 
             {/* Linked accounts row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(255,255,255,0.2)', marginRight: 2 }}>Accounts</span>
+              <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0', color: 'rgba(255,255,255,0.2)', marginRight: 2 }}>Accounts</span>
               {identity.accounts.map(acc => (
                 <div 
                   key={`${acc.platform}-${acc.username}`} 
@@ -145,7 +146,7 @@ function InlineUserDetail({
               {identity.accounts.length < 5 && (
                 <button 
                   onClick={(e) => { e.stopPropagation(); onStartLink(identity.accounts[0]); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', background: 'none', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', background: 'none', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 500, letterSpacing: '0', cursor: 'pointer' }}
                   className="hover:border-accent/40 hover:text-accent/60 transition-all"
                 >
                   <LinkIcon size={10} />
@@ -232,7 +233,7 @@ export function UserStatTable({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="Search users..."
-              className="h-11 bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 text-xs font-bold text-white placeholder:text-white/20 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all"
+              className="h-11 bg-white/[0.03] border border-white/5 rounded-md pl-12 pr-4 text-xs font-semibold text-white placeholder:text-white/20 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all"
               style={{ width: 320 }}
             />
           </div>
@@ -240,7 +241,7 @@ export function UserStatTable({
           <select
             value={platform}
             onChange={(e) => onPlatformChange(e.target.value as Platform | 'all')}
-            className="h-11 bg-white/[0.03] border border-white/5 rounded-2xl px-4 text-xs font-bold text-white/80 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all cursor-pointer hover:text-white"
+            className="h-11 bg-white/[0.03] border border-white/5 rounded-md px-4 text-xs font-semibold text-white/80 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all cursor-pointer hover:text-white"
           >
             <option value="all">All platforms</option>
             {PLATFORMS.map((p) => (
@@ -253,7 +254,7 @@ export function UserStatTable({
           <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value as UserStatSortKey)}
-            className="h-11 bg-white/[0.03] border border-white/5 rounded-2xl px-4 text-xs font-bold text-white/80 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all cursor-pointer hover:text-white"
+            className="h-11 bg-white/[0.03] border border-white/5 rounded-md px-4 text-xs font-semibold text-white/80 focus:bg-white/[0.05] focus:border-white/10 outline-none transition-all cursor-pointer hover:text-white"
           >
             {SORT_COLUMNS.filter(c => isRelevant(platform, c.key)).map((c) => (
               <option key={c.key} value={c.key}>
@@ -268,7 +269,7 @@ export function UserStatTable({
       <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: 12, overflow: 'hidden', minHeight: 400 }}>
         <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.25)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <tr style={{ fontSize: 11, letterSpacing: '0', color: 'rgba(255,255,255,0.55)', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             <th style={{ textAlign: 'left', fontWeight: 900, padding: '10px 0 10px 24px', width: 42 }}>#</th>
             <th style={{ textAlign: 'left', fontWeight: 900, padding: '10px 8px' }}>Identity</th>
             <th style={{ textAlign: 'left', fontWeight: 900, padding: '10px 8px' }}>Platforms</th>
@@ -363,7 +364,7 @@ export function UserStatTable({
       {/* Pagination bar */}
       {identities.length > PAGE_SIZE && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 24px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.25)', fontWeight: 900 }}>
+          <span style={{ fontSize: 9, letterSpacing: '0', color: 'rgba(255,255,255,0.25)', fontWeight: 600 }}>
             {startIdx + 1}–{endIdx} of {identities.length} users
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

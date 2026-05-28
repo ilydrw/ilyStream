@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { IconCopy, IconCircleCheck, IconDeviceMobile, IconExternalLink } from '@tabler/icons-react'
+import { IconDeviceMobile } from '@tabler/icons-react'
+import { IconCopy, IconCircleCheck, IconExternalLink } from '../../../components/ui/icons'
 
 interface DualVerticalOverlayBarProps {
   enabled: boolean
@@ -31,7 +32,7 @@ export function DualVerticalOverlayBar({ enabled, onToggle }: DualVerticalOverla
   return (
     <div className="shrink-0 flex items-center gap-3 px-6 py-2 border-b border-white/[0.04] bg-[#0a0a0b]">
       <IconDeviceMobile size={14} className={enabled ? 'text-accent' : 'text-white/30'} />
-      <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Vertical Overlay URL</span>
+      <span className="text-[10px] font-semibold tracking-tight text-white/60">Vertical Overlay URL</span>
 
       <button
         onClick={() => onToggle(!enabled)}

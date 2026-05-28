@@ -1,5 +1,16 @@
 const API_BASE = 'https://api.spotify.com/v1'
 
+export class SpotifyApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly retryAfterMs?: number
+  ) {
+    super(message)
+    this.name = 'SpotifyApiError'
+  }
+}
+
 export interface SpotifyUserProfile {
   id: string
   displayName: string
@@ -26,9 +37,34 @@ export class SpotifyClient {
     })
   }
 
+  private getRetryAfterMs(res: Response): number | undefined {
+    const value = res.headers.get('retry-after')
+    if (!value) return undefined
+
+    const seconds = Number(value)
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.ceil(seconds * 1000)
+    }
+
+    const dateMs = Date.parse(value)
+    if (Number.isFinite(dateMs)) {
+      return Math.max(0, dateMs - Date.now())
+    }
+
+    return undefined
+  }
+
+  private fail(operation: string, res: Response): never {
+    throw new SpotifyApiError(
+      `${operation} (${res.status})`,
+      res.status,
+      this.getRetryAfterMs(res)
+    )
+  }
+
   async getProfile(): Promise<SpotifyUserProfile> {
     const res = await this.fetch('/me')
-    if (!res.ok) throw new Error(`Profile fetch failed: ${res.status}`)
+    if (!res.ok) this.fail('Profile fetch failed', res)
     const data = await res.json()
     return { id: data.id, displayName: data.display_name, imageUrl: data.images?.[0]?.url, product: data.product || 'free' }
   }
@@ -36,6 +72,7 @@ export class SpotifyClient {
   async searchTrack(query: string): Promise<any | null> {
     const params = new URLSearchParams({ q: query, type: 'track', limit: '1' })
     const res = await this.fetch(`/search?${params.toString()}`)
+    if (res.status === 429) this.fail('Search failed', res)
     if (!res.ok) return null
     const data = await res.json()
     return data.tracks?.items?.[0] || null
@@ -43,38 +80,38 @@ export class SpotifyClient {
 
   async enqueue(uri: string): Promise<void> {
     const res = await this.fetch(`/me/player/queue?uri=${encodeURIComponent(uri)}`, { method: 'POST' })
-    if (!res.ok) throw new Error(`Enqueue failed (${res.status})`)
+    if (!res.ok) this.fail('Enqueue failed', res)
   }
 
   async skip(): Promise<void> {
     const res = await this.fetch('/me/player/next', { method: 'POST' })
-    if (!res.ok) throw new Error(`Skip failed (${res.status})`)
+    if (!res.ok) this.fail('Skip failed', res)
   }
 
   async getCurrentlyPlaying(): Promise<any | null> {
     const res = await this.fetch('/me/player/currently-playing')
     if (res.status === 204) return null
-    if (!res.ok) throw new Error(`Fetch failed (${res.status})`)
+    if (!res.ok) this.fail('Fetch failed', res)
     return res.json()
   }
 
   async getPlaybackState(): Promise<any | null> {
     const res = await this.fetch('/me/player')
     if (res.status === 204) return null
-    if (!res.ok) throw new Error(`Playback state fetch failed (${res.status})`)
+    if (!res.ok) this.fail('Playback state fetch failed', res)
     return res.json()
   }
 
   async getUserQueue(): Promise<any | null> {
     const res = await this.fetch('/me/player/queue')
     if (res.status === 204) return null
-    if (!res.ok) throw new Error(`Queue fetch failed (${res.status})`)
+    if (!res.ok) this.fail('Queue fetch failed', res)
     return res.json()
   }
 
   async pause(): Promise<void> {
     const res = await this.fetch('/me/player/pause', { method: 'PUT' })
-    if (!res.ok && res.status !== 403) throw new Error(`Pause failed (${res.status})`)
+    if (!res.ok && res.status !== 403) this.fail('Pause failed', res)
   }
 
   async play(uris?: string[]): Promise<void> {
@@ -82,11 +119,11 @@ export class SpotifyClient {
       method: 'PUT',
       body: uris ? JSON.stringify({ uris }) : undefined
     })
-    if (!res.ok) throw new Error(`Play failed (${res.status})`)
+    if (!res.ok) this.fail('Play failed', res)
   }
 
   async saveTrack(trackId: string): Promise<void> {
     const res = await this.fetch(`/me/tracks?ids=${encodeURIComponent(trackId)}`, { method: 'PUT' })
-    if (!res.ok) throw new Error(`Save failed (${res.status})`)
+    if (!res.ok) this.fail('Save failed', res)
   }
 }

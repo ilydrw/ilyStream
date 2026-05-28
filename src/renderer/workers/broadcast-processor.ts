@@ -3,8 +3,11 @@
  * Captures the audio stream from the WebAudio graph and sends it to the main process
  * for broadcast. It also acts as the master clock for the video encoder.
  */
+const CHUNK_FRAMES = 512
+const CHANNELS = 2
+
 class BroadcastProcessor extends AudioWorkletProcessor {
-  private pending = new Float32Array(2048)
+  private pending = new Float32Array(CHUNK_FRAMES * CHANNELS)
   private pendingFrames = 0
 
   constructor() {
@@ -23,9 +26,9 @@ class BroadcastProcessor extends AudioWorkletProcessor {
         this.pending[offset + 1] = channelCount > 1 ? input[1][i] : input[0][i]
         this.pendingFrames++
 
-        if (this.pendingFrames >= 1024) {
+        if (this.pendingFrames >= CHUNK_FRAMES) {
           this.port.postMessage(this.pending.buffer, [this.pending.buffer])
-          this.pending = new Float32Array(2048)
+          this.pending = new Float32Array(CHUNK_FRAMES * CHANNELS)
           this.pendingFrames = 0
         }
       }

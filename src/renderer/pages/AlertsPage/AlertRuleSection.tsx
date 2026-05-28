@@ -1,23 +1,6 @@
 import { useState, useMemo } from 'react'
-import {
-  IconBell,
-  IconBolt,
-  IconChevronDown,
-  IconChevronUp,
-  IconCopy,
-  IconFilter,
-  IconPlayerPlay,
-  IconPlus,
-  IconSend,
-  IconTrash,
-  IconTypography,
-  IconUpload,
-  IconVolume,
-  IconSearch,
-  IconCheck,
-  IconX,
-  IconPhoto
-} from '@tabler/icons-react'
+import { IconBell, IconBolt, IconFilter, IconSend, IconTypography, IconVolume, IconPhoto } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronUp, IconCopy, IconPlayerPlay, IconPlus, IconTrash, IconUpload, IconSearch, IconCheck, IconX } from '../../components/ui/icons'
 import type { Icon } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import type { AlertRule, AlertRuleEventType, AlertRulePlatform } from '../../../shared/alert-rules'
@@ -132,11 +115,11 @@ export function AlertRuleSection({
             <IconBell size={28} />
           </div>
           <div>
-            <h2 className="text-base font-black uppercase tracking-widest">Alert Rules</h2>
+            <h2 className="text-base font-semibold tracking-tight">Alert Rules</h2>
             <p className="text-[10px] text-white/40">Manage what happens when events occur on your stream.</p>
           </div>
         </div>
-        <button onClick={addRule} className="app-button !bg-brand-gradient !h-10 !px-5 !text-[10px] font-black tracking-widest group">
+        <button onClick={addRule} className="app-button !bg-accent !h-10 !px-5 !text-[10px] font-semibold tracking-tight group">
           <IconPlus size={13} className="group-hover:rotate-90 transition-transform" />
           Create Alert
         </button>
@@ -156,14 +139,12 @@ export function AlertRuleSection({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black uppercase tracking-widest text-white/20 mr-1">Platform</span>
+          <span className="text-[10px] font-semibold tracking-tight text-white/20 mr-1">Platform</span>
           {ALERT_RULE_PLATFORMS.map(p => (
             <button
               key={p}
               onClick={() => setPlatformFilter(p)}
-              className={`h-8 px-3 rounded-lg border text-[10px] font-black transition-all flex items-center gap-2 ${
-                platformFilter === p ? 'border-accent/40 bg-accent/10 text-white' : 'border-white/[0.06] bg-black/20 text-white/40 hover:text-white'
-              }`}
+              className={`h-8 px-3 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-2 ${ platformFilter === p ? 'border-accent/40 bg-accent/10 text-white' : 'border-white/[0.06] bg-black/20 text-white/40 hover:text-white' }`}
             >
               {p !== 'all' && <PlatformLogo platform={p} size={12} />}
               {PLATFORM_LABELS[p]}
@@ -198,18 +179,18 @@ export function AlertRuleSection({
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-white/90 truncate">{rule.name}</span>
+                    <span className="text-sm font-semibold text-white/90 truncate">{rule.name}</span>
                   </div>
                   <div className="flex items-center gap-4 mt-1">
                     <div className="flex items-center gap-1.5">
                       <div className="flex -space-x-1">
                         {rule.platforms.map(p => (
                           <div key={p} className="w-4 h-4 rounded-full bg-black border border-white/10 flex items-center justify-center overflow-hidden">
-                            {p === 'all' ? <span className="text-[8px] font-bold">A</span> : <PlatformLogo platform={p} size={10} />}
+                            {p === 'all' ? <span className="text-[8px] font-semibold">A</span> : <PlatformLogo platform={p} size={10} />}
                           </div>
                         ))}
                       </div>
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{rule.eventTypes.map(t => EVENT_LABELS[t]).join(', ')}</span>
+                      <span className="text-[10px] font-semibold text-white/40 tracking-tight">{rule.eventTypes.map(t => EVENT_LABELS[t]).join(', ')}</span>
                     </div>
 
                     <div className="h-1 w-1 rounded-full bg-white/10" />
@@ -307,14 +288,12 @@ function RuleEditor({
   return (
     <div className="flex flex-col gap-6">
       {/* Tabs */}
-      <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.02] border border-white/[0.05] w-fit">
+      <div className="flex items-center gap-2 p-1 rounded-md bg-white/[0.02] border border-white/[0.05] w-fit">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 h-9 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeTab === tab.id ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50'
-            }`}
+            className={`flex items-center gap-2 h-9 px-4 rounded-xl text-[10px] font-semibold tracking-tight transition-all ${ activeTab === tab.id ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50' }`}
           >
             <tab.icon size={14} />
             {tab.label}
@@ -322,14 +301,14 @@ function RuleEditor({
         ))}
       </div>
 
-      <div className="bg-white/[0.015] border border-white/[0.04] rounded-2xl p-6">
+      <div className="bg-white/[0.015] border border-white/[0.04] rounded-md p-6">
         {activeTab === 'general' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <Field label="Rule Name">
               <input
                 value={rule.name}
                 onChange={(e) => updateRule({ name: e.target.value })}
-                className="app-input !h-10 w-full !px-3 !text-xs font-bold"
+                className="app-input !h-10 w-full !px-3 !text-xs font-semibold"
               />
             </Field>
 
@@ -453,7 +432,7 @@ function RuleEditor({
 
             {(rule.eventTypes.includes('gift')) && (
               <div className="space-y-4 p-4 rounded-xl bg-accent/5 border border-accent/10">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-accent/80 mb-2">Gift Thresholds</h3>
+                <h3 className="text-[10px] font-semibold tracking-tight text-accent/80 mb-2">Gift Thresholds</h3>
                 <NumberField label="Min Gifts" value={rule.minGiftCount} min={0} max={9999} onChange={(v) => updateRule({ minGiftCount: v })} />
                 <NumberField label="Min Amount ($)" value={Math.round(rule.minAmountCents / 100)} min={0} max={1000} onChange={(v) => updateRule({ minAmountCents: v * 100 })} />
               </div>
@@ -498,7 +477,7 @@ function TokenPicker<T extends string>({
           <button
             key={option}
             onClick={() => toggle(option)}
-            className={`h-7 rounded-lg border px-2 text-[9px] font-black transition-all flex items-center gap-1.5 ${values.includes(option) ? 'border-accent/40 bg-accent/20 text-white' : 'border-white/[0.06] bg-black/40 text-white/30 hover:text-white'}`}
+            className={`h-7 rounded-lg border px-2 text-[9px] font-semibold transition-all flex items-center gap-1.5 ${values.includes(option) ? 'border-accent/40 bg-accent/20 text-white' : 'border-white/[0.06] bg-black/40 text-white/30 hover:text-white'}`}
           >
             {platformIcons && option !== 'all' && <PlatformLogo platform={option} size={11} />}
             {labels[option]}
@@ -513,7 +492,7 @@ function ToggleLine({ label, hint, value, onChange }: { label: string; hint?: st
   return (
     <div className="space-y-1.5">
       <button onClick={() => onChange(!value)} className="flex w-full items-center justify-between rounded-xl border border-white/[0.04] bg-white/[0.02] p-3 text-left transition-all hover:border-white/10">
-        <span className="text-[11px] font-bold text-white/70">{label}</span>
+        <span className="text-[11px] font-semibold text-white/70">{label}</span>
         <span className={`relative h-5 w-9 rounded-full transition-all ${value ? 'bg-accent/80' : 'bg-white/10'}`}>
           <span className={`absolute top-1 h-3 w-3 rounded-full bg-white transition-all ${value ? 'left-5' : 'left-1'}`} />
         </span>
@@ -527,7 +506,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/25">{label}</span>
+        <span className="text-[9px] font-semibold tracking-normal text-white/25">{label}</span>
         {hint && <span className="text-[8px] text-white/15 lowercase">{hint}</span>}
       </div>
       {children}
@@ -540,7 +519,7 @@ function NumberField({ label, hint, value, min, max, suffix = '', onChange }: { 
     <Field label={label} hint={hint}>
       <div className="relative">
         <input type="number" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="app-input !h-9 w-full !px-3 !pr-8 !text-xs font-mono" />
-        {suffix && <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-black text-white/20 uppercase">{suffix}</span>}
+        {suffix && <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold text-white/20">{suffix}</span>}
       </div>
     </Field>
   )

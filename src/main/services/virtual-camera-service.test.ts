@@ -102,6 +102,39 @@ describe('VirtualCameraService', () => {
     expect(service.getStatus().state).toBe('inactive')
   })
 
+  it('runs the Windows driver installer when native assets exist but registration is missing', async () => {
+    const streamingService = {
+      startStream: vi.fn(),
+      stopStreamOutput: vi.fn()
+    }
+    let registered = false
+    const installWindowsDriver = vi.fn().mockImplementation(async () => {
+      registered = true
+    })
+    const service = new VirtualCameraService(streamingService as any, {
+      hostPlatform: 'win32',
+      nativeControlPath: 'C:\\native\\IlyStreamVirtualCameraRegistrar.exe',
+      nativeMediaSourcePath: 'C:\\native\\VirtualCameraMediaSource.dll',
+      nativeFrameBridgePath: 'C:\\native\\IlyStreamVirtualCameraBridge.exe',
+      nativeInstallScriptPath: 'C:\\native\\install.ps1',
+      mediaSourceRegistered: () => registered,
+      installWindowsDriver
+    })
+
+    expect(service.getStatus()).toEqual(expect.objectContaining({
+      state: 'unsupported',
+      canStart: false,
+      canInstallDriver: true
+    }))
+
+    await expect(service.installDriver()).resolves.toEqual(expect.objectContaining({
+      state: 'inactive',
+      canStart: true,
+      mediaSourceRegistered: true
+    }))
+    expect(installWindowsDriver).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps bridge failures visible in status instead of refreshing them away', async () => {
     const streamingService = {
       startStream: vi.fn(),

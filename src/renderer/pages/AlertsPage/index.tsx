@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import {IconBell, IconCircleCheck, IconDeviceFloppy, IconRoute, IconSparkles, IconVolume} from '@tabler/icons-react'
+import { IconRoute, IconSparkles, IconVolume } from '@tabler/icons-react'
+import { IconCircleCheck, IconDeviceFloppy, IconAlert } from '../../components/ui/icons'
 import { AlertRuleSection } from './AlertRuleSection'
 
 import { defaultEventSoundSettings } from './types'
@@ -162,9 +163,9 @@ export default function AlertsPage() {
 
   if (!draftSettings) {
     return (
-      <div className="flex flex-col h-full bg-[#050505] items-center justify-center">
-        <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        <p className="text-[10px] text-white/20 mt-4 uppercase tracking-widest font-bold">Synchronizing Alert System...</p>
+      <div className="flex flex-col h-full bg-background items-center justify-center">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-[12px] text-white/55 mt-3">Loading alerts…</p>
       </div>
     );
   }
@@ -174,15 +175,15 @@ export default function AlertsPage() {
       <div className="app-page alerts-page">
         <PageHeader
           kicker="Event routing & delivery"
-          title="Live Alerts"
-          icon={IconBell}
+          title="Live alerts"
+          icon={IconAlert}
           description="Build platform-aware routes for chat, follows, gifts, subs, raids, likes, shares, joins, sound cues, and overlay visuals."
           actions={
             <>
             {showSuccess && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-success/10 border border-success/20 text-success animate-in fade-in slide-in-from-right-4">
-                <IconCircleCheck size={14} />
-                <span className="text-[10px] font-black uppercase tracking-widest">Saved</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-success/10 text-success animate-in fade-in slide-in-from-right-2">
+                <IconCircleCheck size={13} />
+                <span className="text-[12px] font-medium">Saved</span>
               </div>
             )}
 
@@ -193,7 +194,7 @@ export default function AlertsPage() {
                   setIsDirty(false);
                   isDirtyRef.current = false;
                 }}
-                className="app-button !bg-white/5 !text-white/40 hover:!text-white !px-6"
+                className="app-button"
               >
                 Discard
               </button>
@@ -203,58 +204,58 @@ export default function AlertsPage() {
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className={`app-button !px-8 ${isSaving ? 'opacity-50 cursor-wait' : 'bg-brand-gradient'}`}
+                className={`app-button-primary ${isSaving ? 'opacity-60 cursor-wait' : ''}`}
               >
                 <IconDeviceFloppy size={14} className={isSaving ? 'animate-spin' : ''} />
-                {isSaving ? 'Synchronizing...' : 'Commit Changes'}
+                {isSaving ? 'Saving…' : 'Save changes'}
               </button>
             )}
             </>
           }
         />
 
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-white/[0.03]">
             <button
               onClick={() => setActiveTab('routes')}
-              className={`h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'routes' ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50'}`}
+              className={`h-8 px-3 rounded-[5px] text-[12px] font-medium transition-colors ${activeTab === 'routes' ? 'bg-white/[0.06] text-white' : 'text-white/55 hover:text-white'}`}
             >
-              <div className="flex items-center gap-2">
-                <IconRoute size={14} />
-                Alert Routes
+              <div className="flex items-center gap-1.5">
+                <IconRoute size={13} />
+                Alert routes
               </div>
             </button>
             <button
               onClick={() => setActiveTab('assets')}
-              className={`h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'assets' ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white/50'}`}
+              className={`h-8 px-3 rounded-[5px] text-[12px] font-medium transition-colors ${activeTab === 'assets' ? 'bg-white/[0.06] text-white' : 'text-white/55 hover:text-white'}`}
             >
-              <div className="flex items-center gap-2">
-                <IconSparkles size={14} />
-                Asset Library
+              <div className="flex items-center gap-1.5">
+                <IconSparkles size={13} />
+                Asset library
               </div>
             </button>
           </div>
 
-          <div className="flex items-center gap-8 px-6 py-2 rounded-2xl border border-white/[0.03] bg-white/[0.01]">
+          <div className="flex items-center gap-5 px-4 py-2 rounded-md bg-white/[0.025]">
             <div className="flex flex-col">
-              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Active Routes</span>
-              <span className="text-sm font-black text-accent">{(draftSettings.alertRules ?? []).filter(r => r.enabled).length}</span>
+              <span className="text-[11px] font-normal text-white/55">Active routes</span>
+              <span className="text-[14px] font-semibold text-accent tabular-nums leading-tight">{(draftSettings.alertRules ?? []).filter(r => r.enabled).length}</span>
             </div>
-            <div className="h-4 w-px bg-white/5" />
+            <div className="h-6 w-px bg-white/[0.05]" />
             <div className="flex flex-col">
-              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Audio Pool</span>
-              <span className="text-sm font-black text-white/80">{sounds.length}</span>
+              <span className="text-[11px] font-normal text-white/55">Audio pool</span>
+              <span className="text-[14px] font-semibold text-white tabular-nums leading-tight">{sounds.length}</span>
             </div>
-            <div className="h-4 w-px bg-white/5" />
+            <div className="h-6 w-px bg-white/[0.05]" />
             <div className="flex flex-col">
-              <span className="text-[8px] font-black uppercase tracking-widest text-white/20">Visual Pool</span>
-              <span className="text-sm font-black text-white/80">{images.length}</span>
+              <span className="text-[11px] font-normal text-white/55">Visual pool</span>
+              <span className="text-[14px] font-semibold text-white tabular-nums leading-tight">{images.length}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="flex flex-col gap-10">
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex flex-col gap-4">
             {activeTab === 'routes' ? (
               <AlertRuleSection
                 rules={draftSettings.alertRules ?? []}
@@ -265,8 +266,8 @@ export default function AlertsPage() {
                 onUploadImage={handleImageUpload}
               />
             ) : (
-              <section className="app-section-card glass !p-8 animate-in fade-in zoom-in-95 duration-300">
-                <div className="grid grid-cols-1 gap-10 xl:grid-cols-2">
+              <section className="app-section-card glass !p-5 animate-in fade-in duration-200">
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                   <SoundLibrary
                     sounds={sounds}
                     onUpload={handleSoundUpload}
@@ -284,15 +285,15 @@ export default function AlertsPage() {
             )}
           </div>
 
-          <div className="flex flex-col gap-6 2xl:sticky 2xl:top-6 2xl:self-start">
+          <div className="flex flex-col gap-3 2xl:sticky 2xl:top-6 2xl:self-start">
             <OverlayUrlCard />
 
-            <div className="p-6 rounded-3xl border border-white/[0.05] bg-white/[0.02] space-y-4">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30">System Status</h4>
-              <div className="space-y-3">
-                <StatusRow label="Event Orchestrator" active />
-                <StatusRow label="Sound Engine" active />
-                <StatusRow label="Visual Buffer" active />
+            <div className="p-5 rounded-md bg-white/[0.025]">
+              <h4 className="text-[13px] font-semibold text-white mb-3">System status</h4>
+              <div className="flex flex-col gap-2">
+                <StatusRow label="Event orchestrator" active />
+                <StatusRow label="Sound engine" active />
+                <StatusRow label="Visual buffer" active />
               </div>
             </div>
           </div>
@@ -321,11 +322,11 @@ export default function AlertsPage() {
 
 function StatusRow({ label, active }: { label: string; active: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-[10px] font-bold text-white/50">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className={`h-1 w-1 rounded-full ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
-        <span className="text-[9px] font-black uppercase tracking-widest text-white/20">{active ? 'Live' : 'Off'}</span>
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-[12px] font-normal text-white/55">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-success' : 'bg-danger'}`} />
+        <span className={`text-[11px] font-medium ${active ? 'text-success' : 'text-danger'}`}>{active ? 'Live' : 'Off'}</span>
       </div>
     </div>
   )

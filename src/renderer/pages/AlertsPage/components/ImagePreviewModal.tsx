@@ -22,7 +22,7 @@ export function ImagePreviewModal({ image, onClose, onAdjust }: ImagePreviewModa
         onAdjust && (
           <button
             onClick={onAdjust}
-            className="flex items-center gap-2 h-9 px-4 rounded-xl bg-brand-gradient text-white text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-glow border-transparent"
+            className="flex items-center gap-2 h-9 px-4 rounded-xl bg-accent text-white text-xs font-semibold tracking-tight transition-all cursor-pointer border-transparent"
             title="Adjust positioning"
           >
             <IconAdjustments size={16} />
@@ -34,13 +34,13 @@ export function ImagePreviewModal({ image, onClose, onAdjust }: ImagePreviewModa
       <div className="p-8 space-y-4">
         {naturalSize && (
           <div className="flex justify-center">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+            <span className="text-[10px] font-medium tracking-normal text-white/20 bg-white/5 px-3 py-1 rounded-full border border-white/5">
               {naturalSize.w} × {naturalSize.h} PX
             </span>
           </div>
         )}
 
-        <div className="rounded-2xl border border-white/10 bg-[#050505] overflow-hidden flex items-center justify-center min-h-[300px] shadow-inner relative group">
+        <div className="rounded-md border border-white/10 bg-[#050505] overflow-hidden flex items-center justify-center min-h-[300px] shadow-inner relative group">
           <img
             src={`asset:///app/${encodeURIComponent(image.id)}`}
             alt={image.name}

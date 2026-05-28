@@ -47,7 +47,7 @@ export function TriggerEditorPanel({
         <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-6 py-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted">Rule Builder</p>
+              <p className="text-xs tracking-normal text-muted">Rule Builder</p>
               <h3 className="text-xl font-semibold">
                 {mode === 'create' ? 'Create Trigger' : `Edit ${draft.name}`}
               </h3>
@@ -97,9 +97,7 @@ export function TriggerEditorPanel({
             <FieldBlock label="Enabled">
               <button
                 onClick={() => onChange({ ...draft, enabled: !draft.enabled })}
-                className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  draft.enabled ? 'bg-success/15 text-success border border-success/30' : 'bg-card border border-border text-muted hover:bg-card-hover'
-                }`}
+                className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${ draft.enabled ? 'bg-success/15 text-success border border-success/30' : 'bg-card border border-border text-muted hover:bg-card-hover' }`}
               >
                 {draft.enabled ? 'Enabled' : 'Disabled'}
               </button>
@@ -134,9 +132,7 @@ export function TriggerEditorPanel({
                       ...current,
                       platforms: selected ? current.platforms.filter(i => i !== platform.value) : [...current.platforms, platform.value]
                     }))}
-                    className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
-                      selected ? 'bg-accent/15 border-accent/30 text-accent' : 'border-border bg-background text-muted hover:text-foreground hover:bg-card-hover'
-                    }`}
+                    className={`px-3 py-2 rounded-lg text-sm border transition-colors ${ selected ? 'bg-accent/15 border-accent/30 text-accent' : 'border-border bg-background text-muted hover:text-foreground hover:bg-card-hover' }`}
                   >
                     {platform.label}
                   </button>

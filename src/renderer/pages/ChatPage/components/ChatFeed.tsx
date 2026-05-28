@@ -1,4 +1,5 @@
-import {IconArrowDown, IconMessage2, IconSearch} from '@tabler/icons-react'
+import { IconArrowDown, IconMessage2 } from '@tabler/icons-react'
+import { IconSearch } from '../../../components/ui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { type ChatMessage } from '../../../stores/chat-store'
@@ -64,9 +65,7 @@ export function ChatFeed({
                 <button
                   key={platform}
                   onClick={() => onSetPlatformFilter(platform === 'all' ? null : platform)}
-                  className={`relative flex items-center gap-2 py-2 text-xs font-black tracking-widest transition-all ${
-                    active ? 'text-white' : 'text-white/20 hover:text-white/40'
-                  }`}
+                  className={`relative flex items-center gap-2 py-2 text-xs font-semibold tracking-tight transition-all ${ active ? 'text-white' : 'text-white/20 hover:text-white/40' }`}
                 >
                   {platform !== 'all' && <PlatformLogo platform={platform} size={12} />}
                   {platform.charAt(0).toUpperCase() + platform.slice(1)}
@@ -115,7 +114,7 @@ export function ChatFeed({
               setIsAtBottom(true)
               bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
             }}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-2xl hover:scale-105 transition-all"
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-xs font-semibold tracking-tight text-white shadow-2xl hover:scale-105 transition-all"
           >
             <span className="flex items-center gap-2">
               <IconArrowDown size={14} />

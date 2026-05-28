@@ -40,11 +40,7 @@ export function ChatConfigEditor({
               <button
                 key={pos}
                 onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[11px] font-bold border transition-all ${
-                  config.position === pos
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-10 rounded-lg text-[11px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {pos.replace('-', ' ')}
               </button>
@@ -79,11 +75,7 @@ export function ChatConfigEditor({
               <button
                 key={r}
                 onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.aspectRatio === r
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {r === 'auto' ? 'Auto (Fill)' : r === 'tiktok' ? 'Vertical (9:16)' : 'Landscape (16:9)'}
               </button>

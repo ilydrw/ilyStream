@@ -38,10 +38,17 @@ export class SSEManager {
   broadcast(channel: OverlayChannel, payload: unknown): void {
     const clients = this.channels.get(channel)
     const clientCount = clients?.size || 0
-    this.onBroadcast?.(channel, payload, clientCount)
+    const serialized = serializeSsePayload(payload)
+
+    try {
+      this.onBroadcast?.(channel, serialized.payload, clientCount)
+    } catch (err) {
+      console.warn('[SSEManager] overlay broadcast diagnostics failed:', err instanceof Error ? err.message : String(err))
+    }
+
     if (!clients) return
 
-    const data = `data: ${JSON.stringify(payload)}\n\n`
+    const data = `data: ${serialized.json}\n\n`
     for (const client of [...clients]) {
       try {
         client.write(data)
@@ -53,7 +60,7 @@ export class SSEManager {
   }
 
   broadcastToAll(payload: unknown): void {
-    const data = `data: ${JSON.stringify(payload)}\n\n`
+    const data = `data: ${serializeSsePayload(payload).json}\n\n`
     for (const clients of this.channels.values()) {
       for (const client of [...clients]) {
         try {
@@ -111,5 +118,36 @@ export class SSEManager {
       this.channels.set(channel, clients)
     }
     return clients
+  }
+}
+
+function serializeSsePayload(payload: unknown): { json: string; payload: unknown } {
+  try {
+    const json = JSON.stringify(payload, createOverlayJsonReplacer()) ?? 'null'
+    return { json, payload: JSON.parse(json) }
+  } catch (err) {
+    const fallback = {
+      type: 'serialization-error',
+      message: err instanceof Error ? err.message : String(err)
+    }
+    return { json: JSON.stringify(fallback), payload: fallback }
+  }
+}
+
+function createOverlayJsonReplacer(): (key: string, value: unknown) => unknown {
+  const seen = new WeakSet<object>()
+
+  return (key: string, value: unknown) => {
+    if (key === 'raw') return undefined
+    if (typeof value === 'bigint') return value.toString()
+    if (typeof value === 'function' || typeof value === 'symbol') return undefined
+    if (value instanceof Error) {
+      return { name: value.name, message: value.message, stack: value.stack }
+    }
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined
+      seen.add(value)
+    }
+    return value
   }
 }

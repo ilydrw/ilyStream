@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react'
-import { IconActivity, IconPlus } from '@tabler/icons-react'
+import { IconActivity } from '@tabler/icons-react'
+import { IconPlus } from '../../../../components/ui/icons'
 import { ContextMenu, type ContextMenuItem } from '../../../../components/ui/ContextMenu'
 import { useStudioStore } from '../../../../stores/studio-store'
 
@@ -58,7 +59,7 @@ export function Knob({ label, value, min, max, display, onChange, compact }: {
   return (
     <div className="rounded-xl bg-white/[0.025] ring-1 ring-white/[0.065] p-4 transition-[background-color,ring-color] duration-200 ease-out">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-black uppercase tracking-widest text-white/35">{label}</span>
+        <span className="text-[10px] font-semibold tracking-tight text-white/35">{label}</span>
         {isEditing ? (
           <input
             autoFocus
@@ -77,7 +78,7 @@ export function Knob({ label, value, min, max, display, onChange, compact }: {
             }}
           />
         ) : (
-          <span className="text-[10px] font-black text-accent">{display}</span>
+          <span className="text-[10px] font-semibold text-accent">{display}</span>
         )}
       </div>
       <div className={`flex items-center gap-4 ${compact ? 'flex-col' : ''}`}>

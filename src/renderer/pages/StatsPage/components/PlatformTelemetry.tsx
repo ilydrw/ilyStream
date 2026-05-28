@@ -32,7 +32,7 @@ function PlatformStatRow({ label, value, sub }: { label: string; value: string; 
       <span className="text-white/40 font-medium">{label}</span>
       <div className="flex items-baseline gap-2">
         {sub && <span className="text-[10px] text-white/20 font-mono">{sub}</span>}
-        <span className="text-white font-bold font-mono tabular-nums pr-1">{value}</span>
+        <span className="text-white font-semibold font-mono tabular-nums pr-1">{value}</span>
       </div>
     </div>
   )
@@ -54,12 +54,10 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 p-1.5 bg-white/[0.03] border border-white/5 rounded-2xl">
+        <div className="flex items-center gap-1.5 p-1.5 bg-white/[0.03] border border-white/5 rounded-md">
           <button
             onClick={() => onTabChange('all')}
-            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-              activePlatformTab === 'all' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white/70'
-            }`}
+            className={`px-6 py-2 rounded-xl text-[10px] font-semibold tracking-wider transition-all ${ activePlatformTab === 'all' ? 'bg-accent text-white ' : 'text-white/40 hover:text-white/70' }`}
           >
             All Platforms
           </button>
@@ -67,9 +65,7 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
             <button
               key={p}
               onClick={() => onTabChange(p)}
-              className={`p-2 rounded-xl transition-all flex items-center justify-center min-w-[44px] ${
-                activePlatformTab === p ? 'bg-brand-gradient text-white shadow-glow' : 'opacity-40 hover:opacity-80'
-              }`}
+              className={`p-2 rounded-xl transition-all flex items-center justify-center min-w-[44px] ${ activePlatformTab === p ? 'bg-accent text-white ' : 'opacity-40 hover:opacity-80' }`}
               title={PLATFORM_LABELS[p]}
             >
               <PlatformLogo platform={p} size={18} />
@@ -78,9 +74,7 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
         </div>
       </div>
 
-      <div className={`grid gap-10 ${
-        activePlatformTab === 'all' ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4' : 'grid-cols-1'
-      }`}>
+      <div className={`grid gap-10 ${ activePlatformTab === 'all' ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4' : 'grid-cols-1' }`}>
         {PLATFORMS.filter(p => activePlatformTab === 'all' || activePlatformTab === p).map((p) => {
           const ps = global.byPlatform[p]
           return (
@@ -90,8 +84,8 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
                   <PlatformLogo platform={p} size={32} />
                 </div>
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-white/90 leading-none block mb-1">{PLATFORM_LABELS[p]}</span>
-                  <span className="text-[9px] text-white/30 font-black uppercase tracking-wider">{ps.uniqueUserCount.toLocaleString()} Active Users</span>
+                  <span className="text-[11px] font-semibold tracking-tight text-white/90 leading-none block mb-1">{PLATFORM_LABELS[p]}</span>
+                  <span className="text-[9px] text-white/30 font-semibold tracking-wider">{ps.uniqueUserCount.toLocaleString()} Active Users</span>
                 </div>
               </div>
               <div className="space-y-4 text-sm bg-white/[0.02] rounded-xl p-4 border border-white/[0.05]">

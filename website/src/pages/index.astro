@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.14';
+const latestVersion = '0.0.15';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,12 +46,11 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Virtual Camera: ilyStream can now register a Windows camera source and feed it either a full layout or a selected source.',
-  'Source Feed Controls: The virtual cam output remembers its selected feed and supports Fit, Crop, and Fill source framing.',
-  'Output Reliability: The virtual camera status button keeps driver and bridge errors visible instead of hiding them behind refreshes.',
-  'DeskThing v0.0.14: Companion metadata, release links, and the installable bundle stay matched to the desktop app release.',
-  'Broadcast Workflow: Output controls now live closer to the production toolbar so virtual cam testing is a one-click path.',
-  'Website Refresh: Download links, getting-started docs, and companion docs all point at the v0.0.14 release set.',
+  'Dual-Stream Performance: Going live to a horizontal and vertical destination at the same time now shares a single scene composite per tick, cutting renderer CPU during dual streaming.',
+  'Transition Fidelity: Scene transitions (fade and stinger) now render into stream output captures, not just the local preview.',
+  'DeskThing Chat Lag: The companion forwards chat messages immediately and patches in proxied avatars as they finish encoding, so the feed keeps pace with busy streams instead of stalling on each new chatter.',
+  'DeskThing v0.0.15: Companion metadata, release links, and the installable bundle stay matched to the desktop app release.',
+  'Website Refresh: Download links, getting-started docs, and companion docs all point at the v0.0.15 release set.',
 ];
 
 const docPreviews = [

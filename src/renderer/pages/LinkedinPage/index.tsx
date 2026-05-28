@@ -1,5 +1,6 @@
 import React from 'react'
-import {IconWorld, IconShield, IconActivity, IconUsers, IconExternalLink} from '@tabler/icons-react'
+import { IconWorld, IconShield, IconActivity, IconUsers } from '@tabler/icons-react'
+import { IconExternalLink } from '../../components/ui/icons'
 import { LinkedinIcon } from '../../components/ui/LinkedinIcon'
 
 export default function LinkedinPage() {
@@ -38,15 +39,15 @@ export default function LinkedinPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         <div className="lg:col-span-12">
           <section className="app-section-card glass p-12 flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 rounded-2xl bg-[#0A66C2]/10 flex items-center justify-center text-[#0A66C2] mb-8">
+            <div className="w-20 h-20 rounded-md bg-[#0A66C2]/10 flex items-center justify-center text-[#0A66C2] mb-8">
               <LinkedinIcon size={48} />
             </div>
-            <h2 className="text-2xl font-bold mb-4">Professional Broadcasting</h2>
+            <h2 className="text-2xl font-semibold mb-4">Professional Broadcasting</h2>
             <p className="text-white/40 max-w-lg mb-10 leading-relaxed">
               To stream to LinkedIn, you must have a LinkedIn Live authorized profile or page. 
               Grant IlyStream the necessary permissions to start your broadcast.
             </p>
-            <button className="app-button-primary !h-14 px-10 bg-[#0A66C2] hover:bg-[#084d91] text-xs font-black uppercase tracking-widest">
+            <button className="app-button-primary !h-14 px-10 bg-[#0A66C2] hover:bg-[#084d91] text-xs font-semibold tracking-tight">
               Authorize LinkedIn Account
             </button>
           </section>
@@ -63,8 +64,8 @@ function Metric({ icon, label, value }: { icon: React.ReactNode, label: string, 
         {icon}
       </div>
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-white/30 mb-2">{label}</p>
-        <p className="text-4xl font-bold font-mono text-white">{value}</p>
+        <p className="text-xs font-semibold tracking-tight text-white/30 mb-2">{label}</p>
+        <p className="text-4xl font-semibold font-mono text-white">{value}</p>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
-import {IconPhoto as ImageIcon, IconPlus, IconUpload} from '@tabler/icons-react'
+import { IconPhoto as ImageIcon } from '@tabler/icons-react'
+import { IconPlus, IconUpload } from '../../components/ui/icons'
 import { useState } from 'react'
 import { AssetFile } from '../../hooks/useAssets'
 import { ImageRow } from './components/ImageRow'
@@ -31,13 +32,13 @@ export function ImageLibrary({ images, onUpload, onDelete }: ImageLibraryProps) 
               <ImageIcon size={32} />
             </div>
             <div>
-              <h2 className="text-sm font-black tracking-tight leading-none uppercase">Visual Assets</h2>
-              <p className="text-[10px] opacity-40 font-black mt-2 uppercase tracking-widest">{images.length} Objects Loaded</p>
+              <h2 className="text-sm font-semibold tracking-tight leading-none">Visual Assets</h2>
+              <p className="text-[10px] opacity-40 font-semibold mt-2 tracking-tight">{images.length} Objects Loaded</p>
             </div>
           </div>
           <button
             onClick={onUpload}
-            className="app-button !h-10 !px-6 !text-[10px] font-black tracking-widest"
+            className="app-button !h-10 !px-6 !text-[10px] font-semibold tracking-tight"
           >
             <IconPlus size={14} />
             ADD VISUAL
@@ -64,9 +65,9 @@ export function ImageLibrary({ images, onUpload, onDelete }: ImageLibraryProps) 
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-white/10 border border-dashed border-white/5 rounded-3xl">
+            <div className="flex flex-col items-center justify-center py-16 text-center text-white/10 border border-dashed border-white/5 rounded-lg">
               <IconUpload size={32} className="mb-4 opacity-10" />
-              <p className="text-[10px] font-black uppercase tracking-widest">Library Empty</p>
+              <p className="text-[10px] font-semibold tracking-tight">Library Empty</p>
             </div>
           )}
         </div>

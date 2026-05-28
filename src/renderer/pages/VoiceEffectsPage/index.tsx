@@ -1,22 +1,5 @@
-import {
-  IconActivity,
-  IconAntennaBars5,
-  IconDroplet,
-  IconHeadphones,
-  IconMicrophone,
-  IconMountain,
-  IconPhoneCall,
-  IconPower,
-  IconRadio,
-  IconRipple,
-  IconRobot,
-  IconSkull,
-  IconSpeakerphone,
-  IconUfo,
-  IconVolume,
-  IconWaveSawTool,
-  IconWaveSine
-} from '@tabler/icons-react'
+import { IconActivity, IconAntennaBars5, IconDroplet, IconHeadphones, IconMicrophone, IconMountain, IconPhoneCall, IconRadio, IconRipple, IconRobot, IconSkull, IconSpeakerphone, IconUfo, IconVolume, IconWaveSawTool, IconWaveSine } from '@tabler/icons-react'
+import { IconPowerIconFx } from '../../components/ui/icons'
 import type { Icon } from '@tabler/icons-react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
@@ -77,15 +60,13 @@ export default function VoiceEffectsPage() {
       <PageHeader
         kicker="Studio processing"
         title="Voice FX"
-        icon={IconVolume}
+        icon={IconFx}
         description="Shape the live mic into characters, radios, rooms, and cinematic delays without leaving the broadcast workflow."
         actions={
           <button
             type="button"
             onClick={() => setIsEnabled(!isEnabled)}
-            className={`app-button !h-11 !px-5 !text-[10px] font-black tracking-[0.14em] ${
-              isEnabled ? 'bg-brand-gradient border-transparent text-white shadow-glow' : '!text-white/40'
-            }`}
+            className={`app-button !h-11 !px-5 !text-[10px] font-semibold tracking-normal ${ isEnabled ? 'bg-accent border-transparent text-white ' : '!text-white/40' }`}
           >
             <IconPower size={15} />
             {isEnabled ? 'FX Active' : 'FX Bypassed'}
@@ -192,9 +173,7 @@ export default function VoiceEffectsPage() {
             <button
               type="button"
               onClick={() => setIsMonitoring(!isMonitoring)}
-              className={`app-button !h-11 !w-full !text-[10px] font-black tracking-[0.12em] ${
-                isMonitoring ? 'bg-brand-gradient border-transparent text-white shadow-glow' : ''
-              }`}
+              className={`app-button !h-11 !w-full !text-[10px] font-semibold tracking-normal ${ isMonitoring ? 'bg-accent border-transparent text-white ' : '' }`}
             >
               <IconRipple size={15} />
               {isMonitoring ? 'Monitoring On' : 'Monitoring Off'}

@@ -6,7 +6,8 @@ export const DEFAULT_KOKORO_VOICE = 'af_heart'
 // ─── ElevenLabs ───────────────────────────────────────────────────────────────
 
 export const ELEVENLABS_DEFAULT_MODEL = 'eleven_multilingual_v2'
-export const ELEVENLABS_DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // George
+export const ILYDRW_ELEVENLABS_VOICE_ID = 'KPfd2cy8xk2K5hMHOCck'
+export const ELEVENLABS_DEFAULT_VOICE_ID = ILYDRW_ELEVENLABS_VOICE_ID
 
 export interface ElevenLabsVoicePreset {
   id: string
@@ -22,6 +23,7 @@ export interface ElevenLabsVoicePreset {
  * Full list (including cloned voices) is fetched from the API using the user's key.
  */
 export const ELEVENLABS_VOICES: ElevenLabsVoicePreset[] = [
+  { id: ILYDRW_ELEVENLABS_VOICE_ID, name: 'ilydrw',  description: 'Signature stream voice', accent: 'American', gender: 'Male',   tags: ['custom', 'signature'] },
   { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',   description: 'Calm narrator',         accent: 'American', gender: 'Female', tags: ['calm', 'narrator'] },
   { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi',     description: 'Strong & confident',     accent: 'American', gender: 'Female', tags: ['strong'] },
   { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella',    description: 'Soft storyteller',       accent: 'American', gender: 'Female', tags: ['soft'] },

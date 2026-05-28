@@ -56,11 +56,7 @@ function TtsSignalMeter() {
         return (
           <div 
             key={i}
-            className={`flex-1 h-full rounded-[1px] transition-all duration-75 ${
-              isActive 
-                ? i > 9 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.4)]' 
-                : 'bg-white/5'
-            }`}
+            className={`flex-1 h-full rounded-[1px] transition-all duration-75 ${ isActive ? i > 9 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.4)]' : 'bg-white/5' }`}
           />
         )
       })}
@@ -86,7 +82,7 @@ function EngineRow({
   return (
     <div className="flex flex-col gap-4 border-b border-white/[0.04] py-6 last:border-0 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0 md:pr-8">
-        <h4 className="text-sm font-bold text-white">{label}</h4>
+        <h4 className="text-sm font-semibold text-white">{label}</h4>
         <p className="mt-1 text-xs leading-relaxed text-white/35">{hint}</p>
       </div>
       <div className="shrink-0">{children}</div>
@@ -122,7 +118,7 @@ function EngineNumber({
         }}
         className="app-input !h-10 !w-28 !px-3 text-right font-mono text-sm"
       />
-      {suffix && <span className="w-10 text-xs font-black uppercase tracking-widest text-white/20">{suffix}</span>}
+      {suffix && <span className="w-10 text-xs font-semibold tracking-tight text-white/20">{suffix}</span>}
     </div>
   )
 }
@@ -174,9 +170,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             <p>Speech routing, limits, and provider access.</p>
           </div>
         </div>
-        <div className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest ${
-          settings.tts.enabled ? 'bg-accent/15 text-accent' : 'bg-white/5 text-white/25'
-        }`}>
+        <div className={`rounded-full px-3 py-1 text-[9px] font-semibold tracking-tight ${ settings.tts.enabled ? 'bg-accent/15 text-accent' : 'bg-white/5 text-white/25' }`}>
           {settings.tts.enabled ? 'Online' : 'Muted'}
         </div>
       </div>
@@ -259,7 +253,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
               <div className="flex items-center gap-3">
                 <IconHeadphones size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Monitor Route</h3>
+                  <h3 className="text-xs font-medium tracking-normal text-white/70">Monitor Route</h3>
                   <p className="text-[11px] text-white/25">Send speech to a device or virtual cable.</p>
                 </div>
               </div>
@@ -268,7 +262,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
 
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/20">Live Signal</span>
+                <span className="text-[9px] font-semibold tracking-normal text-white/20">Live Signal</span>
               </div>
               <TtsSignalMeter />
             </div>
@@ -289,7 +283,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             <div className="mb-4 flex items-center gap-3">
               <IconKey size={18} className="text-accent" />
               <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">ElevenLabs</h3>
+                <h3 className="text-xs font-medium tracking-normal text-white/70">ElevenLabs</h3>
                 <p className="text-[11px] text-white/25">Stored locally with OS encryption when available.</p>
               </div>
             </div>
@@ -304,7 +298,7 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
               <button
                 onClick={saveApiKey}
                 disabled={apiKeyDraft === settings.elevenlabsApiKey}
-                className="app-button w-full !h-11 !text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-30"
+                className="app-button w-full !h-11 !text-xs font-semibold tracking-tight disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <IconGauge size={15} />
                 {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'Save Provider Key'}

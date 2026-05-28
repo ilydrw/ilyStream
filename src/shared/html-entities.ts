@@ -8,7 +8,7 @@ const NAMED_HTML_ENTITIES: Record<string, string> = {
 }
 
 export function decodeHtmlEntities(value: unknown): string {
-  let decoded = String(value ?? '')
+  let decoded = String(value ?? '').replace(/&(#0*39|#x0*27|apos)'/gi, '&$1;')
 
   for (let pass = 0; pass < 3; pass++) {
     const next = decoded.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z][a-z0-9]+));?/gi, (match, decimal, hex, named) => {

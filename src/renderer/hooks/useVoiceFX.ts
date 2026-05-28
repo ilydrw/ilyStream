@@ -20,7 +20,8 @@ const MIC_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression: false,
   autoGainControl: false,
   channelCount: { ideal: 1 },
-  sampleRate: { ideal: 48000 }
+  sampleRate: { ideal: 48000 },
+  latency: { ideal: 0.005 }
 }
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
@@ -378,7 +379,7 @@ export function useVoiceFX() {
         return
       }
 
-      const context = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 })
+      const context = new AudioContext({ latencyHint: 0.003, sampleRate: 48000 })
       audioCtxRef.current = context
       streamRef.current = stream
 

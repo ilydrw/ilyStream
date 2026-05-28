@@ -11,6 +11,7 @@ const THEME_PALETTES: Record<AppTheme, {
   accent: string
   primaryHsl: [number, number, number]
   secondaryHsl: [number, number, number]
+  iconGradient: [string, string, string]
 }> = {
   dark: {
     background: '#0a0a0c',
@@ -20,7 +21,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#18181b',
     accent: '#19c8ff',
     primaryHsl: [194, 100, 55],
-    secondaryHsl: [289, 88, 58]
+    secondaryHsl: [289, 88, 58],
+    iconGradient: ['#FA03D6', '#8849EB', '#19C7FF']
   },
   midnight: {
     background: '#030305',
@@ -30,7 +32,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#0a0a0d',
     accent: '#6366f1',
     primaryHsl: [239, 84, 67],
-    secondaryHsl: [261, 84, 57]
+    secondaryHsl: [261, 84, 57],
+    iconGradient: ['#EC4899', '#6366F1', '#06B6D4']
   },
   aurora: {
     background: '#050a0a',
@@ -40,7 +43,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#071212',
     accent: '#2dd4bf',
     primaryHsl: [174, 65, 50],
-    secondaryHsl: [142, 70, 45]
+    secondaryHsl: [142, 70, 45],
+    iconGradient: ['#10B981', '#2DD4BF', '#22D3EE']
   },
   ember: {
     background: '#0a0505',
@@ -50,7 +54,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#120707',
     accent: '#f43f5e',
     primaryHsl: [25, 95, 61],
-    secondaryHsl: [351, 89, 60]
+    secondaryHsl: [351, 89, 60],
+    iconGradient: ['#F97316', '#F43F5E', '#EC4899']
   },
   light: {
     background: '#f4f4f5',
@@ -60,7 +65,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#fafafa',
     accent: '#0ea5e9',
     primaryHsl: [199, 89, 48],
-    secondaryHsl: [0, 0, 98]
+    secondaryHsl: [0, 0, 98],
+    iconGradient: ['#A855F7', '#3B82F6', '#0EA5E9']
   },
   joker: {
     background: '#0a050c',
@@ -70,7 +76,8 @@ const THEME_PALETTES: Record<AppTheme, {
     secondary: '#ab5dce',
     accent: '#1ddd33',
     primaryHsl: [127, 74, 52],
-    secondaryHsl: [281, 55, 59]
+    secondaryHsl: [281, 55, 59],
+    iconGradient: ['#1DDD33', '#AB5DCE', '#1DDD33']
   }
 }
 
@@ -104,6 +111,11 @@ export function applyAppAppearance(settings: AppearanceSettings): void {
   root.style.setProperty('--bg-brand-gradient', gradient)
   root.style.setProperty('--grad-brand', gradient)
   root.style.setProperty('--grad-brand-web', gradient)
+
+  // Icon gradient stops (3-stop, themed)
+  root.style.setProperty('--icon-gradient-from', palette.iconGradient[0])
+  root.style.setProperty('--icon-gradient-via', palette.iconGradient[1])
+  root.style.setProperty('--icon-gradient-to', palette.iconGradient[2])
 
   // HSL Tokens for legacy compatibility and depth
   const [ph, ps, pl] = palette.primaryHsl

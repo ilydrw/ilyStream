@@ -1,4 +1,5 @@
-import {IconDeviceFloppy, IconTrash, IconVolume, IconPlayerPlay, IconX, IconPlus} from '@tabler/icons-react'
+import { IconVolume } from '@tabler/icons-react'
+import { IconDeviceFloppy, IconTrash, IconPlayerPlay, IconX, IconPlus } from '../../../components/ui/icons'
 import { VoiceProfile } from '../../../../main/tts/voice-profiles'
 import { Select, SelectOption } from '../../../components/ui/Select'
 import {
@@ -53,13 +54,20 @@ export function VoiceEditor({
     return (
       <div className="app-section-card glass flex flex-col items-center justify-center py-40 text-center opacity-40">
         <IconVolume size={48} className="mb-6 text-white/10" />
-        <h3 className="text-sm font-bold uppercase tracking-widest">Select Persona</h3>
+        <h3 className="text-sm font-semibold tracking-tight">Select Persona</h3>
         <p className="text-xs mt-2">Initialize a voice profile to begin configuration.</p>
       </div>
     )
   }
 
   const provider = draft.provider ?? 'system'
+  const selectedValue =
+    provider === 'kokoro'
+      ? (draft.kokoroVoice ?? DEFAULT_KOKORO_VOICE)
+      : provider === 'elevenlabs'
+        ? (draft.elevenlabsVoiceId || ELEVENLABS_DEFAULT_VOICE_ID)
+        : draft.voiceName
+
   const voiceSelectOptions: SelectOption[] =
     provider === 'kokoro'
       ? KOKORO_VOICES.map((v) => ({ value: v.id, label: `${v.name} (${v.gender})` }))
@@ -71,12 +79,17 @@ export function VoiceEditor({
           }))
         : voiceOptions.map((v) => ({ value: v.name, label: `${v.name} (${v.lang})` }))
 
-  const selectedValue =
-    provider === 'kokoro'
-      ? (draft.kokoroVoice ?? DEFAULT_KOKORO_VOICE)
-      : provider === 'elevenlabs'
-        ? (draft.elevenlabsVoiceId ?? ELEVENLABS_DEFAULT_VOICE_ID)
-        : draft.voiceName
+  if (
+    provider === 'elevenlabs' &&
+    selectedValue &&
+    !voiceSelectOptions.some((option) => option.value === selectedValue)
+  ) {
+    voiceSelectOptions.unshift({
+      value: selectedValue,
+      label: `Custom (${selectedValue.slice(0, 6)}...)`,
+      group: 'Custom'
+    })
+  }
 
   return (
     <section className="app-section-card glass">
@@ -94,14 +107,20 @@ export function VoiceEditor({
           <button 
             onClick={onSave} 
             disabled={isSaving}
-            className="app-button !h-12 !px-6 text-xs font-black uppercase tracking-widest"
+            className="app-button !h-12 !px-6 text-xs font-semibold tracking-tight"
           >
             <IconDeviceFloppy size={16} className="mr-2 opacity-40" />
             {isSaving ? 'Syncing...' : 'Save Profile'}
           </button>
-          <button onClick={onDelete} className="p-3 text-white/10 hover:text-danger hover:bg-danger/10 rounded-xl transition-all">
-            <IconTrash size={18} />
-          </button>
+          {draft.id !== 'default' && (
+            <button
+              onClick={onDelete}
+              title="Delete profile"
+              className="p-3 text-white/50 hover:text-danger hover:bg-danger/10 rounded-xl transition-all"
+            >
+              <IconTrash size={18} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -110,28 +129,24 @@ export function VoiceEditor({
           {/* Core Synthesis Params */}
           <div className="space-y-10">
             <div className="space-y-3">
-              <label className="text-xs font-black uppercase tracking-widest text-white/40">Profile Identifier</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Profile Identifier</label>
               <input
                 type="text"
                 value={draft.name}
                 onChange={(e) => onUpdateDraft({ name: e.target.value })}
-                className="app-input !h-12 !px-5 !text-sm font-bold"
+                className="app-input !h-12 !px-5 !text-sm font-semibold"
                 placeholder="Enter profile name..."
               />
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-black uppercase tracking-widest text-white/40">Voice Provider</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Voice Provider</label>
               <div className="grid grid-cols-3 gap-2">
                 {['system', 'kokoro', 'elevenlabs'].map((p) => (
                   <button
                     key={p}
                     onClick={() => onProviderChange(p)}
-                    className={`h-12 rounded-xl border text-xs font-black uppercase tracking-widest transition-all ${
-                      (draft.provider ?? 'system') === p
-                        ? 'bg-accent/10 border-accent/30 text-accent'
-                        : 'bg-white/[0.02] border-white/5 text-white/50 hover:border-white/10 hover:text-white/80'
-                    }`}
+                    className={`h-12 rounded-xl border text-xs font-semibold tracking-tight transition-all ${ (draft.provider ?? 'system') === p ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.02] border-white/5 text-white/50 hover:border-white/10 hover:text-white/80' }`}
                   >
                     {p}
                   </button>
@@ -140,7 +155,7 @@ export function VoiceEditor({
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-black uppercase tracking-widest text-white/40">Voice Selection</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Voice Selection</label>
               <div className="space-y-3">
                 <Select
                   value={selectedValue}
@@ -157,7 +172,7 @@ export function VoiceEditor({
                   <>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <p className={`text-[10px] font-black uppercase tracking-widest ${syncError ? 'text-danger' : 'text-white/20'}`}>
+                        <p className={`text-[10px] font-semibold tracking-tight ${syncError ? 'text-danger' : 'text-white/20'}`}>
                           {syncError 
                             ? `Sync Failed: ${syncError}`
                             : syncedElevenLabsVoices.length > 0 
@@ -167,7 +182,7 @@ export function VoiceEditor({
                         <button 
                           onClick={onSyncVoices}
                           disabled={isSyncingVoices || !elevenlabsApiKey}
-                          className="text-[10px] font-black uppercase tracking-widest text-accent hover:text-accent/80 disabled:opacity-30 transition-all flex items-center gap-1.5"
+                          className="text-[10px] font-semibold tracking-tight text-accent hover:text-accent/80 disabled:opacity-30 transition-all flex items-center gap-1.5"
                         >
                           {isSyncingVoices ? (
                             <>
@@ -191,13 +206,13 @@ export function VoiceEditor({
                     
                     <div className="pt-4 border-t border-white/5 space-y-3">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-black uppercase tracking-widest text-white/40">Manual Voice ID</label>
+                        <label className="text-xs font-semibold tracking-tight text-white/40">Manual Voice ID</label>
                         <span className="text-[10px] font-medium text-white/20 italic">Overwrites selection above</span>
                       </div>
                       <input
                         type="text"
-                        value={draft.elevenlabsVoiceId || ''}
-                        onChange={(e) => onUpdateDraft({ elevenlabsVoiceId: e.target.value })}
+                        value={draft.elevenlabsVoiceId ?? ELEVENLABS_DEFAULT_VOICE_ID}
+                        onChange={(e) => onUpdateDraft({ elevenlabsVoiceId: e.target.value.trim() })}
                         className="app-input !h-11 !px-4 !text-xs font-mono bg-white/[0.01]"
                         placeholder="Paste ElevenLabs Voice ID here..."
                       />
@@ -211,10 +226,10 @@ export function VoiceEditor({
           {/* Performance & Tuning */}
           <div className="space-y-10">
             <div className="space-y-6">
-              <label className="text-xs font-black uppercase tracking-widest text-white/40">Acoustic Tuning</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Acoustic Tuning</label>
               <div className="space-y-8">
                 <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-black uppercase tracking-widest text-white/60">
+                  <div className="flex justify-between text-xs font-semibold tracking-tight text-white/60">
                     <span>Playback Rate</span>
                     <span className="text-accent">{draft.rate}x</span>
                   </div>
@@ -226,7 +241,7 @@ export function VoiceEditor({
                   />
                 </div>
                 <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-black uppercase tracking-widest text-white/60">
+                  <div className="flex justify-between text-xs font-semibold tracking-tight text-white/60">
                     <span>Output Volume</span>
                     <span className="text-accent">{Math.round(draft.volume * 100)}%</span>
                   </div>
@@ -240,8 +255,8 @@ export function VoiceEditor({
               </div>
             </div>
 
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3 group hover:border-white/10 transition-all">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Synthesis Test</label>
+            <div className="p-6 rounded-md bg-white/[0.02] border border-white/5 space-y-3 group hover:border-white/10 transition-all">
+              <label className="text-[10px] font-medium tracking-normal text-white/20">Synthesis Test</label>
               <div className="flex gap-2">
                 <input
                   type="text"

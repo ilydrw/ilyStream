@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import {IconChartBar, IconRefresh, IconTrash} from '@tabler/icons-react'
+import { IconRefresh, IconTrash, IconActivity } from '../../components/ui/icons'
 import type { GlobalStats, UserStat, UserStatSortKey, UserIdentity } from '../../../shared/stats'
 import { EMPTY_GLOBAL_STATS } from '../../../shared/stats'
 import type { Platform } from '../../../main/platforms/types'
@@ -150,7 +150,7 @@ export default function StatsPage() {
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
             {activePlatformTab === 'all' ? (
-              <IconChartBar size={32} className="text-accent" />
+              <IconActivity size={20} className="text-accent" />
             ) : (
               <div className="w-10 h-10 flex items-center justify-center bg-white/10 rounded-xl ring-1 ring-white/20">
                 <PlatformLogo platform={activePlatformTab as Platform} size={28} />
@@ -162,15 +162,13 @@ export default function StatsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={loadAll} disabled={loading} className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+          <button onClick={loadAll} disabled={loading} className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2">
             <IconRefresh size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
           <button
             onClick={handleReset}
-            className={`app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
-              confirmReset ? 'bg-danger/20 border-danger/40 text-danger' : 'text-white/40 hover:text-danger hover:border-danger/30'
-            }`}
+            className={`app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2 transition-all ${ confirmReset ? 'bg-danger/20 border-danger/40 text-danger' : 'text-white/40 hover:text-danger hover:border-danger/30' }`}
           >
             <IconTrash size={14} />
             {confirmReset ? 'Confirm Reset' : 'Reset stats'}

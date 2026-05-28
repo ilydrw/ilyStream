@@ -45,7 +45,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
             <p>Theme, accent, density, and motion.</p>
           </div>
         </div>
-        <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-accent">
+        <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[9px] font-semibold tracking-tight text-accent">
           Live Preview
         </span>
       </div>
@@ -60,11 +60,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                   key={option.value}
                   onClick={() => setTheme(option)}
                   aria-pressed={active}
-                  className={`group rounded-xl border p-4 text-left transition-all ${
-                    active
-                      ? 'border-accent/50 bg-accent/10 shadow-[0_0_30px_rgba(var(--accent-rgb),0.12)]'
-                      : 'border-white/5 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'
-                  }`}
+                  className={`group rounded-xl border p-4 text-left transition-all ${ active ? 'border-accent/50 bg-accent/10 shadow-[0_0_30px_rgba(var(--accent-rgb),0.12)]' : 'border-white/5 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]' }`}
                 >
                   <div
                     className="mb-4 h-16 rounded-lg border border-white/10"
@@ -72,7 +68,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                   />
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <h3 className="text-sm font-black text-white">{option.label}</h3>
+                      <h3 className="text-sm font-semibold text-white">{option.label}</h3>
                       <p className="mt-1 text-xs leading-relaxed text-white/30">{option.hint}</p>
                     </div>
                     <span className={`h-2.5 w-2.5 rounded-full ${active ? 'bg-accent' : 'bg-white/10'}`} />
@@ -88,11 +84,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                 <button
                   key={color}
                   onClick={() => onUpdate('accentColor', color)}
-                  className={`h-9 w-9 rounded-lg border transition-all ${
-                    (settings.accentColor || '').toLowerCase() === color.toLowerCase()
-                      ? 'border-white scale-105'
-                      : 'border-white/10 hover:border-white/30'
-                  }`}
+                  className={`h-9 w-9 rounded-lg border transition-all ${ (settings.accentColor || '').toLowerCase() === color.toLowerCase() ? 'border-white scale-105' : 'border-white/10 hover:border-white/30' }`}
                   style={{ background: color }}
                   title={color}
                 />
@@ -113,11 +105,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                 <button
                   key={density}
                   onClick={() => onUpdate('interfaceDensity', density)}
-                  className={`h-10 px-4 text-xs font-black uppercase tracking-widest transition-all ${
-                    settings.interfaceDensity === density
-                      ? 'bg-white text-black'
-                      : 'text-white/35 hover:bg-white/5 hover:text-white/60'
-                  }`}
+                  className={`h-10 px-4 text-xs font-semibold tracking-tight transition-all ${ settings.interfaceDensity === density ? 'bg-white text-black' : 'text-white/35 hover:bg-white/5 hover:text-white/60' }`}
                 >
                   {density}
                 </button>
@@ -133,15 +121,15 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconSettings size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Density</p>
-                <p className="text-sm font-bold capitalize text-white">{settings.interfaceDensity}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Density</p>
+                <p className="text-sm font-semibold capitalize text-white">{settings.interfaceDensity}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconSparkles size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Motion</p>
-                <p className="text-sm font-bold text-white">{settings.reducedMotion ? 'Reduced' : 'Fluid'}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Motion</p>
+                <p className="text-sm font-semibold text-white">{settings.reducedMotion ? 'Reduced' : 'Fluid'}</p>
               </div>
             </div>
           </div>

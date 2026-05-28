@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import {IconDeviceDesktop, IconExternalLink, IconLayersLinked, IconPlus, IconStack2} from '@tabler/icons-react'
+import { IconDeviceDesktop, IconLayersLinked } from '@tabler/icons-react'
+import { IconExternalLink, IconPlus, IconWidgets } from '../../components/ui/icons'
 import { type Widget } from '../../../shared/widgets'
 import { WIDGET_TEMPLATES, type WidgetTemplate } from './constants'
 import { WidgetCard } from './components/WidgetCard'
@@ -127,12 +128,12 @@ export default function WidgetPage() {
       <PageHeader
         kicker="Overlay compositor"
         title="Widgets & Overlays"
-        icon={IconStack2}
+        icon={IconWidgets}
         description="Create browser-source graphics that stay wired to live events, chat, Spotify, stats, and the overlay server."
         actions={
           <>
           <OverlayStatusPill running={overlayRunning} port={overlayPort} />
-          <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-bold">
+          <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-semibold">
             <IconPlus size={16} className="mr-2" />
             New Widget
           </button>
@@ -218,9 +219,7 @@ export default function WidgetPage() {
 function OverlayStatusPill({ running, port }: { running: boolean; port: number | null }) {
   return (
     <div
-      className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-bold ${
-        running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40'
-      }`}
+      className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-semibold ${ running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40' }`}
     >
       <span className={`h-2 w-2 rounded-full ${running ? 'bg-success' : 'bg-white/30'}`} />
       {running && port ? `127.0.0.1:${port}` : 'Overlay server offline'}

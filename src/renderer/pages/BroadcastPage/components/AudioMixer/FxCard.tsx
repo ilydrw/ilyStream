@@ -1,5 +1,5 @@
 import React from 'react'
-import { IconPower, IconTrash } from '@tabler/icons-react'
+import { IconPower, IconTrash } from '../../../../components/ui/icons'
 import { FX_PRESETS } from './constants'
 import { formatParam, getParamRange } from './utils'
 
@@ -13,16 +13,16 @@ export function FxCard({ fx, index, onToggle, onRemove, onParam }: {
   const preset = FX_PRESETS.find(item => item.type === fx.type)
   const params = fx.params || {}
   return (
-    <div className={`rounded-2xl ring-1 p-6 transition-all duration-400 ${fx.enabled ? 'bg-white/[0.06] ring-white/[0.15] shadow-2xl' : 'bg-white/[0.02] ring-white/[0.06] opacity-30'}`}>
+    <div className={`rounded-md ring-1 p-6 transition-all duration-400 ${fx.enabled ? 'bg-white/[0.06] ring-white/[0.15] shadow-2xl' : 'bg-white/[0.02] ring-white/[0.06] opacity-30'}`}>
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-4 min-w-0">
           <div className="flex flex-col items-center">
-            <span className="text-[10px] font-black text-white/20 tabular-nums leading-none mb-1.5">{String(index + 1).padStart(2, '0')}</span>
+            <span className="text-[10px] font-semibold text-white/20 tabular-nums leading-none mb-1.5">{String(index + 1).padStart(2, '0')}</span>
             <div className={`w-1.5 h-6 rounded-full transition-all duration-500 ${fx.enabled ? 'bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.8)]' : 'bg-white/10'}`} />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-black uppercase tracking-[0.08em] text-white/95 truncate">{preset?.label || fx.type}</div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-accent/40">Insert Node</div>
+            <div className="text-[13px] font-semibold tracking-normal text-white/95 truncate">{preset?.label || fx.type}</div>
+            <div className="text-[9px] font-semibold tracking-normal text-accent/40">Insert Node</div>
           </div>
         </div>
         <div className="flex items-center gap-2 bg-black/50 p-1.5 rounded-xl border border-white/10">
@@ -38,8 +38,8 @@ export function FxCard({ fx, index, onToggle, onRemove, onParam }: {
         {Object.entries(params).map(([key, value]) => (
           <div key={key} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between px-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-white/35">{key}</span>
-              <span className="text-[9px] font-black text-white/50 tabular-nums">{formatParam(key, value)}</span>
+              <span className="text-[9px] font-semibold tracking-tight text-white/35">{key}</span>
+              <span className="text-[9px] font-semibold text-white/50 tabular-nums">{formatParam(key, value)}</span>
             </div>
             <input
               type="range"

@@ -1,4 +1,5 @@
-import {IconSend, IconTrash} from '@tabler/icons-react'
+import { IconSend } from '@tabler/icons-react'
+import { IconTrash } from '../../../components/ui/icons'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { PLATFORM_LABELS } from '../../../../shared/chat-relay'
 import type { Platform, PlatformChatCapability } from '../../../../main/platforms/types'
@@ -46,7 +47,7 @@ export function OutboundSidebar({
         {relaySource && (
           <div className="p-3 rounded-xl bg-accent/5 border border-accent/10 flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-xs text-accent/60 font-bold tracking-widest mb-1">Relaying Message</p>
+              <p className="text-xs text-accent/60 font-semibold tracking-tight mb-1">Relaying Message</p>
               <p className="text-sm text-white/80 truncate">@{relaySource.displayName}: {relaySource.message}</p>
             </div>
             <button onClick={onClearRelaySource} className="text-accent hover:text-white transition-colors">
@@ -56,7 +57,7 @@ export function OutboundSidebar({
         )}
 
         <div className="flex flex-col gap-3">
-          <label className="text-xs font-black tracking-widest text-white/50">Target Channels</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Target Channels</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(capabilities) as Platform[]).map((p) => {
               const cap = capabilities[p]
@@ -67,9 +68,7 @@ export function OutboundSidebar({
                   onClick={() => onToggleTarget(p)}
                   disabled={!cap.canSend}
                   title={cap.canSend ? `Send to ${PLATFORM_LABELS[p]}` : cap.reason}
-                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-bold transition-all ${
-                    selected ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90'
-                  } disabled:opacity-30 disabled:cursor-not-allowed`}
+                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-semibold transition-all ${ selected ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90' } disabled:opacity-30 disabled:cursor-not-allowed`}
                 >
                   <PlatformLogo platform={p} size={14} />
                   {PLATFORM_LABELS[p]}
@@ -92,18 +91,14 @@ export function OutboundSidebar({
         <button
           onClick={onSend}
           disabled={isSending || !composerText.trim() || selectedTargets.length === 0}
-          className="app-button-primary !h-12 w-full font-bold"
+          className="app-button-primary !h-12 w-full font-semibold"
         >
           {isSending ? 'Transmitting...' : 'Send Message'}
           <IconSend size={16} className="ml-2" />
         </button>
 
         {sendFeedback && (
-          <div className={`p-4 rounded-xl text-xs font-bold text-center border ${
-            sendFeedback.tone === 'success' ? 'bg-success/10 border-success/20 text-success' : 
-            sendFeedback.tone === 'warning' ? 'bg-warning/10 border-warning/20 text-warning' : 
-            'bg-danger/10 border-danger/20 text-danger'
-          }`}>
+          <div className={`p-4 rounded-xl text-xs font-semibold text-center border ${ sendFeedback.tone === 'success' ? 'bg-success/10 border-success/20 text-success' : sendFeedback.tone === 'warning' ? 'bg-warning/10 border-warning/20 text-warning' : 'bg-danger/10 border-danger/20 text-danger' }`}>
             {sendFeedback.text}
           </div>
         )}

@@ -150,7 +150,9 @@ export function getTrackStatuses(
       ? ((window as any).__soundboardStream as MediaStream | null) || null
       : source.id === 'tts-audio'
         ? audioEngine.getTtsStream()
-        : videoRefs.current[source.id]?.srcObject as MediaStream | null
+        : ((window as any).__ilyMicStreams?.[source.id] ||
+          (videoRefs.current[source.id] as any)?.__ilyRawStream ||
+          videoRefs.current[source.id]?.srcObject) as MediaStream | null
 
     const audioTracks = stream?.getAudioTracks() || []
     const liveTrack = audioTracks.find(track => track.readyState === 'live')

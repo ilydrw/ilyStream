@@ -3,7 +3,9 @@ param(
   [string] $Configuration = 'Release',
   [ValidateSet('x64')]
   [string] $Platform = 'x64',
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [string] $NativeDir,
+  [string] $AppUserSid
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,7 +65,7 @@ if (-not $SkipBuild) {
   }
 }
 
-$outputDir = Join-Path $PSScriptRoot "bin\$Platform\$Configuration"
+$outputDir = if ($NativeDir) { $NativeDir } else { Join-Path $PSScriptRoot "bin\$Platform\$Configuration" }
 $dll = Join-Path $outputDir 'VirtualCameraMediaSource.dll'
 $registrar = Join-Path $outputDir 'IlyStreamVirtualCameraRegistrar.exe'
 $bridge = Join-Path $outputDir 'IlyStreamVirtualCameraBridge.exe'
@@ -81,21 +83,54 @@ if (-not (Test-Path $bridge)) {
 $dll = (Resolve-Path -LiteralPath $dll).Path
 $registrar = (Resolve-Path -LiteralPath $registrar).Path
 
-New-Item -Path $frameDataDir -ItemType Directory -Force | Out-Null
-$everyoneModify = '*S-1-1-0:(OI)(CI)M'
-& icacls.exe $frameDataDir /grant $everyoneModify | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  throw "Failed to grant frame bridge directory permissions with icacls.exe (exit code $LASTEXITCODE)"
+function Invoke-IcaclsGrant {
+  param(
+    [string] $Path,
+    [string] $Grant
+  )
+
+  & icacls.exe $Path /grant $Grant | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to grant '$Grant' on '$Path' with icacls.exe (exit code $LASTEXITCODE)"
+  }
 }
+
+function Remove-EveryoneGrant {
+  param([string] $Path)
+
+  & icacls.exe $Path /remove:g '*S-1-1-0' | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Could not remove Everyone permissions from '$Path' (exit code $LASTEXITCODE)"
+  }
+}
+
+$currentUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$frameWriterSids = @($currentUserSid)
+if ($AppUserSid -and ($AppUserSid -notin $frameWriterSids)) {
+  $frameWriterSids += $AppUserSid
+}
+
+New-Item -Path $frameDataDir -ItemType Directory -Force | Out-Null
+Remove-EveryoneGrant -Path $frameDataDir
+foreach ($writerSid in $frameWriterSids) {
+  Invoke-IcaclsGrant -Path $frameDataDir -Grant "*${writerSid}:(OI)(CI)M"
+}
+Invoke-IcaclsGrant -Path $frameDataDir -Grant '*S-1-5-18:(OI)(CI)M'
+Invoke-IcaclsGrant -Path $frameDataDir -Grant '*S-1-5-32-544:(OI)(CI)M'
+Invoke-IcaclsGrant -Path $frameDataDir -Grant '*S-1-5-19:(OI)(CI)RX'
+Invoke-IcaclsGrant -Path $frameDataDir -Grant '*S-1-15-2-1:(OI)(CI)RX'
 
 if (-not (Test-Path -LiteralPath $frameDataFile)) {
   New-Item -Path $frameDataFile -ItemType File -Force | Out-Null
 }
-$everyoneFileModify = '*S-1-1-0:M'
-& icacls.exe $frameDataFile /grant $everyoneFileModify | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  throw "Failed to grant frame bridge file permissions with icacls.exe (exit code $LASTEXITCODE)"
+Remove-EveryoneGrant -Path $frameDataFile
+foreach ($writerSid in $frameWriterSids) {
+  Invoke-IcaclsGrant -Path $frameDataFile -Grant "*${writerSid}:M"
 }
+Invoke-IcaclsGrant -Path $frameDataFile -Grant '*S-1-5-18:M'
+Invoke-IcaclsGrant -Path $frameDataFile -Grant '*S-1-5-32-544:M'
+Invoke-IcaclsGrant -Path $frameDataFile -Grant '*S-1-5-19:R'
+Invoke-IcaclsGrant -Path $frameDataFile -Grant '*S-1-15-2-1:R'
 
 $clsidKey = "HKLM:\SOFTWARE\Classes\CLSID\$sourceClsid"
 $inProcKey = Join-Path $clsidKey 'InProcServer32'

@@ -42,6 +42,11 @@ describe('TikTokMapper', () => {
         name: 'It&amp;#39;s Corn'
       }
     }).giftName).toBe("It's Corn")
+
+    expect(mapper.mapGift({
+      ...makeGiftPayload(true, 1),
+      giftName: "You&#39're Awesome"
+    }).giftName).toBe("You're Awesome")
   })
 })
 

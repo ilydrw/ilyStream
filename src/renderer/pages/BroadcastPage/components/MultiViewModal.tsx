@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { IconLayoutGrid, IconX, IconChevronRight } from '@tabler/icons-react'
+import { IconLayoutGrid } from '@tabler/icons-react'
+import { IconX, IconChevronRight } from '../../../components/ui/icons'
 import { useStudioStore } from '../../../stores/studio-store'
 import { StudioScene } from '../../../../shared/studio'
 
@@ -57,25 +58,22 @@ function ScenePreview({ scene, videoRefs, onClick, active, preview }: {
     <motion.div
       layout
       onClick={onClick}
-      className={`
-        relative aspect-video rounded-xl overflow-hidden cursor-pointer group border-2 transition-all
-        ${active ? 'border-red-500 shadow-lg shadow-red-500/20' : preview ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/5 hover:border-white/20'}
-      `}
+      className={`relative aspect-video rounded-xl overflow-hidden cursor-pointer group border-2 transition-all ${active ? 'border-red-500 shadow-lg shadow-red-500/20' : preview ? 'border-accent ' : 'border-white/5 hover:border-white/20'}`}
     >
       <canvas ref={canvasRef} width={320} height={180} className="w-full h-full" />
 
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
 
       <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-widest text-white truncate mr-2">{scene.name}</span>
+        <span className="text-[10px] font-semibold tracking-tight text-white truncate mr-2">{scene.name}</span>
         <div className="flex gap-1">
-          {active && <span className="px-1.5 py-0.5 rounded bg-red-500 text-[8px] font-black uppercase text-white animate-pulse">Live</span>}
-          {preview && <span className="px-1.5 py-0.5 rounded bg-accent text-[8px] font-black uppercase text-black">Preview</span>}
+          {active && <span className="px-1.5 py-0.5 rounded bg-red-500 text-[8px] font-semibold text-white animate-pulse">Live</span>}
+          {preview && <span className="px-1.5 py-0.5 rounded bg-accent text-[8px] font-semibold text-black">Preview</span>}
         </div>
       </div>
 
       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100 pointer-events-none">
-        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white">
+        <div className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white">
           <IconChevronRight size={20} />
         </div>
       </div>
@@ -95,7 +93,7 @@ export function MultiViewModal({ open, onClose, videoRefs }: Props) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/90 backdrop-blur-2xl"
+        className="absolute inset-0 bg-black/90"
       />
 
       <motion.div
@@ -106,18 +104,18 @@ export function MultiViewModal({ open, onClose, videoRefs }: Props) {
       >
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-accent/20 text-accent flex items-center justify-center">
+            <div className="w-12 h-12 rounded-md bg-accent/20 text-accent flex items-center justify-center">
               <IconLayoutGrid size={24} />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white uppercase tracking-[0.2em]">Multi-View</h2>
-              <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mt-1">Live Scene Monitoring</p>
+              <h2 className="text-xl font-semibold text-white tracking-normal">Multi-View</h2>
+              <p className="text-[10px] text-white/30 font-semibold tracking-tight mt-1">Live Scene Monitoring</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center border border-white/5"
+            className="w-12 h-12 rounded-md bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center border border-white/5"
           >
             <IconX size={24} />
           </button>
@@ -149,15 +147,15 @@ export function MultiViewModal({ open, onClose, videoRefs }: Props) {
           <div className="flex items-center gap-12">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Active Program</span>
+              <span className="text-[10px] font-semibold tracking-tight text-white/40">Active Program</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-accent" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Studio Preview</span>
+              <span className="text-[10px] font-semibold tracking-tight text-white/40">Studio Preview</span>
             </div>
             <div className="flex items-center gap-3">
               <kbd className="px-2 py-1 rounded bg-white/10 text-[9px] font-mono text-white/60">ESC</kbd>
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/40">to Close</span>
+              <span className="text-[10px] font-semibold tracking-tight text-white/40">to Close</span>
             </div>
           </div>
 
@@ -167,9 +165,9 @@ export function MultiViewModal({ open, onClose, videoRefs }: Props) {
                 store.transition('fade')
                 onClose()
               }}
-              className="h-14 px-10 rounded-2xl bg-accent text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-accent/20 group"
+              className="h-14 px-10 rounded-md bg-accent text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-3 shadow-xl group"
             >
-              <span className="text-sm font-black uppercase tracking-[0.2em]">Transition</span>
+              <span className="text-sm font-medium tracking-normal">Transition</span>
               <IconChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </button>
           )}

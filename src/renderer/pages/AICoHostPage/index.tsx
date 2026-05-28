@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import {IconRobot, IconCpu, IconBolt, IconKey, IconWorld, IconMessage, IconPower, IconActivity, IconTerminal2} from '@tabler/icons-react'
+import { useState, useEffect } from 'react'
+import { IconCpu, IconBolt, IconKey, IconWorld, IconMessage, IconActivity, IconTerminal2 } from '@tabler/icons-react'
+import { IconPower } from '../../components/ui/icons'
 import { toast } from '../../components/ui/Toast'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import type { StreamInsightSnapshot } from '../../../shared/stream-insights'
-import AICoHostIcon from '../../assets/ai-co-host.svg'
+import { AICoHostIcon } from '../../components/ui/icons/AICoHostIcon'
 
 export default function AICoHostPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -71,14 +71,14 @@ export default function AICoHostPage() {
     try {
       const response = await window.api.ai.testConnection()
       if (response.success) {
-        toast.success('Neural Link Established')
+        toast.success('Neural link established')
         setStatus('connected')
       } else {
-        toast.error(`Neural Link Failed: ${response.error}`)
+        toast.error(`Neural link failed: ${response.error}`)
         setStatus('error')
       }
     } catch (err: any) {
-      toast.error(`System Error: ${err.message}`)
+      toast.error(`System error: ${err.message}`)
       setStatus('error')
     } finally {
       setIsTesting(false)
@@ -90,101 +90,92 @@ export default function AICoHostPage() {
   return (
     <div className="app-page">
       <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <img src={AICoHostIcon} className="w-12 h-12 object-contain" alt="AI Co-Host" />
+        <div className="app-page-title-cluster">
+          <div className="app-page-title-icon">
+            <AICoHostIcon size={24} className="object-contain" />
           </div>
-          <div>
-            <h1>AI Co-Host</h1>
+          <div className="app-page-title-copy">
+            <div className="app-page-title-kicker">Rules</div>
+            <h1>AI co-host</h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="app-page-actions">
           <button
             onClick={() => {
               onUpdate('aiEnabled', !settings.ai.enabled)
-              toast.info(settings.ai.enabled ? 'AI Agent Standby' : 'AI Agent Activated')
+              toast.info(settings.ai.enabled ? 'AI agent standby' : 'AI agent activated')
             }}
-            className={`app-button !h-12 !px-8 !text-[10px] font-black tracking-[0.2em] transition-all ${
-              settings.ai.enabled ? 'bg-brand-gradient text-white shadow-glow' : 'bg-white/5 text-white/40 border-white/10'
-            }`}
+            className={settings.ai.enabled ? 'app-button-primary' : 'app-button'}
           >
-            <IconPower size={16} />
-            {settings.ai.enabled ? 'AGENT ACTIVE' : 'AGENT BYPASSED'}
+            <IconPower size={14} />
+            {settings.ai.enabled ? 'Agent active' : 'Agent bypassed'}
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-8 mt-12">
+      <div className="grid grid-cols-12 gap-4">
         {/* Main Configuration */}
-        <div className="col-span-8 space-y-8">
+        <div className="col-span-8 flex flex-col gap-4">
           <div className="app-section-card glass">
             <div className="app-section-head">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-[#d035f1]">
-                  <IconWorld size={32} />
-                </div>
-                <div>
-                  <h2>Brain Provider</h2>
-                </div>
+              <div className="flex items-center gap-3">
+                <IconWorld size={16} className="text-accent" />
+                <h2>Brain provider</h2>
               </div>
             </div>
 
-            <div className="app-section-content">
-              <div className="space-y-10">
-                <div className="grid grid-cols-2 gap-10">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Endpoint URL</label>
+            <div className="app-section-content !pt-0">
+              <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-medium text-white/55">Endpoint URL</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={settings.ai.endpoint || ''}
                         onChange={(e) => onUpdate('aiEndpoint', e.target.value)}
                         placeholder="http://localhost:11434/"
-                        className="flex-1 h-12 bg-black/40 border border-white/5 rounded-2xl px-5 text-sm font-medium outline-none focus:border-[#d035f1]/40 transition-all"
+                        className="app-input flex-1"
                       />
                       <button
                         onClick={handleTestConnection}
                         disabled={isTesting}
-                        className={`h-12 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                          isTesting ? 'bg-white/5 text-white/20' : 'bg-brand-gradient text-white shadow-glow'
-                        }`}
+                        className={isTesting ? 'app-button opacity-60 cursor-wait' : 'app-button-primary'}
                       >
-                        {isTesting ? 'TESTING' : 'PING'}
+                        {isTesting ? 'Testing…' : 'Ping'}
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Access Key</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-medium text-white/55">Access key</label>
                     <div className="relative">
-                      <IconKey size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20" />
+                      <IconKey size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/32" />
                       <input
                         type="password"
                         value={settings.ai.apiKey || ''}
                         onChange={(e) => onUpdate('aiApiKey', e.target.value)}
                         placeholder="••••••••••••••••"
-                        className="w-full h-12 bg-black/40 border border-white/5 rounded-2xl pl-12 pr-5 text-sm font-medium outline-none focus:border-[#d035f1]/40 transition-all"
+                        className="app-input w-full pl-9"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-6 pt-6">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-white mb-1">Neural Persona</h3>
-                    </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-                      <IconMessage size={14} className="text-[#d035f1]" />
-                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Active Template: Custom</span>
+                    <h3 className="text-[13px] font-semibold text-white">Neural persona</h3>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.04] text-white/55">
+                      <IconMessage size={12} className="text-accent" />
+                      <span className="text-[11px] font-medium">Active template: Custom</span>
                     </div>
                   </div>
 
                   <textarea
                     value={settings.ai.systemPrompt}
                     onChange={(e) => onUpdate('aiSystemPrompt', e.target.value)}
-                    className="w-full bg-black/40 border border-white/5 rounded-3xl p-8 text-sm leading-relaxed font-medium outline-none focus:border-[#d035f1]/40 min-h-[280px] resize-none custom-scrollbar transition-all"
+                    className="app-input w-full !p-4 text-[13px] leading-relaxed min-h-[240px] resize-none custom-scrollbar"
                     placeholder="You are a witty AI co-host named ILY..."
                   />
                 </div>
@@ -194,113 +185,105 @@ export default function AICoHostPage() {
         </div>
 
         {/* Intelligence Metrics */}
-        <div className="col-span-4 space-y-8">
+        <div className="col-span-4 flex flex-col gap-4">
           <div className="app-section-card glass">
             <div className="app-section-head">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-[#d035f1]">
-                  <IconCpu size={32} />
-                </div>
-                <div>
-                  <h2>Parameters</h2>
-                </div>
+              <div className="flex items-center gap-3">
+                <IconCpu size={16} className="text-accent" />
+                <h2>Parameters</h2>
               </div>
             </div>
 
-            <div className="app-section-content">
-              <div className="space-y-10">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Response Depth</span>
-                    <span className="text-[10px] font-mono text-[#d035f1]">{settings.ai.maxTokens} tokens</span>
+            <div className="app-section-content !pt-0">
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-medium text-white/55">Response depth</span>
+                    <span className="text-[11px] font-mono text-accent tabular-nums">{settings.ai.maxTokens} tokens</span>
                   </div>
                   <input
                     type="range" min="64" max="4096" step="64"
                     value={settings.ai.maxTokens}
                     onChange={(e) => onUpdate('aiMaxTokens', parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d035f1]"
+                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-[#19c8ff]"
                   />
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Temperature</span>
-                    <span className="text-[10px] font-mono text-[#d035f1]">0.7</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-medium text-white/55">Temperature</span>
+                    <span className="text-[11px] font-mono text-accent tabular-nums">0.7</span>
                   </div>
                   <input
                     type="range" min="0" max="1" step="0.1" value="0.7"
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d035f1]"
+                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-[#19c8ff]"
                   />
                 </div>
               </div>
 
-              <div className="mt-12 pt-8 border-t border-white/5">
-                <div className="flex items-center gap-3 mb-6">
-                  <IconActivity size={14} className="text-white/20" />
-                  <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Neural Status</span>
+              <div className="mt-5 pt-4 border-t border-white/[0.05]">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <IconActivity size={13} className="text-white/55" />
+                  <span className="text-[11px] font-medium text-white/55">Neural status</span>
                 </div>
-                <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full animate-pulse ${status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{status === 'connected' ? 'Established' : 'Disconnected'}</span>
+                <div className="flex items-center justify-between px-3 py-2 rounded-md bg-white/[0.025]">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-success animate-pulse' : 'bg-danger'}`} />
+                    <span className="text-[12px] font-medium text-white">{status === 'connected' ? 'Established' : 'Disconnected'}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-white/20">Latency: 42ms</span>
+                  <span className="text-[11px] font-mono text-white/55 tabular-nums">42ms</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="app-section-card glass !bg-[#d035f1]/5 !border-[#d035f1]/10">
+          <div className="app-section-card glass">
             <div className="app-section-head">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center text-[#d035f1]">
-                  <IconBolt size={32} />
-                </div>
-                <div>
-                  <h2>Engagement</h2>
-                </div>
+              <div className="flex items-center gap-3">
+                <IconBolt size={16} className="text-accent" />
+                <h2>Engagement</h2>
               </div>
             </div>
 
-            <div className="app-section-content">
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                <InsightStat label="Chat/Min" value={insights?.chatPerMinute?.toFixed(1) ?? '0.0'} />
+            <div className="app-section-content !pt-0">
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <InsightStat label="Chat/min" value={insights?.chatPerMinute?.toFixed(1) ?? '0.0'} />
                 <InsightStat label="Active" value={String(insights?.activeViewers ?? 0)} />
                 <InsightStat label="Trend" value={insights?.trend ?? 'quiet'} />
               </div>
 
-              <div className="space-y-4">
-                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-start gap-3">
-                    <IconTerminal2 size={15} className="mt-0.5 text-[#d035f1]" />
-                    <p className="text-xs text-white/50 leading-relaxed font-medium">
+              <div className="flex flex-col gap-3">
+                <div className="p-3 rounded-md bg-white/[0.025]">
+                  <div className="flex items-start gap-2.5">
+                    <IconTerminal2 size={14} className="mt-0.5 text-accent shrink-0" />
+                    <p className="text-[13px] text-white/55 leading-relaxed">
                       {insights?.recommendation || 'Waiting for stream events before recommending the next move.'}
                     </p>
                   </div>
                 </div>
 
-                <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-3">Top Terms</p>
-                  <div className="flex flex-wrap gap-2">
+                <div className="p-3 rounded-md bg-white/[0.025]">
+                  <p className="text-[11px] font-medium text-white/55 mb-2">Top terms</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {(insights?.topTerms.length ? insights.topTerms : ['waiting']).map((term) => (
-                      <span key={term} className="rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/45">
+                      <span key={term} className="rounded bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-white/55">
                         {term}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-3">Top Chatters</p>
-                  <div className="space-y-2">
+                <div className="p-3 rounded-md bg-white/[0.025]">
+                  <p className="text-[11px] font-medium text-white/55 mb-2">Top chatters</p>
+                  <div className="flex flex-col gap-1.5">
                     {(insights?.topChatters.length ? insights.topChatters : []).map((chatter) => (
-                      <div key={`${chatter.platform}:${chatter.username}`} className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-white/55">{chatter.displayName}</span>
-                        <span className="font-mono text-white/25">{chatter.count}</span>
+                      <div key={`${chatter.platform}:${chatter.username}`} className="flex items-center justify-between text-[12px]">
+                        <span className="font-medium text-white">{chatter.displayName}</span>
+                        <span className="font-mono text-white/55 tabular-nums">{chatter.count}</span>
                       </div>
                     ))}
                     {!insights?.topChatters.length && (
-                      <p className="text-xs font-medium text-white/25">No chatter data yet.</p>
+                      <p className="text-[12px] font-normal text-white/32">No chatter data yet.</p>
                     )}
                   </div>
                 </div>
@@ -315,10 +298,9 @@ export default function AICoHostPage() {
 
 function InsightStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/5 bg-black/30 p-3">
-      <p className="text-[9px] font-black uppercase tracking-widest text-white/20">{label}</p>
-      <p className="mt-2 truncate text-sm font-black text-white/70">{value}</p>
+    <div className="rounded-md bg-white/[0.025] p-2.5">
+      <p className="text-[11px] font-medium text-white/55 leading-none">{label}</p>
+      <p className="mt-1.5 truncate text-[16px] font-semibold text-white tabular-nums tracking-tight leading-none">{value}</p>
     </div>
   )
 }
-

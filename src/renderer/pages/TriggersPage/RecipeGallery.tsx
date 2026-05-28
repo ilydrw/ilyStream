@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import {
-  IconAlertCircle,
-  IconBook2,
-  IconCheck,
-  IconCopy,
-  IconEdit,
-  IconFileImport,
-  IconPlayerPlay,
-  IconPlus,
-  IconShieldCheck,
-  IconSparkles,
-  IconTemplate,
-  IconTrash,
-  IconX
-} from '@tabler/icons-react'
+import { IconAlertCircle, IconBook2, IconEdit, IconFileImport, IconShieldCheck, IconSparkles, IconTemplate } from '@tabler/icons-react'
+import { IconCheck, IconCopy, IconPlayerPlay, IconPlus, IconTrash, IconX } from '../../components/ui/icons'
 import type { TriggerRule } from '../../../main/triggers/trigger-types'
 import {
   automationRecipes,
@@ -191,11 +178,7 @@ export function RecipeGallery({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {notice && (
-        <div className={`rounded-xl border px-4 py-3 text-xs font-bold flex items-center gap-3 ${
-          notice.tone === 'ok'
-            ? 'border-success/25 bg-success/10 text-success'
-            : 'border-warning/25 bg-warning/10 text-warning'
-        }`}>
+        <div className={`rounded-xl border px-4 py-3 text-xs font-semibold flex items-center gap-3 ${ notice.tone === 'ok' ? 'border-success/25 bg-success/10 text-success' : 'border-warning/25 bg-warning/10 text-warning' }`}>
           {notice.tone === 'ok' ? <IconCheck size={16} /> : <IconAlertCircle size={16} />}
           {notice.text}
         </div>
@@ -209,7 +192,7 @@ export function RecipeGallery({
                 <IconTemplate size={30} />
               </div>
               <div>
-                <h2 className="text-sm font-black tracking-tight">Recipe Gallery</h2>
+                <h2 className="text-sm font-semibold tracking-tight">Recipe Gallery</h2>
                 <p>Install proven event setups, customize them, then test the exact route in Event Lab.</p>
               </div>
             </div>
@@ -218,11 +201,7 @@ export function RecipeGallery({
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`h-9 px-3 rounded-lg border text-[10px] font-black uppercase tracking-normal transition-all ${
-                    selectedCategory === category
-                      ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white'
-                      : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white'
-                  }`}
+                  className={`h-9 px-3 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ selectedCategory === category ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white' }`}
                 >
                   {category}
                 </button>
@@ -256,18 +235,18 @@ export function RecipeGallery({
         <aside className="app-section-card glass !p-0 overflow-hidden">
           <div className="app-section-head">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-normal text-white/30">Visual Builder</p>
-              <h2 className="text-sm font-black tracking-tight text-white">{selectedRecipe.name}</h2>
+              <p className="text-[10px] font-semibold tracking-normal text-white/30">Visual Builder</p>
+              <h2 className="text-sm font-semibold tracking-tight text-white">{selectedRecipe.name}</h2>
             </div>
-            <NavLink to="/event-lab" className="app-button !h-9 !px-3 text-[10px] font-black">
+            <NavLink to="/event-lab" className="app-button !h-9 !px-3 text-[10px] font-semibold">
               Event Lab
             </NavLink>
           </div>
 
           <div className="p-5 space-y-5">
             <div className={`rounded-xl border p-4 ${ACCENT_STYLES[selectedRecipe.accent]}`}>
-              <p className="text-[10px] font-black uppercase tracking-normal opacity-70">{selectedRecipe.category}</p>
-              <p className="mt-2 text-sm font-bold text-white">{selectedRecipe.summary}</p>
+              <p className="text-[10px] font-semibold tracking-normal opacity-70">{selectedRecipe.category}</p>
+              <p className="mt-2 text-sm font-semibold text-white">{selectedRecipe.summary}</p>
               <p className="mt-2 text-xs text-white/45 leading-relaxed">{selectedRecipe.outcome}</p>
             </div>
 
@@ -276,7 +255,7 @@ export function RecipeGallery({
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => onCustomizeRecipe(selectedRecipe)}
-                className="app-button !h-10 text-[10px] font-black uppercase tracking-normal"
+                className="app-button !h-10 text-[10px] font-semibold tracking-normal"
               >
                 <IconEdit size={14} className="mr-2" />
                 Customize
@@ -286,7 +265,7 @@ export function RecipeGallery({
                   await onTestRecipe(selectedRecipe)
                   setNotice({ tone: 'ok', text: `Fired a ${getRecipeEventLabel(selectedRecipe)} test event.` })
                 })}
-                className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal"
+                className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal"
               >
                 <IconPlayerPlay size={14} className="mr-2" />
                 Test
@@ -303,7 +282,7 @@ export function RecipeGallery({
               <IconShieldCheck size={30} />
             </div>
             <div>
-              <h2 className="text-sm font-black tracking-tight">Pack Library</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Pack Library</h2>
               <p>Save local packs, review starter packs, and inspect shared imports before they touch your rules.</p>
             </div>
           </div>
@@ -334,7 +313,7 @@ export function RecipeGallery({
               <div className="flex items-center gap-3 mb-4">
                 <IconBook2 size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-sm font-black text-white">Save Current Rules</h3>
+                  <h3 className="text-sm font-semibold text-white">Save Current Rules</h3>
                   <p className="text-xs text-white/35">Create a local pack from the rules currently installed.</p>
                 </div>
               </div>
@@ -364,11 +343,11 @@ export function RecipeGallery({
                   placeholder="tags, comma, separated"
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={saveCurrentPack} className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal">
+                  <button onClick={saveCurrentPack} className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal">
                     <IconPlus size={14} className="mr-2" />
                     Save Pack
                   </button>
-                  <button onClick={() => void copyPack()} className="app-button !h-10 text-[10px] font-black uppercase tracking-normal">
+                  <button onClick={() => void copyPack()} className="app-button !h-10 text-[10px] font-semibold tracking-normal">
                     <IconCopy size={14} className="mr-2" />
                     Copy
                   </button>
@@ -380,7 +359,7 @@ export function RecipeGallery({
               <div className="flex items-center gap-3 mb-4">
                 <IconFileImport size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-sm font-black text-white">Import Review</h3>
+                  <h3 className="text-sm font-semibold text-white">Import Review</h3>
                   <p className="text-xs text-white/35">Paste shared `.ilypack` JSON. You will review it before import.</p>
                 </div>
               </div>
@@ -393,7 +372,7 @@ export function RecipeGallery({
               <button
                 onClick={reviewPastedPack}
                 disabled={packText.trim().length === 0}
-                className="app-button-primary mt-3 w-full !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-40"
+                className="app-button-primary mt-3 w-full !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-40"
               >
                 <IconShieldCheck size={14} className="mr-2" />
                 Review Pack
@@ -410,7 +389,7 @@ export function RecipeGallery({
               <IconSparkles size={28} />
             </div>
             <div>
-              <h2 className="text-sm font-black tracking-tight">One-Click Test Loop</h2>
+              <h2 className="text-sm font-semibold tracking-tight">One-Click Test Loop</h2>
               <p>Install a recipe, customize it if needed, fire a synthetic event, and inspect every downstream packet.</p>
             </div>
           </div>
@@ -418,8 +397,8 @@ export function RecipeGallery({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {['Pick Recipe', 'Customize Rule', 'Run Test Event', 'Inspect Event Lab'].map((label, index) => (
             <div key={label} className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
-              <p className="text-[10px] font-black uppercase tracking-normal text-white/20">Step {index + 1}</p>
-              <p className="mt-2 text-sm font-black text-white/75">{label}</p>
+              <p className="text-[10px] font-semibold tracking-normal text-white/20">Step {index + 1}</p>
+              <p className="mt-2 text-sm font-semibold text-white/75">{label}</p>
             </div>
           ))}
         </div>
@@ -459,23 +438,19 @@ function RecipeCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 transition-all ${
-        selected
-          ? 'border-[#d035f1]/45 bg-[#d035f1]/10'
-          : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]'
-      }`}
+      className={`rounded-xl border p-4 transition-all ${ selected ? 'border-[#d035f1]/45 bg-[#d035f1]/10' : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]' }`}
       onMouseEnter={onSelect}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase tracking-normal ${ACCENT_STYLES[recipe.accent]}`}>
+            <span className={`rounded-md border px-2 py-1 text-[9px] font-semibold tracking-normal ${ACCENT_STYLES[recipe.accent]}`}>
               {recipe.category}
             </span>
-            <span className="text-[9px] font-black uppercase tracking-normal text-white/25">{recipe.difficulty}</span>
-            {installed && <span className="text-[9px] font-black uppercase tracking-normal text-success">Installed</span>}
+            <span className="text-[9px] font-semibold tracking-normal text-white/25">{recipe.difficulty}</span>
+            {installed && <span className="text-[9px] font-semibold tracking-normal text-success">Installed</span>}
           </div>
-          <h3 className="mt-3 text-base font-black text-white tracking-tight">{recipe.name}</h3>
+          <h3 className="mt-3 text-base font-semibold text-white tracking-tight">{recipe.name}</h3>
           <p className="mt-2 text-xs text-white/42 leading-relaxed">{recipe.summary}</p>
         </div>
         <button
@@ -490,7 +465,7 @@ function RecipeCard({
 
       <div className="mt-4 flex flex-wrap gap-1.5">
         {recipe.tags.map((tag) => (
-          <span key={tag} className="rounded-md bg-black/25 border border-white/[0.06] px-2 py-1 text-[9px] font-bold text-white/28">
+          <span key={tag} className="rounded-md bg-black/25 border border-white/[0.06] px-2 py-1 text-[9px] font-semibold text-white/28">
             {tag}
           </span>
         ))}
@@ -500,7 +475,7 @@ function RecipeCard({
         <button
           onClick={onInstall}
           disabled={busy}
-          className="app-button-primary !h-9 text-[10px] font-black uppercase tracking-normal disabled:opacity-40"
+          className="app-button-primary !h-9 text-[10px] font-semibold tracking-normal disabled:opacity-40"
         >
           <IconPlus size={13} className="mr-1.5" />
           Install
@@ -508,7 +483,7 @@ function RecipeCard({
         <button
           onClick={onCustomize}
           disabled={busy}
-          className="app-button !h-9 text-[10px] font-black uppercase tracking-normal disabled:opacity-40"
+          className="app-button !h-9 text-[10px] font-semibold tracking-normal disabled:opacity-40"
         >
           <IconEdit size={13} className="mr-1.5" />
           Edit
@@ -536,11 +511,11 @@ function PackShelf({
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-black text-white">{title}</h3>
-        <span className="text-[10px] font-black uppercase tracking-normal text-white/25">{packs.length} pack(s)</span>
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <span className="text-[10px] font-semibold tracking-normal text-white/25">{packs.length} pack(s)</span>
       </div>
       {packs.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-white/[0.025] p-5 text-sm font-bold text-white/25">
+        <div className="rounded-xl border border-white/10 bg-white/[0.025] p-5 text-sm font-semibold text-white/25">
           {emptyText}
         </div>
       ) : (
@@ -575,23 +550,23 @@ function PackCard({
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="text-sm font-black text-white truncate">{pack.metadata.name}</h4>
-          <p className="mt-1 text-[10px] font-bold text-white/28">by {pack.metadata.author}</p>
+          <h4 className="text-sm font-semibold text-white truncate">{pack.metadata.name}</h4>
+          <p className="mt-1 text-[10px] font-semibold text-white/28">by {pack.metadata.author}</p>
         </div>
-        <span className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-black uppercase tracking-normal text-white/28 shrink-0">
+        <span className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-semibold tracking-normal text-white/28 shrink-0">
           {pack.rules.length} rules
         </span>
       </div>
       <p className="mt-3 text-xs text-white/42 leading-relaxed line-clamp-2">{pack.metadata.description}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {pack.metadata.tags.slice(0, 4).map((tag) => (
-          <span key={tag} className="rounded-md bg-black/25 border border-white/[0.06] px-2 py-1 text-[9px] font-bold text-white/28">
+          <span key={tag} className="rounded-md bg-black/25 border border-white/[0.06] px-2 py-1 text-[9px] font-semibold text-white/28">
             {tag}
           </span>
         ))}
       </div>
       <div className="mt-4 flex items-center gap-2">
-        <button onClick={onReview} className="app-button-primary !h-9 flex-1 text-[10px] font-black uppercase tracking-normal">
+        <button onClick={onReview} className="app-button-primary !h-9 flex-1 text-[10px] font-semibold tracking-normal">
           Review
         </button>
         <button onClick={onCopy} className="app-button !h-9 !w-9 !p-0" title="Copy pack">
@@ -623,13 +598,13 @@ function PackReviewModal({
   const highRiskCount = review.risks.filter((risk) => risk.severity === 'high').length
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-2xl border border-white/10 bg-background shadow-2xl">
+      <div className="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-md border border-white/10 bg-background shadow-2xl">
         <div className="border-b border-white/10 p-5 flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-normal text-white/30">
+            <p className="text-[10px] font-semibold tracking-normal text-white/30">
               {source === 'paste' ? 'Shared Pack Review' : source === 'starter' ? 'Starter Pack Review' : 'Local Pack Review'}
             </p>
-            <h3 className="mt-1 text-xl font-black text-white">{review.pack.metadata.name}</h3>
+            <h3 className="mt-1 text-xl font-semibold text-white">{review.pack.metadata.name}</h3>
             <p className="mt-1 text-sm text-white/45">{review.pack.metadata.description}</p>
           </div>
           <button onClick={onClose} className="app-button !h-9 !w-9 !p-0">
@@ -650,14 +625,14 @@ function PackReviewModal({
             <div className="rounded-xl border border-warning/20 bg-warning/10 p-4">
               <div className="flex items-center gap-2 text-warning mb-3">
                 <IconAlertCircle size={16} />
-                <p className="text-xs font-black uppercase tracking-normal">Review risky actions before importing</p>
+                <p className="text-xs font-semibold tracking-normal">Review risky actions before importing</p>
               </div>
               <div className="space-y-2">
                 {review.risks.map((risk, index) => (
                   <div key={`${risk.ruleName}-${risk.actionType}-${index}`} className="flex items-start gap-2">
                     <RiskBadge risk={risk} />
                     <p className="text-xs text-white/62 leading-relaxed">
-                      <span className="font-bold text-white/80">{risk.ruleName}</span>: {risk.message}
+                      <span className="font-semibold text-white/80">{risk.ruleName}</span>: {risk.message}
                     </p>
                   </div>
                 ))}
@@ -671,11 +646,11 @@ function PackReviewModal({
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-black text-white">{item.rule.name}</h4>
-                      {item.duplicateName && <span className="text-[9px] font-black uppercase tracking-normal text-warning">duplicate name</span>}
-                      {item.validationErrors.length > 0 && <span className="text-[9px] font-black uppercase tracking-normal text-danger">needs fixes</span>}
+                      <h4 className="text-sm font-semibold text-white">{item.rule.name}</h4>
+                      {item.duplicateName && <span className="text-[9px] font-semibold tracking-normal text-warning">duplicate name</span>}
+                      {item.validationErrors.length > 0 && <span className="text-[9px] font-semibold tracking-normal text-danger">needs fixes</span>}
                     </div>
-                    <p className="mt-1 text-[10px] font-bold text-white/28">
+                    <p className="mt-1 text-[10px] font-semibold text-white/28">
                       {item.rule.platforms.join(', ')} • {item.rule.conditions.length} condition(s) • {item.rule.actions.length} action(s)
                     </p>
                   </div>
@@ -684,7 +659,7 @@ function PackReviewModal({
                 {item.validationErrors.length > 0 && (
                   <div className="mt-3 rounded-lg border border-danger/25 bg-danger/10 p-3">
                     {item.validationErrors.map((error) => (
-                      <p key={error} className="text-xs font-bold text-danger">{error}</p>
+                      <p key={error} className="text-xs font-semibold text-danger">{error}</p>
                     ))}
                   </div>
                 )}
@@ -699,13 +674,13 @@ function PackReviewModal({
         </div>
 
         <div className="border-t border-white/10 p-4 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-normal">
+          <button onClick={onClose} className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-normal">
             Cancel
           </button>
           <button
             onClick={onImport}
             disabled={!review.canImport || isImporting}
-            className="app-button-primary !h-10 !px-5 text-[10px] font-black uppercase tracking-normal disabled:opacity-40"
+            className="app-button-primary !h-10 !px-5 text-[10px] font-semibold tracking-normal disabled:opacity-40"
           >
             {isImporting ? 'Importing...' : highRiskCount > 0 ? 'Import Reviewed Pack' : 'Import Pack'}
           </button>
@@ -741,8 +716,8 @@ function FlowBlock({ eyebrow, title, items }: { eyebrow: string; title: string; 
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 p-4">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-[10px] font-black uppercase tracking-normal text-white/25">{eyebrow}</p>
-        <p className="text-xs font-black text-white/70">{title}</p>
+        <p className="text-[10px] font-semibold tracking-normal text-white/25">{eyebrow}</p>
+        <p className="text-xs font-semibold text-white/70">{title}</p>
       </div>
       <div className="mt-3 space-y-2">
         {items.map((item, index) => (
@@ -759,7 +734,7 @@ function FlowBlock({ eyebrow, title, items }: { eyebrow: string; title: string; 
 function SummaryList({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
-      <p className="text-[10px] font-black uppercase tracking-normal text-white/24 mb-2">{title}</p>
+      <p className="text-[10px] font-semibold tracking-normal text-white/24 mb-2">{title}</p>
       <div className="space-y-1.5">
         {items.map((item, index) => (
           <p key={`${title}-${index}`} className="text-xs text-white/48 leading-relaxed">{item}</p>
@@ -778,7 +753,7 @@ function RiskBadge({ risk }: { risk: RecipePackRisk }) {
         : 'border-white/10 bg-white/[0.04] text-white/40'
 
   return (
-    <span className={`rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-normal shrink-0 ${className}`}>
+    <span className={`rounded-md border px-2 py-0.5 text-[9px] font-semibold tracking-normal shrink-0 ${className}`}>
       {risk.severity}
     </span>
   )
@@ -790,8 +765,8 @@ function ReviewMetric({ label, value, tone = 'neutral' }: { label: string; value
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
-      <p className="text-[10px] font-black uppercase tracking-normal text-white/25">{label}</p>
-      <p className={`mt-2 text-2xl font-black tabular-nums ${valueClass}`}>{value.toLocaleString()}</p>
+      <p className="text-[10px] font-semibold tracking-normal text-white/25">{label}</p>
+      <p className={`mt-2 text-2xl font-semibold tabular-nums ${valueClass}`}>{value.toLocaleString()}</p>
     </div>
   )
 }

@@ -9,13 +9,17 @@ import type { SpotifySongRequest, SpotifyStatus, SpotifyTrack } from '../../shar
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
-import { SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
+import { SpotifyApiError, SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
 import { SpotifyMapper } from './mappers/spotify-mapper'
 import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
 
 const SONG_REQUEST_COMMANDS = new Set(['!sr', '!songrequest', '!play', '.play', '/play'])
 const SKIP_COMMANDS = new Set(['!skip', '!voteskip', '.skip', '/skip'])
 const RESTORE_RETRY_DELAY_MS = 30_000
+const POLL_INTERVAL_MS = 5_000
+const QUEUE_REFRESH_INTERVAL_MS = 15_000
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 30_000
+const MAX_RATE_LIMIT_BACKOFF_MS = 5 * 60_000
 
 interface SongRequestSource {
   platform?: string
@@ -43,6 +47,12 @@ export class SpotifyService extends EventEmitter {
   private restoreRetryTimer: NodeJS.Timeout | null = null
   private currentRequestId: string | null = null
   private lastQueueFetchWarningAt = 0
+  private lastRateLimitWarningAt = 0
+  private pollBackoffUntil = 0
+  private pollRateLimitBackoffMs = DEFAULT_RATE_LIMIT_BACKOFF_MS
+  private pollInFlight = false
+  private cachedQueueSnapshot: any | null = null
+  private nextQueueFetchAt = 0
 
   constructor(private db: Database, private platformManager: PlatformManager) {
     super()
@@ -120,6 +130,14 @@ export class SpotifyService extends EventEmitter {
         } catch (refreshErr: any) {
           log.warn('[Spotify] Token refresh during connect failed:', refreshErr?.message || refreshErr)
         }
+      }
+
+      if (this.isTransientSpotifyError(e)) {
+        this.connected = false
+        this.lastError = `Spotify connection failed: ${this.getErrorMessage(e)}`
+        this.emit('status', this.getStatus())
+        this.scheduleRestoreRetry(e)
+        throw e
       }
 
       // Clear invalid tokens and try fresh auth
@@ -225,7 +243,7 @@ export class SpotifyService extends EventEmitter {
       this.requestQueue.push(request)
       this.saveQueueCache()
       this.emit('queue-update', this.getQueue())
-      const queueSnapshot = await this.fetchSpotifyQueueSnapshot()
+      const queueSnapshot = await this.fetchSpotifyQueueSnapshot(true)
       this.emitNowPlaying(this.buildOverlayQueue(queueSnapshot, this.currentNowPlaying.trackId))
       this.emit('song-requested', request)
       return request
@@ -292,12 +310,19 @@ export class SpotifyService extends EventEmitter {
 
   private startPolling(): void {
     if (this.pollTimer) clearInterval(this.pollTimer)
-    this.pollTimer = setInterval(() => this.poll(), 5000)
+    this.pollTimer = setInterval(() => this.poll(), POLL_INTERVAL_MS)
     void this.poll()
   }
 
   private async poll(hasRetriedAfterRefresh = false): Promise<void> {
     if (!this.connected) return
+
+    if (Date.now() < this.pollBackoffUntil) return
+    if (!hasRetriedAfterRefresh) {
+      if (this.pollInFlight) return
+      this.pollInFlight = true
+    }
+
     try {
       const raw = await this.client.getPlaybackState()
       const state = this.mapper.mapPlaybackState(raw)
@@ -312,9 +337,17 @@ export class SpotifyService extends EventEmitter {
         queue: this.buildOverlayQueue(queueSnapshot, nowPlaying.trackId)
       }
       this.emitNowPlaying(this.currentNowPlaying.queue)
+      this.pollBackoffUntil = 0
+      this.pollRateLimitBackoffMs = DEFAULT_RATE_LIMIT_BACKOFF_MS
     } catch (e: any) {
       const message = e instanceof Error ? e.message : String(e)
-      console.error('[Spotify] Now playing poll failed:', message)
+
+      if (this.isRateLimitError(e)) {
+        this.handleRateLimitedPoll(e)
+        return
+      }
+
+      log.warn('[Spotify] Now playing poll failed:', message)
 
       if (message.includes('401') && this.refreshToken && !hasRetriedAfterRefresh) {
         try {
@@ -340,6 +373,10 @@ export class SpotifyService extends EventEmitter {
       }
 
       this.emitNowPlaying()
+    } finally {
+      if (!hasRetriedAfterRefresh) {
+        this.pollInFlight = false
+      }
     }
   }
 
@@ -434,16 +471,30 @@ export class SpotifyService extends EventEmitter {
     return queued ?? null
   }
 
-  private async fetchSpotifyQueueSnapshot(): Promise<any | null> {
+  private async fetchSpotifyQueueSnapshot(force = false): Promise<any | null> {
+    const now = Date.now()
+    if (!force && now < this.nextQueueFetchAt) {
+      return this.cachedQueueSnapshot
+    }
+
     try {
-      return await this.client.getUserQueue()
+      const snapshot = await this.client.getUserQueue()
+      this.cachedQueueSnapshot = snapshot
+      this.nextQueueFetchAt = Date.now() + QUEUE_REFRESH_INTERVAL_MS
+      return snapshot
     } catch (err) {
+      if (this.isRateLimitError(err)) {
+        this.nextQueueFetchAt = Date.now() + this.resolveRetryDelayMs(err)
+      } else {
+        this.nextQueueFetchAt = Date.now() + QUEUE_REFRESH_INTERVAL_MS
+      }
+
       const now = Date.now()
       if (now - this.lastQueueFetchWarningAt > 60_000) {
         this.lastQueueFetchWarningAt = now
         log.warn('[Spotify] Queue fetch failed; falling back to local request order:', this.getErrorMessage(err))
       }
-      return null
+      return this.cachedQueueSnapshot
     }
   }
 
@@ -639,8 +690,55 @@ export class SpotifyService extends EventEmitter {
     this.restoreRetryTimer = null
   }
 
+  private handleRateLimitedPoll(error: unknown): void {
+    const delayMs = this.resolveRetryDelayMs(error, this.pollRateLimitBackoffMs)
+    const hasServerRetryAfter = error instanceof SpotifyApiError && error.retryAfterMs !== undefined
+
+    this.pollBackoffUntil = Date.now() + delayMs
+    this.pollRateLimitBackoffMs = hasServerRetryAfter
+      ? DEFAULT_RATE_LIMIT_BACKOFF_MS
+      : Math.min(delayMs * 2, MAX_RATE_LIMIT_BACKOFF_MS)
+
+    const retrySeconds = Math.max(1, Math.ceil(delayMs / 1000))
+    this.lastError = `Spotify rate limit hit. Retrying now playing in ${retrySeconds}s.`
+
+    const now = Date.now()
+    if (now - this.lastRateLimitWarningAt > 60_000) {
+      this.lastRateLimitWarningAt = now
+      log.warn(`[Spotify] Rate limited by Spotify; backing off now-playing polling for ${retrySeconds}s.`)
+    }
+
+    const queue = this.currentNowPlaying.queue?.length > 0
+      ? this.currentNowPlaying.queue
+      : this.getQueue()
+    const hasTrack = Boolean(this.currentNowPlaying.trackId || this.currentNowPlaying.trackName)
+
+    this.currentNowPlaying = {
+      ...this.currentNowPlaying,
+      status: hasTrack ? this.currentNowPlaying.status : 'error',
+      isRefreshing: false,
+      queue
+    }
+    this.emit('status', this.getStatus())
+    this.emitNowPlaying(queue)
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    if (error instanceof SpotifyApiError) return error.status === 429
+    return /\b429\b/.test(this.getErrorMessage(error))
+  }
+
+  private resolveRetryDelayMs(error: unknown, fallbackMs = DEFAULT_RATE_LIMIT_BACKOFF_MS): number {
+    const retryAfterMs = error instanceof SpotifyApiError ? error.retryAfterMs : undefined
+    const delayMs = retryAfterMs ?? fallbackMs
+    return Math.min(MAX_RATE_LIMIT_BACKOFF_MS, Math.max(POLL_INTERVAL_MS, delayMs))
+  }
+
   private isTransientSpotifyError(error: unknown): boolean {
     const message = this.getErrorMessage(error)
+    if (error instanceof SpotifyApiError && [408, 429, 500, 502, 503, 504].includes(error.status)) {
+      return true
+    }
     return (
       /\b(?:408|429|500|502|503|504)\b/.test(message) ||
       /timeout|timed out|network|fetch failed|econnreset|etimedout|disconnect|reset before headers/i.test(message)

@@ -7,7 +7,6 @@ export class FFmpegArgsBuilder {
     if (audioFormat === 'f32le') {
       return [
         '-thread_queue_size', '2048',
-        '-use_wallclock_as_timestamps', '1',
         '-f', 'f32le',
         '-ar', String(sampleRate),
         '-ac', '2',
@@ -35,7 +34,6 @@ export class FFmpegArgsBuilder {
       '-fflags', 'nobuffer+genpts',
       '-flags', 'low_delay',
       '-thread_queue_size', '1024',
-      '-use_wallclock_as_timestamps', '1',
       '-f', 'image2pipe',
       '-s', `${width}x${height}`,
       '-framerate', String(fps),
@@ -52,7 +50,6 @@ export class FFmpegArgsBuilder {
       '-fflags', 'nobuffer+genpts',
       '-flags', 'low_delay',
       '-thread_queue_size', '2048',
-      '-use_wallclock_as_timestamps', '1',
       '-f', 'h264',
       '-framerate', String(fps),
       '-i', 'pipe:0',
@@ -108,7 +105,7 @@ export class FFmpegArgsBuilder {
       ]),
       // x264 VBV buffer 2× bitrate gives the encoder room to vary bitrate
       // across complex/simple frames without forcing keyframes or lowering quality.
-      '-bufsize', `${config.bitrateKbps * 2}k`,
+      ...(copyEncodedVideo ? [] : ['-bufsize', `${config.bitrateKbps * 2}k`]),
       fullUrl
     ]
   }

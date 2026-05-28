@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import { describe, expect, it, vi } from 'vitest'
 import { EventOrchestrator } from './event-orchestrator'
-import type { ChatEvent } from '../platforms/types'
+import type { ChatEvent, LikeEvent } from '../platforms/types'
 
 function makeChat(message: string): ChatEvent {
   return {
@@ -21,6 +21,27 @@ function makeChat(message: string): ChatEvent {
     message,
     emotes: [],
     raw: {}
+  }
+}
+
+function makeLike(): LikeEvent {
+  return {
+    id: 'like-1',
+    platform: 'tiktok',
+    timestamp: new Date(),
+    type: 'like',
+    raw: {},
+    user: {
+      id: 'viewer-id',
+      username: 'viewer',
+      displayName: 'Viewer',
+      isModerator: false,
+      isSubscriber: false,
+      isVip: false,
+      badges: []
+    },
+    likeCount: 1,
+    totalLikes: 10
   }
 }
 
@@ -56,6 +77,7 @@ function makeOrchestrator(
   }
   const ttsEngine = { processEvent: vi.fn(), speak: vi.fn() }
   const economyService = Object.assign(new EventEmitter(), {
+    registerLike: vi.fn(),
     claimPointsDrop: vi.fn(),
     getPoints: vi.fn().mockResolvedValue(0),
     spendPoints: vi.fn().mockResolvedValue(false),
@@ -115,6 +137,15 @@ describe('EventOrchestrator Spotify handling', () => {
     const { platformManager, ttsEngine } = makeOrchestrator(true)
 
     platformManager.emit('event', makeChat('!play current song'))
+    await flushAsyncHandlers()
+
+    expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+  })
+
+  it('does not route high-volume non-speech events to TTS', async () => {
+    const { platformManager, ttsEngine } = makeOrchestrator(false)
+
+    platformManager.emit('event', makeLike())
     await flushAsyncHandlers()
 
     expect(ttsEngine.processEvent).not.toHaveBeenCalled()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {IconChevronRight} from '@tabler/icons-react'
+import { IconChevronRight } from './icons'
 
 export interface ContextMenuItem {
   id: string
@@ -78,7 +78,7 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
         exit={{ opacity: 0, scale: 0.98, y: -4 }}
         transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
         style={{ left: position.x, top: position.y }}
-        className="fixed min-w-[220px] bg-[#0c0d10]/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_30px_80px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.08)] overflow-hidden p-1.5 z-context"
+        className="fixed min-w-[220px] bg-[#0c0d10]/95 border border-white/10 rounded-md shadow-[0_30px_80px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.08)] overflow-hidden p-1.5 z-context"
       >
         {items.map((item, idx) => (
           <div key={item.id + idx}>
@@ -102,12 +102,7 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
                     setActiveSubmenu(null)
                   }
                 }}
-                className={`
-                  w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition-all duration-200 group
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
-                  ${item.danger ? 'text-red-400 hover:bg-red-500/20' : 'text-white/80 hover:bg-white/[0.08] hover:text-white'}
-                  ${item.disabled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer active:scale-[0.97]'}
-                `}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${item.danger ? 'text-red-400 hover:bg-red-500/20' : 'text-white/80 hover:bg-white/[0.08] hover:text-white'} ${item.disabled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer active:scale-[0.97]'}`}
               >
                 <div className="flex items-center gap-3.5">
                   {item.icon && (

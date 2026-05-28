@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import {IconExternalLink, IconCircleCheck, IconCopy} from '@tabler/icons-react'
+import { IconExternalLink, IconCircleCheck, IconCopy } from '../../../components/ui/icons'
 
 export function OverlayUrlCard() {
   const [url, setUrl] = useState<string | null>(null)
@@ -36,11 +36,11 @@ export function OverlayUrlCard() {
   }
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
+    <div className="rounded-md border border-white/5 bg-white/[0.02] p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <IconExternalLink size={14} className="text-white/20" />
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Overlay Source</span>
+          <span className="text-[10px] font-semibold text-white/40 tracking-normal">Overlay Source</span>
         </div>
       </div>
 
@@ -60,7 +60,7 @@ export function OverlayUrlCard() {
       <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 flex gap-3">
         <IconExternalLink size={14} className="text-accent/60 shrink-0 mt-0.5" />
         <p className="text-[10px] text-white/40 leading-relaxed">
-          The overlay is active in your broadcast software. Use the <strong className="text-white/60 uppercase tracking-widest text-[9px]">Test</strong> buttons in the route panel to trigger live alerts and audio previews.
+          The overlay is active in your broadcast software. Use the <strong className="text-white/60 tracking-tight text-[9px]">Test</strong> buttons in the route panel to trigger live alerts and audio previews.
         </p>
       </div>
     </div>

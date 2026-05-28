@@ -1,17 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import {
-  IconGripVertical,
-  IconHeadphones,
-  IconLock,
-  IconMicrophone,
-  IconMusic,
-  IconPlus,
-  IconRadio,
-  IconVolume,
-  IconVolume2,
-  IconVolumeOff,
-  IconActivity
-} from '@tabler/icons-react'
+import { IconGripVertical, IconHeadphones, IconLock, IconMicrophone, IconMusic, IconRadio, IconVolume, IconVolume2, IconVolumeOff, IconActivity } from '@tabler/icons-react'
+import { IconPlus } from '../../../../components/ui/icons'
 import { useStudioStore } from '../../../../stores/studio-store'
 import type { AudioSource } from '../../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../../components/ui/ContextMenu'
@@ -86,11 +75,7 @@ export function ChannelStrip({
       <div
         onClick={onSelect}
         onContextMenu={onContextMenu}
-        className={`relative w-[64px] shrink-0 rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out ${
-          selected
-            ? 'ring-0'
-            : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]'
-        }`}
+        className={`relative w-[64px] shrink-0 rounded-md flex flex-col overflow-hidden transition-all duration-300 ease-out ${ selected ? 'ring-0' : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]' }`}
         style={stripStyle}
       >
         <div className="absolute inset-y-0 left-0 w-1 opacity-80" style={{ backgroundColor: trackColor }} />
@@ -102,7 +87,7 @@ export function ChannelStrip({
           title="Double-click to expand"
         >
           <Icon size={12} style={{ color: trackColor }} />
-          <span className="text-[6px] font-black uppercase tracking-tight text-white/40 max-w-[52px] truncate text-center leading-none">
+          <span className="text-[6px] font-semibold tracking-tight text-white/40 max-w-[52px] truncate text-center leading-none">
             {(source.label || source.name).slice(0, 6)}
           </span>
         </div>
@@ -150,7 +135,7 @@ export function ChannelStrip({
 
         {/* dB readout */}
         <div className="shrink-0 text-center py-1">
-          <span className={`text-[8px] font-black tabular-nums tracking-tighter ${selected ? 'text-accent' : 'text-white/35'}`}>
+          <span className={`text-[8px] font-semibold tabular-nums tracking-tighter ${selected ? 'text-accent' : 'text-white/35'}`}>
             {db <= -59.5 ? '-∞' : `${Math.round(db)}`}
           </span>
         </div>
@@ -159,7 +144,7 @@ export function ChannelStrip({
         <div className="h-10 px-1 border-t border-white/[0.035] bg-[#090909] flex items-center justify-center gap-1">
           <button
             onClick={event => { event.stopPropagation(); onUpdate({ monitoring: !source.monitoring }) }}
-            className={`flex-1 h-7 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-brand-gradient ring-transparent text-white shadow-glow' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
+            className={`flex-1 h-7 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent ring-transparent text-white ' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
             title="Monitor"
           >
             <IconHeadphones size={12} />
@@ -183,11 +168,7 @@ export function ChannelStrip({
       onDrop={onDrop}
       onClick={onSelect}
       onContextMenu={onContextMenu}
-      className={`relative w-[140px] shrink-0 rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out ${
-        selected
-          ? 'ring-0'
-          : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]'
-      } ${dragActive ? 'opacity-40 scale-95' : ''}`}
+      className={`relative w-[140px] shrink-0 rounded-md flex flex-col overflow-hidden transition-all duration-300 ease-out ${ selected ? 'ring-0' : 'bg-white/[0.05] ring-1 ring-white/[0.1] hover:bg-white/[0.08] hover:ring-white/[0.15]' } ${dragActive ? 'opacity-40 scale-95' : ''}`}
       style={stripStyle}
     >
       <div className="absolute inset-y-0 left-0 w-1 opacity-80" style={{ backgroundColor: trackColor }} />
@@ -210,7 +191,7 @@ export function ChannelStrip({
           </span>
         )}
         <Icon size={14} className={selected || isMaster ? '' : 'text-white/28'} style={selected || isMaster ? { color: trackColor } : undefined} />
-        <span className="min-w-0 truncate text-[10px] font-black uppercase tracking-tight text-white/55">
+        <span className="min-w-0 truncate text-[10px] font-semibold tracking-tight text-white/55">
           {source.label || source.name}
         </span>
       </div>
@@ -228,11 +209,7 @@ export function ChannelStrip({
                 const current = sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo')
                 onUpdate({ channelMode: current === 'mono' ? 'stereo' : 'mono' })
               }}
-              className={`h-6 w-full rounded-md ring-1 text-[8px] font-black uppercase tracking-widest transition-all ${
-                sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo') === 'mono'
-                  ? 'bg-brand-gradient ring-transparent text-white shadow-glow'
-                  : 'bg-white/[0.03] ring-white/[0.06] text-white/28 hover:text-white/50'
-              }`}
+              className={`h-6 w-full rounded-md ring-1 text-[8px] font-semibold tracking-tight transition-all ${ sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo') === 'mono' ? 'bg-accent ring-transparent text-white ' : 'bg-white/[0.03] ring-white/[0.06] text-white/28 hover:text-white/50' }`}
               title="Toggle mono/stereo"
             >
               {sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo') === 'mono' ? 'Mono' : 'Stereo'}
@@ -246,7 +223,7 @@ export function ChannelStrip({
                 return (
                   <span
                     key={mark.label}
-                    className="absolute left-0 text-[5px] font-black text-white/40 -translate-y-1/2"
+                    className="absolute left-0 text-[5px] font-semibold text-white/40 -translate-y-1/2"
                     style={{ bottom: `${percent}%` }}
                   >
                     {mark.label}
@@ -273,11 +250,11 @@ export function ChannelStrip({
             />
           </div>
           <div className="shrink-0 flex flex-col items-center gap-1.5 pb-1">
-            <span className={`text-[10px] font-black tabular-nums tracking-tighter ${selected ? 'text-accent' : 'text-white/35'}`}>
+            <span className={`text-[10px] font-semibold tabular-nums tracking-tighter ${selected ? 'text-accent' : 'text-white/35'}`}>
               {db <= -59.5 ? '-inf' : `${db > 0.5 ? '+' : ''}${Math.round(db)}`} dB
             </span>
             {!isMaster && (
-              <span className={`w-full rounded-md ring-1 ring-white/5 px-1.5 py-0.5 text-center text-[7px] font-black uppercase tracking-tight ${getStatusClasses(status)}`}>
+              <span className={`w-full rounded-md ring-1 ring-white/5 px-1.5 py-0.5 text-center text-[7px] font-semibold tracking-tight ${getStatusClasses(status)}`}>
                 {status.label}
               </span>
             )}
@@ -288,7 +265,7 @@ export function ChannelStrip({
       <div className="h-12 px-3 border-t border-white/[0.035] bg-[#090909] flex items-center gap-2 relative z-10 shadow-[0_-4px_12px_rgba(0,0,0,0.5)]">
         <button
           onClick={event => { event.stopPropagation(); onUpdate({ monitoring: !source.monitoring }) }}
-          className={`flex-1 h-8 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-brand-gradient ring-transparent text-white shadow-glow' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
+          className={`flex-1 h-8 rounded-lg ring-1 flex items-center justify-center transition-all ${source.monitoring ? 'bg-accent ring-transparent text-white ' : 'bg-white/[0.03] ring-white/5 text-white/20 hover:text-white/45'}`}
           title="Monitor"
         >
           <IconHeadphones size={14} />
@@ -429,7 +406,7 @@ function PanControl({ value, onChange }: { value: number; onChange: (value: numb
           }}
         />
       ) : (
-        <span className="text-[7px] font-black uppercase tracking-widest text-white/20">{formatPan(value)}</span>
+        <span className="text-[7px] font-semibold tracking-tight text-white/20">{formatPan(value)}</span>
       )}
       {contextMenu && (
         <ContextMenu

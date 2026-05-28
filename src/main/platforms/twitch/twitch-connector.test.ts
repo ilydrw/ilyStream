@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TwitchConnector } from './twitch-connector'
+import { TwitchConnector, normalizeTwitchChannelName } from './twitch-connector'
 import type { ChatEvent } from '../types'
+
+describe('normalizeTwitchChannelName', () => {
+  it('accepts copied Twitch channel names with chat prefixes', () => {
+    expect(normalizeTwitchChannelName('@ily2drw')).toBe('ily2drw')
+    expect(normalizeTwitchChannelName('#Some_Channel')).toBe('some_channel')
+    expect(normalizeTwitchChannelName('  @MixedCase  ')).toBe('mixedcase')
+  })
+})
 
 describe('TwitchConnector follower enrichment', () => {
   beforeEach(() => {
@@ -74,6 +82,44 @@ describe('TwitchConnector follower enrichment', () => {
 
     expect(db.getUserStat).toHaveBeenCalledWith('twitch', 'streamfriend')
     expect(enriched.user.isFollower).toBe(true)
+  })
+
+  it('emits chat even when Twitch profile enrichment hangs', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const connector = new TwitchConnector()
+    const emitted: ChatEvent[] = []
+
+    connector.on('event', (event) => {
+      if (event.type === 'chat') emitted.push(event)
+    })
+    ;(connector as any).apiClient = {
+      channels: { getChannelFollowers: vi.fn(() => new Promise(() => undefined)) }
+    }
+    ;(connector as any).broadcasterId = '999'
+    ;(connector as any).tokenScopes = ['moderator:read:followers']
+
+    try {
+      const pending = (connector as any).emitEnriched(
+        createChatEvent({
+          id: '123',
+          username: 'streamfriend',
+          displayName: 'StreamFriend',
+          isFollower: false
+        })
+      )
+
+      await vi.advanceTimersByTimeAsync(1_600)
+      await pending
+
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0]).toEqual(expect.objectContaining({
+        platform: 'twitch',
+        type: 'chat',
+        message: 'hello'
+      }))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 

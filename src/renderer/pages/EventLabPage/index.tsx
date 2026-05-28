@@ -1,31 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import {
-  IconActivity,
-  IconAlertTriangle,
-  IconBell,
-  IconBook2,
-  IconBolt,
-  IconCircleCheck,
-  IconClock,
-  IconCopy,
-  IconDeviceDesktop,
-  IconFileImport,
-  IconFilter,
-  IconGift,
-  IconHeart,
-  IconMessage,
-  IconMusic,
-  IconPlayerPlay,
-  IconPlayerStop,
-  IconPlayerTrackNext,
-  IconRefresh,
-  IconReportAnalytics,
-  IconSend,
-  IconShare,
-  IconTrash,
-  IconUserPlus,
-  IconUsers
-} from '@tabler/icons-react'
+import { IconActivity, IconBell, IconBook2, IconBolt, IconClock, IconDeviceDesktop, IconFileImport, IconFilter, IconGift, IconHeart, IconMessage, IconMusic, IconPlayerTrackNext, IconReportAnalytics, IconSend, IconShare, IconUserPlus, IconUsers } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCircleCheck, IconCopy, IconPlayerPlay, IconPlayerStop, IconRefresh, IconTrash, IconTerminal as EventLabIcon } from '../../components/ui/icons'
 import { PageHeader } from '../../components/layout/PageHeader'
 import {
   createEventLabId,
@@ -509,11 +484,11 @@ export default function EventLabPage() {
       <PageHeader
         kicker="Diagnostics and test lab"
         title="Event Lab"
-        icon={IconBolt}
+        icon={EventLabIcon}
         description="Inspect stream events, overlay broadcasts, alert actions, audio cues, Spotify updates, and DeskThing packets as they move through ilyStream."
         actions={
           <div className="flex items-center gap-2">
-            <button className="app-button !h-11 text-xs font-bold" onClick={() => void fireEvent()}>
+            <button className="app-button !h-11 text-xs font-semibold" onClick={() => void fireEvent()}>
               <IconSend size={15} className="mr-2" />
               Fire Event
             </button>
@@ -529,7 +504,7 @@ export default function EventLabPage() {
         <section className="app-section-card glass !p-0 overflow-hidden">
           <div className="app-section-head">
             <div>
-              <h2 className="text-sm font-black text-white">Test Event Builder</h2>
+              <h2 className="text-sm font-semibold text-white">Test Event Builder</h2>
               <p>Send a realistic local event through alerts, widgets, TTS, triggers, stats, and devices.</p>
             </div>
           </div>
@@ -628,7 +603,7 @@ export default function EventLabPage() {
 
             <label className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3">
               <span>
-                <span className="block text-xs font-bold text-white/80">Suppress sound</span>
+                <span className="block text-xs font-semibold text-white/80">Suppress sound</span>
                 <span className="block text-[10px] text-white/30">Useful when testing visuals without audio.</span>
               </span>
               <input
@@ -647,7 +622,7 @@ export default function EventLabPage() {
                     key={test.type}
                     type="button"
                     onClick={() => void fireEvent({ type: test.type })}
-                    className="h-10 rounded-lg border border-white/10 bg-white/[0.03] text-[10px] font-black uppercase tracking-normal text-white/55 hover:border-[#d035f1]/40 hover:text-white transition-all"
+                    className="h-10 rounded-lg border border-white/10 bg-white/[0.03] text-[10px] font-semibold tracking-normal text-white/55 hover:border-[#d035f1]/40 hover:text-white transition-all"
                   >
                     <Icon size={14} className="inline mr-1.5 opacity-70" />
                     {test.label}
@@ -656,7 +631,7 @@ export default function EventLabPage() {
               })}
             </div>
 
-            <button onClick={() => void fireEvent()} className="app-button-primary !h-11 text-xs font-black">
+            <button onClick={() => void fireEvent()} className="app-button-primary !h-11 text-xs font-semibold">
               <IconPlayerPlay size={15} className="mr-2" />
               Run Full Test
             </button>
@@ -668,7 +643,7 @@ export default function EventLabPage() {
             <div className="flex items-center gap-3 min-w-0">
               <IconBook2 size={22} className="text-[#d035f1] shrink-0" />
               <div className="min-w-0">
-                <h2 className="text-sm font-black text-white">Event Replay Studio</h2>
+                <h2 className="text-sm font-semibold text-white">Event Replay Studio</h2>
                 <p>Capture real bursts, save them, then replay the exact timing against the local pipeline.</p>
               </div>
             </div>
@@ -676,7 +651,7 @@ export default function EventLabPage() {
 
           <div className="p-5 space-y-5">
             {replayNotice && (
-              <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-bold text-white/50">
+              <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-semibold text-white/50">
                 {replayNotice}
               </div>
             )}
@@ -684,8 +659,8 @@ export default function EventLabPage() {
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-normal text-white/30">Capture</p>
-                  <p className="text-sm font-black text-white">
+                  <p className="text-[10px] font-semibold tracking-normal text-white/30">Capture</p>
+                  <p className="text-sm font-semibold text-white">
                     {recording ? `${recording.events.length} replayable event(s)` : 'Ready to record'}
                   </p>
                 </div>
@@ -700,12 +675,12 @@ export default function EventLabPage() {
               />
               <div className="grid grid-cols-2 gap-2">
                 {!recording ? (
-                  <button onClick={startCapture} className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal">
+                  <button onClick={startCapture} className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal">
                     <IconPlayerPlay size={14} className="mr-2" />
                     Start Capture
                   </button>
                 ) : (
-                  <button onClick={stopCapture} className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal">
+                  <button onClick={stopCapture} className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal">
                     <IconPlayerStop size={14} className="mr-2" />
                     Save Capture
                   </button>
@@ -713,7 +688,7 @@ export default function EventLabPage() {
                 <button
                   onClick={discardCapture}
                   disabled={!recording}
-                  className="app-button-danger !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-35"
+                  className="app-button-danger !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-35"
                 >
                   Discard
                 </button>
@@ -723,13 +698,13 @@ export default function EventLabPage() {
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-normal text-white/30">Replay Session</p>
-                  <p className="text-sm font-black text-white truncate max-w-[250px]">
+                  <p className="text-[10px] font-semibold tracking-normal text-white/30">Replay Session</p>
+                  <p className="text-sm font-semibold text-white truncate max-w-[250px]">
                     {selectedReplaySession?.name ?? 'No saved replay'}
                   </p>
                 </div>
                 {selectedReplaySession && (
-                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase tracking-normal text-white/35">
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-semibold tracking-normal text-white/35">
                     {selectedReplaySession.events.length} events
                   </span>
                 )}
@@ -748,7 +723,7 @@ export default function EventLabPage() {
                   ))}
                 </select>
               ) : (
-                <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-3 text-xs font-bold text-white/30 mb-3">
+                <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-3 text-xs font-semibold text-white/30 mb-3">
                   No sessions yet. Start a capture, fire events, then save it.
                 </div>
               )}
@@ -767,11 +742,7 @@ export default function EventLabPage() {
                         key={speed}
                         type="button"
                         onClick={() => setReplaySpeed(speed)}
-                        className={`h-8 rounded-lg border text-[10px] font-black transition-all ${
-                          replaySpeed === speed
-                            ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white'
-                            : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white'
-                        }`}
+                        className={`h-8 rounded-lg border text-[10px] font-semibold transition-all ${ replaySpeed === speed ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white' }`}
                       >
                         {speed}x
                       </button>
@@ -783,13 +754,13 @@ export default function EventLabPage() {
                       <button
                         onClick={() => void runReplaySession(selectedReplaySession)}
                         disabled={isRunningAssertions}
-                        className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-35"
+                        className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-35"
                       >
                         <IconPlayerPlay size={14} className="mr-2" />
                         Play
                       </button>
                     ) : (
-                      <button onClick={stopReplay} className="app-button-danger !h-10 text-[10px] font-black uppercase tracking-normal">
+                      <button onClick={stopReplay} className="app-button-danger !h-10 text-[10px] font-semibold tracking-normal">
                         <IconPlayerStop size={14} className="mr-2" />
                         Stop
                       </button>
@@ -797,7 +768,7 @@ export default function EventLabPage() {
                     <button
                       onClick={() => void stepReplaySession(selectedReplaySession)}
                       disabled={Boolean(activeReplay?.running) || isRunningAssertions}
-                      className="app-button !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-35"
+                      className="app-button !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-35"
                     >
                       <IconPlayerTrackNext size={14} className="mr-2" />
                       Step
@@ -805,12 +776,12 @@ export default function EventLabPage() {
                     <button
                       onClick={() => void runReplayAssertions(selectedReplaySession)}
                       disabled={Boolean(activeReplay?.running) || isRunningAssertions}
-                      className="app-button-primary !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-35"
+                      className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-35"
                     >
                       <IconReportAnalytics size={14} className="mr-2" />
                       {isRunningAssertions ? 'Testing' : 'Run Test'}
                     </button>
-                    <button onClick={() => void copyReplaySession(selectedReplaySession)} className="app-button !h-10 text-[10px] font-black uppercase tracking-normal">
+                    <button onClick={() => void copyReplaySession(selectedReplaySession)} className="app-button !h-10 text-[10px] font-semibold tracking-normal">
                       <IconCopy size={14} className="mr-2" />
                       Copy
                     </button>
@@ -819,7 +790,7 @@ export default function EventLabPage() {
                         deleteReplaySession(selectedReplaySession.id)
                         setReplayNotice(`Deleted "${selectedReplaySession.name}".`)
                       }}
-                      className="app-button-danger !h-10 text-[10px] font-black uppercase tracking-normal"
+                      className="app-button-danger !h-10 text-[10px] font-semibold tracking-normal"
                     >
                       <IconTrash size={14} className="mr-2" />
                       Delete
@@ -828,7 +799,7 @@ export default function EventLabPage() {
 
                   {activeReplay?.sessionId === selectedReplaySession.id && (
                     <div className="mt-3 rounded-lg border border-[#d035f1]/25 bg-[#d035f1]/10 p-3">
-                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-normal text-white/55">
+                      <div className="flex items-center justify-between text-[10px] font-semibold tracking-normal text-white/55">
                         <span>{activeReplay.running ? 'Running' : 'Stepped'}</span>
                         <span>{activeReplay.index}/{activeReplay.total}</span>
                       </div>
@@ -851,7 +822,7 @@ export default function EventLabPage() {
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <IconFileImport size={16} className="text-[#d035f1]" />
-                <p className="text-xs font-black text-white">Import Replay JSON</p>
+                <p className="text-xs font-semibold text-white">Import Replay JSON</p>
               </div>
               <textarea
                 value={importText}
@@ -862,7 +833,7 @@ export default function EventLabPage() {
               <button
                 onClick={importReplayText}
                 disabled={importText.trim().length === 0}
-                className="app-button-primary mt-3 w-full !h-10 text-[10px] font-black uppercase tracking-normal disabled:opacity-35"
+                className="app-button-primary mt-3 w-full !h-10 text-[10px] font-semibold tracking-normal disabled:opacity-35"
               >
                 Review & Import
               </button>
@@ -882,7 +853,7 @@ export default function EventLabPage() {
           <section className="app-section-card glass !p-0 overflow-hidden min-h-[680px]">
             <div className="app-section-head">
               <div>
-                <h2 className="text-sm font-black text-white">Live Timeline</h2>
+                <h2 className="text-sm font-semibold text-white">Live Timeline</h2>
                 <p>Follow every event and downstream action in one place.</p>
               </div>
               <div className="flex items-center gap-2">
@@ -911,7 +882,7 @@ export default function EventLabPage() {
                   {filteredEntries.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center text-white/25">
                       <IconRefresh size={32} className="mb-3 opacity-40" />
-                      <p className="text-sm font-bold text-white/35">No matching events yet</p>
+                      <p className="text-sm font-semibold text-white/35">No matching events yet</p>
                       <p className="text-xs text-white/20 mt-1">Fire a test event or wait for live traffic.</p>
                     </div>
                   ) : (
@@ -933,7 +904,7 @@ export default function EventLabPage() {
               <aside className="bg-black/20 min-w-0">
                 <div className="p-4 border-b border-white/5 flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-normal text-white/30">Payload</p>
+                    <p className="text-[10px] font-semibold tracking-normal text-white/30">Payload</p>
                     <p className="text-xs text-white/60 truncate max-w-[220px]">{selectedEntry?.title ?? 'Nothing selected'}</p>
                   </div>
                   <button
@@ -960,7 +931,7 @@ export default function EventLabPage() {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-black uppercase tracking-normal text-white/40">{label}</span>
+      <span className="text-[10px] font-semibold tracking-normal text-white/40">{label}</span>
       {children}
     </label>
   )
@@ -996,8 +967,8 @@ function Metric({ label, value, icon: Icon }: { label: string; value: number; ic
         <Icon size={18} />
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-normal text-white/30">{label}</p>
-        <p className="text-xl font-black text-white tabular-nums">{value.toLocaleString()}</p>
+        <p className="text-[10px] font-semibold tracking-normal text-white/30">{label}</p>
+        <p className="text-xl font-semibold text-white tabular-nums">{value.toLocaleString()}</p>
       </div>
     </div>
   )
@@ -1008,9 +979,9 @@ function ReplayStat({ label, value, icon: Icon }: { label: string; value: string
     <div className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-2 min-w-0">
       <div className="flex items-center gap-1.5 text-white/25">
         <Icon size={12} />
-        <span className="text-[9px] font-black uppercase tracking-normal">{label}</span>
+        <span className="text-[9px] font-semibold tracking-normal">{label}</span>
       </div>
-      <p className="mt-1 text-xs font-black text-white/70 truncate">{value}</p>
+      <p className="mt-1 text-xs font-semibold text-white/70 truncate">{value}</p>
     </div>
   )
 }
@@ -1018,24 +989,20 @@ function ReplayStat({ label, value, icon: Icon }: { label: string; value: string
 function AssertionReportCard({ report }: { report: ReplayAssertionReport }) {
   const clean = report.failed === 0
   return (
-    <div className={`mt-3 rounded-xl border p-3 ${
-      clean
-        ? 'border-success/25 bg-success/10'
-        : 'border-danger/25 bg-danger/10'
-    }`}>
+    <div className={`mt-3 rounded-xl border p-3 ${ clean ? 'border-success/25 bg-success/10' : 'border-danger/25 bg-danger/10' }`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           {clean ? <IconCircleCheck size={16} className="text-success shrink-0" /> : <IconAlertTriangle size={16} className="text-danger shrink-0" />}
           <div className="min-w-0">
-            <p className="text-xs font-black text-white truncate">
+            <p className="text-xs font-semibold text-white truncate">
               {clean ? 'Replay Test Passed' : 'Replay Test Needs Attention'}
             </p>
-            <p className="text-[10px] font-bold text-white/35">
+            <p className="text-[10px] font-semibold text-white/35">
               {report.entriesAnalyzed} timeline entries analyzed
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-normal shrink-0">
+        <div className="flex items-center gap-2 text-[10px] font-semibold tracking-normal shrink-0">
           <span className="text-success">{report.passed} pass</span>
           <span className={report.failed > 0 ? 'text-danger' : 'text-white/25'}>{report.failed} fail</span>
           <span className={report.warnings > 0 ? 'text-warning' : 'text-white/25'}>{report.warnings} warn</span>
@@ -1062,14 +1029,14 @@ function AssertionResultRow({ result }: { result: ReplayAssertionResult }) {
     <div className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-black text-white/80">{result.label}</p>
+          <p className="text-xs font-semibold text-white/80">{result.label}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-white/42">{result.detail}</p>
         </div>
-        <span className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase tracking-normal shrink-0 ${statusClass}`}>
+        <span className={`rounded-md border px-2 py-1 text-[9px] font-semibold tracking-normal shrink-0 ${statusClass}`}>
           {result.status}
         </span>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] font-bold text-white/30">
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] font-semibold text-white/30">
         <p className="truncate">Expected: {result.expected}</p>
         <p className="truncate">Observed: {result.observed}</p>
       </div>
@@ -1093,23 +1060,19 @@ function TimelineRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left rounded-lg border p-3 transition-all ${
-        selected
-          ? 'border-[#d035f1]/50 bg-[#d035f1]/10'
-          : 'border-white/[0.06] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]'
-      }`}
+      className={`w-full text-left rounded-lg border p-3 transition-all ${ selected ? 'border-[#d035f1]/50 bg-[#d035f1]/10' : 'border-white/[0.06] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]' }`}
     >
       <div className="flex items-start gap-3">
         <div className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${tone}`} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[10px] font-black uppercase tracking-normal text-white/30 shrink-0">
+            <span className="text-[10px] font-semibold tracking-normal text-white/30 shrink-0">
               {KIND_LABELS[entry.kind]}
             </span>
-            {entry.platform && <span className="text-[10px] font-bold text-white/25 shrink-0">{entry.platform}</span>}
+            {entry.platform && <span className="text-[10px] font-semibold text-white/25 shrink-0">{entry.platform}</span>}
             <span className="text-[10px] font-mono text-white/20 ml-auto shrink-0">{formatTime(entry.timestamp)}</span>
           </div>
-          <p className="mt-1 text-sm font-bold text-white/80 truncate">{entry.title}</p>
+          <p className="mt-1 text-sm font-semibold text-white/80 truncate">{entry.title}</p>
           <p className="mt-0.5 text-xs text-white/38 truncate">{entry.detail}</p>
         </div>
         {entry.replayable && (

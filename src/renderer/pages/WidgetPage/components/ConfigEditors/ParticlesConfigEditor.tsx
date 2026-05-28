@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import {IconPlayerPlay} from '@tabler/icons-react'
+import { IconPlayerPlay } from '../../../../components/ui/icons'
 import {
   DEFAULT_PARTICLES_CONFIG,
   type ParticlesWidgetConfig,
@@ -48,12 +48,12 @@ function LayerRow({
           />
           <span className="text-lg leading-none">{emoji}</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white/90">{label}</p>
+            <p className="text-sm font-semibold text-white/90">{label}</p>
             {!enabled && <p className="text-[10px] text-white/30 mt-0.5">{description}</p>}
           </div>
         </label>
         {enabled && (
-          <span className="text-[10px] font-black uppercase tracking-widest bg-brand-gradient bg-clip-text text-transparent flex-shrink-0">
+          <span className="text-[10px] font-semibold tracking-tight bg-accent bg-clip-text text-transparent flex-shrink-0">
             Active
           </span>
         )}
@@ -258,7 +258,7 @@ export function ParticlesConfigEditor({
           Check a layer to include it. Each runs in the same overlay — one URL for all.
         </p>
         {activeCount > 0 && (
-          <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+          <span className="text-[10px] font-semibold tracking-tight text-white/40">
             {activeCount} active
           </span>
         )}

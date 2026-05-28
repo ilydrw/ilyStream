@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { IconVideo, IconStack2, IconWorld, IconTypography, IconPhoto as ImageIcon, IconChevronLeft, IconMicrophone, IconDeviceDesktop, IconVolume, IconMusic } from '@tabler/icons-react'
+import { IconVideo, IconStack2, IconWorld, IconTypography, IconPhoto as ImageIcon, IconMicrophone, IconDeviceDesktop, IconVolume, IconMusic } from '@tabler/icons-react'
+import { IconChevronLeft } from '../../../components/ui/icons'
 import type { LayerType } from '../../../../shared/studio'
 import { Modal } from '../../../components/ui/Modal'
 
@@ -175,13 +176,13 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                 <button
                   key={st.type}
                   onClick={() => handleSelectType(st.type)}
-                  className="flex items-center gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-accent/30 hover:bg-white/[0.06] transition-all group text-left cursor-pointer"
+                  className="flex items-center gap-4 p-5 rounded-md bg-white/[0.03] border border-white/5 hover:border-accent/30 hover:bg-white/[0.06] transition-all group text-left cursor-pointer"
                 >
                   <div className={`w-12 h-12 rounded-xl ${st.bgClass} flex items-center justify-center ${st.iconClass} transition-transform`}>
                     <Icon size={24} />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">{st.label}</div>
+                    <div className="font-semibold text-white text-sm">{st.label}</div>
                     <div className="text-2xs text-white/30">{st.desc}</div>
                   </div>
                 </button>
@@ -191,18 +192,18 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
 
           {widgets.length > 0 && (
             <div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/20 mb-4 px-1">Quick Add Widgets</h3>
+              <h3 className="text-xs font-medium tracking-normal text-white/20 mb-4 px-1">Quick Add Widgets</h3>
               <div className="grid grid-cols-3 gap-3">
                 {widgets.slice(0, 3).map(w => (
                   <button
                     key={w.id}
                     onClick={() => onAdd('widget', { widgetId: w.id }, w.name)}
-                    className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/30 hover:bg-purple-500/10 transition-all group cursor-pointer"
+                    className="flex flex-col items-center gap-3 p-4 rounded-md bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/30 hover:bg-purple-500/10 transition-all group cursor-pointer"
                   >
                     <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 transition-transform">
                       <IconStack2 size={20} />
                     </div>
-                    <span className="text-xs font-bold text-white/60 group-hover:text-white transition-colors">{w.name}</span>
+                    <span className="text-xs font-semibold text-white/60 group-hover:text-white transition-colors">{w.name}</span>
                   </button>
                 ))}
               </div>
@@ -212,7 +213,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
       ) : (
         <div className="p-8 space-y-6">
           <div>
-            <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Source Name</label>
+            <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Source Name</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
@@ -224,7 +225,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
           {selectedType === 'camera' && (
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Camera Device</label>
+                <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Camera Device</label>
                 <select
                   value={config.deviceId || ''}
                   onChange={e => {
@@ -246,7 +247,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                 </select>
               </div>
               <div>
-                <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Audio Input</label>
+                <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Audio Input</label>
                 <select
                   value={config.audioDeviceId || 'match'}
                   onChange={e => setConfig({ ...config, audioDeviceId: e.target.value })}
@@ -262,7 +263,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Capture Preset</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Capture Preset</label>
                   <select
                     value={config.capturePreset || '1080p60'}
                     onChange={e => {
@@ -283,10 +284,10 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Frame Pacer</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Frame Pacer</label>
                   <button
                     onClick={() => setConfig({ ...config, stabilize: config.stabilize === false })}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm font-bold transition-all cursor-pointer ${config.stabilize === false ? 'bg-white/5 border-white/10 text-white/40' : 'bg-accent/15 border-accent/30 text-accent'}`}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold transition-all cursor-pointer ${config.stabilize === false ? 'bg-white/5 border-white/10 text-white/40' : 'bg-accent/15 border-accent/30 text-accent'}`}
                   >
                     {config.stabilize === false ? 'Raw Device' : 'OBS-style Stable'}
                   </button>
@@ -300,7 +301,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/[0.025] p-1 ring-1 ring-white/10">
                 <button
                   onClick={() => setConfig({ ...config, captureMode: 'mic' })}
-                  className={`h-10 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${config.captureMode !== 'desktop' ? 'bg-accent/15 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/[0.04]'}`}
+                  className={`h-10 rounded-lg text-xs font-semibold tracking-tight transition-all cursor-pointer ${config.captureMode !== 'desktop' ? 'bg-accent/15 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/[0.04]'}`}
                 >
                   Input
                 </button>
@@ -310,7 +311,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                     if (!desktopSources.length) void loadDesktopSources()
                     if (!name || name === 'Microphone') setName('Desktop Audio')
                   }}
-                  className={`h-10 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${config.captureMode === 'desktop' ? 'bg-accent/15 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/[0.04]'}`}
+                  className={`h-10 rounded-lg text-xs font-semibold tracking-tight transition-all cursor-pointer ${config.captureMode === 'desktop' ? 'bg-accent/15 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/[0.04]'}`}
                 >
                   Desktop/App
                 </button>
@@ -325,7 +326,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                 />
               ) : (
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Audio Device</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Audio Device</label>
                   <select
                     value={config.deviceId || ''}
                     onChange={e => setConfig({ ...config, deviceId: e.target.value })}
@@ -351,7 +352,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
               />
               <button
                 onClick={() => setConfig({ ...config, captureAudio: config.captureAudio !== true })}
-                className={`w-full rounded-xl border px-4 py-3 text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${config.captureAudio === true ? 'bg-accent/15 border-accent/30 text-accent' : 'bg-white/5 border-white/10 text-white/40'}`}
+                className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${config.captureAudio === true ? 'bg-accent/15 border-accent/30 text-accent' : 'bg-white/5 border-white/10 text-white/40'}`}
               >
                 <IconVolume size={16} />
                 {config.captureAudio === true ? 'Capture desktop audio' : 'Video only'}
@@ -361,7 +362,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
 
           {selectedType === 'widget' && (
             <div>
-              <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Widget</label>
+              <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Widget</label>
               <select
                 value={config.widgetId || ''}
                 onChange={e => {
@@ -381,7 +382,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
 
           {selectedType === 'browser' && (
             <div>
-              <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">URL</label>
+              <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">URL</label>
               <input
                 value={config.url || ''}
                 onChange={e => setConfig({ ...config, url: e.target.value })}
@@ -394,7 +395,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
           {selectedType === 'text' && (
             <>
               <div>
-                <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Text Content</label>
+                <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Text Content</label>
                 <input
                   value={config.text || ''}
                   onChange={e => setConfig({ ...config, text: e.target.value })}
@@ -403,7 +404,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Color</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Color</label>
                   <div className="flex items-center gap-3">
                     <input
                       type="color"
@@ -415,7 +416,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Font Size</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Font Size</label>
                   <input
                     type="number"
                     value={config.fontSize || 48}
@@ -429,7 +430,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
 
           {selectedType === 'image' && (
             <div>
-              <label className="text-xs font-black uppercase tracking-widest text-white/30 mb-2 block">Image</label>
+              <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Image</label>
               <button
                 onClick={handlePickImage}
                 className="w-full bg-white/[0.03] border border-white/10 border-dashed rounded-xl px-4 py-8 text-sm text-white/30 hover:text-white/50 hover:border-white/20 transition-all text-center cursor-pointer"
@@ -452,7 +453,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
               (selectedType === 'display' && !config.desktopSourceId) ||
               (selectedType === 'audio' && config.captureMode === 'desktop' && !config.desktopSourceId)
             }
-            className="w-full app-button-primary !py-3 text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            className="w-full app-button-primary !py-3 text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
           >
             {selectedType === 'audio' ? 'Add to Mixer' : 'Add to Scene'}
           </button>
@@ -481,10 +482,10 @@ function DesktopSourcePicker({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-[10px] font-black uppercase tracking-widest text-white/30">Screen / Window</label>
+        <label className="text-[10px] font-semibold tracking-tight text-white/30">Screen / Window</label>
         <button
           onClick={onRefresh}
-          className="text-[10px] font-black uppercase tracking-widest text-accent/80 hover:text-accent cursor-pointer"
+          className="text-[10px] font-semibold tracking-tight text-accent/80 hover:text-accent cursor-pointer"
         >
           Refresh
         </button>
@@ -498,11 +499,7 @@ function DesktopSourcePicker({
           <button
             key={source.id}
             onClick={() => onSelect(source)}
-            className={`min-w-0 overflow-hidden rounded-xl border text-left transition-all cursor-pointer ${
-              selectedId === source.id
-                ? 'border-accent/45 bg-accent/10'
-                : 'border-white/8 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.055]'
-            }`}
+            className={`min-w-0 overflow-hidden rounded-xl border text-left transition-all cursor-pointer ${ selectedId === source.id ? 'border-accent/45 bg-accent/10' : 'border-white/8 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.055]' }`}
           >
             <div className="aspect-video bg-black/60 overflow-hidden">
               {source.thumbnail ? (
@@ -515,7 +512,7 @@ function DesktopSourcePicker({
             </div>
             <div className="flex items-center gap-2 p-3">
               {source.appIcon ? <img src={source.appIcon} alt="" className="h-4 w-4 shrink-0" /> : <IconDeviceDesktop size={14} className="shrink-0 text-white/35" />}
-              <span className="truncate text-[11px] font-bold text-white/70">{source.name}</span>
+              <span className="truncate text-[11px] font-semibold text-white/70">{source.name}</span>
             </div>
           </button>
         ))}

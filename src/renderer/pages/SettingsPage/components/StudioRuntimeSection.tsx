@@ -82,29 +82,29 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconMessage2 size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Buffer</p>
-                <p className="text-sm font-bold text-white">{(settings.chat?.maxMessages || 0).toLocaleString()} events</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Buffer</p>
+                <p className="text-sm font-semibold text-white">{(settings.chat?.maxMessages || 0).toLocaleString()} events</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconRadio size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Relay</p>
-                <p className="text-sm font-bold text-white">{settings.chat?.autoRelayEnabled ? 'Enabled' : 'Manual'}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Relay</p>
+                <p className="text-sm font-semibold text-white">{settings.chat?.autoRelayEnabled ? 'Enabled' : 'Manual'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconMessage2 size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Host Replies</p>
-                <p className="text-sm font-bold text-white">{settings.chat?.hostResponsesEnabled ? 'Enabled' : 'Muted'}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Host Replies</p>
+                <p className="text-sm font-semibold text-white">{settings.chat?.hostResponsesEnabled ? 'Enabled' : 'Muted'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconPlugConnected size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Streamer.bot</p>
-                <p className="text-sm font-bold text-white">{settings.integrations?.streamerbot?.enabled ? 'Forwarding' : 'Off'}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Streamer.bot</p>
+                <p className="text-sm font-semibold text-white">{settings.integrations?.streamerbot?.enabled ? 'Forwarding' : 'Off'}</p>
               </div>
             </div>
           </div>

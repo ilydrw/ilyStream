@@ -1,4 +1,6 @@
-import {IconRobot, IconPlus, IconVolume} from '@tabler/icons-react'
+import { IconRobot, IconVolume } from '@tabler/icons-react'
+import { IconPlus } from '../../components/ui/icons'
+import { IconTriggerRelay } from '../../components/ui/icons/nav'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { VoiceProfile } from '../../../main/tts/voice-profiles'
@@ -148,7 +150,7 @@ export default function TriggersPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <IconRobot size={32} className="text-accent" />
+            <IconTriggerRelay size={20} className="text-accent" />
           </div>
           <div>
             <h1>Stream Triggers</h1>
@@ -158,25 +160,19 @@ export default function TriggersPage() {
           <div className="flex items-center bg-white/[0.03] border border-white/5 rounded-xl p-1 h-12">
             <button
               onClick={() => setActiveTab('recipes')}
-              className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'recipes' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
-              }`}
+              className={`px-6 h-full rounded-lg text-xs font-semibold tracking-tight transition-all ${ activeTab === 'recipes' ? 'bg-accent text-white ' : 'text-white/40 hover:text-white' }`}
             >
               Recipes
             </button>
             <button
               onClick={() => setActiveTab('commander')}
-              className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'commander' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
-              }`}
+              className={`px-6 h-full rounded-lg text-xs font-semibold tracking-tight transition-all ${ activeTab === 'commander' ? 'bg-accent text-white ' : 'text-white/40 hover:text-white' }`}
             >
               Command Center
             </button>
             <button
               onClick={() => setActiveTab('rules')}
-              className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'rules' ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/40 hover:text-white'
-              }`}
+              className={`px-6 h-full rounded-lg text-xs font-semibold tracking-tight transition-all ${ activeTab === 'rules' ? 'bg-accent text-white ' : 'text-white/40 hover:text-white' }`}
             >
               Rules Manager
             </button>
@@ -204,8 +200,8 @@ export default function TriggersPage() {
             <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-1">Engine Status</p>
-            <p className="text-xl font-black text-white tracking-tight">Online</p>
+            <p className="text-[10px] font-medium tracking-normal text-white/30 mb-1">Engine Status</p>
+            <p className="text-xl font-semibold text-white tracking-tight">Online</p>
           </div>
         </div>
       </div>
@@ -240,10 +236,10 @@ export default function TriggersPage() {
             <div className="flex flex-col gap-6">
             {triggers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
-                <div className="w-20 h-20 rounded-3xl bg-white/[0.02] border border-white/5 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-lg bg-white/[0.02] border border-white/5 flex items-center justify-center mb-6">
                   <IconPlus size={32} className="text-white/10" />
                 </div>
-                <h3 className="text-xl font-black text-white mb-2 tracking-tight">No Triggers Configured</h3>
+                <h3 className="text-xl font-semibold text-white mb-2 tracking-tight">No Triggers Configured</h3>
                 <p className="text-sm text-white/40 max-w-xs mb-8">
                   Create your first automation rule to start responding to chat events and alerts.
                 </p>
@@ -294,8 +290,8 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
         {icon}
       </div>
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-1">{label}</p>
-        <p className="text-xl font-black text-white tracking-tight">{value}</p>
+        <p className="text-[10px] font-medium tracking-normal text-white/30 mb-1">{label}</p>
+        <p className="text-xl font-semibold text-white tracking-tight">{value}</p>
       </div>
     </div>
   )

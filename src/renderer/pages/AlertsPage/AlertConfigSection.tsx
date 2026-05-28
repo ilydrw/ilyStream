@@ -1,4 +1,5 @@
-import {IconPhoto, IconPlayerPlay, IconSend, IconTypography, IconUpload, IconVolume, IconBolt} from '@tabler/icons-react'
+import { IconPhoto, IconSend, IconTypography, IconVolume, IconBolt } from '@tabler/icons-react'
+import { IconPlayerPlay, IconUpload } from '../../components/ui/icons'
 import type { ReactNode } from 'react'
 import type { Icon } from '@tabler/icons-react'
 import { AssetFile } from '../../hooks/useAssets'
@@ -89,7 +90,7 @@ export function AlertConfigSection({
             <p>{type === 'Superfan' ? 'Subscriber and fan-club alert' : `${type} alert`}</p>
           </div>
         </div>
-        <button onClick={simulate} className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest">
+        <button onClick={simulate} className="app-button !h-10 !px-5 !text-[10px] font-semibold tracking-tight">
           <IconSend size={13} />
           Test
         </button>
@@ -128,7 +129,7 @@ export function AlertConfigSection({
                   <IconPlayerPlay size={14} className="fill-current" />
                 </button>
               </div>
-              {selectedSound && <p className="mt-2 truncate text-[10px] font-bold text-white/25">{selectedSound.name}</p>}
+              {selectedSound && <p className="mt-2 truncate text-[10px] font-semibold text-white/25">{selectedSound.name}</p>}
             </Field>
 
             <RangeField
@@ -173,7 +174,7 @@ export function AlertConfigSection({
                     className="h-10 w-10 rounded-lg object-cover"
                     alt=""
                   />
-                  <span className="min-w-0 truncate text-[10px] font-bold text-white/35">{selectedImage.name}</span>
+                  <span className="min-w-0 truncate text-[10px] font-semibold text-white/35">{selectedImage.name}</span>
                 </div>
               )}
             </Field>
@@ -250,9 +251,7 @@ export function AlertConfigSection({
                 <button
                   disabled={!textEnabled}
                   onClick={() => update(`eventText${type}BorderColor` as EventSoundSettingKey, borderColor === 'gradient' ? 'transparent' : 'gradient')}
-                  className={`app-button h-11 w-full !p-0 disabled:opacity-35 ${
-                    borderColor === 'gradient' ? '!bg-accent/15 !text-accent !border-accent/25' : '!text-white/35'
-                  }`}
+                  className={`app-button h-11 w-full !p-0 disabled:opacity-35 ${ borderColor === 'gradient' ? '!bg-accent/15 !text-accent !border-accent/25' : '!text-white/35' }`}
                   title="Toggle gradient border"
                 >
                   <IconBolt size={15} />
@@ -292,7 +291,7 @@ function Panel({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Icon size={18} className={active ? 'text-accent' : 'text-white/20'} />
-          <h3 className="text-[11px] font-black uppercase tracking-[0.22em] text-white/65">{title}</h3>
+          <h3 className="text-[11px] font-semibold tracking-normal text-white/65">{title}</h3>
         </div>
         <span className={`h-2 w-2 rounded-full ${active ? 'bg-accent' : 'bg-white/10'}`} />
       </div>
@@ -307,7 +306,7 @@ function ToggleLine({ label, value, onChange }: { label: string; value: boolean;
       onClick={() => onChange(!value)}
       className="flex h-11 items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.025] px-4 text-left transition-all hover:border-white/20 hover:bg-white/[0.04]"
     >
-      <span className="text-xs font-bold text-white/65">{label}</span>
+      <span className="text-xs font-semibold text-white/65">{label}</span>
       <span className={`relative h-6 w-11 rounded-full transition-all ${value ? 'bg-accent/80' : 'bg-white/10'}`}>
         <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${value ? 'left-6' : 'left-1'}`} />
       </span>
@@ -318,7 +317,7 @@ function ToggleLine({ label, value, onChange }: { label: string; value: boolean;
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block space-y-2">
-      <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-white/22">{label}</span>
+      <span className="block text-[10px] font-semibold tracking-normal text-white/22">{label}</span>
       {children}
     </label>
   )
@@ -379,7 +378,7 @@ function NumberField({
           }}
           className="app-input !h-11 w-full !px-3 !pr-9 !text-xs"
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-widest text-white/18">
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-semibold tracking-tight text-white/18">
           {suffix}
         </span>
       </div>

@@ -88,11 +88,7 @@ export function DiscordPromoConfigEditor({
               <button
                 key={r}
                 onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.aspectRatio === r
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {r === 'auto' ? 'Auto (Fill)' : r === 'tiktok' ? 'Vertical (9:16)' : 'Landscape (16:9)'}
               </button>
@@ -102,7 +98,7 @@ export function DiscordPromoConfigEditor({
 
         <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
           <div>
-            <div className="text-xs font-bold text-white uppercase tracking-wider mb-0.5">Force TikTok Dimensions</div>
+            <div className="text-xs font-semibold text-white tracking-wider mb-0.5">Force TikTok Dimensions</div>
             <div className="text-[10px] text-white/40">Locks resolution to 1080x1920 for TikTok Live Studio "Fit to Screen"</div>
           </div>
           <button

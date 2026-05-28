@@ -279,9 +279,7 @@ export function ActionFields({
           <FieldBlock label="Visibility">
             <button
               onClick={() => onChange({ ...action, visible: !action.visible })}
-              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                action.visible ? 'bg-success/15 text-success border border-success/30' : 'bg-card border border-border text-muted hover:bg-card-hover'
-              }`}
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${ action.visible ? 'bg-success/15 text-success border border-success/30' : 'bg-card border border-border text-muted hover:bg-card-hover' }`}
             >
               {action.visible ? 'Visible' : 'Hidden'}
             </button>
@@ -403,9 +401,7 @@ export function ActionFields({
           <FieldBlock label="Toggle Mode">
             <button
               onClick={() => onChange({ ...action, toggle: !action.toggle })}
-              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                action.toggle ? 'bg-accent/15 text-accent border border-accent/30' : 'bg-card border border-border text-muted'
-              }`}
+              className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${ action.toggle ? 'bg-accent/15 text-accent border border-accent/30' : 'bg-card border border-border text-muted' }`}
             >
               {action.toggle ? 'Toggle (On/Off)' : 'Trigger Once'}
             </button>

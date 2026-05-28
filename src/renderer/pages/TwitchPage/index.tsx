@@ -113,7 +113,7 @@ export default function TwitchPage() {
             <div className="grid gap-10 p-12 md:grid-cols-2 bg-white/[0.01]">
               {FIELDS.map((field) => (
                 <div key={field.key} className="flex flex-col gap-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-white/30">{field.label}</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30">{field.label}</label>
                   <input
                     type={field.type}
                     placeholder={field.placeholder}
@@ -128,26 +128,26 @@ export default function TwitchPage() {
 
             {error && (
               <div className="px-8 py-4 bg-danger/10 border-y border-danger/20">
-                <p className="text-xs font-bold text-danger leading-relaxed">{error}</p>
+                <p className="text-xs font-semibold text-danger leading-relaxed">{error}</p>
               </div>
             )}
 
             <div className="flex items-center justify-end gap-6 p-10 border-t border-white/5 mt-auto">
               {isConnected ? (
-                <button onClick={handleDisconnect} className="app-button-danger !h-12 !px-8 text-sm font-bold">
+                <button onClick={handleDisconnect} className="app-button-danger !h-12 !px-8 text-sm font-semibold">
                   Disconnect Twitch
                 </button>
               ) : isConnecting ? (
                 <div className="flex items-center gap-4">
                   <button
                     onClick={handleDisconnect}
-                    className="app-button-secondary !h-12 !px-8 text-sm font-bold"
+                    className="app-button-secondary !h-12 !px-8 text-sm font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     disabled
-                    className="app-button-primary !h-12 !px-10 text-sm font-bold opacity-50 cursor-not-allowed"
+                    className="app-button-primary !h-12 !px-10 text-sm font-semibold opacity-50 cursor-not-allowed"
                   >
                     Authenticating...
                   </button>
@@ -155,7 +155,7 @@ export default function TwitchPage() {
               ) : (
                 <button
                   onClick={handleConnect}
-                  className="app-button-primary !h-12 !px-10 text-sm font-bold"
+                  className="app-button-primary !h-12 !px-10 text-sm font-semibold"
                 >
                   Connect Service
                 </button>
@@ -206,7 +206,7 @@ export default function TwitchPage() {
                 {platformEvents.map((event) => (
                   <div key={event.id} className="p-6 hover:bg-white/[0.02] transition-colors group">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="px-2 py-0.5 rounded bg-twitch/10 text-twitch text-[10px] font-black uppercase tracking-tighter">
+                      <span className="px-2 py-0.5 rounded bg-twitch/10 text-twitch text-[10px] font-semibold tracking-tighter">
                         {event.type}
                       </span>
                       <span className="text-[10px] font-mono text-white/20 group-hover:text-white/40">

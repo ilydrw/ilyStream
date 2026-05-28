@@ -1,4 +1,5 @@
-import {IconX, IconZoomIn, IconZoomOut, IconArrowsMove, IconRotate2, IconDeviceFloppy, IconRotateClockwise2, IconGridDots, IconHash, IconChevronUp, IconChevronDown, IconChevronLeft, IconChevronRight, IconFlipHorizontal, IconFlipVertical, IconSquare, IconCircle, IconHexagon, IconDiamond, IconStar, IconTriangle, IconOvalVertical} from '@tabler/icons-react'
+import { IconZoomIn, IconZoomOut, IconArrowsMove, IconRotate2, IconRotateClockwise2, IconGridDots, IconHash, IconFlipHorizontal, IconFlipVertical, IconSquare, IconCircle, IconHexagon, IconDiamond, IconStar, IconTriangle, IconOvalVertical } from '@tabler/icons-react'
+import { IconX, IconDeviceFloppy, IconChevronUp, IconChevronDown, IconChevronLeft, IconChevronRight } from '../../../components/ui/icons'
 import { useState, useEffect } from 'react'
 import { AssetFile } from '../../../hooks/useAssets'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -125,9 +126,9 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
         {/* Minimal Header */}
         <div className="h-12 border-b border-white/5 flex items-center justify-between px-6 bg-[#0c0d0f]">
           <div className="flex items-center gap-3">
-             <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Asset Adjuster</span>
+             <span className="text-[10px] font-semibold tracking-tight text-white/40">Asset Adjuster</span>
              <div className="w-[1px] h-3 bg-white/10" />
-             <span className="text-[10px] font-medium text-white/20 uppercase tracking-widest truncate max-w-[200px]">{image.name}</span>
+             <span className="text-[10px] font-medium text-white/20 tracking-tight truncate max-w-[200px]">{image.name}</span>
           </div>
           <button onClick={onClose} className="text-white/20 hover:text-white transition-all"><IconX size={16} /></button>
         </div>
@@ -214,7 +215,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                 {/* Scale */}
                 <div className="space-y-4">
                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Scale</span>
+                      <span className="text-[10px] font-semibold text-white/30 tracking-tight">Scale</span>
                       <span className="text-[10px] font-mono text-white/60">{Math.round(adjustment.zoom * 100)}%</span>
                    </div>
                    <div className="flex items-center gap-2">
@@ -230,17 +231,17 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
 
                 {/* Flip & Mirror */}
                 <div className="space-y-4">
-                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Mirror & Flip</span>
+                   <span className="text-[10px] font-semibold text-white/30 tracking-tight">Mirror & Flip</span>
                    <div className="flex gap-2">
                       <button
                         onClick={() => setAdjustment(prev => ({ ...prev, flipX: !prev.flipX }))}
-                        className={`flex-1 h-12 rounded-md flex items-center justify-center gap-2 text-[10px] font-bold transition-all ${adjustment.flipX ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
+                        className={`flex-1 h-12 rounded-md flex items-center justify-center gap-2 text-[10px] font-semibold transition-all ${adjustment.flipX ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
                       >
                          <IconFlipHorizontal size={16} /> Mirror
                       </button>
                       <button
                         onClick={() => setAdjustment(prev => ({ ...prev, flipY: !prev.flipY }))}
-                        className={`flex-1 h-12 rounded-md flex items-center justify-center gap-2 text-[10px] font-bold transition-all ${adjustment.flipY ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
+                        className={`flex-1 h-12 rounded-md flex items-center justify-center gap-2 text-[10px] font-semibold transition-all ${adjustment.flipY ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
                       >
                          <IconFlipVertical size={16} /> Flip
                       </button>
@@ -250,7 +251,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                 {/* Rotation */}
                 <div className="space-y-4">
                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Rotation</span>
+                      <span className="text-[10px] font-semibold text-white/30 tracking-tight">Rotation</span>
                       <span className="text-[10px] font-mono text-white/60">{Math.round(adjustment.rotation)}°</span>
                    </div>
                    <input
@@ -259,14 +260,14 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                      className="w-full h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-white"
                    />
                    <div className="flex gap-2">
-                      <button onClick={() => setAdjustment(prev => ({ ...prev, rotation: snap(prev.rotation - 90, 90) }))} className="flex-1 h-10 bg-white/5 rounded-md text-white/40 hover:text-white transition-all text-[10px] font-bold">-90°</button>
-                      <button onClick={() => setAdjustment(prev => ({ ...prev, rotation: snap(prev.rotation + 90, 90) }))} className="flex-1 h-10 bg-white/5 rounded-md text-white/40 hover:text-white transition-all text-[10px] font-bold">+90°</button>
+                      <button onClick={() => setAdjustment(prev => ({ ...prev, rotation: snap(prev.rotation - 90, 90) }))} className="flex-1 h-10 bg-white/5 rounded-md text-white/40 hover:text-white transition-all text-[10px] font-semibold">-90°</button>
+                      <button onClick={() => setAdjustment(prev => ({ ...prev, rotation: snap(prev.rotation + 90, 90) }))} className="flex-1 h-10 bg-white/5 rounded-md text-white/40 hover:text-white transition-all text-[10px] font-semibold">+90°</button>
                    </div>
                 </div>
 
                 {/* Shape */}
                 <div className="space-y-4">
-                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Shape</span>
+                   <span className="text-[10px] font-semibold text-white/30 tracking-tight">Shape</span>
                    <div className="grid grid-cols-4 gap-2">
                       {SHAPE_OPTIONS.map(({ id, label, Icon }) => {
                          const active = currentShape === id
@@ -274,7 +275,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                             <button
                               key={id}
                               onClick={() => setAdjustment(prev => ({ ...prev, shape: id }))}
-                              className={`h-12 rounded-md flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold uppercase tracking-wider transition-all ${active ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white hover:bg-white/10'}`}
+                              className={`h-12 rounded-md flex flex-col items-center justify-center gap-0.5 text-[9px] font-semibold tracking-wider transition-all ${active ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white hover:bg-white/10'}`}
                               title={label}
                             >
                                <Icon size={14} />
@@ -287,7 +288,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
 
                 {/* Frame Aspect */}
                 <div className="space-y-4">
-                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Frame</span>
+                   <span className="text-[10px] font-semibold text-white/30 tracking-tight">Frame</span>
                    <div className="flex gap-2">
                       {(['square', 'wide', 'tall'] as const).map(opt => {
                          const active = currentAspect === opt
@@ -295,7 +296,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                             <button
                               key={opt}
                               onClick={() => setAdjustment(prev => ({ ...prev, aspect: opt }))}
-                              className={`flex-1 h-10 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${active ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
+                              className={`flex-1 h-10 rounded-md text-[10px] font-semibold tracking-tight transition-all ${active ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:text-white'}`}
                             >
                                {opt === 'square' ? '1:1' : opt === 'wide' ? '16:9' : '9:16'}
                             </button>
@@ -307,7 +308,7 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
                 {/* Rounding */}
                 <div className="space-y-4">
                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Rounding</span>
+                      <span className="text-[10px] font-semibold text-white/30 tracking-tight">Rounding</span>
                       <span className="text-[10px] font-mono text-white/60">{Math.round(currentRounding)}%</span>
                    </div>
                    <input
@@ -326,19 +327,19 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
 
                 {/* Slight Nudge */}
                 <div className="space-y-4 pt-2">
-                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-1">Nudge</span>
+                   <span className="text-[10px] font-semibold text-white/30 tracking-tight px-1">Nudge</span>
                    <div className="flex flex-col items-center gap-1">
                       <button onClick={() => nudge('y', -5)} className="w-14 h-10 bg-white/5 rounded-t-md flex items-center justify-center hover:bg-white/10 text-white/20 hover:text-white transition-all"><IconChevronUp size={18} /></button>
                       <div className="flex gap-1">
                          <button onClick={() => nudge('x', -5)} className="w-14 h-10 bg-white/5 rounded-l-md flex items-center justify-center hover:bg-white/10 text-white/20 hover:text-white transition-all"><IconChevronLeft size={18} /></button>
-                         <div className="w-10 h-10 flex items-center justify-center text-[8px] font-bold text-white/5">POS</div>
+                         <div className="w-10 h-10 flex items-center justify-center text-[8px] font-semibold text-white/5">POS</div>
                          <button onClick={() => nudge('x', 5)} className="w-14 h-10 bg-white/5 rounded-r-md flex items-center justify-center hover:bg-white/10 text-white/20 hover:text-white transition-all"><IconChevronRight size={18} /></button>
                       </div>
                       <button onClick={() => nudge('y', 5)} className="w-14 h-10 bg-white/5 rounded-b-md flex items-center justify-center hover:bg-white/10 text-white/20 hover:text-white transition-all"><IconChevronDown size={18} /></button>
                    </div>
                 </div>
 
-                <button onClick={reset} className="w-full py-4 text-red-500/30 hover:text-red-500/60 transition-all text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <button onClick={reset} className="w-full py-4 text-red-500/30 hover:text-red-500/60 transition-all text-[10px] font-semibold tracking-tight flex items-center justify-center gap-2">
                    <IconRotate2 size={12} /> Reset
                 </button>
              </div>
@@ -347,18 +348,14 @@ export function ImageAdjustmentModal({ image, isOpen, onClose }: ImageAdjustment
              <div className="p-6 border-t border-white/5 space-y-3">
                 <button
                    onClick={onClose}
-                   className="w-full h-12 rounded-md bg-white/5 hover:bg-white/10 text-white/20 hover:text-white transition-all text-[10px] font-bold uppercase tracking-widest"
+                   className="w-full h-12 rounded-md bg-white/5 hover:bg-white/10 text-white/20 hover:text-white transition-all text-[10px] font-semibold tracking-tight"
                 >
                    Discard
                 </button>
                 <button
                    onClick={handleSave}
                    disabled={!hasChanges}
-                   className={`w-full h-14 rounded-md transition-all duration-300 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-3 ${
-                      hasChanges
-                         ? 'bg-white text-black'
-                         : 'bg-white/5 text-white/10 cursor-not-allowed'
-                   }`}
+                   className={`w-full h-14 rounded-md transition-all duration-300 text-[10px] font-semibold tracking-tight flex items-center justify-center gap-3 ${ hasChanges ? 'bg-white text-black' : 'bg-white/5 text-white/10 cursor-not-allowed' }`}
                 >
                    <IconDeviceFloppy size={16} /> Apply Changes
                 </button>

@@ -1,4 +1,4 @@
-import { IconMaximize, IconMinus, IconX } from '@tabler/icons-react'
+import { IconWindowMaximize, IconWindowMinimize, IconWindowClose } from '../ui/icons'
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getNavigationItem } from './navigation'
@@ -15,10 +15,10 @@ export function Header() {
     <header className="app-topbar titlebar-drag">
       <div className="app-topbar-brand titlebar-no-drag" aria-label="ilyStream">
         <span className="app-topbar-logo">
-          <Logo size={28} />
+          <Logo size={18} />
         </span>
-        <span className="app-topbar-wordmark !font-black !tracking-tight !text-[16px] text-white">ilyStream</span>
-        <span className="app-topbar-version !bg-white/[0.05] !border-white/5 !text-white/20 !px-2.5 !py-0.5 !h-auto !rounded-md !font-black !text-[8px] !tracking-widest uppercase ml-2">Internal Alpha</span>
+        <span className="app-topbar-wordmark">ilyStream</span>
+        <span className="app-topbar-version ml-2">0.0.15</span>
       </div>
 
       <div className="app-topbar-route" aria-live="polite">
@@ -35,17 +35,17 @@ export function Header() {
       <div className="app-window-controls titlebar-no-drag">
         <Tooltip content="Minimize" position="bottom">
           <WindowButton label="Minimize" onClick={() => window.api?.window?.minimize()}>
-            <IconMinus size={15} />
+            <IconWindowMinimize size={11} />
           </WindowButton>
         </Tooltip>
         <Tooltip content="Maximize / Restore" position="bottom">
           <WindowButton label="Maximize" onClick={() => window.api?.window?.maximize()}>
-            <IconMaximize size={14} />
+            <IconWindowMaximize size={10} />
           </WindowButton>
         </Tooltip>
         <Tooltip content="Close to Tray" position="bottom">
           <WindowButton label="Close" danger onClick={() => window.api?.window?.close()}>
-            <IconX size={16} />
+            <IconWindowClose size={11} />
           </WindowButton>
         </Tooltip>
       </div>

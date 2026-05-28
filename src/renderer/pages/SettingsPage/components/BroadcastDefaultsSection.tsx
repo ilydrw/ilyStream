@@ -89,22 +89,22 @@ export function BroadcastDefaultsSection({ settings, onUpdate }: BroadcastDefaul
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconRadio size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Output</p>
-                <p className="text-sm font-bold text-white">{settings.streaming.enabled ? 'Armed' : 'Standby'}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Output</p>
+                <p className="text-sm font-semibold text-white">{settings.streaming.enabled ? 'Armed' : 'Standby'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconGauge size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Encoder</p>
-                <p className="text-sm font-bold text-white">{settings.streaming.bitrate} Kbps</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Encoder</p>
+                <p className="text-sm font-semibold text-white">{settings.streaming.bitrate} Kbps</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
               <IconActivity size={18} className="text-accent" />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/25">Canvas</p>
-                <p className="text-sm font-bold text-white">{resolution} @ {settings.streaming.fps}</p>
+                <p className="text-[10px] font-semibold tracking-tight text-white/25">Canvas</p>
+                <p className="text-sm font-semibold text-white">{resolution} @ {settings.streaming.fps}</p>
               </div>
             </div>
           </div>

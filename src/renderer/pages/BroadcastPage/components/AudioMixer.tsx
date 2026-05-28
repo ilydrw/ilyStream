@@ -28,11 +28,11 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
               <IconAdjustmentsHorizontal size={15} />
             </div>
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.26em] text-white/55">Audio Console</div>
-              <div className="text-2xs font-bold uppercase tracking-[0.18em] text-white/18">Program mix, monitor mix, inserts</div>
+              <div className="text-sm font-semibold tracking-normal text-white/55">Audio Console</div>
+              <div className="text-2xs font-semibold tracking-normal text-white/18">Program mix, monitor mix, inserts</div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-2xs font-black uppercase tracking-[0.18em] text-white/25">
+          <div className="flex items-center gap-2 text-2xs font-semibold tracking-normal text-white/25">
             <IconActivity size={13} className="text-accent" />
               48 kHz stereo engine
           </div>

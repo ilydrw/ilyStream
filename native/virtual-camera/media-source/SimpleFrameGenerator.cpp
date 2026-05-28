@@ -281,7 +281,8 @@ HRESULT SimpleFrameGenerator::_CreateRGB32Frame(
     _In_ ULONG rgbMask )
 {
     RETURN_HR_IF_NULL(E_INVALIDARG, pBuf);
-    if (len < (abs(pitch) * height ))
+    const DWORD absPitch = static_cast<DWORD>(pitch < 0 ? -pitch : pitch);
+    if (len < (absPitch * height))
     {
         return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
     }
@@ -291,7 +292,10 @@ HRESULT SimpleFrameGenerator::_CreateRGB32Frame(
 
     for (unsigned int r = 0; r < height; r++)
     {
-        uint32_t* p = (uint32_t*)(pBuf + (r * pitch));
+        BYTE* row = pitch >= 0
+            ? pBuf + r * pitch
+            : pBuf + (height - 1 - r) * absPitch;
+        uint32_t* p = reinterpret_cast<uint32_t*>(row);
         for (unsigned int c = 0; c < width; c++)
         {
             BYTE gray = (BYTE)(r + offset);

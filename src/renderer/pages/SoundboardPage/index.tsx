@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import {IconMusic, IconPlayerPlay, IconCopy, IconExternalLink, IconBolt, IconTrash, IconPlus, IconVolume, IconSettings, IconCheck, IconPencil, IconX} from '@tabler/icons-react'
+import { IconMusic, IconVolume, IconSettings } from '@tabler/icons-react'
+import { IconPlayerPlay, IconCopy, IconExternalLink, IconTrash, IconPlus, IconCheck, IconPencil, IconX, IconSoundboard, IconBolt } from '../../components/ui/icons'
 import { useSoundboard, SoundFile } from '../../hooks/useSoundboard'
 import { useDeckActions, DeckAction } from '../../hooks/useDeckActions'
 import { EmojiPickerModal } from '../../components/ui/EmojiPickerModal'
@@ -122,7 +123,7 @@ export default function SoundboardPage() {
       <header className="app-page-header">
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center">
-            <IconMusic size={32} className="text-accent" />
+            <IconSoundboard size={20} className="text-accent" />
           </div>
           <div>
             <h1>Audio Deck</h1>
@@ -134,20 +135,16 @@ export default function SoundboardPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-2xl">
+          <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-md">
             <button
               onClick={() => setActiveTab('sounds')}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                activeTab === 'sounds' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60'
-              }`}
+              className={`px-6 py-2.5 rounded-xl text-[10px] font-semibold tracking-tight transition-all ${ activeTab === 'sounds' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60' }`}
             >
               Sounds
             </button>
             <button
               onClick={() => setActiveTab('actions')}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                activeTab === 'actions' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60'
-              }`}
+              className={`px-6 py-2.5 rounded-xl text-[10px] font-semibold tracking-tight transition-all ${ activeTab === 'actions' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60' }`}
             >
               Actions
             </button>
@@ -155,9 +152,7 @@ export default function SoundboardPage() {
 
           <button
             onClick={() => setIsEditMode(!isEditMode)}
-            className={`app-button !h-12 !px-6 !text-[10px] font-black tracking-widest transition-all ${
-              isEditMode ? 'bg-brand-gradient border-transparent text-white shadow-glow' : ''
-            }`}
+            className={`app-button !h-12 !px-6 !text-[10px] font-semibold tracking-tight transition-all ${ isEditMode ? 'bg-accent border-transparent text-white ' : '' }`}
           >
             {isEditMode ? <IconCheck size={14} /> : <IconSettings size={14} />}
             {isEditMode ? 'SAVE DECK' : 'CONFIGURE DECK'}
@@ -166,7 +161,7 @@ export default function SoundboardPage() {
           {!isEditMode && (
             <button
               onClick={() => stopAllSounds()}
-              className="app-button !h-12 !px-6 !text-[10px] font-black tracking-widest bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
+              className="app-button !h-12 !px-6 !text-[10px] font-semibold tracking-tight bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
             >
               <IconX size={14} />
               STOP ALL
@@ -196,7 +191,7 @@ export default function SoundboardPage() {
               {activeTab === 'sounds' && !isEditMode && (
                 <button
                   onClick={handleUploadClick}
-                  className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest"
+                  className="app-button !h-10 !px-5 !text-[10px] font-semibold tracking-tight"
                 >
                   <IconPlus size={14} />
                   UPLOAD NEW
@@ -205,7 +200,7 @@ export default function SoundboardPage() {
               {activeTab === 'actions' && isEditMode && (
                 <button
                   onClick={addNewAction}
-                  className="app-button !h-10 !px-5 !text-[10px] font-black tracking-widest"
+                  className="app-button !h-10 !px-5 !text-[10px] font-semibold tracking-tight"
                 >
                   <IconPlus size={14} />
                   ADD ACTION
@@ -245,7 +240,7 @@ export default function SoundboardPage() {
 
                 {/* Empty state fillers for that stream deck look */}
                 {Array.from({ length: Math.max(0, 15 - (activeTab === 'sounds' ? sounds.length : actions.length)) }).map((_, i) => (
-                  <div key={`empty-${i}`} className="aspect-square rounded-3xl bg-white/[0.01] border border-white/[0.02] border-dashed" />
+                  <div key={`empty-${i}`} className="aspect-square rounded-lg bg-white/[0.01] border border-white/[0.02] border-dashed" />
                 ))}
               </div>
             </div>
@@ -273,10 +268,10 @@ export default function SoundboardPage() {
               Use the <span className="text-white/80">Copy Trigger</span> button on any tile to get a
               ready-to-use curl command for your Elgato or Touch Portal.
             </p>
-            <div className="mt-8 p-4 rounded-2xl bg-black/40 border border-white/5">
+            <div className="mt-8 p-4 rounded-md bg-black/40 border border-white/5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Local API URL</span>
-                <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[8px] font-black uppercase">Active</span>
+                <span className="text-[9px] font-semibold text-white/20 tracking-tight">Local API URL</span>
+                <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[8px] font-semibold">Active</span>
               </div>
               <code className="text-[10px] text-accent font-mono block truncate">http://127.0.0.1:8899/overlay/deck/action</code>
             </div>
@@ -303,7 +298,7 @@ export default function SoundboardPage() {
             </p>
             <button
               onClick={() => window.open('http://127.0.0.1:8899/overlay/deck', '_blank', 'noopener,noreferrer')}
-              className="app-button !w-full !h-12 !text-[10px] font-black tracking-widest"
+              className="app-button !w-full !h-12 !text-[10px] font-semibold tracking-tight"
             >
               OPEN STUDIO DECK
             </button>
@@ -352,12 +347,12 @@ function DeckButton({
       whileHover={{ scale: isEditMode ? 1 : 1.05, y: isEditMode ? 0 : -2 }}
       whileTap={{ scale: 0.95 }}
       onClick={isEditMode ? onEdit : onClick}
-      className={`relative aspect-square rounded-3xl border border-white/5 hover:border-white/20 transition-all group overflow-hidden ${color.split(' ')[0]}`}
+      className={`relative aspect-square rounded-lg border border-white/5 hover:border-white/20 transition-all group overflow-hidden ${color.split(' ')[0]}`}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       <div className="flex flex-col items-center justify-center h-full p-4 gap-2">
         <span className="text-4xl">{icon}</span>
-        <span className={`text-[9px] font-black uppercase tracking-tighter text-center truncate w-full ${color.split(' ')[1] || 'text-white/40'}`}>
+        <span className={`text-[9px] font-semibold tracking-tighter text-center truncate w-full ${color.split(' ')[1] || 'text-white/40'}`}>
           {label}
         </span>
       </div>
@@ -401,7 +396,7 @@ function DeckButton({
             e.stopPropagation()
             onCopy()
           }}
-          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-brand-gradient hover:border-transparent hover:text-white shadow-glow"
+          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-accent hover:border-transparent hover:text-white"
         >
           <IconCopy size={12} className="text-white/60" />
         </button>

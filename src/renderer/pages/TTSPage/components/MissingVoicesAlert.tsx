@@ -10,7 +10,7 @@ export function MissingVoicesAlert({ missingProfiles }: MissingVoicesAlertProps)
   if (missingProfiles.length === 0) return null
 
   return (
-    <div className="flex items-center gap-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl px-6 py-4 text-sm text-rose-400 font-bold uppercase tracking-wider mb-8 animate-alert">
+    <div className="flex items-center gap-4 bg-rose-500/10 border border-rose-500/20 rounded-md px-6 py-4 text-sm text-rose-400 font-semibold tracking-wider mb-8 animate-alert">
       <div className="p-2 bg-rose-500/10 rounded-lg">
         <IconVolumeOff size={18} />
       </div>

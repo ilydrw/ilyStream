@@ -8,6 +8,21 @@ import type { EventLabSimulationPayload } from '../shared/event-lab'
 
 export type IpcCallback = (...args: any[]) => void
 
+// Bridge MessagePorts handed off by the main process for projector mirroring
+// into the renderer window's `message` event. MessagePort cannot pass through
+// contextBridge directly, but window.postMessage from preload to renderer
+// supports transferable objects.
+ipcRenderer.on('studio:projector:mirror-source', (event, payload) => {
+  const port = event.ports[0]
+  if (!port) return
+  ;(globalThis as any).postMessage({ __ilyProjectorChannel: 'mirror-source', payload }, '*', [port])
+})
+ipcRenderer.on('studio:projector:mirror-sink', (event) => {
+  const port = event.ports[0]
+  if (!port) return
+  ;(globalThis as any).postMessage({ __ilyProjectorChannel: 'mirror-sink' }, '*', [port])
+})
+
 const allowedEventChannels = new Set([
   'event:stream',
   'event:overlay-broadcast',
@@ -234,6 +249,7 @@ const api = {
     prepareDisplayCapture: (request: { sourceId: string; withAudio?: boolean; audioOnly?: boolean }) =>
       ipcRenderer.invoke('studio:prepare-display-capture', request),
     openProjector: (payload: { monitorId: number, sceneId: string, aspectRatio?: string, layerId?: string }) => ipcRenderer.invoke('studio:open-projector', payload),
+    requestProjectorMirror: (aspectRatio?: '16:9' | '9:16') => ipcRenderer.send('studio:projector:request-mirror', { aspectRatio }),
     startBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:start', config),
     updateBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:update', config),
     reloadBrowserSource: (id: string) => ipcRenderer.invoke('studio:browser-source:reload', id),
@@ -297,7 +313,8 @@ const api = {
   virtualCamera: {
     start: (opts?: any) => ipcRenderer.invoke('virtualcamera:start', opts),
     stop: () => ipcRenderer.invoke('virtualcamera:stop'),
-    getStatus: () => ipcRenderer.invoke('virtualcamera:get-status')
+    getStatus: () => ipcRenderer.invoke('virtualcamera:get-status'),
+    installDriver: () => ipcRenderer.invoke('virtualcamera:install-driver')
   }
 }
 

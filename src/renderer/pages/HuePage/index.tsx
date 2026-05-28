@@ -1,6 +1,7 @@
 import React, { useState, useEffect, ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {IconSearch, IconRefresh, IconCircleCheck, IconAlertCircle, IconBolt, IconWifi, IconExternalLink, IconCpu, IconArrowRight, IconRadio, IconActivity, IconCheck} from '@tabler/icons-react'
+import { IconAlertCircle, IconBolt, IconWifi, IconCpu, IconRadio, IconActivity } from '@tabler/icons-react'
+import { IconSearch, IconRefresh, IconCircleCheck, IconExternalLink, IconArrowRight, IconCheck } from '../../components/ui/icons'
 import { useHueStore, HueBridge, HueLight } from '../../stores/hue-store'
 import { HueIcon } from '../../components/ui/HueIcon'
 import { HueBulbIcon } from '../../components/ui/HueBulbIcon'
@@ -124,12 +125,8 @@ export default function HuePage() {
       <button 
         key={light.id} 
         onClick={() => toggleLightSelection(light.id)}
-        className={`flex items-center gap-4 p-4 rounded-2xl text-left transition-all border ${
-          isSelected 
-            ? 'border-white/20 text-white' 
-            : 'bg-white/[0.01] border-white/[0.03] hover:bg-white/[0.03] hover:border-white/10'
-        }`}
-        style={isSelected ? { background: 'var(--brand-gradient)' } : {}}
+        className={`flex items-center gap-4 p-4 rounded-md text-left transition-all border ${ isSelected ? 'border-white/20 text-white' : 'bg-white/[0.01] border-white/[0.03] hover:bg-white/[0.03] hover:border-white/10' }`}
+        style={isSelected ? { background: 'rgba(25, 200, 255, 0.12)', borderColor: 'rgba(25, 200, 255, 0.4)' } : {}}
       >
         <div 
           className="w-10 h-10 flex items-center justify-center transition-all"
@@ -140,10 +137,10 @@ export default function HuePage() {
           <HueBulbIcon size={32} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-white'}`}>{light.name}</div>
+          <div className={`text-sm font-semibold truncate ${isSelected ? 'text-white' : 'text-white'}`}>{light.name}</div>
           <div className="flex items-center gap-2 mt-0.5">
             <div className={`w-1.5 h-1.5 rounded-full ${light.reachable ? (isSelected ? 'bg-white' : 'bg-emerald-500') : (isSelected ? 'bg-white/50' : 'bg-red-500')}`} />
-            <span className={`text-[10px] font-bold tracking-widest ${isSelected ? 'text-white/70' : 'text-white/20'}`}>
+            <span className={`text-[10px] font-semibold tracking-tight ${isSelected ? 'text-white/70' : 'text-white/20'}`}>
               {light.reachable ? 'Online' : 'Unreachable'}
             </span>
           </div>
@@ -216,7 +213,7 @@ export default function HuePage() {
               <button 
                 onClick={handleDiscover}
                 disabled={isDiscovering}
-                className="app-button !h-10 !px-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2"
               >
                 <IconRefresh size={12} className={isDiscovering ? 'animate-spin' : ''} />
                 {isDiscovering ? 'Scanning...' : 'Scan Network'}
@@ -225,7 +222,7 @@ export default function HuePage() {
 
             <div className="p-8 space-y-6 bg-white/[0.01]">
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-black tracking-widest text-white/30">Bridge Username</label>
+                <label className="text-xs font-semibold tracking-tight text-white/30">Bridge Username</label>
                 <input
                   type="password"
                   placeholder="Paste your Hue username..."
@@ -240,7 +237,7 @@ export default function HuePage() {
                   href="https://developers.meethue.com/develop/get-started-2/" 
                   target="_blank" 
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[10px] font-bold text-blue-400/60 hover:text-blue-400 uppercase tracking-wider mt-1 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-blue-400/60 hover:text-blue-400 tracking-wider mt-1 transition-colors"
                 >
                   How to get a username? <IconExternalLink size={10} />
                 </a>
@@ -248,7 +245,7 @@ export default function HuePage() {
 
               {(!isConnected || !bridgeIp) ? (
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-black tracking-widest text-white/30">Bridge IP Address</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30">Bridge IP Address</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -260,7 +257,7 @@ export default function HuePage() {
                     <button
                       onClick={() => handleConnect('')}
                       disabled={isConnecting || !manualIp}
-                      className="app-button-primary !h-11 px-6 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                      className="app-button-primary !h-11 px-6 text-[10px] font-semibold tracking-tight disabled:opacity-50"
                     >
                       {isConnecting ? '...' : 'Connect'}
                     </button>
@@ -268,7 +265,7 @@ export default function HuePage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-black tracking-widest text-white/30">Active IP Address</label>
+                  <label className="text-xs font-semibold tracking-tight text-white/30">Active IP Address</label>
                   <div className="app-input opacity-50 bg-black/20">{bridgeIp}</div>
                 </div>
               )}
@@ -276,14 +273,14 @@ export default function HuePage() {
 
             {error && (
               <div className="px-8 py-4 bg-danger/10 border-y border-danger/20">
-                <p className="text-xs font-bold text-danger leading-relaxed">{error}</p>
+                <p className="text-xs font-semibold text-danger leading-relaxed">{error}</p>
               </div>
             )}
 
             <div className="flex items-center justify-between gap-4 p-6 border-t border-white/5 mt-auto">
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-success animate-pulse' : 'bg-white/10'}`} />
-                <p className="text-xs font-bold tracking-widest text-white/40">
+                <p className="text-xs font-semibold tracking-tight text-white/40">
                   {isConnected ? 'Bridge is Active' : 'Standby'}
                 </p>
               </div>
@@ -291,7 +288,7 @@ export default function HuePage() {
               <button 
                 onClick={handleTestFlash}
                 disabled={!isConnected || isTestFlashing}
-                className="app-button-primary !h-10 !px-8 text-xs font-bold disabled:opacity-30"
+                className="app-button-primary !h-10 !px-8 text-xs font-semibold disabled:opacity-30"
               >
                 {isTestFlashing ? 'Strobing...' : 'Test Sync'}
               </button>
@@ -312,24 +309,24 @@ export default function HuePage() {
             <div className="p-8 space-y-8 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-white mb-1">Flash on Follow</div>
-                  <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on new follower</div>
+                  <div className="text-sm font-semibold text-white mb-1">Flash on Follow</div>
+                  <div className="text-[10px] font-semibold text-white/20 tracking-tight">Rapid white strobe on new follower</div>
                 </div>
                 <Toggle value={settings.integrations.hue.flashOnFollow} onChange={(val) => updateSetting('hueFlashOnFollow', val)} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-white mb-1">Flash on Gift</div>
-                  <div className="text-[10px] font-bold text-white/20 tracking-widest">Rapid white strobe on gifts</div>
+                  <div className="text-sm font-semibold text-white mb-1">Flash on Gift</div>
+                  <div className="text-[10px] font-semibold text-white/20 tracking-tight">Rapid white strobe on gifts</div>
                 </div>
                 <Toggle value={settings.integrations.hue.flashOnGift} onChange={(val) => updateSetting('hueFlashOnGift', val)} />
               </div>
 
               <div className="space-y-4 pt-4 border-t border-white/5">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-black tracking-widest text-white/30">Flash Duration</div>
-                  <div className="text-xs font-mono font-bold text-blue-400">{settings.integrations.hue.flashDurationMs}ms</div>
+                  <div className="text-xs font-semibold tracking-tight text-white/30">Flash Duration</div>
+                  <div className="text-xs font-mono font-semibold text-blue-400">{settings.integrations.hue.flashDurationMs}ms</div>
                 </div>
                 <input 
                   type="range"
@@ -340,7 +337,7 @@ export default function HuePage() {
                   onChange={(e) => updateSetting('hueFlashDurationMs', parseInt(e.target.value))}
                   className="app-range"
                 />
-                <div className="flex justify-between text-[10px] font-bold text-white/10 tracking-widest">
+                <div className="flex justify-between text-[10px] font-semibold text-white/10 tracking-tight">
                   <span>0.5s</span>
                   <span>15s</span>
                 </div>
@@ -369,8 +366,8 @@ export default function HuePage() {
                       <div className="flex items-center gap-4">
                         <IconWifi size={18} className="text-blue-400/50" />
                         <div>
-                          <div className="text-sm font-bold text-white">Hue Bridge {bridge.id.slice(-4)}</div>
-                          <div className="text-[10px] font-mono text-white/20 tracking-widest">{bridge.internalipaddress}</div>
+                          <div className="text-sm font-semibold text-white">Hue Bridge {bridge.id.slice(-4)}</div>
+                          <div className="text-[10px] font-mono text-white/20 tracking-tight">{bridge.internalipaddress}</div>
                         </div>
                       </div>
                       <IconArrowRight size={14} className="text-white/10 group-hover:text-blue-400 transition-colors" />
@@ -378,14 +375,14 @@ export default function HuePage() {
                   ))
                 ) : (
                   <div className="py-12 flex flex-col items-center justify-center text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.03] flex items-center justify-center mb-4 text-white/10">
+                    <div className="w-12 h-12 rounded-md bg-white/[0.03] flex items-center justify-center mb-4 text-white/10">
                       <IconSearch size={24} />
                     </div>
-                    <p className="text-xs font-bold text-white/20 tracking-widest mb-4">No Bridges Found</p>
+                    <p className="text-xs font-semibold text-white/20 tracking-tight mb-4">No Bridges Found</p>
                     <button 
                       onClick={handleDiscover}
                       disabled={isDiscovering}
-                      className="app-button-primary !h-10 !px-6 text-xs font-bold"
+                      className="app-button-primary !h-10 !px-6 text-xs font-semibold"
                     >
                       {isDiscovering ? 'Searching...' : 'Scan Local Network'}
                     </button>
@@ -412,7 +409,7 @@ export default function HuePage() {
               {isConnected && (
                 <button 
                   onClick={fetchLights}
-                  className="text-[10px] font-bold text-blue-400/60 hover:text-blue-400 tracking-widest transition-colors flex items-center gap-2"
+                  className="text-[10px] font-semibold text-blue-400/60 hover:text-blue-400 tracking-tight transition-colors flex items-center gap-2"
                 >
                   <IconRefresh size={10} />
                   Refresh
@@ -450,7 +447,7 @@ export default function HuePage() {
                         {roomsWithLights.map((room) => (
                           <div key={room.id} className="space-y-4">
                             <div className="flex items-center gap-4 px-2">
-                              <h3 className="text-xs font-black tracking-[0.2em] text-white/40">{room.name}</h3>
+                              <h3 className="text-xs font-semibold tracking-normal text-white/40">{room.name}</h3>
                               <div className="h-px flex-1 bg-white/[0.05]" />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -462,7 +459,7 @@ export default function HuePage() {
                         {unassignedLights.length > 0 && (
                           <div className="space-y-4">
                             <div className="flex items-center gap-4 px-2">
-                              <h3 className="text-xs font-black tracking-[0.2em] text-white/40">Unassigned</h3>
+                              <h3 className="text-xs font-semibold tracking-normal text-white/40">Unassigned</h3>
                               <div className="h-px flex-1 bg-white/[0.05]" />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -475,7 +472,7 @@ export default function HuePage() {
                   })()}
                 </div>
               ) : (
-                <div className="py-24 flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 rounded-3xl bg-black/10">
+                <div className="py-24 flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 rounded-lg bg-black/10">
                   <HueBulbIcon size={54} className="mb-4 opacity-10" />
                   <p className="text-sm font-medium">Connect a bridge to see your lights.</p>
                 </div>
@@ -485,9 +482,9 @@ export default function HuePage() {
             <div className="p-6 border-t border-white/5 bg-white/[0.02] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <IconBolt size={14} className="text-blue-400" />
-                <span className="text-[10px] font-bold text-white/30 tracking-widest">Auto-Flash Engine: Active</span>
+                <span className="text-[10px] font-semibold text-white/30 tracking-tight">Auto-Flash Engine: Active</span>
               </div>
-              <div className="text-[10px] font-mono text-white/10 tracking-widest">
+              <div className="text-[10px] font-mono text-white/10 tracking-tight">
                 Hue REST Core
               </div>
             </div>
@@ -502,9 +499,9 @@ function Metric({ icon, label, value, sub, accent = 'text-accent' }: { icon: any
   return (
     <div className="app-section-card glass !p-6 hover:border-white/10 transition-all group">
       <div className={`mb-3 transition-colors duration-300 ${accent}`}>{icon}</div>
-      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">{label}</div>
-      <div className="text-xl font-black text-white tabular-nums leading-none mb-1">{value}</div>
-      {sub && <div className="text-[9px] font-black text-white/10 uppercase tracking-wider">{sub}</div>}
+      <div className="text-[10px] font-medium tracking-normal text-white/20 mb-1">{label}</div>
+      <div className="text-xl font-semibold text-white tabular-nums leading-none mb-1">{value}</div>
+      {sub && <div className="text-[9px] font-semibold text-white/10 tracking-wider">{sub}</div>}
     </div>
   )
 }

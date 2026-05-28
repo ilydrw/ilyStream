@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage } from 'electron'
+import { ipcMain, BrowserWindow, desktopCapturer, screen, session, nativeImage, MessageChannelMain } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { execFileSync } from 'child_process'
@@ -29,6 +29,23 @@ function resolveBundledResource(...segments: string[]): string | null {
 export function registerStudioHandlers(db: Database, overlayServer: OverlayServer, browserSourceService: BrowserSourceService) {
   const projectorWindows = new Set<BrowserWindow>()
   const ownerCleanupHandlers = new WeakMap<BrowserWindow, () => void>()
+  // Maps a projector window to the broadcast window that opened it. Used
+  // when the projector asks main to broker a MessagePort pair so it can
+  // mirror the broadcast window's composed canvas as ImageBitmap frames.
+  const projectorOwners = new WeakMap<BrowserWindow, BrowserWindow>()
+
+  ipcMain.on('studio:projector:request-mirror', (event, payload: { aspectRatio?: '16:9' | '9:16' }) => {
+    const projectorWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!projectorWindow) return
+    const owner = projectorOwners.get(projectorWindow)
+    if (!owner || owner.isDestroyed()) return
+    const { port1, port2 } = new MessageChannelMain()
+    // Broadcast window receives port1 + the projector's aspectRatio and starts
+    // pushing ImageBitmap frames captured from the matching output canvas.
+    // Projector window receives port2 and renders them.
+    owner.webContents.postMessage('studio:projector:mirror-source', { aspectRatio: payload?.aspectRatio }, [port1])
+    projectorWindow.webContents.postMessage('studio:projector:mirror-sink', null, [port2])
+  })
 
   // Deck Actions
   ipcMain.handle('studio:get-deck-actions', () => db.getAllDeckActions())
@@ -212,6 +229,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     projectorWindow.once('closed', () => projectorWindows.delete(projectorWindow))
 
     const owner = BrowserWindow.fromWebContents(event.sender)
+    if (owner) projectorOwners.set(projectorWindow, owner)
     if (owner && !ownerCleanupHandlers.has(owner)) {
       const closeAllProjectors = () => {
         for (const win of projectorWindows) {

@@ -14,6 +14,7 @@ import {
 import { TwitchMapper } from '../mappers/twitch-mapper'
 
 const STREAM_POLL_INTERVAL_MS = 30_000
+const PROFILE_ENRICHMENT_TIMEOUT_MS = 1_500
 const FOLLOW_EVENTSUB_SCOPE = 'moderator:read:followers'
 const OPTIONAL_TWITCH_SCOPES = [
   FOLLOW_EVENTSUB_SCOPE,
@@ -23,6 +24,14 @@ const OPTIONAL_TWITCH_SCOPES = [
   'chat:edit',
   'channel:moderate'
 ]
+
+export function normalizeTwitchChannelName(channel: string | undefined): string {
+  return String(channel || '')
+    .trim()
+    .replace(/^[@#]+/, '')
+    .trim()
+    .toLowerCase()
+}
 
 export class TwitchConnector extends BaseConnector {
   readonly platform: Platform = 'twitch'
@@ -42,7 +51,7 @@ export class TwitchConnector extends BaseConnector {
 
   validateConfig(config: PlatformConfig): string | null {
     const c = config as TwitchConfig
-    if (!c.channel?.trim()) return 'Twitch channel name is required'
+    if (!normalizeTwitchChannelName(c.channel)) return 'Twitch channel name is required'
     if (!c.clientId?.trim()) return 'Twitch Client ID is required'
     if (!c.accessToken?.trim()) return 'Twitch access token is required'
     return null
@@ -50,6 +59,7 @@ export class TwitchConnector extends BaseConnector {
 
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const twitchConfig = config as TwitchConfig
+    const channelName = normalizeTwitchChannelName(twitchConfig.channel)
     await this.cleanup()
 
     const { RefreshingAuthProvider, StaticAuthProvider } = await import('@twurple/auth')
@@ -71,7 +81,7 @@ export class TwitchConnector extends BaseConnector {
     }
 
     this.apiClient = new ApiClient({ authProvider: this.authProvider })
-    this.chatClient = new ChatClient({ authProvider: this.authProvider, channels: [twitchConfig.channel] })
+    this.chatClient = new ChatClient({ authProvider: this.authProvider, channels: [channelName] })
 
     this.chatClient.onSub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
     this.chatClient.onResub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
@@ -90,7 +100,7 @@ export class TwitchConnector extends BaseConnector {
     })
 
     this.chatClient.onConnect(() => {
-      console.log(`[twitch-connector] ChatClient CONNECTED to channels: ${twitchConfig.channel}`)
+      console.log(`[twitch-connector] ChatClient CONNECTED to channels: ${channelName}`)
       this.setStatus('connected')
     })
 
@@ -106,8 +116,8 @@ export class TwitchConnector extends BaseConnector {
     }
 
     try {
-      console.log(`[twitch-connector] Fetching broadcaster ID for: ${twitchConfig.channel}`)
-      const user = await this.apiClient.users.getUserByName(twitchConfig.channel)
+      console.log(`[twitch-connector] Fetching broadcaster ID for: ${channelName}`)
+      const user = await this.apiClient.users.getUserByName(channelName)
       this.broadcasterId = user?.id ?? ''
       console.log(`[twitch-connector] Broadcaster ID: ${this.broadcasterId}`)
       
@@ -132,7 +142,7 @@ export class TwitchConnector extends BaseConnector {
       await this.tryStartEventSubTelemetry()
       if (this.hasTokenScope(FOLLOW_EVENTSUB_SCOPE)) void this.backfillFollowers()
     }
-    console.log(`[twitch-connector] doConnect COMPLETED for channel: ${twitchConfig.channel}`)
+    console.log(`[twitch-connector] doConnect COMPLETED for channel: ${channelName}`)
   }
 
   protected async doDisconnect(): Promise<void> { await this.cleanup() }
@@ -143,7 +153,7 @@ export class TwitchConnector extends BaseConnector {
 
   override async sendChatMessage(text: string): Promise<void> {
     if (!this.chatClient || this.status !== 'connected') throw new Error('Twitch not connected')
-    await this.chatClient.say((this.currentConfig as TwitchConfig).channel, text)
+    await this.chatClient.say(normalizeTwitchChannelName((this.currentConfig as TwitchConfig).channel), text)
   }
 
   private async cleanup(): Promise<void> {
@@ -156,11 +166,15 @@ export class TwitchConnector extends BaseConnector {
   private async emitEnriched(event: AnyStreamEvent): Promise<void> {
     console.log(`[twitch-connector] ENRICHING ${event.type} event from ${event.platform}...`)
     try {
-      const enriched = await this.enrichEventWithTwitchProfile(event as any)
+      const enriched = await withTimeout(
+        this.enrichEventWithTwitchProfile(event as any),
+        PROFILE_ENRICHMENT_TIMEOUT_MS,
+        `Twitch profile enrichment timed out after ${PROFILE_ENRICHMENT_TIMEOUT_MS}ms`
+      )
       console.log(`[twitch-connector] EMITTING enriched ${event.type} event`)
       this.emitEvent(enriched)
     } catch (err) {
-      console.error(`[twitch-connector] FAILED to enrich event:`, err)
+      console.warn(`[twitch-connector] Profile enrichment skipped for ${event.type}:`, err)
       this.emitEvent(event)
     }
   }
@@ -251,4 +265,19 @@ export class TwitchConnector extends BaseConnector {
       return [] 
     }
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+
+  return Promise.race([
+    promise.finally(() => {
+      if (timeout) clearTimeout(timeout)
+    }),
+    timeoutPromise
+  ])
 }

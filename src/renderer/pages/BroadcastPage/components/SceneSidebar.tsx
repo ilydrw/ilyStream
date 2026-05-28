@@ -1,4 +1,4 @@
-import {IconPlus} from '@tabler/icons-react'
+import { IconPlus } from '../../../components/ui/icons'
 import type { StudioScene } from '../../../../shared/studio'
 
 interface SceneSidebarProps {
@@ -34,7 +34,7 @@ export function SceneSidebar(props: SceneSidebarProps) {
             onClick={() => onSelectScene(scene.id)}
             onDoubleClick={() => { setEditingSceneId(scene.id); setEditingSceneName(scene.name) }}
             onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, scene.id) }}
-            className={`w-full text-left px-4 py-4 rounded-xl text-[13px] font-black transition-all ${activeSceneId === scene.id ? 'bg-brand-gradient text-white shadow-xl shadow-glow translate-x-1' : 'text-white/20 hover:text-white/40 hover:bg-white/5'}`}
+            className={`w-full text-left px-4 py-4 rounded-xl text-[13px] font-semibold transition-all ${activeSceneId === scene.id ? 'bg-accent text-white shadow-xl translate-x-1' : 'text-white/20 hover:text-white/40 hover:bg-white/5'}`}
           >
             {editingSceneId === scene.id ? (
               <input
@@ -42,7 +42,7 @@ export function SceneSidebar(props: SceneSidebarProps) {
                 onChange={e => setEditingSceneName(e.target.value)}
                 onBlur={() => { onRenameScene(scene.id, editingSceneName); setEditingSceneId(null) }}
                 onKeyDown={e => { if (e.key === 'Enter') { onRenameScene(scene.id, editingSceneName); setEditingSceneId(null) }; if (e.key === 'Escape') setEditingSceneId(null) }}
-                className="w-full bg-transparent text-[13px] font-black text-white outline-none border-b border-accent/50"
+                className="w-full bg-transparent text-[13px] font-semibold text-white outline-none border-b border-accent/50"
                 autoFocus
               />
             ) : scene.name}

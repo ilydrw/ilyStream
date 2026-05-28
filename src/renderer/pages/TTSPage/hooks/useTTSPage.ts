@@ -119,6 +119,15 @@ export function useTTSPage() {
     return () => unsubscribe()
   }, [])
 
+  useEffect(() => {
+    const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null
+    setDraft((current) => {
+      if (!selectedProfile) return null
+      if (current?.id === selectedProfile.id) return current
+      return cloneProfile(selectedProfile)
+    })
+  }, [profiles, selectedProfileId])
+
   // 3. System Voices
   const refreshVoices = useCallback(() => {
     const nextVoices = [...window.speechSynthesis.getVoices()].sort((left, right) =>

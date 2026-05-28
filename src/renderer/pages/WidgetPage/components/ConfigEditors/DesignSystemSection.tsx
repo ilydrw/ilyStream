@@ -64,11 +64,7 @@ export function DesignSystemSection({
                 <button
                   key={style}
                   onClick={() => onUpdate('animationStyle', style)}
-                  className={`py-1.5 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all border ${
-                    config.animationStyle === style
-                      ? 'bg-brand-gradient border-transparent text-white shadow-glow'
-                      : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
-                  }`}
+                  className={`py-1.5 rounded-md text-[9px] font-semibold tracking-wider transition-all border ${ config.animationStyle === style ? 'bg-accent border-transparent text-white ' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10' }`}
                 >
                   {style}
                 </button>

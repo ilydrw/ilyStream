@@ -1,5 +1,6 @@
 import React from 'react'
-import {IconWorld, IconRocket, IconActivity, IconBolt, IconExternalLink} from '@tabler/icons-react'
+import { IconWorld, IconRocket, IconActivity, IconBolt } from '@tabler/icons-react'
+import { IconExternalLink } from '../../components/ui/icons'
 import { RestreamIcon } from '../../components/ui/RestreamIcon'
 
 export default function RestreamPage() {
@@ -38,18 +39,18 @@ export default function RestreamPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         <div className="lg:col-span-7">
           <section className="app-section-card glass p-10 h-full">
-            <h2 className="text-xl font-bold mb-6">Connect ReStream API</h2>
+            <h2 className="text-xl font-semibold mb-6">Connect ReStream API</h2>
             <div className="space-y-6">
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-white/40">API Access Token</label>
+                <label className="text-[10px] font-semibold tracking-tight text-white/40">API Access Token</label>
                 <input type="password" placeholder="Paste your ReStream Access Token..." className="app-input" />
               </div>
-              <button className="app-button-primary w-full !h-14 text-xs font-black uppercase tracking-widest">
+              <button className="app-button-primary w-full !h-14 text-xs font-semibold tracking-tight">
                 Verify Connection
               </button>
               <div className="pt-4 border-t border-white/5 flex items-center justify-between">
                 <span className="text-xs text-white/20">Don't have a token?</span>
-                <a href="#" className="text-xs font-bold text-accent flex items-center gap-2">
+                <a href="#" className="text-xs font-semibold text-accent flex items-center gap-2">
                   Get Token <IconExternalLink size={12} />
                 </a>
               </div>
@@ -60,7 +61,7 @@ export default function RestreamPage() {
         <div className="lg:col-span-5">
           <section className="app-section-card glass p-10 bg-accent/5 border-accent/20">
             <IconBolt size={32} className="text-accent mb-4" />
-            <h3 className="text-lg font-bold mb-2">Unified Analytics</h3>
+            <h3 className="text-lg font-semibold mb-2">Unified Analytics</h3>
             <p className="text-xs text-white/40 leading-relaxed">
               Once linked, IlyStream will pull combined viewer counts and chat metrics from all your ReStream destinations automatically.
             </p>
@@ -78,8 +79,8 @@ function Metric({ icon, label, value }: { icon: React.ReactNode, label: string, 
         {icon}
       </div>
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-white/30 mb-2">{label}</p>
-        <p className="text-4xl font-bold font-mono text-white">{value}</p>
+        <p className="text-xs font-semibold tracking-tight text-white/30 mb-2">{label}</p>
+        <p className="text-4xl font-semibold font-mono text-white">{value}</p>
       </div>
     </div>
   )

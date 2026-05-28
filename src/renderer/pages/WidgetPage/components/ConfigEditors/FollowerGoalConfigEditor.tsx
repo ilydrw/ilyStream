@@ -50,11 +50,7 @@ export function FollowerGoalConfigEditor({
               <button
                 key={t.id}
                 onClick={() => update('goalType', t.id as any)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.goalType === t.id
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.goalType === t.id ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {t.label}
               </button>
@@ -72,11 +68,7 @@ export function FollowerGoalConfigEditor({
               <button
                 key={p.id}
                 onClick={() => update('platform', p.id as any)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.platform === p.id
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.platform === p.id ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {p.label}
               </button>
@@ -124,11 +116,7 @@ export function FollowerGoalConfigEditor({
               <button
                 key={pos}
                 onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.position === pos
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {pos.replace('-', ' ')}
               </button>
@@ -172,25 +160,17 @@ export function FollowerGoalConfigEditor({
             <ColorRow label="Base color" value={config.accentColor.startsWith('#') ? config.accentColor : '#ff7a45'} onChange={(v) => update('accentColor', v)} />
 
             <div className="pt-2 border-t border-white/5">
-              <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-2 block">Special Effects</span>
+              <span className="text-[10px] font-semibold text-white/40 tracking-wider mb-2 block">Special Effects</span>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => update('accentColor', 'chroma')}
-                  className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
-                    config.accentColor === 'chroma'
-                      ? 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500 text-white border-transparent'
-                      : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                  }`}
+                  className={`h-9 rounded-lg text-[10px] font-semibold tracking-tight border transition-all ${ config.accentColor === 'chroma' ? 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500 text-white border-transparent' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
                 >
                   Chroma
                 </button>
                 <button
                   onClick={() => update('accentColor', 'cyberneon')}
-                  className={`h-9 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
-                    config.accentColor === 'cyberneon'
-                      ? 'bg-gradient-to-r from-[#D035F1] to-[#19C8FF] text-white border-transparent'
-                      : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                  }`}
+                  className={`h-9 rounded-lg text-[10px] font-semibold tracking-tight border transition-all ${ config.accentColor === 'cyberneon' ? 'bg-gradient-to-r from-[#D035F1] to-[#19C8FF] text-white border-transparent' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
                 >
                   Cyberneon
                 </button>
@@ -214,11 +194,7 @@ export function FollowerGoalConfigEditor({
                 <button
                   key={t}
                   onClick={() => update('celebrationType', t)}
-                  className={`h-9 rounded-lg text-[10px] font-bold border transition-all capitalize ${
-                    config.celebrationType === t
-                      ? 'bg-white text-black border-white'
-                      : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                  }`}
+                  className={`h-9 rounded-lg text-[10px] font-semibold border transition-all capitalize ${ config.celebrationType === t ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
                 >
                   {t}
                 </button>

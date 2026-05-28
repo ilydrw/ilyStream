@@ -1,9 +1,9 @@
 // src/main/services/virtual-camera-service.ts
 import { EventEmitter } from 'events'
 import * as os from 'os'
-import { execFileSync, spawn } from 'child_process'
+import { execFile, execFileSync, spawn } from 'child_process'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
   VirtualCameraInfo,
   VirtualCameraPlatform,
@@ -18,8 +18,9 @@ const DEFAULT_BRIDGE_WIDTH = 1280
 const DEFAULT_BRIDGE_HEIGHT = 720
 const DEFAULT_LINUX_DEVICE = '/dev/video0'
 const WINDOWS_BUILD_HINT = 'Build the ilyStream Windows virtual camera native binaries with npm run build:virtual-camera.'
-const WINDOWS_REGISTER_HINT = 'Register the ilyStream Windows virtual camera from an elevated PowerShell with npm run install:virtual-camera.'
+const WINDOWS_REGISTER_HINT = 'Install or repair the ilyStream Windows virtual camera to create the OS camera source.'
 const WINDOWS_FRAME_BRIDGE_HINT = 'Build the ilyStream Windows virtual camera frame bridge with npm run build:virtual-camera.'
+const WINDOWS_INSTALL_HINT = 'Windows will ask for administrator permission to install or repair the ilyStream Virtual Camera.'
 const MACOS_DRIVER_HINT = 'Install the ilyStream macOS virtual camera extension to create an OS camera source, or use OBS Virtual Camera from the output menu.'
 const LINUX_DRIVER_HINT = 'Install and configure v4l2loopback, then expose a writable /dev/video device for ilyStream.'
 const BRIDGE_PIPE_MAGIC = 0x46564349
@@ -33,8 +34,10 @@ interface VirtualCameraServiceOptions {
   nativeControlPath?: string
   nativeMediaSourcePath?: string
   nativeFrameBridgePath?: string
+  nativeInstallScriptPath?: string
   mediaSourceRegistered?: (clsid: string, expectedDll?: string) => boolean
   startFrameBridge?: (path: string) => any
+  installWindowsDriver?: () => Promise<void>
 }
 
 export class VirtualCameraService extends EventEmitter {
@@ -48,7 +51,9 @@ export class VirtualCameraService extends EventEmitter {
   private nativeControlPath?: string
   private nativeMediaSourcePath?: string
   private nativeFrameBridgePath?: string
+  private nativeInstallScriptPath?: string
   private mediaSourceRegistered = false
+  private canInstallDriver = false
   private frameBridgeProcess?: any
   private frameBridgeBackpressured = false
   private outputId = 'virtual-camera-session'
@@ -61,6 +66,7 @@ export class VirtualCameraService extends EventEmitter {
     this.nativeControlPath = this.findNativeControlPath()
     this.nativeMediaSourcePath = this.findNativeMediaSourcePath()
     this.nativeFrameBridgePath = this.findNativeFrameBridgePath()
+    this.nativeInstallScriptPath = this.findNativeInstallScriptPath()
     this.detectPlatform(options.hostPlatform ?? os.platform())
   }
 
@@ -70,6 +76,7 @@ export class VirtualCameraService extends EventEmitter {
       this.deviceName = DEFAULT_CAMERA_NAME
       this.mediaSourceRegistered = this.isWindowsMediaSourceRegistered()
       this.canStart = Boolean(this.nativeControlPath && this.nativeMediaSourcePath && this.nativeFrameBridgePath && this.mediaSourceRegistered)
+      this.canInstallDriver = this.canInstallWindowsDriver()
       this.needsDriver = !this.canStart
 
       if (this.canStart) {
@@ -127,7 +134,11 @@ export class VirtualCameraService extends EventEmitter {
       nativeMediaSourcePath: this.nativeMediaSourcePath,
       nativeFrameBridgeAvailable: Boolean(this.nativeFrameBridgePath),
       nativeFrameBridgePath: this.nativeFrameBridgePath,
-      mediaSourceRegistered: this.mediaSourceRegistered
+      mediaSourceRegistered: this.mediaSourceRegistered,
+      canInstallDriver: this.canInstallDriver,
+      nativeInstallScriptAvailable: Boolean(this.nativeInstallScriptPath),
+      nativeInstallScriptPath: this.nativeInstallScriptPath,
+      installDriverHint: this.canInstallDriver ? WINDOWS_INSTALL_HINT : undefined
     }
   }
 
@@ -199,6 +210,38 @@ export class VirtualCameraService extends EventEmitter {
       this.setState('inactive')
     } catch (err: any) {
       this.setState('error', err.message)
+    }
+  }
+
+  public async installDriver(): Promise<VirtualCameraInfo> {
+    if (this.platform !== 'windows-mf-native') {
+      throw new Error(this.driverHint || 'Virtual camera driver installation is only available on Windows.')
+    }
+
+    this.refreshWindowsNativeAvailability()
+    if (!this.canInstallDriver) {
+      throw new Error(this.driverHint || 'Virtual camera installer is not available.')
+    }
+
+    try {
+      await this.runWindowsDriverInstaller()
+      this.refreshWindowsNativeAvailability()
+
+      if (!this.canStart) {
+        throw new Error(this.driverHint || 'Virtual camera installation completed but the camera is still unavailable.')
+      }
+
+      const status = this.getStatus()
+      this.emit('status-change', status)
+      return status
+    } catch (err: any) {
+      this.refreshWindowsNativeAvailability()
+      this.state = 'error'
+      this.lastError = err?.message || String(err)
+      this.driverHint = this.lastError
+      const status = this.getStatus()
+      this.emit('status-change', status)
+      throw err
     }
   }
 
@@ -297,12 +340,28 @@ export class VirtualCameraService extends EventEmitter {
     return candidates.find(candidate => candidate && existsSync(candidate))
   }
 
+  private findNativeInstallScriptPath(): string | undefined {
+    if (this.options.nativeInstallScriptPath !== undefined) return this.options.nativeInstallScriptPath
+    if (this.options.hostPlatform && this.options.hostPlatform !== 'win32') return undefined
+
+    const scriptName = 'install.ps1'
+    const candidates = [
+      join(process.cwd(), 'native', 'virtual-camera', scriptName),
+      join((process as any).resourcesPath || '', 'native', 'virtual-camera', scriptName),
+      join((process as any).resourcesPath || '', scriptName)
+    ]
+
+    return candidates.find(candidate => candidate && existsSync(candidate))
+  }
+
   private refreshWindowsNativeAvailability(): void {
     this.nativeControlPath = this.findNativeControlPath()
     this.nativeMediaSourcePath = this.findNativeMediaSourcePath()
     this.nativeFrameBridgePath = this.findNativeFrameBridgePath()
+    this.nativeInstallScriptPath = this.findNativeInstallScriptPath()
     this.mediaSourceRegistered = this.isWindowsMediaSourceRegistered()
     this.canStart = Boolean(this.nativeControlPath && this.nativeMediaSourcePath && this.nativeFrameBridgePath && this.mediaSourceRegistered)
+    this.canInstallDriver = this.canInstallWindowsDriver()
     this.needsDriver = !this.canStart
     this.driverHint = this.canStart ? undefined : this.getWindowsDriverHint()
 
@@ -318,8 +377,20 @@ export class VirtualCameraService extends EventEmitter {
   private getWindowsDriverHint(): string {
     if (!this.nativeControlPath || !this.nativeMediaSourcePath) return WINDOWS_BUILD_HINT
     if (!this.nativeFrameBridgePath) return WINDOWS_FRAME_BRIDGE_HINT
+    if (!this.nativeInstallScriptPath) return 'ilyStream virtual camera installer assets were not found.'
     if (!this.mediaSourceRegistered) return WINDOWS_REGISTER_HINT
     return 'ilyStream Windows virtual camera is not available.'
+  }
+
+  private canInstallWindowsDriver(): boolean {
+    return Boolean(
+      this.platform === 'windows-mf-native' &&
+      this.nativeControlPath &&
+      this.nativeMediaSourcePath &&
+      this.nativeFrameBridgePath &&
+      this.nativeInstallScriptPath &&
+      !this.mediaSourceRegistered
+    )
   }
 
   private isWindowsMediaSourceRegistered(): boolean {
@@ -352,6 +423,77 @@ export class VirtualCameraService extends EventEmitter {
   private parseRegistryDefaultValue(output: string): string | undefined {
     const match = output.match(/\(Default\)\s+REG_SZ\s+(.+)/i)
     return match?.[1]?.trim()
+  }
+
+  private async runWindowsDriverInstaller(): Promise<void> {
+    if (this.options.installWindowsDriver) {
+      await this.options.installWindowsDriver()
+      return
+    }
+
+    if (!this.nativeInstallScriptPath) throw new Error('ilyStream virtual camera installer assets were not found.')
+    if (!this.nativeControlPath) throw new Error(WINDOWS_BUILD_HINT)
+
+    const nativeDir = dirname(this.nativeControlPath)
+    const installerArgs = [
+      '-NoProfile',
+      '-ExecutionPolicy Bypass',
+      '-File',
+      this.quoteWindowsArgument(this.nativeInstallScriptPath),
+      '-SkipBuild',
+      '-NativeDir',
+      this.quoteWindowsArgument(nativeDir)
+    ]
+    const appUserSid = this.getCurrentWindowsUserSid()
+    if (appUserSid) {
+      installerArgs.push('-AppUserSid', this.quoteWindowsArgument(appUserSid))
+    }
+    const argumentList = installerArgs.join(' ')
+    const command = [
+      "$ErrorActionPreference = 'Stop'",
+      `$process = Start-Process -FilePath 'powershell.exe' -ArgumentList '${this.escapePowerShellSingleQuoted(argumentList)}' -Verb RunAs -Wait -PassThru`,
+      'exit $process.ExitCode'
+    ].join('; ')
+
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
+        { windowsHide: true, timeout: 5 * 60 * 1000, maxBuffer: 1024 * 1024 },
+        (error, _stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr?.trim() || error.message))
+            return
+          }
+          resolve()
+        }
+      )
+    })
+  }
+
+  private quoteWindowsArgument(value: string): string {
+    return `"${value.replace(/"/g, '\\"')}"`
+  }
+
+  private escapePowerShellSingleQuoted(value: string): string {
+    return value.replace(/'/g, "''")
+  }
+
+  private getCurrentWindowsUserSid(): string | undefined {
+    try {
+      const output = execFileSync('whoami.exe', ['/user', '/fo', 'csv', '/nh'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+      const match = output.match(/^"[^"]+","([^"]+)"/)
+      if (match?.[1]) return match[1]
+
+      const parts = output.split(',')
+      return parts[1]?.replace(/^"|"$/g, '').trim()
+    } catch {
+      return undefined
+    }
   }
 
   private startWindowsFrameBridge(): void {

@@ -182,7 +182,7 @@ export async function fetchElevenLabsVoices(apiKey: string): Promise<ElevenLabsV
     if (!error.message?.includes('401') && !error.message?.includes('API Key')) {
       console.error('[ElevenLabs] Failed to fetch voices:', error)
     }
-    return []
+    throw error instanceof Error ? error : new Error('Failed to fetch ElevenLabs voices')
   }
 }
 

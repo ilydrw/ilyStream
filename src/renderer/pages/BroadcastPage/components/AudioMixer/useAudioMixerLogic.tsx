@@ -1,20 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useStudioStore } from '../../../../stores/studio-store'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
-import {
-  IconEraser,
-  IconHeadphones,
-  IconLock,
-  IconLockOpen,
-  IconPalette,
-  IconPencil,
-  IconRefresh,
-  IconRoute,
-  IconSparkles,
-  IconTrash,
-  IconVolume,
-  IconVolumeOff
-} from '@tabler/icons-react'
+import { IconEraser, IconHeadphones, IconLock, IconLockOpen, IconPalette, IconRoute, IconSparkles, IconVolume, IconVolumeOff } from '@tabler/icons-react'
+import { IconPencil, IconRefresh, IconTrash } from '../../../../components/ui/icons'
 import type { ContextMenuItem } from '../../../../components/ui/ContextMenu'
 import { sanitizeChannelMode } from '../../../../utils/audio-engine'
 import {
@@ -151,6 +139,7 @@ export function useAudioMixerLogic(
   }
 
   const getTrackLocked = (source: AudioSource) => {
+    if (source.id === 'mic-audio') return false
     const layer = activeScene.layers.find(item => item.id === source.id)
     return Boolean(source.locked || layer?.locked || layer?.portraitLocked)
   }

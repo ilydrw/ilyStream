@@ -15,9 +15,9 @@ const BORDER_THEME_OPTIONS: Array<{
   label: string
   selectedClass: string
 }> = [
-  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-accent text-white border-transparent ' },
   { id: 'chroma', style: 'chroma', label: 'Chroma', selectedClass: 'bg-gradient-to-r from-red-500 via-yellow-300 via-green-400 to-fuchsia-500 text-white border-transparent' },
-  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-brand-gradient text-white border-transparent shadow-glow' },
+  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-accent text-white border-transparent ' },
   { id: 'gob-the-stopper', style: 'gob-the-stopper', label: 'Gob', selectedClass: 'bg-lime-300 text-black border-lime-200 shadow-[0_0_18px_rgba(182,255,0,0.24)]' }
 ]
 
@@ -50,11 +50,7 @@ export function BorderConfigEditor({
               <button
                 key={option.id}
                 onClick={() => applyTheme(option.id)}
-                className={`h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
-                  config.style === option.style
-                    ? option.selectedClass
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[9px] font-semibold tracking-tight border transition-all ${ config.style === option.style ? option.selectedClass : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {option.label}
               </button>
@@ -85,11 +81,7 @@ export function BorderConfigEditor({
               <button
                 key={r}
                 onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.aspectRatio === r
-                    ? 'bg-brand-gradient text-white border-transparent shadow-glow'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-accent text-white border-transparent ' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {r === 'auto' ? 'Auto (Fill)' : r === 'tiktok' ? 'Vertical (9:16)' : 'Landscape (16:9)'}
               </button>
@@ -144,7 +136,7 @@ export function BorderConfigEditor({
         </Field>
         <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
           <div>
-            <div className="text-xs font-bold text-white uppercase tracking-wider mb-0.5">Force TikTok Dimensions</div>
+            <div className="text-xs font-semibold text-white tracking-wider mb-0.5">Force TikTok Dimensions</div>
             <div className="text-[10px] text-white/40">Locks resolution to 1080x1920 for TikTok Live Studio "Fit to Screen"</div>
           </div>
           <button

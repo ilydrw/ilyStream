@@ -50,19 +50,14 @@ export function Tooltip({ content, children, position = 'top', delay = 0.3 }: To
             transition={{ duration: 0.15, ease: 'easeOut' }}
             className="absolute z-[9999] pointer-events-none"
           >
-            <div className="px-3 py-1.5 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl backdrop-blur-xl">
-              <span className="text-[10px] font-black uppercase tracking-[0.1em] text-white/70 whitespace-nowrap leading-none">
+            <div className="px-2.5 py-1 bg-[#1A1D24] border border-white/[0.08] rounded-md shadow-[0_8px_20px_rgba(0,0,0,0.5)]">
+              <span className="text-[12px] font-medium text-white whitespace-nowrap leading-none">
                 {content}
               </span>
             </div>
             {/* Tiny arrow */}
-            <div 
-              className={`absolute border-4 border-transparent ${
-                position === 'top' ? 'border-t-[#1A1A1A] top-full left-1/2 -translate-x-1/2' :
-                position === 'bottom' ? 'border-b-[#1A1A1A] bottom-full left-1/2 -translate-x-1/2' :
-                position === 'left' ? 'border-l-[#1A1A1A] left-full top-1/2 -translate-y-1/2' :
-                'border-r-[#1A1A1A] right-full top-1/2 -translate-y-1/2'
-              }`}
+            <div
+              className={`absolute border-[3px] border-transparent ${ position === 'top' ? 'border-t-[#1A1D24] top-full left-1/2 -translate-x-1/2' : position === 'bottom' ? 'border-b-[#1A1D24] bottom-full left-1/2 -translate-x-1/2' : position === 'left' ? 'border-l-[#1A1D24] left-full top-1/2 -translate-y-1/2' : 'border-r-[#1A1D24] right-full top-1/2 -translate-y-1/2' }`}
             />
           </motion.div>
         )}

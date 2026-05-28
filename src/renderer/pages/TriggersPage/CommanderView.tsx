@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import {IconActivity, IconBolt, IconMicrophone, IconGhost, IconMessage, IconSend, IconPlayerPlay, IconTerminal2} from '@tabler/icons-react'
+import { IconActivity, IconBolt, IconMicrophone, IconGhost, IconMessage, IconSend, IconTerminal2 } from '@tabler/icons-react'
+import { IconPlayerPlay } from '../../components/ui/icons'
 import { motion, AnimatePresence } from 'framer-motion'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -92,10 +93,10 @@ export function CommanderView() {
             </div>
             <div className="w-full">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">{service.name}</p>
+                <p className="text-[10px] font-medium tracking-normal text-white/30">{service.name}</p>
                 <div className={`h-1.5 w-1.5 rounded-full ${service.status === 'connected' ? 'bg-accent' : 'bg-white/10'}`} />
               </div>
-              <p className="text-xl font-black text-white tracking-tight uppercase italic opacity-40">{service.status}</p>
+              <p className="text-xl font-semibold text-white tracking-tight italic opacity-40">{service.status}</p>
             </div>
           </div>
         ))}
@@ -111,11 +112,11 @@ export function CommanderView() {
                   <IconTerminal2 size={32} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black tracking-tight">Automation Monitor</h2>
+                  <h2 className="text-sm font-semibold tracking-tight">Automation Monitor</h2>
                   <p>Live event flow.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-[9px] font-black tracking-widest uppercase">
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-[9px] font-semibold tracking-tight">
                  <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                  Active
               </div>
@@ -135,10 +136,7 @@ export function CommanderView() {
                     <span className="text-[10px] font-mono text-white/20 pt-1 w-16 shrink-0">{log.timestamp}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[10px] font-black uppercase tracking-widest ${
-                          log.type === 'event' ? 'text-blue-400' : 
-                          log.type === 'action' ? 'text-accent' : 'text-white/40'
-                        }`}>
+                        <span className={`text-[10px] font-semibold tracking-tight ${ log.type === 'event' ? 'text-blue-400' : log.type === 'action' ? 'text-accent' : 'text-white/40' }`}>
                           {log.source}
                         </span>
                         <div className="h-px flex-1 bg-white/[0.05]" />
@@ -153,8 +151,8 @@ export function CommanderView() {
             </div>
 
             <div className="p-4 border-t border-white/5 bg-black/20 flex items-center justify-between">
-               <p className="text-[10px] font-black uppercase text-white/20 tracking-widest">Buffer: {logs.length}/20 Events</p>
-               <button className="text-[10px] font-black uppercase text-accent tracking-widest hover:brightness-125 transition-all">Clear Stream</button>
+               <p className="text-[10px] font-semibold text-white/20 tracking-tight">Buffer: {logs.length}/20 Events</p>
+               <button className="text-[10px] font-semibold text-accent tracking-tight hover:brightness-125 transition-all">Clear Stream</button>
             </div>
           </div>
         </div>
@@ -168,7 +166,7 @@ export function CommanderView() {
                     <IconBolt size={32} />
                   </div>
                   <div>
-                    <h2 className="text-sm font-black tracking-tight">Service Testing</h2>
+                    <h2 className="text-sm font-semibold tracking-tight">Service Testing</h2>
                     <p>Manual triggers.</p>
                   </div>
                 </div>
@@ -210,7 +208,7 @@ export function CommanderView() {
                   <IconActivity size={32} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black tracking-tight">Traffic Analyzer</h2>
+                  <h2 className="text-sm font-semibold tracking-tight">Traffic Analyzer</h2>
                   <p>Real-time engine diagnostics.</p>
                 </div>
               </div>
@@ -218,7 +216,7 @@ export function CommanderView() {
             <div className="app-section-content">
               <div className="flex flex-col gap-6 relative z-10">
                 <div className="space-y-1">
-                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
+                   <div className="flex justify-between text-[10px] font-semibold tracking-tight mb-1">
                       <span className="text-white/40">Event Saturation</span>
                       <span className="text-accent">Low</span>
                    </div>
@@ -231,7 +229,7 @@ export function CommanderView() {
                    </div>
                 </div>
                 <div className="space-y-1">
-                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
+                   <div className="flex justify-between text-[10px] font-semibold tracking-tight mb-1">
                       <span className="text-white/40">IPC Latency</span>
                       <span className="text-success">2.4ms</span>
                    </div>
@@ -266,13 +264,13 @@ function QuickActionButton({ icon, label, description, onClick }: {
   return (
     <button 
       onClick={onClick}
-      className="flex items-center gap-6 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-accent/30 transition-all text-left group"
+      className="flex items-center gap-6 p-4 rounded-md bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-accent/30 transition-all text-left group"
     >
       <div className="text-white/40 group-hover:text-accent transition-all shrink-0">
         {React.cloneElement(icon as React.ReactElement, { size: 24 })}
       </div>
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-white mb-0.5">{label}</p>
+        <p className="text-xs font-semibold tracking-tight text-white mb-0.5">{label}</p>
         <p className="text-[10px] font-medium text-white/30">{description}</p>
       </div>
     </button>

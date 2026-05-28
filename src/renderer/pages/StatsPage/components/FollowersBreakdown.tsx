@@ -1,4 +1,5 @@
-import { IconUserPlus, IconTrendingUp, IconTrendingDown, IconMinus } from '@tabler/icons-react'
+import { IconUserPlus, IconTrendingUp, IconTrendingDown } from '@tabler/icons-react'
+import { IconMinus } from '../../../components/ui/icons'
 import type { GlobalStats, PlatformStats } from '../../../../shared/stats'
 import type { Platform } from '../../../../main/platforms/types'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
@@ -35,10 +36,10 @@ function DeltaPill({ delta, period }: { delta: number | null | undefined; period
   }
   const Icon = tone === 'up' ? IconTrendingUp : tone === 'down' ? IconTrendingDown : IconMinus
   return (
-    <div className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide flex items-center gap-1 border ${toneClasses[tone]}`}>
+    <div className={`px-2 py-1 rounded-md text-[10px] font-semibold tracking-wide flex items-center gap-1 border ${toneClasses[tone]}`}>
       <Icon size={11} />
       <span className="tabular-nums">{label}</span>
-      <span className="opacity-60 uppercase">{period}</span>
+      <span className="opacity-60">{period}</span>
     </div>
   )
 }
@@ -50,11 +51,11 @@ function PlatformFollowerCard({ platform, stats }: { platform: Platform; stats: 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <PlatformLogo platform={platform} size={22} />
-          <span className="text-xs font-bold uppercase tracking-wider text-white/70">{PLATFORM_LABEL[platform]}</span>
+          <span className="text-xs font-semibold tracking-wider text-white/70">{PLATFORM_LABEL[platform]}</span>
         </div>
         <IconUserPlus size={14} className="text-white/30" />
       </div>
-      <div className="text-3xl font-black text-white tabular-nums leading-none">
+      <div className="text-3xl font-semibold text-white tabular-nums leading-none">
         {count === null ? <span className="text-white/30 text-2xl">—</span> : count.toLocaleString()}
       </div>
       <div className="flex flex-wrap gap-1">
@@ -62,7 +63,7 @@ function PlatformFollowerCard({ platform, stats }: { platform: Platform; stats: 
         <DeltaPill delta={stats.followerDelta7d} period="7d" />
         <DeltaPill delta={stats.followerDelta30d} period="30d" />
       </div>
-      <div className="text-[9px] font-bold uppercase tracking-widest text-white/30 mt-auto">
+      <div className="text-[9px] font-semibold tracking-tight text-white/30 mt-auto">
         {stats.followersLastSyncedAt
           ? `Synced ${formatRelativeTime(stats.followersLastSyncedAt)}`
           : 'Awaiting sync'}
@@ -85,9 +86,9 @@ export function FollowersBreakdown({ global }: FollowersBreakdownProps) {
   return (
     <div className="mb-12">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/40">Followers Across Platforms</h3>
+        <h3 className="text-xs font-semibold tracking-normal text-white/40">Followers Across Platforms</h3>
         {anyCount && (
-          <div className="text-[10px] font-bold uppercase tracking-widest text-white/30">
+          <div className="text-[10px] font-semibold tracking-tight text-white/30">
             Total: <span className="text-white/80 tabular-nums">{total.toLocaleString()}</span>
           </div>
         )}

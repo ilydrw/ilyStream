@@ -20,12 +20,9 @@ export function TTSHeader({ enabled, onToggle }: TTSHeaderProps) {
       <div className="flex items-center gap-4">
         <button
           onClick={onToggle}
-          className={`
-            app-button-primary !h-12 !px-8 relative overflow-hidden transition-all
-            ${!enabled ? '!bg-white/[0.03] !text-white/40 !border-white/5 shadow-none' : 'hover:scale-[1.02] active:scale-[0.98]'}
-          `}
+          className={`app-button-primary !h-12 !px-8 relative overflow-hidden transition-all ${!enabled ? '!bg-white/[0.03] !text-white/40 !border-white/5 shadow-none' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
         >
-          <span className="relative z-10 font-bold">
+          <span className="relative z-10 font-semibold">
             {enabled ? 'System Online' : 'Engine Muted'}
           </span>
         </button>

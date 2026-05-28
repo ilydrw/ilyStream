@@ -1,4 +1,5 @@
-import {IconTrash, IconLink as LinkIcon, IconUnlink, IconMessage, IconSwords} from '@tabler/icons-react'
+import { IconUnlink, IconMessage, IconSwords } from '@tabler/icons-react'
+import { IconTrash, IconLink as LinkIcon } from '../../../components/ui/icons'
 import type { UserIdentity, UserStat } from '../../../shared/stats'
 import type { Platform } from '../../../main/platforms/types'
 import { Avatar } from '../../../components/ui/Avatar'
@@ -21,9 +22,9 @@ interface UserDetailSidebarProps {
 
 function MetricBox({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-      <div className="text-[9px] font-black uppercase tracking-widest text-white/20 mb-1">{label}</div>
-      <div className={`text-xl font-mono font-bold tracking-tighter ${color}`}>{value.toLocaleString()}</div>
+    <div className="bg-white/[0.02] border border-white/5 rounded-md p-4">
+      <div className="text-[9px] font-semibold tracking-tight text-white/20 mb-1">{label}</div>
+      <div className={`text-xl font-mono font-semibold tracking-tighter ${color}`}>{value.toLocaleString()}</div>
     </div>
   )
 }
@@ -54,7 +55,7 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
         <Avatar url={identity.profilePictureUrl} name={identity.displayName} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-white font-bold truncate text-lg tracking-tight">{identity.displayName}</span>
+            <span className="text-white font-semibold truncate text-lg tracking-tight">{identity.displayName}</span>
             {identity.isFanClubMember && (
               <TikTokHeartIcon size={16} className="shrink-0" />
             )}
@@ -67,7 +68,7 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
                 </div>
               ))}
             </div>
-            <span className="uppercase tracking-widest text-[9px] font-black text-white/20">Unified Identity</span>
+            <span className="tracking-tight text-[9px] font-semibold text-white/20">Unified Identity</span>
           </div>
         </div>
         <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
@@ -82,15 +83,15 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
         <MetricBox label="Songs" value={identity.totalSongRequests} color="text-green-400" />
       </div>
 
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 mb-4 px-1">Linked Accounts</h3>
+      <h3 className="text-[10px] font-medium tracking-normal text-white/20 mb-4 px-1">Linked Accounts</h3>
       <div className="space-y-3 mb-8">
         {identity.accounts.map(acc => (
           <div key={`${acc.platform}-${acc.username}`} className="group relative bg-white/[0.03] border border-white/5 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <PlatformLogo platform={acc.platform} size={16} />
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">@{acc.username}</div>
-                <div className="text-[10px] text-white/30 uppercase tracking-tighter">{PLATFORM_LABELS[acc.platform]}</div>
+                <div className="text-xs font-semibold text-white truncate">@{acc.username}</div>
+                <div className="text-[10px] text-white/30 tracking-tighter">{PLATFORM_LABELS[acc.platform]}</div>
               </div>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -117,7 +118,7 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
         {identity.accounts.length < 5 && (
           <button 
             onClick={() => onStartLink(identity.accounts[0])}
-            className="w-full py-3 border border-dashed border-white/10 rounded-xl text-white/20 text-[10px] font-black uppercase tracking-widest hover:border-accent/40 hover:text-accent/60 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 border border-dashed border-white/10 rounded-xl text-white/20 text-[10px] font-semibold tracking-tight hover:border-accent/40 hover:text-accent/60 transition-all flex items-center justify-center gap-2"
           >
             <LinkIcon size={12} />
             Link New Account

@@ -33,6 +33,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
     dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
+    forceVerticalCanvas = false, forceHorizontalCanvas = false,
     onContextMenu, onSelectionContextChange
   } = props
 
@@ -54,7 +55,6 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const imageCache = useRef<Record<string, HTMLImageElement>>({})
   const mediaFrameCache = useRef<Record<string, CachedMediaFrame>>({})
   const browserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
-  const audioClockRef = useRef({ totalSamples: 0, receivedAt: 0 })
   const hasRoutedStreamOutputs = streamOutputs.some(output => output.active)
   const outputActive = isRecording || (isStreaming && !hasRoutedStreamOutputs)
   const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
@@ -84,26 +84,19 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     bitrate: virtualCameraOutput?.bitrateKbps ?? outputBitrateKbps, width: virtualCameraOutput?.width ?? 1280, height: virtualCameraOutput?.height ?? 720, codec: virtualCameraOutput?.codec
   }, () => { if (virtualCameraOutput?.active) void window.api?.virtualCamera?.stop?.() })
 
-  // Audio IconClock Sync
-  useEffect(() => {
-    if (!outputActive) { audioClockRef.current = { totalSamples: 0, receivedAt: 0 }; return }
-    return window.api?.on?.('streaming:native-audio-clock', (data: any) => {
-      audioClockRef.current = { totalSamples: data.totalSamples, receivedAt: performance.now() }
-    })
-  }, [outputActive])
-
   // Audio Engine
-  useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady)
+  useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady, !isPreview)
 
   // Browser Sources
   useBrowserSources({ layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache })
 
   // Render Loop
-  const { fps } = useRenderLoop({
+  const { fps, horizontalCanvasRef, verticalCanvasRef } = useRenderLoop({
     canvasRef, secondaryPreviewCanvasRef, activeScene, aspectRatio, outputFps, outputActive, previewMode,
-    videoRefs, mediaFrameCache, browserFrameCache, imageCache, audioClockRef, encoderWorkerRef,
+    videoRefs, mediaFrameCache, browserFrameCache, imageCache, encoderWorkerRef,
     horizontalEncoderWorkerRef, verticalEncoderWorkerRef, virtualCameraEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
-    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible
+    captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible,
+    forceVerticalCanvas, forceHorizontalCanvas
   })
 
   useImperativeHandle(ref, () => ({
@@ -120,7 +113,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       if (!result?.success) {
         console.error('[CanvasEditor] Screenshot failed:', result?.error)
       }
-    }
+    },
+    getCanvas: () => canvasRef.current,
+    getOutputCanvas: (aspect: '16:9' | '9:16') =>
+      aspect === '9:16' ? verticalCanvasRef.current : horizontalCanvasRef.current
   }), [])
 
   // Viewport & Zoom State
@@ -589,7 +585,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     {activeGuides.map((g, i) => (
                       <div
                         key={i}
-                        className="absolute bg-white ring-2 ring-accent shadow-glow z-context"
+                        className="absolute bg-white ring-2 ring-accent z-context"
                         style={{
                           left: g.type === 'v' ? `${g.pos}px` : 0,
                           top: g.type === 'h' ? `${g.pos}px` : 0,
@@ -603,7 +599,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 )}
 
 
-                <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
+                <div className="absolute -top-6 left-0 text-xs font-medium tracking-normal text-white/20">
                   {isPreview ? 'Preview' : 'Program'}: {aspectRatio}
                 </div>
               </div>
@@ -617,7 +613,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     ref={secondaryPreviewCanvasRef}
                     width={secondaryNativeW}
                     height={secondaryNativeH}
-                    className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover:shadow-accent/10 border border-white/5"
+                    className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover: border border-white/5"
                   />
                   <InteractionLayer
                     layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
@@ -641,7 +637,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                       {activeGuides.map((g, i) => (
                         <div
                           key={i}
-                          className="absolute bg-accent shadow-glow z-context"
+                          className="absolute bg-accent z-context"
                           style={{
                             left: g.type === 'v' ? `${g.pos}px` : 0,
                             top: g.type === 'h' ? `${g.pos}px` : 0,
@@ -654,7 +650,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     </div>
                   )}
 
-                  <div className="absolute -top-6 left-0 text-xs font-black uppercase tracking-[0.2em] text-white/20">
+                  <div className="absolute -top-6 left-0 text-xs font-medium tracking-normal text-white/20">
                     Secondary: {secondaryPreviewAspectRatio}
                   </div>
                 </div>

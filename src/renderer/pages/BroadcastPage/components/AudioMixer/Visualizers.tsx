@@ -40,7 +40,7 @@ export function Spectrum({ id }: { id: string }) {
   }, [])
 
   return (
-    <div className="h-32 rounded-2xl ring-1 ring-white/5 bg-black/40 overflow-hidden relative group">
+    <div className="h-32 rounded-md ring-1 ring-white/5 bg-black/40 overflow-hidden relative group">
       <div className="absolute inset-0 bg-gradient-to-t from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       <canvas
         id={`spectrum-canvas-${id}`}

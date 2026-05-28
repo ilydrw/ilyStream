@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import {IconHeart, IconGift, IconStar, IconUserPlus, IconShare, IconSwords, IconMessage, IconMusic, IconEye} from '@tabler/icons-react'
+import { IconHeart, IconGift, IconStar, IconUserPlus, IconShare, IconSwords, IconMessage, IconMusic } from '@tabler/icons-react'
+import { IconEye } from '../../../components/ui/icons'
 import type { GlobalStats } from '../../../shared/stats'
 import { formatCurrency } from '../utils'
 
@@ -14,8 +15,8 @@ function StatCard({ icon, label, value, accent }: StatCardProps) {
   return (
     <div className="app-section-card glass !p-6 hover:border-white/10 transition-all group">
       <div className={`mb-3 transition-transform duration-300 ${accent}`}>{icon}</div>
-      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 mb-1">{label}</div>
-      <div className="text-xl font-black text-white tabular-nums leading-none truncate">{value}</div>
+      <div className="text-[10px] font-medium tracking-normal text-white/20 mb-1">{label}</div>
+      <div className="text-xl font-semibold text-white tabular-nums leading-none truncate">{value}</div>
     </div>
   )
 }

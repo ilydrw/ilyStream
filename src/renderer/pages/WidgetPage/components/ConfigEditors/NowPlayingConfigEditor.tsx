@@ -33,11 +33,7 @@ export function NowPlayingConfigEditor({
               <button
                 key={mode}
                 onClick={() => update('layout', mode)}
-                className={`h-10 rounded-lg text-xs font-bold border transition-all ${
-                  config.layout === mode
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-10 rounded-lg text-xs font-semibold border transition-all ${ config.layout === mode ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {mode === 'wide' ? 'Wide' : 'Compact'}
               </button>
@@ -51,11 +47,7 @@ export function NowPlayingConfigEditor({
               <button
                 key={pos}
                 onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-bold border transition-all ${
-                  config.position === pos
-                    ? 'bg-white text-black border-white'
-                    : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                }`}
+                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
               >
                 {pos.replace('-', ' ')}
               </button>
@@ -140,11 +132,7 @@ export function NowPlayingConfigEditor({
                   <button
                     key={type}
                     onClick={() => update('borderType', type)}
-                    className={`h-9 rounded-lg text-[10px] font-bold border transition-all ${
-                      config.borderType === type
-                        ? 'bg-white text-black border-white'
-                        : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20'
-                    }`}
+                    className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.borderType === type ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
                   >
                     {type === 'gob-the-stopper' ? 'GOB' : type.toUpperCase()}
                   </button>

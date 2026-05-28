@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import {IconCheck, IconPlus, IconTrash} from '@tabler/icons-react'
+import { IconCheck, IconPlus, IconTrash } from '../../../components/ui/icons'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import type { BroadcastLayoutId } from '../utils/streaming-config'
 
@@ -41,7 +41,7 @@ export function LayoutPlatformPicker({
     <div className={`flex items-center gap-2 rounded-xl border px-2 h-11 ${disabled ? 'border-white/5 bg-white/[0.02] opacity-40' : 'border-white/10 bg-white/5'}`}>
       <div className="flex items-center gap-1.5 text-white/45" title={`${label} output`}>
         {icon}
-        <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">{label}</span>
+        <span className="text-[9px] font-semibold tracking-tight hidden xl:inline">{label}</span>
       </div>
 
       <div className="flex items-center gap-1 max-w-52 overflow-x-auto custom-scrollbar">
@@ -49,12 +49,12 @@ export function LayoutPlatformPicker({
           <button
             key={platform.id}
             onClick={() => onRemove(layout, platform.id)}
-            className="h-7 px-2 rounded-lg bg-brand-gradient border-transparent text-white shadow-glow flex items-center gap-1.5 shrink-0"
+            className="h-7 px-2 rounded-lg bg-accent border-transparent text-white flex items-center gap-1.5 shrink-0"
             title={`Remove ${platform.name} from ${label}`}
             disabled={isStreaming}
           >
             <PlatformLogo platform={platform.id} size={14} />
-            <span className="text-[10px] font-black">{platform.name}</span>
+            <span className="text-[10px] font-semibold">{platform.name}</span>
             <IconTrash size={11} className="text-white/45" />
           </button>
         ))}
@@ -78,17 +78,17 @@ export function LayoutPlatformPicker({
                   if (!isStreaming && !assignedElsewhere) onToggle(layout, platform.id)
                 }}
                 disabled={assignedElsewhere || isStreaming}
-                className={`w-full h-9 px-2 rounded-lg flex items-center gap-2 text-left transition-all disabled:opacity-30 disabled:cursor-not-allowed ${selectedHere ? 'bg-brand-gradient text-white shadow-glow' : 'text-white/55 hover:text-white hover:bg-white/8'}`}
+                className={`w-full h-9 px-2 rounded-lg flex items-center gap-2 text-left transition-all disabled:opacity-30 disabled:cursor-not-allowed ${selectedHere ? 'bg-accent text-white ' : 'text-white/55 hover:text-white hover:bg-white/8'}`}
                 title={assignedElsewhere ? `${platform.name} is already assigned to the other layout` : platform.name}
               >
                 <PlatformLogo platform={platform.id} size={16} />
-                <span className="flex-1 text-[11px] font-black">{platform.name}</span>
+                <span className="flex-1 text-[11px] font-semibold">{platform.name}</span>
                 {selectedHere && <IconCheck size={14} className="text-accent" />}
               </button>
             )
           })}
           {platforms.length === 0 && (
-            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white/25">
+            <div className="px-3 py-2 text-[10px] font-semibold tracking-tight text-white/25">
               Add stream keys in platform settings
             </div>
           )}

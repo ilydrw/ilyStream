@@ -9,15 +9,12 @@ export interface ManagedMediaElement extends HTMLMediaElement {
 export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceInfo[]): MediaStreamConstraints {
   const deviceId = String(layer.config.deviceId || '')
   const label = layer.name || ''
+  const captureWidth = clampNumber(layer.config.captureWidth, 1920, 320, 3840)
+  const captureHeight = clampNumber(layer.config.captureHeight, 1080, 180, 2160)
+  const captureFps = clampNumber(layer.config.captureFps, 30, 15, 60)
   
   const audioId = resolveCameraAudioDeviceId(layer, devices)
-  const audioConstraints = audioId ? {
-    deviceId: { exact: audioId },
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-    channelCount: { ideal: 2 }
-  } : false
+  const audioConstraints = audioId ? buildLowLatencyAudioConstraints(audioId) : false
 
   const videoDevices = devices.filter(d => d.kind === 'videoinput')
   const exists = videoDevices.find(d => d.deviceId === deviceId)
@@ -31,9 +28,9 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
       return {
         video: {
           deviceId: { exact: match.deviceId },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 }
+          width: { ideal: captureWidth },
+          height: { ideal: captureHeight },
+          frameRate: { ideal: captureFps }
         },
         audio: audioConstraints
       }
@@ -44,9 +41,9 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
     return {
       video: {
         deviceId: { exact: exists.deviceId },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 }
+        width: { ideal: captureWidth },
+        height: { ideal: captureHeight },
+        frameRate: { ideal: captureFps }
       },
       audio: audioConstraints
     }
@@ -58,9 +55,9 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
 
   return {
     video: {
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30 }
+      width: { ideal: captureWidth },
+      height: { ideal: captureHeight },
+      frameRate: { ideal: captureFps }
     },
     audio: audioConstraints
   }
@@ -166,6 +163,18 @@ export function getMediaSignature(layer: StudioLayer, devices: MediaDeviceInfo[]
     layer.config.desktopSourceName || ''
   ]
 
+  if (layer.type === 'camera') {
+    parts.push(
+      `camera-audio:${layer.config.audioDeviceId || resolvedAudioId || 'none'}`,
+      `capture:${layer.config.captureWidth || 1920}x${layer.config.captureHeight || 1080}@${layer.config.captureFps || 30}`,
+      `stabilize:${layer.config.stabilize !== false}`
+    )
+  }
+
+  if (layer.type === 'audio') {
+    parts.push(`audio:${layer.config.deviceId || 'auto'}`)
+  }
+
   // If we have a hardcoded deviceId, we shouldn't care about the labels oscillation
   if (isAuto) {
     parts.push(`audio:${resolvedAudioId || 'none'}`)
@@ -175,13 +184,26 @@ export function getMediaSignature(layer: StudioLayer, devices: MediaDeviceInfo[]
 }
 
 export function buildRawAudioConstraints(deviceId?: string): MediaTrackConstraints {
-  return {
-    deviceId: deviceId ? { ideal: deviceId } : undefined,
+  return buildLowLatencyAudioConstraints(deviceId)
+}
+
+export function buildLowLatencyAudioConstraints(deviceId?: string, channelCount = 2): MediaTrackConstraints {
+  const constraints: MediaTrackConstraints = {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
-    channelCount: { ideal: 2 }
+    channelCount: { ideal: channelCount },
+    sampleRate: { ideal: 48000 },
+    latency: { ideal: 0.005 }
   }
+
+  if (deviceId) {
+    // `exact` (not `ideal`) so a stale or mismatched deviceId fails loudly
+    // instead of silently falling back to the system default mic.
+    constraints.deviceId = { exact: deviceId }
+  }
+
+  return constraints
 }
 
 export function formatMediaError(error: unknown): string {

@@ -1,4 +1,4 @@
-import {IconPencil, IconTrash} from '@tabler/icons-react'
+import { IconPencil, IconTrash } from '../../../components/ui/icons'
 import { AssetFile } from '../../../hooks/useAssets'
 
 interface ImageRowProps {
@@ -10,12 +10,12 @@ interface ImageRowProps {
 
 export function ImageRow({ image, onPreview, onDelete, onEdit }: ImageRowProps) {
   return (
-    <div className="flex items-center justify-between p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group animate-in fade-in slide-in-from-bottom-1 duration-500">
+    <div className="flex items-center justify-between p-4 rounded-lg bg-white/[0.015] border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all group animate-in fade-in slide-in-from-bottom-1 duration-500">
       <div className="flex items-center gap-4 min-w-0 flex-1">
         <button
           type="button"
           onClick={onPreview}
-          className="w-12 h-12 rounded-2xl bg-white/[0.03] flex items-center justify-center shrink-0 border border-white/5 relative overflow-hidden transition-all cursor-zoom-in"
+          className="w-12 h-12 rounded-md bg-white/[0.03] flex items-center justify-center shrink-0 border border-white/5 relative overflow-hidden transition-all cursor-zoom-in"
           title={`Preview ${image.name}`}
         >
           <img
@@ -28,10 +28,10 @@ export function ImageRow({ image, onPreview, onDelete, onEdit }: ImageRowProps) 
           />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-black text-white truncate transition-colors">
+          <p className="text-xs font-semibold text-white truncate transition-colors">
             {image.name.split('.')[0]}
           </p>
-          <p className="text-[9px] font-black tracking-widest text-white/10 uppercase mt-1">Visual Ingest</p>
+          <p className="text-[9px] font-semibold tracking-tight text-white/10 mt-1">Visual Ingest</p>
         </div>
       </div>
 

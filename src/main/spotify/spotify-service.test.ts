@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SpotifyService } from './spotify-service'
+import { SpotifyApiError } from './client/spotify-client'
 import type { Database } from '../db/database'
 import type { ChatEvent } from '../platforms/types'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
@@ -271,5 +272,40 @@ describe('SpotifyService chat commands', () => {
     expect(nowPlaying.queue.map((request) => request.track.id)).toEqual(['track-b'])
     expect(queue[0].status).toBe('played')
     expect(queue[1].status).toBe('queued')
+  })
+
+  it('backs off now-playing polling when Spotify returns 429', async () => {
+    const { service, client } = createService()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    client.getPlaybackState.mockRejectedValue(
+      new SpotifyApiError('Playback state fetch failed (429)', 429, 60_000)
+    )
+
+    try {
+      await (service as any).poll()
+      await (service as any).poll()
+
+      expect(client.getPlaybackState).toHaveBeenCalledTimes(1)
+      expect(service.getStatus().error).toContain('Retrying now playing in 60s')
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('does not overlap now-playing polls when a previous poll is still running', async () => {
+    const { service, client } = createService()
+    let resolvePlayback!: (value: unknown) => void
+    client.getPlaybackState.mockReturnValue(new Promise((resolve) => {
+      resolvePlayback = resolve
+    }))
+
+    const firstPoll = (service as any).poll()
+    const secondPoll = (service as any).poll()
+
+    expect(client.getPlaybackState).toHaveBeenCalledTimes(1)
+
+    resolvePlayback(null)
+    await Promise.all([firstPoll, secondPoll])
   })
 })

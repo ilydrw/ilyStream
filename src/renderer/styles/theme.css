@@ -21,35 +21,35 @@
   --color-brand-violet:  #A783FF;
 
   /* ---------- Backgrounds ---------- */
-  --bg:           #0F1115;
-  --bg-deep:      #0A0C10;
-  --bg-raised:    #11141B;
-  --bg-soft:      #161A23;
-  --bg-elev:      #1A2030;
-  --bg-titlebar:  rgba(12, 14, 19, 0.92);
-  --bg-glass:     rgba(255, 255, 255, 0.03);
-  --bg-glass-2:   rgba(255, 255, 255, 0.06);
+  --bg:           #0A0B0E;
+  --bg-deep:      #08090C;
+  --bg-raised:    #0E1014;
+  --bg-soft:      rgba(255, 255, 255, 0.025);
+  --bg-elev:      rgba(255, 255, 255, 0.05);
+  --bg-titlebar:  #0E1014;
+  --bg-glass:     rgba(255, 255, 255, 0.025);
+  --bg-glass-2:   rgba(255, 255, 255, 0.05);
 
   /* ---------- Foreground / text ---------- */
   --fg:           #FFFFFF;
-  --fg-1:         #F4F6FB;
-  --fg-2:         #AAB3C2;
-  --fg-3:         #768195;
-  --fg-4:         rgba(255, 255, 255, 0.4);
-  --fg-5:         rgba(255, 255, 255, 0.35);
-  --fg-6:         rgba(255, 255, 255, 0.20);
+  --fg-1:         #FFFFFF;
+  --fg-2:         rgba(255, 255, 255, 0.55);
+  --fg-3:         rgba(255, 255, 255, 0.32);
+  --fg-4:         rgba(255, 255, 255, 0.32);
+  --fg-5:         rgba(255, 255, 255, 0.32);
+  --fg-6:         rgba(255, 255, 255, 0.18);
   --fg-7:         rgba(255, 255, 255, 0.10);
 
   /* ---------- Lines / borders ---------- */
-  --line:           rgba(255, 255, 255, 0.09);
-  --line-strong:    rgba(255, 255, 255, 0.18);
-  --line-soft:      rgba(255, 255, 255, 0.05);
+  --line:           rgba(255, 255, 255, 0.05);
+  --line-strong:    rgba(255, 255, 255, 0.12);
+  --line-soft:      rgba(255, 255, 255, 0.025);
   --line-hairline:  rgba(255, 255, 255, 0.03);
 
   /* ---------- Semantic / Functional ---------- */
-  --color-accent:        #D035F1;
-  --color-accent-hover:  #E066FF;
-  --color-accent-rgb:    208, 53, 241;
+  --color-accent:        #19C8FF;
+  --color-accent-hover:  #4FD5FF;
+  --color-accent-rgb:    25, 200, 255;
   --color-success:       #22C55E;
   --color-success-2:     #24D18B;
   --color-warning:       #F59E0B;
@@ -73,11 +73,11 @@
   --nav-blur:     saturate(160%) blur(14px);
 
   /* ---------- Shadows ---------- */
-  --shadow-card:        0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 28px rgba(0,0,0,0.32);
-  --shadow-cta:         0 8px 28px rgba(37, 199, 255, 0.28);
-  --shadow-accent:      0 0 20px rgba(208, 53, 241, 0.30);
-  --shadow-rail:        0 4px 12px rgba(208, 53, 241, 0.15);
-  --shadow-inner-faint: 0 1px 0 rgba(255,255,255,0.04) inset;
+  --shadow-card:        0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 28px rgba(0,0,0,0.32);
+  --shadow-cta:         none;
+  --shadow-accent:      0 0 20px rgba(25, 200, 255, 0.30);
+  --shadow-rail:        none;
+  --shadow-inner-faint: 0 1px 0 rgba(255,255,255,0.03) inset;
 
   /* ---------- Radii ---------- */
   --radius-xs:    6px;
@@ -96,13 +96,13 @@
 
   --fs-hero:    clamp(2.6rem, 6vw, 5rem);
   --fs-display: clamp(1.9rem, 3.4vw, 2.8rem);
-  --fs-h1:      30px;
-  --fs-h2:      22px;
-  --fs-h3:      18px;
-  --fs-title:   2.25rem;
-  --fs-body:    14px;
-  --fs-body-lg: 1.05rem;
-  --fs-sm:      13px;
+  --fs-h1:      26px;
+  --fs-h2:      20px;
+  --fs-h3:      16px;
+  --fs-title:   1.625rem;
+  --fs-body:    13px;
+  --fs-body-lg: 0.95rem;
+  --fs-sm:      12px;
   --fs-xs:      11px;
   --fs-micro:   10px;
   --fs-nano:    9px;
@@ -135,11 +135,11 @@
   --sp-9: 96px;
 
   /* ---------- Heights ---------- */
-  --h-topbar:      54px;
-  --h-input:       38px;
-  --h-button:      38px;
+  --h-topbar:      46px;
+  --h-input:       34px;
+  --h-button:      34px;
   --h-button-web:  44px;
-  --h-rail-icon:   44px;
+  --h-rail-icon:   40px;
 
   /* ---------- Motion ---------- */
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
@@ -177,7 +177,7 @@
 .text-primary { color: var(--color-text-primary); }
 .glass        { background: var(--color-bg-glass); border-radius: var(--radius-lg); }
 
-::selection { background: rgba(37, 199, 255, 0.32); }
+::selection { background: rgba(25, 200, 255, 0.30); }
 
 :focus-visible {
   outline: 2px solid var(--color-accent);

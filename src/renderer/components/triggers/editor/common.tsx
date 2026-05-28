@@ -14,7 +14,7 @@ export function SectionHeader({
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <p className="text-xs uppercase tracking-[0.18em] text-muted">{eyebrow}</p>
+        <p className="text-xs tracking-normal text-muted">{eyebrow}</p>
         <h4 className="mt-1 text-lg font-semibold">{title}</h4>
         <p className="mt-1 text-sm text-muted">{description}</p>
       </div>

@@ -30,6 +30,10 @@ export interface VirtualCameraInfo {
   nativeFrameBridgeAvailable?: boolean;
   nativeFrameBridgePath?: string;
   mediaSourceRegistered?: boolean;
+  canInstallDriver?: boolean;
+  nativeInstallScriptAvailable?: boolean;
+  nativeInstallScriptPath?: string;
+  installDriverHint?: string;
 }
 
 export interface StartVirtualCameraOptions {

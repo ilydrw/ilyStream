@@ -2,7 +2,8 @@ import React from 'react'
 import { Toggle } from '../../../components/ui/Inputs'
 import { AppSettings, AutomationKeystrokeMapping } from '../../../../shared/app-settings'
 import { SettingRow, TextInput } from './SettingsShared'
-import {IconTrash, IconPlus, IconKeyboard} from '@tabler/icons-react'
+import { IconKeyboard } from '@tabler/icons-react'
+import { IconTrash, IconPlus } from '../../../components/ui/icons'
 
 interface AutomationSectionProps {
   settings: AppSettings
@@ -56,10 +57,10 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
         <div className="flex flex-col gap-6 p-8">
           <div className="space-y-4">
             {mappings.map((mapping) => (
-              <div key={mapping.id || Math.random().toString()} className="bg-white/[0.02] border border-white/[0.05] rounded-3xl p-6 flex items-center gap-6">
+              <div key={mapping.id || Math.random().toString()} className="bg-white/[0.02] border border-white/[0.05] rounded-lg p-6 flex items-center gap-6">
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div>
-                    <label className="text-[10px] uppercase font-black text-white/20 block mb-2 tracking-[0.2em]">Trigger</label>
+                    <label className="text-[10px] font-semibold text-white/20 block mb-2 tracking-normal">Trigger</label>
                     <TextInput 
                       value={mapping.trigger || ''} 
                       onChange={(v) => updateMapping(mapping.id, { trigger: v })}
@@ -68,7 +69,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase font-black text-white/20 block mb-2 tracking-[0.2em]">Key</label>
+                    <label className="text-[10px] font-semibold text-white/20 block mb-2 tracking-normal">Key</label>
                     <TextInput 
                       value={mapping.key || ''} 
                       onChange={(v) => updateMapping(mapping.id, { key: v })}
@@ -77,7 +78,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase font-black text-white/20 block mb-2 tracking-[0.2em]">Type</label>
+                    <label className="text-[10px] font-semibold text-white/20 block mb-2 tracking-normal">Type</label>
                     <select 
                       value={mapping.type || 'chat-command'}
                       onChange={(e) => updateMapping(mapping.id, { type: e.target.value as any })}
@@ -91,7 +92,7 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
 
                 <button 
                   onClick={() => removeMapping(mapping.id)}
-                  className="w-12 h-12 flex items-center justify-center text-white/20 hover:text-red-400 transition-colors bg-white/5 rounded-2xl hover:bg-red-400/10"
+                  className="w-12 h-12 flex items-center justify-center text-white/20 hover:text-red-400 transition-colors bg-white/5 rounded-md hover:bg-red-400/10"
                 >
                   <IconTrash size={18} />
                 </button>
@@ -101,14 +102,14 @@ export function AutomationSection({ settings, onUpdate }: AutomationSectionProps
             {mappings.length === 0 && (
               <div className="text-center py-16 border-2 border-dashed border-white/5 rounded-[32px] bg-white/[0.01]">
                 <IconKeyboard size={48} className="mx-auto text-white/5 mb-4" />
-                <p className="text-sm text-white/20 font-black uppercase tracking-widest">No automation mappings</p>
-                <p className="text-[10px] text-white/10 uppercase tracking-[0.2em] mt-2">Add a command to start controlling your PC</p>
+                <p className="text-sm text-white/20 font-semibold tracking-tight">No automation mappings</p>
+                <p className="text-[10px] text-white/10 tracking-normal mt-2">Add a command to start controlling your PC</p>
               </div>
             )}
 
             <button 
               onClick={addMapping}
-              className="w-full h-20 border-2 border-dashed border-white/5 hover:border-accent/30 hover:bg-accent/5 rounded-[32px] flex items-center justify-center gap-4 text-xs font-black uppercase tracking-[0.2em] text-white/20 hover:text-accent transition-all group mt-2"
+              className="w-full h-20 border-2 border-dashed border-white/5 hover:border-accent/30 hover:bg-accent/5 rounded-[32px] flex items-center justify-center gap-4 text-xs font-medium tracking-normal text-white/20 hover:text-accent transition-all group mt-2"
             >
               <IconPlus size={24} className="group-hover:rotate-90 transition-transform" />
               Add New Key Mapping

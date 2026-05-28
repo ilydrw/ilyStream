@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import {IconDeviceFloppy, IconRotate2, IconBolt} from '@tabler/icons-react'
+import { IconRotate2, IconBolt } from '@tabler/icons-react'
+import { IconDeviceFloppy } from './icons'
 
 interface DirtyBarProps {
   isDirty: boolean
@@ -18,24 +19,22 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
           exit={{ y: 100, opacity: 0 }}
           className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100]"
         >
-          <div className="bg-[#0f1115]/80 border border-white/10 rounded-[28px] p-2 pr-4 shadow-[0_30px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl flex items-center gap-6 min-w-[460px]">
-            <div className="flex items-center gap-4 pl-4">
-              <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent shadow-[0_0_20px_rgba(124,58,237,0.2)]">
-                <IconBolt size={22} className="glow-text" />
+          <div className="bg-[#0E1014] border border-white/[0.08] rounded-xl p-2 pr-3 shadow-[0_20px_48px_rgba(0,0,0,0.6)] flex items-center gap-4 min-w-[420px]">
+            <div className="flex items-center gap-3 pl-3">
+              <div className="w-9 h-9 rounded-md bg-accent/15 flex items-center justify-center text-accent">
+                <IconBolt size={18} />
               </div>
               <div>
-                <p className="text-[14px] font-black text-white uppercase tracking-tighter">Unsaved Changes</p>
-                <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">Apply or discard your modifications</p>
+                <p className="text-[13px] font-semibold text-white tracking-tight">Unsaved changes</p>
+                <p className="text-[12px] font-normal text-white/55">Apply or discard your modifications</p>
               </div>
             </div>
 
-            <div className="h-8 w-px bg-white/5 mx-2" />
-
-            <div className="flex items-center gap-3 ml-auto">
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 onClick={onDiscard}
                 disabled={isSaving}
-                className="h-12 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white/30 hover:text-white/60 hover:bg-white/5 transition-all flex items-center gap-2"
+                className="h-[34px] px-3.5 rounded-md text-[13px] font-medium text-white/55 hover:text-white border border-white/[0.05] hover:border-white/[0.12] hover:bg-white/[0.03] transition-colors flex items-center gap-1.5"
               >
                 <IconRotate2 size={14} />
                 Discard
@@ -43,16 +42,14 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
               <button
                 onClick={onApply}
                 disabled={isSaving}
-                className="h-12 px-8 rounded-2xl text-white text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-3 relative overflow-hidden group"
-                style={{ background: 'var(--brand-gradient)' }}
+                className="h-[34px] px-4 rounded-md text-[#04111a] text-[13px] font-semibold bg-accent hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-1.5"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                 {isSaving ? (
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-[#04111a]/20 border-t-[#04111a] rounded-full animate-spin" />
                 ) : (
-                  <IconDeviceFloppy size={16} />
+                  <IconDeviceFloppy size={14} />
                 )}
-                <span>Apply Changes</span>
+                <span>Apply changes</span>
               </button>
             </div>
           </div>

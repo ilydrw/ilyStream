@@ -16,6 +16,10 @@ export function registerVirtualCameraHandlers(registry: ServiceRegistry) {
     return registry.virtualCameraService.getStatus()
   })
 
+  ipcMain.handle('virtualcamera:install-driver', async () => {
+    return registry.virtualCameraService.installDriver()
+  })
+
   // Listen for status changes and forward to all windows
   registry.virtualCameraService.on('status-change', (status) => {
     // Note: We need a way to find all windows. 

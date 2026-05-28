@@ -51,9 +51,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
             <p>Neural brain for stream interaction.</p>
           </div>
         </div>
-        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-          settings.ai.enabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/20'
-        }`}>
+        <div className={`px-3 py-1 rounded-full text-[10px] font-semibold tracking-tight ${ settings.ai.enabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/20' }`}>
           {settings.ai.enabled ? 'Active' : 'Offline'}
         </div>
       </div>
@@ -81,10 +79,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
               <button
                 onClick={handleTestConnection}
                 disabled={isTesting}
-                className={`
-                  px-5 h-[42px] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all
-                  ${isTesting ? 'bg-white/5 text-white/20' : 'bg-white/5 hover:bg-white/10 text-white/60'}
-                `}
+                className={`px-5 h-[42px] rounded-md text-[10px] font-semibold tracking-tight transition-all ${isTesting ? 'bg-white/5 text-white/20' : 'bg-white/5 hover:bg-white/10 text-white/60'}`}
               >
                 {isTesting ? 'Testing...' : 'Test'}
               </button>
@@ -111,21 +106,21 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
             </SettingRow>
             <div className="flex items-center justify-end">
               <div className="text-right">
-                <span className="block text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Provider</span>
-                <span className="block text-xs font-bold text-accent">Ollama / OpenAI Compatible</span>
+                <span className="block text-[10px] font-semibold text-white/20 tracking-tight mb-1">Provider</span>
+                <span className="block text-xs font-semibold text-accent">Ollama / OpenAI Compatible</span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 py-6 mt-4 bg-white/[0.01] rounded-3xl p-6 border border-white/[0.03]">
+          <div className="flex flex-col gap-3 py-6 mt-4 bg-white/[0.01] rounded-lg p-6 border border-white/[0.03]">
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-bold text-white">Neural Persona (System Prompt)</span>
+              <span className="text-sm font-semibold text-white">Neural Persona (System Prompt)</span>
               <span className="text-xs text-white/20 leading-relaxed">Define exactly how your AI co-host behaves and reacts.</span>
             </div>
             <textarea
               value={settings.ai.systemPrompt}
               onChange={(event) => onUpdate('aiSystemPrompt', event.target.value)}
-              className="w-full bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:border-accent/40 min-h-[140px] resize-y custom-scrollbar transition-all"
+              className="w-full bg-white/[0.02] border border-white/5 rounded-md px-5 py-4 text-sm font-medium outline-none focus:border-accent/40 min-h-[140px] resize-y custom-scrollbar transition-all"
               placeholder="You are a witty AI co-host named ILY. You keep responses brief, use moderate humor, and prioritize the streamer's context."
             />
           </div>
