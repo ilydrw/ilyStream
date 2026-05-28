@@ -12,7 +12,7 @@ import widgetsPreview from '../assets/widgets-preview.png';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
-const latestVersion = '0.0.16';
+const latestVersion = '0.0.17';
 const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
 const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 const repoUrl = 'https://github.com/ilydrw/ilyStream';
@@ -46,10 +46,10 @@ const highlights = [
 ];
 
 const releaseNotes = [
-  'Startup Reliability: Launching ilyStream again while the previous window is closing no longer trips a destroyed-window startup crash.',
-  'Dual-Stream Performance: Going live to a horizontal and vertical destination at the same time now shares a single scene composite per tick, cutting renderer CPU during dual streaming.',
-  'Transition Fidelity: Scene transitions (fade and stinger) now render into stream output captures, not just the local preview.',
-  'Website Refresh: Download links, getting-started docs, and companion docs all point at the v0.0.16 release set.',
+  'Preview Efficiency: Idle studio preview rendering now caps at 30 FPS instead of following high-refresh monitors.',
+  'Virtual Background Efficiency: Segmentation runs at a capped 15 FPS and reuses mask canvases to reduce renderer work.',
+  'Browser Source Efficiency: Browser captures default to 15 FPS unless a source explicitly asks for more.',
+  'Audio Meter Efficiency: Master volume metering updates at 30 FPS while keeping the broadcast audio graph untouched.',
 ];
 
 const docPreviews = [
