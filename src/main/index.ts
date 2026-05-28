@@ -21,10 +21,7 @@ if (!gotTheLock) {
   app.exit(0)
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    showMainWindow()
   })
 }
 
@@ -66,6 +63,28 @@ let tray: Tray | null = null
 let healthWatchdogTimer: ReturnType<typeof setInterval> | null = null
 let historyPruneTimer: ReturnType<typeof setInterval> | null = null
 let isQuitting = false
+
+function getMainWindow(): BrowserWindow | null {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = null
+    return null
+  }
+
+  return mainWindow
+}
+
+function showMainWindow(): void {
+  const window = getMainWindow()
+
+  if (!window) {
+    if (app.isReady() && !isQuitting) createWindow()
+    return
+  }
+
+  if (window.isMinimized()) window.restore()
+  if (!window.isVisible()) window.show()
+  window.focus()
+}
 
 function resolveBundledResource(...segments: string[]): string | null {
   const candidates = [
@@ -113,9 +132,14 @@ function createWindow(): void {
       backgroundThrottling: false
     }
   })
+  const createdWindow = mainWindow
 
   // Lock window to 16:10 aspect ratio
   mainWindow.setAspectRatio(1280 / 800)
+
+  mainWindow.on('closed', () => {
+    if (mainWindow === createdWindow) mainWindow = null
+  })
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
@@ -217,11 +241,11 @@ function createTray(): void {
   tray.setToolTip('ilyStream')
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Show', click: () => mainWindow?.show() },
+      { label: 'Show', click: () => showMainWindow() },
       { label: 'Quit', click: () => app.quit() }
     ])
   )
-  tray.on('double-click', () => mainWindow?.show())
+  tray.on('double-click', () => showMainWindow())
 }
 
 app.whenReady().then(async () => {
@@ -262,7 +286,11 @@ app.whenReady().then(async () => {
   console.log('[main] Application ready.')
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else {
+      showMainWindow()
+    }
   })
 
   startHistoryPrune()
