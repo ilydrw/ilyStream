@@ -155,6 +155,11 @@ export class OverlayRouter {
       return
     }
 
+    if (pathname.startsWith('/avatar/')) {
+      await this.handleAvatarRequest(pathname, request, response)
+      return
+    }
+
     if (pathname === '/test/like') {
       if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
         this.writeJson(response, { error: 'Unauthorized' }, 401, request)
@@ -561,5 +566,70 @@ export class OverlayRouter {
       })
       request.on('error', reject)
     })
+  }
+
+  private async handleAvatarRequest(pathname: string, request: IncomingMessage, response: ServerResponse) {
+    const base64Url = pathname.replace('/avatar/', '')
+    if (!base64Url) {
+      this.writeJson(response, { error: 'Missing avatar hash' }, 400, request)
+      return
+    }
+
+    try {
+      let b64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+      while (b64.length % 4) {
+        b64 += '='
+      }
+      const decodedUrl = Buffer.from(b64, 'base64').toString('utf-8')
+      if (!decodedUrl.startsWith('http')) {
+        this.writeJson(response, { error: 'Invalid URL' }, 400, request)
+        return
+      }
+
+      const hash = createHash('sha256').update(decodedUrl).digest('hex')
+      const cachePath = join(this.avatarCacheDir, hash)
+
+      try {
+        await mkdir(this.avatarCacheDir, { recursive: true })
+      } catch (e) {
+        // Ignore
+      }
+
+      try {
+        const fileStats = await stat(cachePath)
+        if (fileStats.isFile()) {
+          const data = await readFile(cachePath)
+          this.writeCorsHeaders(response, 200, 'image/jpeg', request)
+          response.end(data)
+          return
+        }
+      } catch {
+        // Does not exist
+      }
+
+      const res = await fetch(decodedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.tiktok.com/'
+        }
+      })
+
+      if (!res.ok) {
+        this.writeJson(response, { error: 'Failed to fetch avatar' }, res.status, request)
+        return
+      }
+
+      const arrayBuffer = await res.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      
+      writeFile(cachePath, buffer).catch(err => console.error('[OverlayRouter] Failed to cache avatar', err))
+      
+      this.writeCorsHeaders(response, 200, res.headers.get('Content-Type') || 'image/jpeg', request)
+      response.setHeader('Cache-Control', 'public, max-age=31536000')
+      response.end(buffer)
+    } catch (err) {
+      console.error('[OverlayRouter] Avatar proxy error:', err)
+      this.writeJson(response, { error: 'Internal server error' }, 500, request)
+    }
   }
 }

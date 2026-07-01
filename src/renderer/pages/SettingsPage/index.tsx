@@ -1,17 +1,41 @@
-import { IconMovie, IconDatabase, IconDevices, IconPalette, IconWifi } from '@tabler/icons-react'
+import {
+  IconBolt,
+  IconDatabase,
+  IconDevices,
+  IconHeartbeat,
+  IconMovie,
+  IconPalette,
+  IconServer,
+  IconTerminal2,
+  IconVolume,
+  IconWifi
+} from '@tabler/icons-react'
 import { IconDeviceFloppy } from '../../components/ui/icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Toggle } from '../../components/ui/Inputs'
 import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../../shared/obs'
 import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { applyAppAppearance } from '../../lib/app-appearance'
-import { Metric, OBSStatusBadge, StatusBadge } from './components/SettingsShared'
+import { Metric, OBSStatusBadge, SettingRow, StatusBadge, TextInput } from './components/SettingsShared'
 import { OBSRemoteSection } from './components/OBSRemoteSection'
 import { OverlayHubSection } from './components/OverlayHubSection'
 import { AutomationSection } from './components/AutomationSection'
 import { PersonalizationSection } from './components/PersonalizationSection'
 import { StudioRuntimeSection } from './components/StudioRuntimeSection'
 import { BroadcastDefaultsSection } from './components/BroadcastDefaultsSection'
+import { IntelligenceSection } from './components/IntelligenceSection'
+import { ConsoleSection } from './components/ConsoleSection'
+
+type SettingsTabId = 'basic' | 'streaming' | 'audio' | 'automation' | 'advanced'
+
+const SETTINGS_TABS = [
+  { id: 'basic', label: 'Basic', icon: IconPalette },
+  { id: 'streaming', label: 'Streaming', icon: IconMovie },
+  { id: 'audio', label: 'Audio', icon: IconVolume },
+  { id: 'automation', label: 'Automation', icon: IconBolt },
+  { id: 'advanced', label: 'Advanced', icon: IconTerminal2 }
+] satisfies Array<{ id: SettingsTabId; label: string; icon: typeof IconPalette }>
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
@@ -19,6 +43,7 @@ export default function SettingsPage() {
   const [overlayStatus, setOverlayStatus] = useState<OverlayRuntimeStatus | null>(null)
   const [obsStatus, setObsStatus] = useState<OBSRuntimeStatus | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('basic')
 
   useEffect(() => {
     if (!window.api?.settings) return
@@ -57,7 +82,10 @@ export default function SettingsPage() {
     const obsUnsubscribe = window.api.on('obs:status-changed', (status: unknown) => {
       setObsStatus(status as OBSRuntimeStatus)
     })
-    const statusTimer = window.setInterval(loadOverlayStatus, 3000)
+    const statusTimer = window.setInterval(() => {
+      loadOverlayStatus()
+      loadOBSStatus()
+    }, 3000)
 
     return () => {
       settingsUnsubscribe()
@@ -89,8 +117,6 @@ export default function SettingsPage() {
   }
 
   const handleSave = async () => {
-    // Only send the core settings keys that need persistence
-    const rawSettings = await window.api.settings.getAll()
     await window.api.settings.setMany(settings)
     const status = (await window.api.overlay.getStatus()) as OverlayRuntimeStatus
     setOverlayStatus(status)
@@ -111,6 +137,50 @@ export default function SettingsPage() {
     setObsStatus(status)
   }
 
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case 'basic':
+        return (
+          <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1fr)_minmax(440px,0.82fr)]">
+            <PersonalizationSection settings={settings} onUpdate={updateSetting} onUpdateMany={updateSettings} />
+            <StudioRuntimeSection settings={settings} onUpdate={updateSetting} />
+          </div>
+        )
+      case 'streaming':
+        return (
+          <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+            <BroadcastDefaultsSection settings={settings} onUpdate={updateSetting} />
+            <div className="flex flex-col gap-10">
+              <OBSRemoteSection
+                settings={settings}
+                obsStatus={obsStatus}
+                onUpdate={updateSetting}
+                onConnect={handleOBSConnect}
+              />
+              <OverlayHubSection
+                settings={settings}
+                overlayStatus={overlayStatus}
+                onUpdate={updateSetting}
+              />
+            </div>
+          </div>
+        )
+      case 'audio':
+        return <AudioRoutingSection settings={settings} onUpdate={updateSetting} />
+      case 'automation':
+        return (
+          <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+            <AutomationSection settings={settings} onUpdate={updateSetting} />
+            <IntelligenceSection settings={settings} onUpdate={updateSetting} />
+          </div>
+        )
+      case 'advanced':
+        return <ConsoleSection />
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="app-page">
       <header className="app-page-header">
@@ -121,8 +191,7 @@ export default function SettingsPage() {
           <div>
             <h1>Studio Settings</h1>
             <p className="app-page-intro">
-              Premium controls for the app shell, stream runtime, local overlay delivery,
-              OBS automation, and outbound broadcast defaults.
+              App defaults, broadcast output, audio routing, automation, and runtime diagnostics.
             </p>
           </div>
         </div>
@@ -144,28 +213,220 @@ export default function SettingsPage() {
         <Metric icon={<IconMovie size={24} className="text-accent" />} label="Broadcast" value={`${settings.streamingWidth}x${settings.streamingHeight}`} />
       </div>
 
-      <div className="grid grid-cols-1 gap-10 2xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
-        <div className="flex flex-col gap-10">
-          <PersonalizationSection settings={settings} onUpdate={updateSetting} onUpdateMany={updateSettings} />
-          <StudioRuntimeSection settings={settings} onUpdate={updateSetting} />
-          <BroadcastDefaultsSection settings={settings} onUpdate={updateSetting} />
-          <AutomationSection settings={settings} onUpdate={updateSetting} />
-        </div>
+      <RuntimeHealthPanel settings={settings} overlayStatus={overlayStatus} obsStatus={obsStatus} />
 
-        <div className="flex flex-col gap-10">
-          <OBSRemoteSection 
-            settings={settings} 
-            obsStatus={obsStatus} 
-            onUpdate={updateSetting} 
-            onConnect={handleOBSConnect} 
-          />
-          <OverlayHubSection 
-            settings={settings} 
-            overlayStatus={overlayStatus} 
-            onUpdate={updateSetting} 
-          />
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="app-segment">
+          {SETTINGS_TABS.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`app-segment-btn !h-9 !px-4 ${activeTab === tab.id ? 'is-active' : ''}`}
+              >
+                <Icon size={15} />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       </div>
+
+      {renderActiveTab()}
+    </div>
+  )
+}
+
+function RuntimeHealthPanel({
+  settings,
+  overlayStatus,
+  obsStatus
+}: {
+  settings: AppSettings
+  overlayStatus: OverlayRuntimeStatus | null
+  obsStatus: OBSRuntimeStatus | null
+}) {
+  const overlayOk = Boolean(overlayStatus?.running && !overlayStatus.lastError)
+  const obsRequired = settings.integrations.obs.enabled
+  const obsOk = !obsRequired || Boolean(obsStatus?.connected)
+  const streamReady = !settings.streaming.enabled || Boolean(settings.streaming.rtmpUrl && settings.streaming.streamKey)
+  const audioReady = Boolean(settings.tts.enabled || settings.alerts.gift.soundEnabled || settings.alerts.follow.soundEnabled)
+
+  return (
+    <section className="app-section-card glass mb-10">
+      <div className="app-section-head">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center text-accent">
+            <IconHeartbeat size={28} />
+          </div>
+          <div>
+            <h2>Setup Health</h2>
+            <p>Connection and runtime checks for the pieces that usually break first.</p>
+          </div>
+        </div>
+      </div>
+      <div className="settings-health-grid">
+        <HealthItem
+          icon={<IconServer size={16} />}
+          label="Overlay Server"
+          value={overlayOk ? `Port ${overlayStatus?.port}` : overlayStatus?.lastError || 'Offline'}
+          tone={overlayOk ? 'good' : 'bad'}
+        />
+        <HealthItem
+          icon={<IconMovie size={16} />}
+          label="OBS Remote"
+          value={obsRequired ? (obsStatus?.connected ? 'Connected' : obsStatus?.connecting ? 'Connecting' : 'Needs attention') : 'Optional'}
+          tone={obsOk ? 'good' : 'muted'}
+        />
+        <HealthItem
+          icon={<IconWifi size={16} />}
+          label="Stream Output"
+          value={streamReady ? (settings.streaming.enabled ? 'Ready' : 'Standby') : 'Missing key'}
+          tone={streamReady ? 'good' : 'bad'}
+        />
+        <HealthItem
+          icon={<IconVolume size={16} />}
+          label="Audio"
+          value={audioReady ? `TTS ${Math.round(settings.tts.volume * 100)}%` : 'Muted'}
+          tone={audioReady ? 'good' : 'muted'}
+        />
+      </div>
+    </section>
+  )
+}
+
+function HealthItem({
+  icon,
+  label,
+  value,
+  tone
+}: {
+  icon: ReactNode
+  label: string
+  value: string
+  tone: 'good' | 'bad' | 'muted'
+}) {
+  return (
+    <div className={`settings-health-item is-${tone}`}>
+      <div className="settings-health-icon">{icon}</div>
+      <div className="min-w-0">
+        <p>{label}</p>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  )
+}
+
+function AudioRoutingSection({
+  settings,
+  onUpdate
+}: {
+  settings: AppSettings
+  onUpdate: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
+}) {
+  return (
+    <section className="app-section-card glass">
+      <div className="app-section-head">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center text-accent">
+            <IconVolume size={32} />
+          </div>
+          <div>
+            <h2>Audio Routing</h2>
+            <p>TTS output, alert sound toggles, and global playback target.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="app-section-content !p-0">
+        <div className="p-8">
+          <SettingRow label="Text-to-Speech" hint="Master switch for chat and event speech playback.">
+            <Toggle value={settings.tts.enabled} onChange={(value) => onUpdate('ttsEnabled', value)} />
+          </SettingRow>
+
+          <SettingRow label={`TTS Volume - ${Math.round(settings.tts.volume * 100)}%`} hint="Controls generated speech before it reaches the mixer.">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.tts.volume}
+              onChange={(event) => onUpdate('ttsVolume', Number(event.currentTarget.value))}
+              className="w-64 accent-[#19c8ff]"
+            />
+          </SettingRow>
+
+          <SettingRow label="Output Device" hint="Use default for the system playback device, or paste a browser device id.">
+            <TextInput
+              value={settings.audio.outputDeviceId || 'default'}
+              onChange={(value) => onUpdate('audioOutputDeviceId', value || 'default')}
+              placeholder="default"
+            />
+          </SettingRow>
+
+          <div className="grid grid-cols-1 gap-4 pt-6 lg:grid-cols-3">
+            <EventSoundQuickControl
+              label="Gift Sounds"
+              enabled={settings.alerts.gift.soundEnabled}
+              volume={settings.alerts.gift.soundVolume}
+              onEnabled={(value) => onUpdate('eventSoundGiftEnabled', value)}
+              onVolume={(value) => onUpdate('eventSoundGiftVolume', value)}
+            />
+            <EventSoundQuickControl
+              label="Follow Sounds"
+              enabled={settings.alerts.follow.soundEnabled}
+              volume={settings.alerts.follow.soundVolume}
+              onEnabled={(value) => onUpdate('eventSoundFollowEnabled', value)}
+              onVolume={(value) => onUpdate('eventSoundFollowVolume', value)}
+            />
+            <EventSoundQuickControl
+              label="Superfan Sounds"
+              enabled={settings.alerts.superfan.soundEnabled}
+              volume={settings.alerts.superfan.soundVolume}
+              onEnabled={(value) => onUpdate('eventSoundSuperfanEnabled', value)}
+              onVolume={(value) => onUpdate('eventSoundSuperfanVolume', value)}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function EventSoundQuickControl({
+  label,
+  enabled,
+  volume,
+  onEnabled,
+  onVolume
+}: {
+  label: string
+  enabled: boolean
+  volume: number
+  onEnabled: (value: boolean) => void
+  onVolume: (value: number) => void
+}) {
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-5">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-white">{label}</p>
+          <p className="text-[10px] font-semibold tracking-tight text-white/25">{Math.round(volume * 100)}%</p>
+        </div>
+        <Toggle value={enabled} onChange={onEnabled} />
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={volume}
+        disabled={!enabled}
+        onChange={(event) => onVolume(Number(event.currentTarget.value))}
+        className="w-full accent-[#19c8ff] disabled:opacity-30"
+      />
     </div>
   )
 }

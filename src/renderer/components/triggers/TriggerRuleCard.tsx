@@ -97,7 +97,11 @@ export function TriggerRuleCard({
 function SummaryGroup({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-xl border border-white/5 bg-black/20 p-4">
-      <p className="app-eyebrow text-[9px] text-white/20 mb-3">{title}</p>
+      {/* `app-eyebrow` was being applied here but is globally `display: none
+          !important` in components.css (per an earlier user request to suppress
+          page-header eyebrows), which silently hid this group title. The
+          Tailwind utilities below carry the intended micro-label styling. */}
+      <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/30 mb-3">{title}</p>
       <div className="space-y-2">
         {items.length === 0 ? (
           <p className="text-xs text-white/20 italic">No configuration detected</p>

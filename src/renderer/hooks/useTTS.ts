@@ -16,7 +16,8 @@ import {
   stopElevenLabsSpeech
 } from '../lib/elevenlabs-speech'
 import type { VoiceProfile } from '../../main/tts/voice-profiles'
-import type { TTSUserVoiceOverride } from '../../shared/app-settings'
+import { resolveAppSettings, type TTSUserVoiceOverride } from '../../shared/app-settings'
+import { getElevenLabsApiKey } from '../../shared/elevenlabs-keys'
 import { DEFAULT_KOKORO_VOICE, ELEVENLABS_DEFAULT_VOICE_ID } from '../../shared/tts-providers'
 import { audioEngine } from '../utils/audio-engine'
 
@@ -30,22 +31,30 @@ export function useTTS(isMounted: boolean) {
   const setCurrentlySpeaking = useTTSStore((s) => s.setCurrentlySpeaking)
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const elevenlabsKeyRef = useRef('')
+  const elevenlabsSettingsRef = useRef<any>(null)
   const warnedSystemMixerFallbackRef = useRef(false)
+  const activeSpeechIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!window.api?.tts || !isMounted) return
 
     console.log('[useTTS] Hook initialized. Setting up listeners...')
 
+    // Tell main this renderer is fresh so it clears any speech that was left
+    // "playing" by a previous page (HMR reload, crash) and resumes the queue.
+    window.api.tts.notifyReady?.()
+
     // Load API key on mount and keep it fresh via settings events
-    void window.api.settings.get('elevenlabsApiKey').then((key) => {
-      if (typeof key === 'string') elevenlabsKeyRef.current = key
+    void window.api.settings.getAll().then((settings) => {
+      const resolved = resolveAppSettings(settings || {})
+      elevenlabsKeyRef.current = getElevenLabsApiKey(resolved) || resolved.elevenlabsApiKey || ''
+      elevenlabsSettingsRef.current = resolved
     })
 
     const settingsCleanup = window.api.on('settings:changed', (settings: any) => {
-      if (typeof settings?.elevenlabsApiKey === 'string') {
-        elevenlabsKeyRef.current = settings.elevenlabsApiKey
-      }
+      const resolved = resolveAppSettings(settings || {})
+      elevenlabsSettingsRef.current = resolved
+      elevenlabsKeyRef.current = getElevenLabsApiKey(resolved) || resolved.elevenlabsApiKey || ''
       void warmConfiguredKokoroProfiles(settings)
     })
 
@@ -58,6 +67,13 @@ export function useTTS(isMounted: boolean) {
 
     const cleanups: (() => void)[] = []
 
+    const completeSpeech = (id: string) => {
+      if (activeSpeechIdRef.current !== id) return
+      activeSpeechIdRef.current = null
+      setCurrentlySpeaking(null)
+      window.api.tts.notifySpeechComplete()
+    }
+
     cleanups.push(
       window.api.on('voice:changed', () => {
         void warmConfiguredKokoroProfiles()
@@ -68,10 +84,8 @@ export function useTTS(isMounted: boolean) {
     cleanups.push(
       window.api.on('tts:speak', async (data: any) => {
         const { id, text, voice } = data
-        
-        const settings = await window.api.settings.getAll()
-        const modifiers = settings.tts.modifiers || { radioFilter: false, speedRamping: false, pitchShifting: 'normal' }
-        
+
+        activeSpeechIdRef.current = id
         setCurrentlySpeaking(text)
 
         // Cancel any current speech
@@ -89,9 +103,11 @@ export function useTTS(isMounted: boolean) {
               console.info('[tts] System voices cannot be routed into the studio mixer; using Kokoro for stream-routed TTS.')
             }
             await speakWithKokoro(id, text, shouldUseMixerFallback ? toMixerRoutableVoice(voice) : voice)
-            return // Successfully spoke with Kokoro
+            completeSpeech(id)
+            return
           } catch (error) {
             console.error('[tts] Kokoro speech failed, falling back to system voice:', error)
+            if (activeSpeechIdRef.current !== id) return
             // Continue to system fallback below
           }
         }
@@ -100,13 +116,13 @@ export function useTTS(isMounted: boolean) {
           try {
             // Start visualization
             window.api.overlay?.notifySpeechState?.(true, true)
-            await speakWithElevenLabs(id, text, voice, elevenlabsKeyRef.current)
+            const apiKey = getElevenLabsApiKey(elevenlabsSettingsRef.current, voice?.elevenlabsApiKeyId) || elevenlabsKeyRef.current
+            await speakWithElevenLabs(id, text, voice, apiKey)
           } catch (error) {
             console.error('[tts] ElevenLabs speech failed:', error)
           } finally {
-            setCurrentlySpeaking(null)
             window.api.overlay?.notifySpeechState?.(false, false)
-            window.api.tts.notifySpeechComplete()
+            completeSpeech(id)
           }
           return
         }
@@ -132,14 +148,14 @@ export function useTTS(isMounted: boolean) {
           }
         }
 
+        if (activeSpeechIdRef.current !== id) return
+
         utterance.onend = () => {
-          setCurrentlySpeaking(null)
-          window.api.tts.notifySpeechComplete()
+          completeSpeech(id)
         }
 
         utterance.onerror = () => {
-          setCurrentlySpeaking(null)
-          window.api.tts.notifySpeechComplete()
+          completeSpeech(id)
         }
 
         window.speechSynthesis.speak(utterance)
@@ -160,6 +176,7 @@ export function useTTS(isMounted: boolean) {
     // Handle stop speaking
     cleanups.push(
       window.api.on('tts:stop-speaking', () => {
+        activeSpeechIdRef.current = null
         window.speechSynthesis.cancel()
         stopKokoroSpeech()
         stopElevenLabsSpeech()
@@ -196,6 +213,7 @@ export function useTTS(isMounted: boolean) {
       clearTimeout(prepTimer)
       settingsCleanup()
       cleanups.forEach((fn) => fn())
+      activeSpeechIdRef.current = null
       window.speechSynthesis.cancel()
       stopKokoroSpeech()
       stopElevenLabsSpeech()
@@ -213,6 +231,7 @@ function toMixerRoutableVoice(profile?: VoiceProfile): VoiceProfile {
     voiceName: profile?.voiceName ?? '',
     kokoroVoice: profile?.kokoroVoice || DEFAULT_KOKORO_VOICE,
     elevenlabsVoiceId: profile?.elevenlabsVoiceId || ELEVENLABS_DEFAULT_VOICE_ID,
+    elevenlabsApiKeyId: profile?.elevenlabsApiKeyId,
     elevenlabsStability: profile?.elevenlabsStability,
     elevenlabsSimilarity: profile?.elevenlabsSimilarity,
     elevenlabsStyle: profile?.elevenlabsStyle,
@@ -245,16 +264,24 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
   const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0]
   addProfile(defaultProfile)
 
-  for (const key of [
-    'ttsChatVoiceProfileId',
-    'ttsSubscriptionVoiceProfileId'
+  for (const { flatKey, nestedKey } of [
+    { flatKey: 'ttsChatVoiceProfileId', nestedKey: 'chatVoiceProfileId' },
+    { flatKey: 'ttsSubscriptionVoiceProfileId', nestedKey: 'subscriptionVoiceProfileId' }
   ]) {
-    const profileId = typeof settings?.[key] === 'string' ? settings[key] : ''
+    const profileId =
+      typeof settings?.[flatKey] === 'string'
+        ? settings[flatKey]
+        : typeof settings?.tts?.[nestedKey] === 'string'
+          ? settings.tts[nestedKey]
+          : ''
     addProfile(profileId ? profileById.get(profileId) : defaultProfile)
   }
 
-  const overrides = Array.isArray(settings?.ttsUserVoiceOverrides)
-    ? (settings.tts.userVoiceOverrides as TTSUserVoiceOverride[])
+  const rawOverrides = Array.isArray(settings?.tts?.userVoiceOverrides)
+    ? settings.tts.userVoiceOverrides
+    : settings?.ttsUserVoiceOverrides
+  const overrides = Array.isArray(rawOverrides)
+    ? (rawOverrides as TTSUserVoiceOverride[])
     : []
   for (const override of overrides.slice(0, 8)) {
     if (!override.enabled) continue
@@ -297,6 +324,7 @@ function profileFromOverride(override: TTSUserVoiceOverride): VoiceProfile {
     voiceName: override.voiceName,
     kokoroVoice: override.kokoroVoice || DEFAULT_KOKORO_VOICE,
     elevenlabsVoiceId: override.elevenlabsVoiceId || ELEVENLABS_DEFAULT_VOICE_ID,
+    elevenlabsApiKeyId: override.elevenlabsApiKeyId || '',
     elevenlabsStability: override.elevenlabsStability,
     elevenlabsSimilarity: override.elevenlabsSimilarity,
     elevenlabsStyle: override.elevenlabsStyle,

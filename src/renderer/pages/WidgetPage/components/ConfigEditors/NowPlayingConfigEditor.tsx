@@ -61,7 +61,7 @@ export function NowPlayingConfigEditor({
             onChange={(v) => update('fontSize', v)}
             min={12}
             max={48}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -72,7 +72,7 @@ export function NowPlayingConfigEditor({
             min={240}
             max={800}
             step={10}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>
@@ -112,7 +112,7 @@ export function NowPlayingConfigEditor({
               onChange={(v) => update('maxQueueItems', v)}
               min={1}
               max={10}
-              className="!w-24 !h-9 !text-xs text-right"
+              className="!w-32"
             />
           </Field>
         )}
@@ -154,7 +154,7 @@ export function NowPlayingConfigEditor({
                 onChange={(v) => update('borderWidth', v)}
                 min={1}
                 max={10}
-                className="!w-24 !h-9 !text-xs text-right"
+                className="!w-32"
               />
             </Field>
           </>

@@ -3,7 +3,9 @@
  * Captures the audio stream from the WebAudio graph and sends it to the main process
  * for broadcast. It also acts as the master clock for the video encoder.
  */
-const CHUNK_FRAMES = 512
+// AAC encodes in 1024-sample frames. Sending matching chunks cuts IPC/pipe
+// wakeups in half versus 512-frame chunks while adding only ~10 ms latency.
+const CHUNK_FRAMES = 1024
 const CHANNELS = 2
 
 class BroadcastProcessor extends AudioWorkletProcessor {

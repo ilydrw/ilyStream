@@ -8,7 +8,7 @@ import type {
   PlatformChatSendResult
 } from '../platforms/types'
 import { PlatformManager } from '../platforms/platform-manager'
-import { ChatRelayService } from './chat-relay-service'
+import { ChatRelayService, isSuppressedChatRelayEcho } from './chat-relay-service'
 
 class MockPlatformManager extends EventEmitter {
   readonly getChatCapabilities = vi.fn<[], Record<Platform, PlatformChatCapability>>()
@@ -127,10 +127,44 @@ describe('ChatRelayService', () => {
       await service.sendManualMessage(['youtube'], '[Twitch] Stream Friend: hello there')
       expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(1)
 
-      platformManager.emit('event', createChatEvent('youtube', '[Twitch] Stream Friend: hello there', 'ilyBot'))
+      const echo = createChatEvent('youtube', '[Twitch] Stream Friend: hello there', 'ilyBot')
+      platformManager.emit('event', echo)
       await Promise.resolve()
 
       expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(1)
+      expect(isSuppressedChatRelayEcho(echo)).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('sends manual relay messages as plain chat text', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: false, reason: 'Missing session' },
+      twitch: { platform: 'twitch', canSend: true },
+      youtube: { platform: 'youtube', canSend: true },
+      kick: { platform: 'kick', canSend: false, reason: 'Unsupported' }
+    })
+    platformManager.sendChatMessageToPlatforms.mockImplementation(async (platforms, text) =>
+      platforms.map((platform) => ({ platform, ok: true, echoed: text }))
+    )
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings()
+    )
+
+    try {
+      await service.sendManualMessage(
+        ['youtube'],
+        '<div>SUPER FAN DETECTED</div><div>Welcome back, <strong>@ilydrw</strong>!</div>'
+      )
+
+      expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledWith(
+        ['youtube'],
+        'SUPER FAN DETECTED Welcome back, @ilydrw!'
+      )
     } finally {
       service.dispose()
     }

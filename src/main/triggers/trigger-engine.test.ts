@@ -176,6 +176,84 @@ describe('TriggerEngine', () => {
     expect(receipt.rules[0].actions[0]).toEqual(expect.objectContaining({ status: 'ran', type: 'send_chat' }))
   })
 
+  it('strips legacy html from host chat send actions', async () => {
+    const { engine } = createEngine()
+    const sendChat = vi.fn()
+    engine.on('action:send-chat', sendChat)
+    engine.updateRule({
+      ...createRule('send-chat-html-rule', 0),
+      actions: [{
+        type: 'send_chat',
+        template: '<div>SUPER FAN DETECTED</div><div>Welcome back, <strong>{username}</strong>!</div>',
+        platform: 'source'
+      }]
+    })
+
+    const receiptPromise = onceReceipt(engine)
+    engine.evaluate(createChatEvent('hello'))
+    await receiptPromise
+
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'SUPER FAN DETECTED Welcome back, Example User!',
+        platform: 'twitch'
+      }),
+      expect.objectContaining({ id: 'event-1' })
+    )
+  })
+
+  it('does not treat VIP or owner status as super fan status', async () => {
+    const { engine } = createEngine()
+    const showAlert = vi.fn()
+    engine.on('action:show-alert', showAlert)
+    engine.updateRule({
+      ...createRule('strict-superfan-rule', 0),
+      conditions: [{ type: 'user_status', status: 'is_super_fan' }],
+      actions: [{
+        type: 'show_alert',
+        template: 'SUPERFAN {username}',
+        durationMs: 5000,
+        animationIn: 'fade',
+        animationOut: 'fade'
+      }]
+    })
+
+    const event = createChatEvent('owner chat')
+    event.user.isVip = true
+    const receiptPromise = onceReceipt(engine)
+    engine.evaluate(event)
+    const receipt = await receiptPromise
+
+    expect(showAlert).not.toHaveBeenCalled()
+    expect(receipt.matchedRules).toBe(0)
+  })
+
+  it('matches super fan status from an explicit super fan flag', async () => {
+    const { engine } = createEngine()
+    const showAlert = vi.fn()
+    engine.on('action:show-alert', showAlert)
+    engine.updateRule({
+      ...createRule('explicit-superfan-rule', 0),
+      conditions: [{ type: 'user_status', status: 'is_super_fan' }],
+      actions: [{
+        type: 'show_alert',
+        template: 'SUPERFAN {username}',
+        durationMs: 5000,
+        animationIn: 'fade',
+        animationOut: 'fade'
+      }]
+    })
+
+    const event = createChatEvent('super fan chat')
+    event.user.isSuperFan = true
+    const receiptPromise = onceReceipt(engine)
+    engine.evaluate(event)
+    const receipt = await receiptPromise
+
+    expect(showAlert).toHaveBeenCalledOnce()
+    expect(receipt.matchedRules).toBe(1)
+  })
+
   it('explains why a rule did not match', async () => {
     const { engine } = createEngine()
     const receiptPromise = onceReceipt(engine)

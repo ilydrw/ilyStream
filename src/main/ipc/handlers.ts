@@ -22,6 +22,7 @@ import { registerDeviceHandlers } from './handlers/device-handlers'
 import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 import { registerLightingHandlers } from './handlers/lighting-handlers'
+import { registerRazerHandlers } from './handlers/razer-handlers'
 import { sendToRenderer } from './safe-send'
 
 export function registerIpcHandlers(
@@ -58,7 +59,7 @@ export function registerIpcHandlers(
   const applyRuntimeSettings = async (changedKeys?: string[]) => {
     const settings = resolveAppSettings(db.getAllSettings())
     
-    if (!changedKeys || changedKeys.some(k => k.startsWith('tts'))) {
+    if (!changedKeys || changedKeys.some(k => k.startsWith('tts') || k === 'voiceModifiers')) {
       ttsEngine.applySettings(settings.tts)
     }
     
@@ -131,6 +132,7 @@ export function registerIpcHandlers(
   registerStatsHandlers(services.statsService)
   registerDeviceHandlers(services.deviceApi)
   registerGoveeHandlers(services.goveeService)
+  registerRazerHandlers(window, services.razerChromaService)
   registerVirtualCameraHandlers(services)
   registerLightingHandlers(window, services.lightingManager)
 

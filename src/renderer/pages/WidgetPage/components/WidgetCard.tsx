@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { IconLayout, IconSettings } from '@tabler/icons-react'
 import { IconTrash, IconCheck, IconCopy, IconExternalLink } from '../../../components/ui/icons'
 import { type Widget } from '../../../../shared/widgets'
 import { appendPreviewFlag, getWidgetPreviewFrame, getWidgetTemplate } from '../widget-customization'
+import { usePreviewViewportScale } from './usePreviewViewportScale'
 
 export function WidgetCard({
   widget,
@@ -20,13 +22,29 @@ export function WidgetCard({
 }) {
   const template = getWidgetTemplate(widget.type)
   const Icon = template?.icon ?? IconLayout
-  const previewFrame = getWidgetPreviewFrame(widget.config)
+  const previewFrame = getWidgetPreviewFrame(widget)
+  const {
+    containerRef: previewViewportRef,
+    viewportStyle: previewViewportStyle
+  } = usePreviewViewportScale(previewFrame)
+
+  // Card previews are lazy: we mount the iframe the first time the user
+  // hovers, focuses, or tabs into the card and keep it mounted. The previous
+  // implementation rendered a scaled-down live iframe for every card on every
+  // render, which meant N widgets = N simultaneous overlay simulations
+  // (animations, SSE connections, audio contexts) running just to populate
+  // the grid. Now an idle grid does zero overlay work.
+  const [hasActivated, setHasActivated] = useState(false)
+  const activate = () => {
+    if (!url) return
+    if (!hasActivated) setHasActivated(true)
+  }
 
   return (
     <section className="app-section-card glass overflow-hidden flex flex-col">
       <div className="p-5 border-b border-white/[0.05] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#d035f1] shrink-0">
+          <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-accent shrink-0">
             <Icon size={18} />
           </div>
           <div className="min-w-0">
@@ -66,43 +84,71 @@ export function WidgetCard({
             </button>
           </div>
 
-          {/* Small Inline Preview */}
+          {/* Preview area — static placeholder until the user hovers. The
+              real interactive entry-point is the Configure button below;
+              this surface is decorative. */}
           <div
-            className="mt-2 relative w-full rounded-lg overflow-hidden border border-white/5 bg-black/60 group/preview transition-all"
+            className="mt-2 relative w-full rounded-lg overflow-hidden border border-white/5 bg-black/60 transition-all group/preview"
             style={{ aspectRatio: '16 / 9' }}
+            onPointerEnter={activate}
           >
             {url ? (
-              <div className="absolute inset-2 pointer-events-none opacity-80 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
-                <div
-                  className={previewFrame.isVertical
-                    ? 'relative h-full max-w-full overflow-hidden rounded-md border border-white/10 bg-black/50 shadow-lg'
-                    : 'absolute inset-0 overflow-hidden'
-                  }
-                  style={previewFrame.isVertical ? { aspectRatio: previewFrame.aspectRatio } : undefined}
-                >
-                  <iframe
-                    src={appendPreviewFlag(url)}
-                    title={`${widget.name} preview`}
-                    className="absolute top-0 left-0 w-[400%] h-[400%] border-none"
-                    style={{
-                      transform: 'scale(0.25)',
-                      transformOrigin: '0 0',
-                      background: 'transparent'
-                    }}
-                  />
-                </div>
-              </div>
+              <>
+                {/* Default placeholder: shown until the iframe is activated.
+                    Once activated, the iframe sits on top with the same
+                    natural-ratio inner frame. */}
+                <CardPlaceholder Icon={Icon} resolutionLabel={previewFrame.resolutionLabel} active={hasActivated} />
+
+                {hasActivated ? (
+                  <div className="absolute inset-0 flex items-center justify-center p-2 pointer-events-none">
+                    <div
+                      ref={previewViewportRef}
+                      className="relative overflow-hidden rounded-md border border-white/10 bg-black/40 shadow-lg"
+                      style={
+                        previewFrame.isVertical
+                          ? { height: '100%', aspectRatio: previewFrame.aspectRatio }
+                          : { width: '100%', aspectRatio: previewFrame.aspectRatio }
+                      }
+                    >
+                      <iframe
+                        src={appendPreviewFlag(url)}
+                        title={`${widget.name} preview`}
+                        className="absolute left-0 top-0 border-none"
+                        style={{ ...previewViewportStyle, background: 'transparent' }}
+                        // Cards are decorative; the click-target is the overlay below.
+                        tabIndex={-1}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-[8px] font-semibold text-white/10 tracking-normal gap-2">
-                <span>Preview Offline</span>
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-[10px] font-semibold text-white/20 tracking-normal gap-2">
+                <Icon size={28} className="opacity-30" />
+                <span>Preview offline</span>
               </div>
             )}
-            <div className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[7px] font-semibold tracking-normal ${url ? 'text-[#d035f1]' : 'text-white/25'}`}>
-               <div className={`w-1 h-1 rounded-full ${url ? 'bg-[#d035f1] animate-pulse' : 'bg-white/20'}`} />
-               {url ? 'Preview' : 'Offline'}
+
+            <div
+              className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[8px] font-semibold tracking-normal pointer-events-none ${
+                !url ? 'text-white/25' : hasActivated ? 'text-accent' : 'text-white/40'
+              }`}
+            >
+              <div
+                className={`w-1 h-1 rounded-full ${
+                  !url ? 'bg-white/20' : hasActivated ? 'bg-accent animate-pulse' : 'bg-white/40'
+                }`}
+              />
+              {!url ? 'Offline' : hasActivated ? 'Live' : 'Hover to load'}
             </div>
-            {/* Click to configure overlay */}
-            <div className="absolute inset-0 z-10 cursor-pointer" onClick={onConfigure} />
+
+            {/* Click to configure overlay (sits above the iframe so the iframe is
+                inert and clicks always open the editor). */}
+            <div
+              className="absolute inset-0 z-10 cursor-pointer"
+              onClick={onConfigure}
+              aria-hidden="true"
+            />
           </div>
         </div>
 
@@ -122,5 +168,31 @@ export function WidgetCard({
         </div>
       </div>
     </section>
+  )
+}
+
+function CardPlaceholder({
+  Icon,
+  resolutionLabel,
+  active
+}: {
+  Icon: React.ComponentType<{ size?: number; className?: string }>
+  resolutionLabel: string
+  active: boolean
+}) {
+  // When the iframe activates we fade the placeholder out instead of
+  // unmounting it. It still sits behind the iframe so transparent widgets
+  // (alerts, particles, screen-border) get a non-flickering backdrop.
+  return (
+    <div
+      className={`absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/30 transition-opacity duration-300 ${
+        active ? 'opacity-30' : 'opacity-100'
+      }`}
+    >
+      <Icon size={36} className="opacity-50" />
+      <span className="text-[10px] font-semibold tracking-normal text-white/40">
+        {resolutionLabel}
+      </span>
+    </div>
   )
 }

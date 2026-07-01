@@ -98,7 +98,7 @@ export function createDefaultAction(type: Action['type'] = 'tts'): Action {
     case 'show_alert':
       return {
         type: 'show_alert',
-        template: '<strong>{username}</strong> triggered an alert!',
+        template: '{username} triggered an alert!',
         durationMs: 5000,
         animationIn: 'wave',
         animationOut: 'dissolve',

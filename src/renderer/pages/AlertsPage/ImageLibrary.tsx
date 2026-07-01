@@ -1,20 +1,18 @@
-import { IconPhoto as ImageIcon } from '@tabler/icons-react'
-import { IconPlus, IconUpload } from '../../components/ui/icons'
+import { IconPhotoOff } from '@tabler/icons-react'
 import { useState } from 'react'
 import { AssetFile } from '../../hooks/useAssets'
-import { ImageRow } from './components/ImageRow'
+import { ImageTile } from './components/ImageTile'
 import { ImagePreviewModal } from './components/ImagePreviewModal'
 import { ImageAdjustmentModal } from './components/ImageAdjustmentModal'
 
 interface ImageLibraryProps {
   images: AssetFile[]
-  onUpload: () => void
   onDelete: (image: AssetFile) => void
 }
 
 type ModalMode = 'preview' | 'adjust' | null
 
-export function ImageLibrary({ images, onUpload, onDelete }: ImageLibraryProps) {
+export function ImageLibrary({ images, onDelete }: ImageLibraryProps) {
   const [activeImage, setActiveImage] = useState<AssetFile | null>(null)
   const [modalMode, setModalMode] = useState<ModalMode>(null)
 
@@ -23,54 +21,34 @@ export function ImageLibrary({ images, onUpload, onDelete }: ImageLibraryProps) 
     setActiveImage(null)
   }
 
+  if (images.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-white/10 rounded-xl bg-white/[0.01]">
+        <IconPhotoOff size={40} className="text-white/20 mb-4" stroke={1.5} />
+        <p className="text-[14px] font-semibold text-white/75">No images yet</p>
+        <p className="text-[12px] text-white/45 mt-1.5 max-w-xs">Use “Add image” above to import a PNG, GIF, or short video. Each one becomes a tile you can pick from any route.</p>
+      </div>
+    )
+  }
+
   return (
     <>
-      <div className="flex flex-col min-h-[200px]">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center text-accent">
-              <ImageIcon size={32} />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold tracking-tight leading-none">Visual Assets</h2>
-              <p className="text-[10px] opacity-40 font-semibold mt-2 tracking-tight">{images.length} Objects Loaded</p>
-            </div>
-          </div>
-          <button
-            onClick={onUpload}
-            className="app-button !h-10 !px-6 !text-[10px] font-semibold tracking-tight"
-          >
-            <IconPlus size={14} />
-            ADD VISUAL
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-          {images.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {images.map((image) => (
-                <ImageRow
-                  key={image.id}
-                  image={image}
-                  onPreview={() => {
-                    setActiveImage(image)
-                    setModalMode('preview')
-                  }}
-                  onDelete={() => onDelete(image)}
-                  onEdit={() => {
-                    setActiveImage(image)
-                    setModalMode('adjust')
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-white/10 border border-dashed border-white/5 rounded-lg">
-              <IconUpload size={32} className="mb-4 opacity-10" />
-              <p className="text-[10px] font-semibold tracking-tight">Library Empty</p>
-            </div>
-          )}
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {images.map((image) => (
+          <ImageTile
+            key={image.id}
+            image={image}
+            onPreview={() => {
+              setActiveImage(image)
+              setModalMode('preview')
+            }}
+            onDelete={() => onDelete(image)}
+            onEdit={() => {
+              setActiveImage(image)
+              setModalMode('adjust')
+            }}
+          />
+        ))}
       </div>
 
       {modalMode === 'preview' && activeImage && (
@@ -82,11 +60,7 @@ export function ImageLibrary({ images, onUpload, onDelete }: ImageLibraryProps) 
       )}
 
       {modalMode === 'adjust' && activeImage && (
-        <ImageAdjustmentModal
-          isOpen={true}
-          image={activeImage}
-          onClose={closeModal}
-        />
+        <ImageAdjustmentModal isOpen={true} image={activeImage} onClose={closeModal} />
       )}
     </>
   )

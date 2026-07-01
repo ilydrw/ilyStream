@@ -10,6 +10,13 @@ export interface StreamPlatformDestination {
 }
 
 export const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number }> = {
+  '2160p144': { width: 3840, height: 2160, fps: 144 },
+  '2160p120': { width: 3840, height: 2160, fps: 120 },
+  '2160p60': { width: 3840, height: 2160, fps: 60 },
+  '1440p144': { width: 2560, height: 1440, fps: 144 },
+  '1440p120': { width: 2560, height: 1440, fps: 120 },
+  '1080p144': { width: 1920, height: 1080, fps: 144 },
+  '1080p120': { width: 1920, height: 1080, fps: 120 },
   '1080p60': { width: 1920, height: 1080, fps: 60 },
   '1080p30': { width: 1920, height: 1080, fps: 30 },
   '720p60': { width: 1280, height: 720, fps: 60 },

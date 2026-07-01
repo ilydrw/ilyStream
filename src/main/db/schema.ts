@@ -123,7 +123,8 @@ export const SCHEMA_SQL = `
     total_raids INTEGER DEFAULT 0,
     total_chats INTEGER DEFAULT 0,
     total_song_requests INTEGER DEFAULT 0,
-    peak_viewer_count INTEGER DEFAULT 0
+    peak_viewer_count INTEGER DEFAULT 0,
+    total_cohost_calls INTEGER DEFAULT 0
   );
 
   -- Authoritative follower counts pulled from each platform's API
@@ -150,6 +151,7 @@ export const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS user_stats (
     username TEXT,
     platform TEXT,
+    platform_user_id TEXT,
     display_name TEXT NOT NULL,
     profile_picture_url TEXT,
     total_likes INTEGER DEFAULT 0,
@@ -162,10 +164,40 @@ export const SCHEMA_SQL = `
     total_chats INTEGER DEFAULT 0,
     total_song_requests INTEGER DEFAULT 0,
     is_fan_club_member INTEGER DEFAULT 0,
+    is_super_fan INTEGER DEFAULT 0,
+    is_moderator INTEGER DEFAULT 0,
+    moderator_badge_image_url TEXT,
+    tiktok_fan_club_badge_image_url TEXT,
+    tiktok_super_fan_badge_image_url TEXT,
+    twitch_sub_badge_image_url TEXT,
+    youtube_super_fan_badge_image_url TEXT,
     profile_id TEXT,
+    total_cohost_calls INTEGER DEFAULT 0,
     first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (username, platform)
+  );
+
+  CREATE TABLE IF NOT EXISTS viewer_profiles (
+    id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    profile_picture_url TEXT,
+    notes TEXT DEFAULT '',
+    primary_platform TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS viewer_accounts (
+    profile_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    username TEXT NOT NULL,
+    platform_user_id TEXT,
+    display_name TEXT NOT NULL,
+    profile_picture_url TEXT,
+    first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (platform, username)
   );
 
   CREATE INDEX IF NOT EXISTS idx_event_history_created ON event_history(created_at);
@@ -174,6 +206,9 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_user_stats_gift_value ON user_stats(total_gift_value_cents DESC);
   CREATE INDEX IF NOT EXISTS idx_user_stats_last_seen ON user_stats(last_seen_at DESC);
   CREATE INDEX IF NOT EXISTS idx_user_stats_profile_id ON user_stats(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_user_stats_platform_user_id ON user_stats(platform, platform_user_id);
+  CREATE INDEX IF NOT EXISTS idx_viewer_accounts_profile_id ON viewer_accounts(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_viewer_accounts_platform_user_id ON viewer_accounts(platform, platform_user_id);
   CREATE INDEX IF NOT EXISTS idx_follower_snapshots_platform_time
     ON follower_snapshots(platform, captured_at DESC);
 `
@@ -181,7 +216,7 @@ export const SCHEMA_SQL = `
 export function ensureColumn(db: BetterSqlite3.Database, table: string, column: string, definition: string): void {
   const t = table.trim()
   const c = column.trim()
-  const ALLOWED_TABLES = new Set(['voice_profiles', 'triggers', 'platform_configs', 'settings', 'event_history', 'user_stats', 'global_stats', 'tiktok_gifts', 'tiktok_gift_aliases', 'economy_users', 'stream_state', 'deck_actions', 'widgets', 'sounds_metadata'])
+  const ALLOWED_TABLES = new Set(['voice_profiles', 'triggers', 'platform_configs', 'settings', 'event_history', 'user_stats', 'global_stats', 'tiktok_gifts', 'tiktok_gift_aliases', 'economy_users', 'stream_state', 'deck_actions', 'widgets', 'sounds_metadata', 'viewer_profiles', 'viewer_accounts'])
   const IDENTIFIER_RE = /^[a-z_][a-z0-9_]*$/i
   if (!ALLOWED_TABLES.has(t) || !IDENTIFIER_RE.test(c)) throw new Error(`ensureColumn: Rejected invalid Table='${t}', Column='${c}'`)
   const rows = db.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>
@@ -196,6 +231,26 @@ export function runMigrations(db: BetterSqlite3.Database) {
   ensureColumn(db, 'voice_profiles', 'meta_json', `TEXT NOT NULL DEFAULT '{}'`)
   ensureColumn(db, 'economy_users', 'xp', 'INTEGER DEFAULT 0')
   ensureColumn(db, 'economy_users', 'level', 'INTEGER DEFAULT 1')
+  ensureColumn(db, 'user_stats', 'platform_user_id', 'TEXT')
+  ensureColumn(db, 'user_stats', 'is_super_fan', 'INTEGER DEFAULT 0')
+  ensureColumn(db, 'user_stats', 'is_moderator', 'INTEGER DEFAULT 0')
+  ensureColumn(db, 'user_stats', 'moderator_badge_image_url', 'TEXT')
+  ensureColumn(db, 'user_stats', 'tiktok_fan_club_badge_image_url', 'TEXT')
+  ensureColumn(db, 'user_stats', 'tiktok_super_fan_badge_image_url', 'TEXT')
+  ensureColumn(db, 'user_stats', 'twitch_sub_badge_image_url', 'TEXT')
+  ensureColumn(db, 'user_stats', 'youtube_super_fan_badge_image_url', 'TEXT')
+  ensureColumn(db, 'user_stats', 'total_cohost_calls', 'INTEGER DEFAULT 0')
+  ensureColumn(db, 'global_stats', 'total_cohost_calls', 'INTEGER DEFAULT 0')
+  ensureColumn(db, 'viewer_profiles', 'profile_picture_url', 'TEXT')
+  ensureColumn(db, 'viewer_profiles', 'notes', "TEXT DEFAULT ''")
+  ensureColumn(db, 'viewer_profiles', 'primary_platform', 'TEXT')
+  ensureColumn(db, 'viewer_profiles', 'created_at', 'TEXT DEFAULT CURRENT_TIMESTAMP')
+  ensureColumn(db, 'viewer_profiles', 'updated_at', 'TEXT DEFAULT CURRENT_TIMESTAMP')
+  ensureColumn(db, 'viewer_accounts', 'platform_user_id', 'TEXT')
+  ensureColumn(db, 'viewer_accounts', 'display_name', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'viewer_accounts', 'profile_picture_url', 'TEXT')
+  ensureColumn(db, 'viewer_accounts', 'first_seen_at', 'TEXT DEFAULT CURRENT_TIMESTAMP')
+  ensureColumn(db, 'viewer_accounts', 'last_seen_at', 'TEXT DEFAULT CURRENT_TIMESTAMP')
 
   // One-time data fix: prior versions allowed total_follows to climb past 1
   // when the same user fired multiple follow events (TikTok social spam,

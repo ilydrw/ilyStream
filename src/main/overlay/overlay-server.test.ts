@@ -108,6 +108,20 @@ describe('OverlayServer', () => {
       })
     )
 
+    const likesStateResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/likes/state`)
+    const likesState = await likesStateResponse.json()
+    expect(likesState).toEqual(
+      expect.objectContaining({
+        totalLikes: 400,
+        users: expect.arrayContaining([
+          expect.objectContaining({
+            displayName: 'Fan',
+            count: 25
+          })
+        ])
+      })
+    )
+
     const likesController = new AbortController()
     const likesResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=likes`, {
       signal: likesController.signal
@@ -116,6 +130,25 @@ describe('OverlayServer', () => {
     expect(likesStream).toContain('"totalLikes":400')
     expect(likesStream).toContain('"displayName":"Fan"')
     expect(likesStream).toContain('"count":25')
+
+    overlayServer.broadcast('leaderboard', {
+      type: 'update',
+      data: [{ username: 'Fan', score: 25 }]
+    })
+
+    const leaderboardStateResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/leaderboard/state`)
+    const leaderboardState = await leaderboardStateResponse.json()
+    expect(leaderboardState).toEqual([
+      expect.objectContaining({ username: 'Fan', score: 25 })
+    ])
+
+    const leaderboardController = new AbortController()
+    const leaderboardResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=leaderboard`, {
+      signal: leaderboardController.signal
+    })
+    const leaderboardStream = await readStreamUntil(leaderboardResponse, '"score":25', leaderboardController)
+    expect(leaderboardStream).toContain('"type":"snapshot"')
+    expect(leaderboardStream).toContain('"username":"Fan"')
   })
 
   it('allows DeskThing clients from a LAN origin to preflight the device API', async () => {
@@ -201,6 +234,65 @@ describe('OverlayServer', () => {
 
     const eventsStream = await readStreamUntil(eventsResponse, '"chatBacklog"', eventsController)
     expect(eventsStream).toContain('"message":"deskthing hello"')
+  })
+
+  it('serves overlay runtime and polling fallback events for browser-source clients', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    const widgetResponse = await fetch(`${base}/overlay/chat`)
+    const widgetHtml = await widgetResponse.text()
+    expect(widgetHtml).toContain('ilystream-overlay-runtime')
+    expect(widgetHtml).toContain('/overlay/events/poll')
+
+    overlayServer.handleStreamEvent({
+      id: 'chat-poll-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T12:00:00.000Z'),
+      type: 'chat',
+      raw: {},
+      message: 'poll me',
+      emotes: [],
+      user: {
+        id: 'poll-user',
+        username: 'poll_viewer',
+        displayName: 'Poll Viewer',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    })
+
+    const chatPollResponse = await fetch(`${base}/overlay/events/poll?channel=chat&after=0`)
+    const chatPoll = await chatPollResponse.json() as any
+    expect(chatPoll.events).toEqual([
+      expect.objectContaining({
+        id: 0,
+        data: expect.objectContaining({
+          type: 'snapshot',
+          payload: expect.arrayContaining([
+            expect.objectContaining({
+              displayName: 'Poll Viewer',
+              message: 'poll me'
+            })
+          ])
+        })
+      })
+    ])
+    expect(chatPoll.cursor).toBeGreaterThan(0)
+
+    overlayServer.broadcast('screen-border', { type: 'reload', id: 'border-widget' })
+
+    const borderPollResponse = await fetch(`${base}/overlay/events/poll?channel=screen-border&after=0`)
+    const borderPoll = await borderPollResponse.json() as any
+    expect(borderPoll.events).toEqual([
+      expect.objectContaining({
+        id: expect.any(Number),
+        data: expect.objectContaining({ type: 'reload', id: 'border-widget' })
+      })
+    ])
   })
 
   it('does not send in-progress TikTok gift combos to particle widgets', () => {

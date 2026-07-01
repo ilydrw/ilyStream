@@ -38,6 +38,50 @@ describe('LikesTracker', () => {
     expect(broadcasts).toHaveLength(1)
   })
 
+  it('accepts reused TikTok like ids when the cumulative total advances', () => {
+    const { tracker } = createTracker()
+
+    tracker.updateState(
+      makeLikeEvent({ id: 'shared-like-id', username: 'alice', displayName: 'Alice', likeCount: 5, totalLikes: 100 }),
+      makeFeedItem('Alice', 5)
+    )
+    tracker.updateState(
+      makeLikeEvent({ id: 'shared-like-id', username: 'alice', displayName: 'Alice', likeCount: 5, totalLikes: 105 }),
+      makeFeedItem('Alice', 5)
+    )
+
+    expect(tracker.getSnapshot()).toEqual(
+      expect.objectContaining({
+        totalLikes: 105,
+        users: [
+          expect.objectContaining({ displayName: 'Alice', count: 10 })
+        ]
+      })
+    )
+  })
+
+  it('accepts reused like ids without platform totals when packet timestamps differ', () => {
+    const { tracker } = createTracker()
+
+    tracker.updateState(
+      makeLikeEvent({ id: 'shared-delta-id', username: 'alice', displayName: 'Alice', likeCount: 3, totalLikes: 0, timestamp: '2026-05-20T12:00:00.000Z' }),
+      makeFeedItem('Alice', 3)
+    )
+    tracker.updateState(
+      makeLikeEvent({ id: 'shared-delta-id', username: 'alice', displayName: 'Alice', likeCount: 3, totalLikes: 0, timestamp: '2026-05-20T12:00:00.500Z' }),
+      makeFeedItem('Alice', 3)
+    )
+
+    expect(tracker.getSnapshot()).toEqual(
+      expect.objectContaining({
+        totalLikes: 6,
+        users: [
+          expect.objectContaining({ displayName: 'Alice', count: 6 })
+        ]
+      })
+    )
+  })
+
   it('keeps same display names separate by platform identity and falls back to deltas without platform totals', () => {
     const { tracker } = createTracker()
 
@@ -68,7 +112,8 @@ function makeLikeEvent({
   username,
   displayName,
   likeCount,
-  totalLikes
+  totalLikes,
+  timestamp = '2026-05-20T12:00:00.000Z'
 }: {
   id: string
   platform?: LikeEvent['platform']
@@ -76,11 +121,12 @@ function makeLikeEvent({
   displayName: string
   likeCount: number
   totalLikes: number
+  timestamp?: string
 }): LikeEvent {
   return {
     id,
     platform,
-    timestamp: new Date('2026-05-20T12:00:00.000Z'),
+    timestamp: new Date(timestamp),
     type: 'like',
     raw: {},
     likeCount,

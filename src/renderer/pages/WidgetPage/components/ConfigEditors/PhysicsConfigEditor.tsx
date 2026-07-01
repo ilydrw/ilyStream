@@ -35,7 +35,7 @@ export function PhysicsConfigEditor({
             step={0.1}
             value={config.gravity}
             onChange={(e) => update('gravity', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
 
@@ -47,7 +47,7 @@ export function PhysicsConfigEditor({
             step={0.05}
             value={config.restitution}
             onChange={(e) => update('restitution', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
 
@@ -59,7 +59,7 @@ export function PhysicsConfigEditor({
             step={0.01}
             value={config.friction}
             onChange={(e) => update('friction', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>
@@ -78,7 +78,7 @@ export function PhysicsConfigEditor({
             onChange={(v) => update('maxObjects', v)}
             min={1}
             max={200}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -88,7 +88,7 @@ export function PhysicsConfigEditor({
             onChange={(v) => update('particleLifeSec', v)}
             min={1}
             max={120}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>

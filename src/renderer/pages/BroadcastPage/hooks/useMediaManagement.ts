@@ -7,6 +7,7 @@ import {
   buildCameraConstraints,
   buildRawAudioConstraints,
   createStabilizedCameraStream,
+  resolveStabilizedVideoTarget,
   isTransientMediaError,
   type ManagedMediaElement
 } from '../utils/media-init'
@@ -70,9 +71,15 @@ export function useMediaManagement(options: MediaManagementOptions) {
     pendingMedia.current.add(layerId)
     lastMediaInitTimes.current[layerId] = now
     const cleanupFns: Array<() => void> = []
+    // Declared in the function scope (not inside try) so the catch block
+    // below can still call stream?.getTracks().forEach(stop) on a partially
+    // opened stream when getDisplayMedia / getUserMedia later rejects.
+    // Without this, a NotReadableError (e.g. WGC E_ACCESSDENIED on Win11
+    // monitor capture) threw a ReferenceError that bypassed cleanup and
+    // the retry loop.
+    let stream: MediaStream | null = null
 
     try {
-      let stream: MediaStream | null = null
 
       if (type === 'display' || (type === 'audio' && layer.config.audioOnlyDisplayCapture)) {
         let effectiveSourceId = String(layer.config.desktopSourceId || '')
@@ -168,8 +175,13 @@ export function useMediaManagement(options: MediaManagementOptions) {
 
       const el = document.createElement(type === 'audio' ? 'audio' : 'video')
       if (!stream) throw new Error(`No media stream returned for ${layer.name || type}`)
-      const outputStream = (type === 'camera' || type === 'display') && layer.config.stabilize !== false
-        ? createStabilizedCameraStream(stream, { width: canvasWidth, height: canvasHeight, fps: 30 }, layer.name)
+      const shouldStabilizeVideo = (type === 'camera' || type === 'display') && layer.config.stabilize !== false
+      const outputStream = shouldStabilizeVideo
+        ? createStabilizedCameraStream(
+            stream,
+            resolveStabilizedVideoTarget(layer, stream, { width: canvasWidth, height: canvasHeight, fps: 30 }),
+            layer.name
+          )
         : { stream, cleanup: () => stream.getTracks().forEach(t => t.stop()) }
 
       cleanupFns.push(outputStream.cleanup)

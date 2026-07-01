@@ -158,7 +158,8 @@ export interface StudioState {
   }
   recordingSettings: {
     container: 'mkv' | 'mp4' | 'flv' | 'mov'
-    encoder: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+    codec: 'h264' | 'h265'
+    encoder: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv' | 'libx265' | 'hevc_nvenc' | 'hevc_amf' | 'hevc_qsv'
     crf: number
     audioBitrate: number
     bitrateKbps: number
@@ -229,6 +230,7 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   },
   recordingSettings: {
     container: 'mkv',
+    codec: 'h264',
     encoder: 'auto',
     crf: 18,
     audioBitrate: 192,

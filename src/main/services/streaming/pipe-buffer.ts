@@ -7,6 +7,13 @@ export interface PipeBufferStats {
   droppedBytes: number
 }
 
+export type PipeBufferOverflowPolicy = 'drop-oldest' | 'drop-newest'
+
+export interface PipeBufferOptions {
+  maxQueueBytes: number
+  overflow?: PipeBufferOverflowPolicy
+}
+
 /**
  * Wraps a Writable (typically an ffmpeg stdin/stdio[3] pipe) with a small
  * bounded queue and drain handling. Backpressure is the most common cause of
@@ -18,8 +25,8 @@ export interface PipeBufferStats {
  * - Try the write immediately. On success, return true.
  * - On `false` return, set a drain listener; subsequent chunks queue.
  * - On drain, flush the queue in order until the next `false`.
- * - If the queued bytes exceed `maxQueueBytes`, drop the OLDEST chunk first
- *   (preserves the most recent audio) and bump the drop counters.
+ * - If the queued bytes exceed `maxQueueBytes`, apply the configured overflow
+ *   policy and bump the drop counters.
  */
 export class PipeBuffer {
   private queue: Buffer[] = []
@@ -29,8 +36,12 @@ export class PipeBuffer {
   private droppedBytes = 0
   private drainHandler = () => this.flush()
   private detached = false
+  private readonly maxQueueBytes: number
+  private readonly overflow: PipeBufferOverflowPolicy
 
-  constructor(private readonly pipe: Writable, private readonly maxQueueBytes: number) {
+  constructor(private readonly pipe: Writable, options: number | PipeBufferOptions) {
+    this.maxQueueBytes = typeof options === 'number' ? options : options.maxQueueBytes
+    this.overflow = typeof options === 'number' ? 'drop-oldest' : options.overflow ?? 'drop-oldest'
     this.pipe.on('drain', this.drainHandler)
   }
 
@@ -48,8 +59,7 @@ export class PipeBuffer {
     const buf = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 
     if (this.waitingForDrain || this.queue.length > 0) {
-      this.enqueue(buf)
-      return true
+      return this.enqueue(buf)
     }
 
     const ok = this.pipe.write(buf)
@@ -66,7 +76,17 @@ export class PipeBuffer {
     }
   }
 
-  private enqueue(buf: Buffer): void {
+  private enqueue(buf: Buffer): boolean {
+    if (
+      this.overflow === 'drop-newest' &&
+      this.queue.length > 0 &&
+      this.queuedBytes + buf.byteLength > this.maxQueueBytes
+    ) {
+      this.droppedChunks++
+      this.droppedBytes += buf.byteLength
+      return false
+    }
+
     this.queue.push(buf)
     this.queuedBytes += buf.byteLength
     while (this.queuedBytes > this.maxQueueBytes && this.queue.length > 1) {
@@ -75,6 +95,7 @@ export class PipeBuffer {
       this.droppedChunks++
       this.droppedBytes += dropped.byteLength
     }
+    return true
   }
 
   private flush(): void {

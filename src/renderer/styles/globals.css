@@ -5,6 +5,7 @@
 @import "./animations.css";
 @import "./tts.css";
 @import "./spotify.css";
+@import "./google-gray.css";
 
 iframe { 
   background: transparent !important; 

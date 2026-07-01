@@ -64,7 +64,7 @@ export function DiscordPromoConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
 
@@ -76,7 +76,7 @@ export function DiscordPromoConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>

@@ -12,10 +12,10 @@ export class TwitchMapper {
   mapUserFromMsg(user: string, msg: any, isFollower: boolean): UserInfo {
     const userInfo = msg?.userInfo
     const badges = userInfo?.badges
-      ? Array.from(userInfo.badges.entries()).map(([id]: [string, any]) => ({
+      ? Array.from(userInfo.badges.entries()).map(([id, version]: [string, any]) => ({
           id,
           name: id,
-          imageUrl: `https://static-cdn.jtvnw.net/badges/v2/${id}/1`
+          imageUrl: version ? `https://static-cdn.jtvnw.net/badges/v1/${id}/${version}/1` : undefined
         }))
       : []
     const badgeText = badges.map((badge) => `${badge.id} ${badge.name}`).join(' ').toLowerCase()

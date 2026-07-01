@@ -87,4 +87,11 @@ export function registerTTSHandlers(
   ipcMain.on('tts:speech-complete', () => {
     ttsEngine.onSpeechComplete()
   })
+
+  // The renderer's TTS hook (re)initialized — e.g. after a reload. Any speech
+  // that was mid-flight is gone with the old page, so reset the playing flag
+  // and resume the queue rather than staying wedged.
+  ipcMain.on('tts:renderer-ready', () => {
+    ttsEngine.resetPlayback()
+  })
 }

@@ -39,7 +39,7 @@ export function AlertsConfigEditor({
             step={500}
             value={config.duration}
             onChange={(e) => update('duration', parseInt(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>

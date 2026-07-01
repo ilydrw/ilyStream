@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, protocol, Tray, Menu, nativeImage, session, type WebContents } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { existsSync, mkdirSync } from 'fs'
@@ -11,6 +11,7 @@ import { sendToRenderer } from './ipc/safe-send'
 import { registerAssetProtocol } from './lib/asset-protocol'
 import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
+import { AvatarCache } from './AvatarCache'
 
 // Global logger setup
 setupLogger()
@@ -50,6 +51,15 @@ let startupError: unknown = null
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'asset',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  },
+  {
+    scheme: 'ily-avatar',
     privileges: {
       secure: true,
       standard: true,
@@ -102,6 +112,50 @@ function resolveBundledResource(...segments: string[]): string | null {
 function createAppIcon() {
   const iconPath = resolveBundledResource('ilyStream-AppIcon.ico')
   return iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+}
+
+function getRendererLoadTarget(): string {
+  return is.dev && process.env['ELECTRON_RENDERER_URL']
+    ? (process.env['ELECTRON_RENDERER_URL'].endsWith('/') ? process.env['ELECTRON_RENDERER_URL'] : process.env['ELECTRON_RENDERER_URL'] + '/')
+    : join(__dirname, '../renderer/index.html')
+}
+
+function isTrustedRendererUrl(value?: string): boolean {
+  if (!value) return false
+  const loadTarget = getRendererLoadTarget()
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    return isSameOriginUrl(value, loadTarget)
+  }
+  return isProductionAppFileUrl(value, loadTarget)
+}
+
+function isTrustedMediaPermissionRequest(webContents: WebContents, details?: Record<string, unknown>): boolean {
+  const candidates = [
+    webContents.getURL(),
+    details?.requestingUrl,
+    details?.embeddingOrigin,
+    details?.securityOrigin,
+    details?.requestingOrigin
+  ].filter((value): value is string => typeof value === 'string')
+
+  return candidates.some(isTrustedRendererUrl)
+}
+
+function configureMediaPermissions(): void {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission !== 'media' || !isTrustedMediaPermissionRequest(webContents, details as Record<string, unknown>)) {
+      callback(false)
+      return
+    }
+
+    const mediaTypes = Array.isArray((details as any)?.mediaTypes) ? (details as any).mediaTypes : []
+    callback(mediaTypes.length === 0 || mediaTypes.every((type: string) => type === 'video' || type === 'audio'))
+  })
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, _requestingOrigin, details) => {
+    if (permission !== 'media') return false
+    return isTrustedMediaPermissionRequest(webContents, details as Record<string, unknown>)
+  })
 }
 
 process.on('uncaughtException', (error) => {
@@ -197,9 +251,7 @@ function createWindow(): void {
     console.log('[main] Window finished loading content.')
   })
 
-  const loadUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
-    ? (process.env['ELECTRON_RENDERER_URL'].endsWith('/') ? process.env['ELECTRON_RENDERER_URL'] : process.env['ELECTRON_RENDERER_URL'] + '/')
-    : join(__dirname, '../renderer/index.html')
+  const loadUrl = getRendererLoadTarget()
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     openExternalSafely(details.url)
@@ -276,7 +328,12 @@ app.whenReady().then(async () => {
     if (!existsSync(p)) mkdirSync(p, { recursive: true })
   })
 
+  // Initialize Avatar Cache
+  const avatarCache = new AvatarCache()
+  await avatarCache.init()
+
   registerAssetProtocol()
+  configureMediaPermissions()
   createTray()
   console.log('[main] Creating main window...')
   createWindow()
@@ -299,7 +356,14 @@ app.whenReady().then(async () => {
 
 function startHistoryPrune(): void {
   if (historyPruneTimer) return
-  historyPruneTimer = setInterval(() => services?.db?.pruneEventHistory(), 60 * 60 * 1000)
+  historyPruneTimer = setInterval(() => {
+    // Wrap in an IIFE so a synchronous throw in pruneEventHistory becomes a
+    // rejected promise we can catch — otherwise it surfaces as an
+    // `unhandledRejection` and writes a crash log entry.
+    Promise.resolve(services?.db?.pruneEventHistory()).catch((err) => {
+      console.error('[main] history prune failed:', err)
+    })
+  }, 60 * 60 * 1000)
 }
 
 function startHealthWatchdog(): void {

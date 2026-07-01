@@ -1,4 +1,5 @@
 import type { Platform, PlatformChatCapability } from '../main/platforms/types'
+import { htmlToSingleLinePlainText } from './plain-text'
 
 export type RelayTagMode =
   | 'platform-and-user'
@@ -89,8 +90,8 @@ export function buildRelayText(
   source: RelayMessageSource,
   tagMode: RelayTagMode = 'platform-and-user'
 ): string {
-  const displayName = source.displayName.trim()
-  const message = source.message.trim()
+  const displayName = htmlToSingleLinePlainText(source.displayName)
+  const message = htmlToSingleLinePlainText(source.message)
   const platformLabel = PLATFORM_LABELS[source.platform]
 
   if (message.length === 0) {
@@ -114,5 +115,5 @@ export function buildRelayText(
 }
 
 export function normalizeRelayText(text: string): string {
-  return text.trim().replace(/\s+/g, ' ').toLowerCase()
+  return htmlToSingleLinePlainText(text).toLowerCase()
 }

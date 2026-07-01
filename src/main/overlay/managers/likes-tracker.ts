@@ -7,10 +7,10 @@ export class LikesTracker {
   private users = new Map<string, LikesTrackerUser>()
   private totalLikes = 0
   private platformLikes = new Map<string, number>()
-  private recentEventIds: string[] = []
-  private recentEventIdSet = new Set<string>()
+  private recentEventSignatures: string[] = []
+  private recentEventSignatureSet = new Set<string>()
   private sse: SSEManager
-  private readonly maxRecentEventIds = 500
+  private readonly maxRecentEventSignatures = 500
 
   constructor(sse: SSEManager) {
     this.sse = sse
@@ -26,7 +26,7 @@ export class LikesTracker {
   }
 
   updateState(event: LikeEvent, feedItem: OverlayFeedItem): (OverlayFeedItem & { totalLikes: number }) | null {
-    if (this.hasSeenEvent(event.id)) return null
+    if (this.hasSeenEventSignature(this.getEventSignature(event, feedItem))) return null
 
     const amount = Math.max(1, Math.floor(event.likeCount || feedItem.amount || 1))
     const platformTotal = Number.isFinite(event.totalLikes) && event.totalLikes > 0
@@ -86,23 +86,39 @@ export class LikesTracker {
   reset(): void {
     this.users.clear()
     this.platformLikes.clear()
-    this.recentEventIds = []
-    this.recentEventIdSet.clear()
+    this.recentEventSignatures = []
+    this.recentEventSignatureSet.clear()
     this.totalLikes = 0
   }
 
-  private hasSeenEvent(eventId: string | undefined): boolean {
-    if (!eventId) return false
-    if (this.recentEventIdSet.has(eventId)) return true
+  private getEventSignature(event: LikeEvent, feedItem: OverlayFeedItem): string | undefined {
+    if (!event.id) return undefined
+    const platform = (event.platform || feedItem.platform || 'unknown').toLowerCase()
+    const user = event.user?.username || event.user?.id || feedItem.displayName || 'anonymous'
+    const amount = Math.max(1, Math.floor(event.likeCount || feedItem.amount || 1))
+    const total = Number.isFinite(event.totalLikes) && event.totalLikes > 0 ? Math.floor(event.totalLikes) : 0
+    const packetStamp = total > 0 ? '' : getTimestampMs(event.timestamp)
+    return `${event.id}:${platform}:${String(user).toLowerCase()}:${amount}:${total}:${packetStamp}`
+  }
 
-    this.recentEventIdSet.add(eventId)
-    this.recentEventIds.push(eventId)
+  private hasSeenEventSignature(signature: string | undefined): boolean {
+    if (!signature) return false
+    if (this.recentEventSignatureSet.has(signature)) return true
 
-    while (this.recentEventIds.length > this.maxRecentEventIds) {
-      const expired = this.recentEventIds.shift()
-      if (expired) this.recentEventIdSet.delete(expired)
+    this.recentEventSignatureSet.add(signature)
+    this.recentEventSignatures.push(signature)
+
+    while (this.recentEventSignatures.length > this.maxRecentEventSignatures) {
+      const expired = this.recentEventSignatures.shift()
+      if (expired) this.recentEventSignatureSet.delete(expired)
     }
 
     return false
   }
+}
+
+function getTimestampMs(timestamp: unknown): number | string {
+  if (timestamp instanceof Date) return timestamp.getTime()
+  const parsed = Date.parse(String(timestamp || ''))
+  return Number.isFinite(parsed) ? parsed : ''
 }

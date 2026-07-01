@@ -9,7 +9,12 @@ export interface ChatMessage {
   message: string
   isModerator: boolean
   isSubscriber: boolean
+  isVip?: boolean
+  isFollower?: boolean
   isFanClub?: boolean
+  isSuperFan?: boolean
+  isTeamMember?: boolean
+  badges?: Array<{ id: string; name: string; imageUrl?: string }>
   timestamp: Date
   profilePictureUrl?: string
   isAI?: boolean
@@ -30,7 +35,7 @@ interface ChatStore {
 
 export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
-  maxMessages: 500,
+  maxMessages: 2000,
   platformFilter: null,
   searchQuery: '',
 

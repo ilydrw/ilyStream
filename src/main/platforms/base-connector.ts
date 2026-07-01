@@ -16,6 +16,15 @@ export interface ConnectorError {
   timestamp: Date
 }
 
+export class ConnectorFatalError extends Error {
+  readonly recoverable = false
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConnectorFatalError'
+  }
+}
+
 export abstract class BaseConnector extends EventEmitter {
   public status: ConnectionStatus = 'disconnected'
   public abstract readonly platform: Platform
@@ -85,7 +94,7 @@ export abstract class BaseConnector extends EventEmitter {
         return
       }
       this.connecting = false
-      this.handleError(error, 'connect', true)
+      this.handleError(error, 'connect', isRecoverableConnectorError(error))
       throw error
     }
   }
@@ -156,7 +165,7 @@ export abstract class BaseConnector extends EventEmitter {
         this.setStatus('connected')
       } catch (error) {
         this.connecting = false
-        this.scheduleReconnect()
+        this.handleError(error, 'reconnect', isRecoverableConnectorError(error))
       }
     }, delay)
   }
@@ -170,6 +179,10 @@ export abstract class BaseConnector extends EventEmitter {
 
   setAutoReconnect(enabled: boolean): void { this.autoReconnect = enabled }
   setMaxReconnectAttempts(max: number): void { this.maxReconnectAttempts = max }
+}
+
+export function isRecoverableConnectorError(error: unknown): boolean {
+  return !(error instanceof ConnectorFatalError)
 }
 
 export function formatConnectorErrorMessage(error: unknown): string {

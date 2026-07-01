@@ -330,7 +330,7 @@ export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
 
 export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
   title: 'Top Likers',
-  maxAvatars: 12,
+  maxAvatars: 3,
   showTotal: true,
   showHeader: true,
   showRankNumbers: true,
@@ -349,5 +349,13 @@ export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
   borderRadius: 20,
   glassIntensity: 0.5,
   animationStyle: 'zoom',
-  animationDuration: 800
+  animationDuration: 800,
+  // Periodic all-time cycling defaults off: swapping the title every few
+  // minutes can read as "the live leaderboard stopped." The overlay template
+  // still uses all-time stats as an idle fallback until live likes arrive.
+  lifetimeGlimpseEnabled: false,
+  streamWindowMinutes: 4,
+  lifetimeWindowMinutes: 1,
+  lifetimeTitle: 'All-Time Top Likers',
+  showPulsingHeart: true
 }

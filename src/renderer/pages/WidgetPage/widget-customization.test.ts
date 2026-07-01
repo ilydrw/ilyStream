@@ -5,7 +5,8 @@ import {
   buildWidgetOverlayUrl,
   buildWidgetPreviewUrl,
   createWidgetFromTemplate,
-  getWidgetPreviewFrame
+  getWidgetPreviewFrame,
+  normalizeOverlayHost
 } from './widget-customization'
 import { type SocialsConfig, type Widget } from '../../../shared/widgets'
 
@@ -28,44 +29,90 @@ describe('widget customization helpers', () => {
 
   it('uses the shared overlay URL format', () => {
     expect(buildWidgetOverlayUrl('chat-1', 4211)).toBe('http://127.0.0.1:4211/overlay/chat-1')
+    expect(buildWidgetOverlayUrl('chat-1', 4211, '192.168.1.50:4211')).toBe('http://192.168.1.50:4211/overlay/chat-1')
     expect(buildWidgetOverlayUrl('chat-1', null)).toBeNull()
   })
 
-  it('encodes preview config into the preview URL', () => {
+  it('normalizes overlay hosts reported by the server', () => {
+    expect(normalizeOverlayHost(null, 4211)).toBe('127.0.0.1:4211')
+    expect(normalizeOverlayHost('http://192.168.1.50:4211/overlay/chat', 4211)).toBe('192.168.1.50:4211')
+    expect(normalizeOverlayHost('localhost', 4211)).toBe('localhost:4211')
+    expect(normalizeOverlayHost('::1', 4211)).toBe('[::1]:4211')
+  })
+
+  it('builds a stable preview URL with the preview flag', () => {
+    // Config is delivered to the iframe via postMessage in `WidgetEditorModal`,
+    // not encoded into the URL, so the URL stays stable for the widget's
+    // lifetime and the iframe never has to reload to pick up config changes.
     const widget = {
       id: 'preview-widget',
       config: { aspectRatio: 'tiktok', title: 'Hi moon' }
     } as Widget
-    const url = buildWidgetPreviewUrl(widget, 4211, { title: 'Hi moon' })
+    const url = buildWidgetPreviewUrl(widget, 4211)
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
+    expect(parsed.pathname).toBe('/overlay/preview-widget')
     expect(parsed.searchParams.get('preview')).toBe('1')
-    expect(decodePreviewConfig(parsed.searchParams.get('config')!)).toEqual({ title: 'Hi moon' })
+    expect(parsed.searchParams.get('config')).toBeNull()
   })
 
-  it('normalizes preview frames from widget aspect ratio config', () => {
-    expect(getWidgetPreviewFrame({ aspectRatio: 'tiktok' })).toEqual({
-      aspectRatio: '9 / 16',
+  it('returns null when the overlay server is offline', () => {
+    expect(buildWidgetPreviewUrl({ id: 'whatever' }, null)).toBeNull()
+  })
+
+  it('honors explicit aspect-ratio overrides in config', () => {
+    expect(getWidgetPreviewFrame({ aspectRatio: 'tiktok' })).toMatchObject({
+      aspectRatio: '1080 / 1920',
       isVertical: true,
-      resolutionLabel: '1080 x 1920'
+      width: 1080,
+      height: 1920
     })
 
-    expect(getWidgetPreviewFrame({ aspectRatio: 'landscape' })).toEqual({
-      aspectRatio: '16 / 9',
+    expect(getWidgetPreviewFrame({ aspectRatio: 'landscape' })).toMatchObject({
+      aspectRatio: '1920 / 1080',
       isVertical: false,
-      resolutionLabel: '1920 x 1080'
+      width: 1920,
+      height: 1080
     })
+  })
 
-    expect(getWidgetPreviewFrame({})).toEqual({
-      aspectRatio: '16 / 9',
+  it('treats forceTikTokDimensions as a portrait override', () => {
+    expect(getWidgetPreviewFrame({ forceTikTokDimensions: true })).toMatchObject({
+      isVertical: true,
+      width: 1080,
+      height: 1920
+    })
+  })
+
+  it('picks per-type natural frames when no explicit override is set', () => {
+    // Sidebar-style widget → portrait popup canvas.
+    expect(
+      getWidgetPreviewFrame({ type: 'chat-unified', config: {} })
+    ).toMatchObject({ isVertical: true, width: 480, height: 720 })
+
+    // Banner widget → short wide canvas.
+    expect(
+      getWidgetPreviewFrame({ type: 'follower-goal', config: {} })
+    ).toMatchObject({ isVertical: false, width: 720, height: 180 })
+
+    // Compact TLS-friendly board canvas.
+    expect(
+      getWidgetPreviewFrame({ type: 'likes-tracker', config: {} })
+    ).toMatchObject({ isVertical: false, width: 400, height: 280 })
+
+    // Full-screen overlay stays 16:9.
+    expect(
+      getWidgetPreviewFrame({ type: 'screen-border', config: {} })
+    ).toMatchObject({ isVertical: false, width: 1920, height: 1080 })
+  })
+
+  it('falls back to 16:9 for unknown widget types with no override', () => {
+    expect(getWidgetPreviewFrame({})).toMatchObject({
+      aspectRatio: '1920 / 1080',
       isVertical: false,
-      resolutionLabel: 'Responsive canvas'
+      width: 1920,
+      height: 1080
     })
   })
 })
-
-function decodePreviewConfig(value: string): unknown {
-  const bytes = Uint8Array.from(atob(value), (char) => char.charCodeAt(0))
-  return JSON.parse(new TextDecoder().decode(bytes))
-}

@@ -155,22 +155,18 @@ export class DeviceApi {
 
   /** Returns paired devices in a UI-friendly shape. */
   listPairedDevices(): PairedDevice[] {
-    const rows = this.authService.getAllTokens() as Array<{
-      token: string
-      label: string | null
-      created_at: string
-      last_used: string | null
-    }>
+    const rows = this.authService.listTokenSummaries()
     return rows.map((row) => ({
-      token: row.token,
+      id: row.id,
+      tokenSuffix: row.tokenSuffix,
       label: row.label || 'Unnamed device',
       createdAt: row.created_at,
       lastUsed: row.last_used
     }))
   }
 
-  revokeDevice(token: string): void {
-    this.authService.revokeToken(token)
+  revokeDevice(id: string): void {
+    this.authService.revokeTokenByIdOrToken(id)
   }
 
   // --- HTTP routing (called from OverlayServer.handleRequest) ---

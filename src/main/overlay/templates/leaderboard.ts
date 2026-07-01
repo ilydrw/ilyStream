@@ -10,6 +10,8 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
   const fontFamily = cfg.fontFamily || 'Outfit'
   const accentColor = cfg.accentColor || '#ff00ff'
   const secondaryColor = cfg.secondaryColor || accentColor
+  const sourceMinWidth = 440
+  const sourceMinHeight = 640
 
   return `
 <!DOCTYPE html>
@@ -34,6 +36,8 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
         body {
             margin: 0;
             padding: 20px;
+            min-width: ${sourceMinWidth}px;
+            min-height: ${sourceMinHeight}px;
             font-family: var(--font-main);
             color: var(--white);
             overflow: hidden;
@@ -98,6 +102,20 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-height: 64px;
+            position: relative;
+        }
+
+        .empty-state {
+            color: rgba(255, 255, 255, 0.58);
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-align: center;
+            padding: 20px 10px;
+        }
+
+        .list.has-items .empty-state {
+            display: none;
         }
 
         .item {
@@ -161,6 +179,28 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
         /* List transition animations (physics simulation feel) */
         .item-enter { opacity: 0; transform: translateX(-20px); }
         .item-enter-active { opacity: 1; transform: translateX(0); }
+
+        .size-warning {
+            position: fixed;
+            inset: 0;
+            border: 2px dashed rgba(255, 200, 0, 0.6);
+            background: rgba(20, 16, 0, 0.9);
+            color: #ffd166;
+            font-family: var(--font-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 12px;
+            z-index: 10001;
+            gap: 6px;
+        }
+
+        .size-warning h1 { font-size: clamp(14px, 4vw, 20px); font-weight: 800; margin: 0; }
+        .size-warning p { font-size: clamp(11px, 2.4vw, 14px); line-height: 1.45; max-width: 520px; margin: 0; }
+        .size-warning code { background: rgba(0, 0, 0, 0.45); padding: 2px 6px; border-radius: 4px; font-size: 0.95em; }
+        .size-warning .current { opacity: 0.6; font-size: clamp(10px, 2vw, 12px); }
     </style>
 </head>
 <body>
@@ -170,6 +210,7 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             <div class="live-tag">LIVE</div>
         </div>
         <div id="leaderboard" class="list">
+            <div class="empty-state">Waiting for likes</div>
             <!-- Rankings will be injected here -->
         </div>
     </div>
@@ -177,6 +218,8 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
     <script>
         const container = document.getElementById('leaderboard');
         const IS_PREVIEW = ${JSON.stringify(isPreview)};
+        const SOURCE_MIN_WIDTH = ${sourceMinWidth};
+        const SOURCE_MIN_HEIGHT = ${sourceMinHeight};
         const PREVIEW_DATA = [
             { username: 'MiaMoon', score: 12840 },
             { username: 'PixelDrew', score: 10325 },
@@ -185,13 +228,17 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             { username: 'ChatHero', score: 5400 }
         ];
         let currentData = [];
+        let fallbackPollingTimer = null;
 
         function updateLeaderboard(newData) {
+            newData = Array.isArray(newData) ? newData : [];
             // Only update if data actually changed
             if (JSON.stringify(newData) === JSON.stringify(currentData)) return;
             currentData = newData;
+            container.classList.toggle('has-items', newData.length > 0);
 
-            container.innerHTML = newData.slice(0, 10).map((u, i) =>
+            const emptyMarkup = '<div class="empty-state">Waiting for likes</div>';
+            container.innerHTML = emptyMarkup + newData.slice(0, 10).map((u, i) =>
                 '<div class="item" style="transform: translateY(0); transition-delay: ' + (i * 50) + 'ms">' +
                     '<div class="rank">' + (i + 1) + '</div>' +
                     '<div class="username">' + escapeHtml(u.username || u.displayName || 'Unknown') + '</div>' +
@@ -211,23 +258,108 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
             return Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
         }
 
+        function checkViewportSize() {
+            if (IS_PREVIEW) return;
+            const existing = document.getElementById('leaderboard-size-warning');
+            if (existing) existing.remove();
+            const tooSmall = window.innerWidth < SOURCE_MIN_WIDTH || window.innerHeight < SOURCE_MIN_HEIGHT;
+            if (!tooSmall) return;
+            console.warn('[leaderboard] Browser source is smaller than the recommended ' + SOURCE_MIN_WIDTH + 'x' + SOURCE_MIN_HEIGHT + '; rendering compact instead of blocking the widget.');
+        }
+
+        function requestJson(url) {
+            if (typeof fetch === 'function') {
+                return fetch(url, { cache: 'no-store' }).then((res) => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                });
+            }
+
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.onreadystatechange = () => {
+                    if (xhr.readyState !== 4) return;
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        reject(new Error('HTTP ' + xhr.status));
+                        return;
+                    }
+                    try {
+                        resolve(JSON.parse(xhr.responseText || '[]'));
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                xhr.onerror = () => reject(new Error('network error'));
+                xhr.send();
+            });
+        }
+
+        async function hydrateLeaderboardState() {
+            try {
+                updateLeaderboard(await requestJson(new URL('/overlay/leaderboard/state?t=' + Date.now(), window.location.href).href));
+            } catch (err) {
+                console.error('[leaderboard] state hydrate failed:', err);
+            }
+        }
+
+        function startFallbackPolling() {
+            if (fallbackPollingTimer) return;
+            hydrateLeaderboardState();
+            fallbackPollingTimer = setInterval(hydrateLeaderboardState, 2000);
+        }
+
+        function stopFallbackPolling() {
+            if (!fallbackPollingTimer) return;
+            clearInterval(fallbackPollingTimer);
+            fallbackPollingTimer = null;
+        }
+
         function connect() {
-            const evs = new EventSource('/overlay/events?channel=leaderboard');
+            if (typeof EventSource !== 'function') {
+                console.warn('[leaderboard] EventSource not supported, using polling fallback.');
+                startFallbackPolling();
+                return;
+            }
+
+            let evs = null;
+            try {
+                evs = new EventSource(new URL('/overlay/events?channel=leaderboard', window.location.href).href);
+            } catch (err) {
+                console.error('[leaderboard] SSE setup failed:', err);
+                startFallbackPolling();
+                return;
+            }
+            evs.onopen = () => {
+                stopFallbackPolling();
+            };
             evs.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'update') {
-                    updateLeaderboard(data.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'update') {
+                        updateLeaderboard(data.data);
+                    } else if (data.type === 'snapshot') {
+                        updateLeaderboard(data.payload);
+                    } else if (data.type === 'reload') {
+                        window.location.reload();
+                    }
+                } catch (err) {
+                    console.warn('[leaderboard] ignored malformed event', err);
                 }
             };
             evs.onerror = () => {
-                evs.close();
-                setTimeout(connect, 2000);
+                startFallbackPolling();
             };
         }
+
+        window.addEventListener('load', checkViewportSize);
+        window.addEventListener('resize', checkViewportSize);
+        checkViewportSize();
 
         if (IS_PREVIEW) {
             updateLeaderboard(PREVIEW_DATA);
         } else {
+            hydrateLeaderboardState();
             connect();
         }
     </script>

@@ -11,6 +11,12 @@ let jpegEncodeInFlight = false
 let startedAtMs = 0
 let lastEncodeAtMs = 0
 let compositedFrameMode = false
+// Compositor cadence is driven by a fixed timer rather than
+// requestAnimationFrame so the stream keeps producing frames when the host
+// window is minimized, occluded, or the display goes to sleep — rAF in a
+// worker is still gated by the parent document's render schedule and stops
+// firing in those states, which would freeze the encoder mid-broadcast.
+let renderTimer: ReturnType<typeof setInterval> | null = null
 
 const videoFrames = new Map<string, VideoFrame>()
 const imageBitmaps = new Map<string, ImageBitmap>()
@@ -24,13 +30,22 @@ self.onmessage = async (e) => {
   if (type === 'init') {
     offscreenCanvas = payload.canvas
     captureFormat = payload.format === 'mjpeg' ? 'mjpeg' : payload.format === 'bgra' ? 'bgra' : 'h264'
+    // Output is H.264 / JPEG / BGRA-with-forced-opaque-alpha — none carry an
+    // alpha channel, so an RGBA backing store is wasted bandwidth. alpha:false
+    // lets Chromium pick a tighter pixel format and skip per-pixel blending
+    // against a transparent base on clearRect. Per-layer transparency still
+    // composites correctly because globalAlpha + source alpha are applied
+    // during drawImage.
     ctx = offscreenCanvas!.getContext('2d', {
-      alpha: true,
+      alpha: false,
       desynchronized: true,
       willReadFrequently: captureFormat === 'bgra'
     })!
+    // 'high' uses a bicubic/lanczos resampler. Cheap on GPU, expensive on the
+    // CPU-backed canvas that we hit for the BGRA virtual-camera path. 'low'
+    // is bilinear and visually indistinguishable for video at 30+ fps.
     ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
+    ctx.imageSmoothingQuality = 'low'
     cw = payload.width
     ch = payload.height
     streamFps = Math.max(1, Math.min(60, Math.round(payload.fps || 30)))
@@ -70,7 +85,7 @@ self.onmessage = async (e) => {
       videoEncoder = null
     }
 
-    renderLoop()
+    startRenderLoop()
     return
   }
 
@@ -121,6 +136,7 @@ self.onmessage = async (e) => {
   }
 
   if (type === 'shutdown') {
+    stopRenderLoop()
     if (videoEncoder && videoEncoder.state !== 'closed') {
       await videoEncoder.flush().catch(() => { })
       videoEncoder.close()
@@ -162,8 +178,24 @@ async function loadImage(id: string, assetPath: string) {
   imageLoadingIds.delete(id)
 }
 
+function startRenderLoop() {
+  if (renderTimer) clearInterval(renderTimer)
+  // Fire slightly faster than the encode cadence so the drift-correcting
+  // catch-up math (targetFrame vs frameCountTotal) has headroom to absorb
+  // ~1ms of timer jitter without dropping a frame on the floor. The encode
+  // gate inside renderLoop still caps actual encoded frames at streamFps.
+  const tickInterval = Math.max(1, Math.floor(encodeInterval / 2))
+  renderTimer = setInterval(renderLoop, tickInterval)
+}
+
+function stopRenderLoop() {
+  if (renderTimer) {
+    clearInterval(renderTimer)
+    renderTimer = null
+  }
+}
+
 function renderLoop() {
-  requestAnimationFrame(renderLoop)
   if (!ctx || !offscreenCanvas) return
   if (compositedFrameMode) return
 
@@ -221,15 +253,18 @@ function renderLoop() {
   }
 
   if (targetFrame > frameCountTotal && videoEncoder && videoEncoder.state === 'configured') {
-    const framesToEncode = Math.min(targetFrame - frameCountTotal, 5)
+    // Cap the per-tick catch-up at ~1s of frames. The encoder's own
+    // encodeQueueSize guard (below) is the real back-pressure — this cap
+    // just protects against runaway loops when something is very wrong.
+    // Was 5 frames, which permanently lost wallclock time on any hitch
+    // longer than ~80ms.
+    const framesToEncode = Math.min(targetFrame - frameCountTotal, streamFps)
 
     for (let i = 0; i < framesToEncode; i++) {
+      if (videoEncoder.encodeQueueSize > 10) break
       frameCountTotal++
-      
-      // Force a keyframe every 2 seconds.
+
       const forceKeyFrame = frameCountTotal % (streamFps * 2) === 0
-      
-      // Calculate exact timestamp in microseconds based on frame count
       const timestampMicrosec = Math.round((frameCountTotal / streamFps) * 1_000_000);
       const frame = new VideoFrame(offscreenCanvas, { timestamp: timestampMicrosec })
 

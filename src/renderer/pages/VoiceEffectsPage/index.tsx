@@ -1,5 +1,5 @@
 import { IconActivity, IconAntennaBars5, IconDroplet, IconHeadphones, IconMicrophone, IconMountain, IconPhoneCall, IconRadio, IconRipple, IconRobot, IconSkull, IconSpeakerphone, IconUfo, IconVolume, IconWaveSawTool, IconWaveSine } from '@tabler/icons-react'
-import { IconPowerIconFx } from '../../components/ui/icons'
+import { IconPower, IconFx } from '../../components/ui/icons'
 import type { Icon } from '@tabler/icons-react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'

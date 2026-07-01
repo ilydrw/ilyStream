@@ -356,6 +356,80 @@ describe('EventSoundService', () => {
       'kick'
     )
   })
+
+  it('fires only the highest-priority matching alert route for one event', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings({
+      ...DEFAULT_APP_SETTINGS,
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          id: 'low-follow-route',
+          name: 'Low follow route',
+          priority: 10,
+          textTemplate: 'Low priority follow'
+        },
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          id: 'high-follow-route',
+          name: 'High follow route',
+          priority: 200,
+          textTemplate: 'High priority follow'
+        }
+      ]
+    })
+
+    service.processEvent(makeFollowEvent())
+
+    expect(overlayServer.pushAlert).toHaveBeenCalledTimes(1)
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'follow-1:high-follow-route',
+        template: 'High priority follow'
+      }),
+      'tiktok'
+    )
+  })
+
+  it('renders default gift and follow alerts with their rule styling (no hardcoded variant)', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({}))
+      service.processEvent(makeFollowEvent())
+      service.processEvent({ ...makeGiftEvent(), giftCount: 3 })
+      vi.advanceTimersByTime(200)
+
+      // Alerts must carry the rule's own styling (border, template) and NOT be
+      // overridden by a hardcoded "clean" variant — otherwise the editor's
+      // Style controls (border colour, etc.) do nothing.
+      const followCall = overlayServer.pushAlert.mock.calls.find((c: any[]) => c[0].eventType === 'follow')
+      expect(followCall).toBeTruthy()
+      expect(followCall![0].variant).toBeUndefined()
+      expect(followCall![0].borderColor).toBe('rgba(56, 189, 248, 0.24)')
+      expect(followCall![0].template).toContain('Alice')
+
+      const giftCall = overlayServer.pushAlert.mock.calls.find((c: any[]) => c[0].eventType === 'gift')
+      expect(giftCall).toBeTruthy()
+      expect(giftCall![0].variant).toBeUndefined()
+      expect(giftCall![0].borderColor).toBe('rgba(247, 201, 72, 0.26)')
+      expect(giftCall![0].template).toContain('Rose')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 function makeUser(): UserInfo {

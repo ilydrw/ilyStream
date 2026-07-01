@@ -9,6 +9,13 @@ import { WidgetEditorModal } from './components/WidgetEditorModal'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { buildWidgetOverlayUrl, createWidgetFromTemplate } from './widget-customization'
 
+interface OverlayStatusSnapshot {
+  port: number | null
+  running: boolean
+  deviceHost?: string | null
+  deviceHosts?: string[]
+}
+
 export default function WidgetPage() {
   const [widgets, setWidgets] = useState<Widget[]>([])
   const [loading, setLoading] = useState(true)
@@ -16,6 +23,7 @@ export default function WidgetPage() {
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [overlayPort, setOverlayPort] = useState<number | null>(null)
+  const [overlayHost, setOverlayHost] = useState<string | null>(null)
   const [overlayRunning, setOverlayRunning] = useState(false)
 
   useEffect(() => {
@@ -31,7 +39,7 @@ export default function WidgetPage() {
       void loadOverlayStatus()
     })
     const unsubOverlay = window.api.on('overlay:status-changed', (status: unknown) => {
-      applyOverlayStatus(status as { port: number | null; running: boolean })
+      applyOverlayStatus(status as OverlayStatusSnapshot)
     })
     const statusTimer = window.setInterval(loadOverlayStatus, 3000)
     return () => {
@@ -46,6 +54,8 @@ export default function WidgetPage() {
       const status = (await window.api.overlay.getStatus()) as {
         port: number | null
         running: boolean
+        deviceHost?: string | null
+        deviceHosts?: string[]
       }
       applyOverlayStatus(status)
     } catch (error) {
@@ -53,8 +63,9 @@ export default function WidgetPage() {
     }
   }
 
-  const applyOverlayStatus = (status: { port: number | null; running: boolean }) => {
+  const applyOverlayStatus = (status: OverlayStatusSnapshot) => {
     setOverlayPort(status.port ?? null)
+    setOverlayHost(status.deviceHost || status.deviceHosts?.[0] || null)
     setOverlayRunning(Boolean(status.running))
   }
 
@@ -112,15 +123,20 @@ export default function WidgetPage() {
   }
 
   const overlayUrlFor = (id: string) => {
-    return buildWidgetOverlayUrl(id, overlayPort)
+    return buildWidgetOverlayUrl(id, overlayPort, overlayHost)
   }
 
-  const copyUrl = (id: string) => {
+  const copyUrl = async (id: string) => {
     const url = overlayUrlFor(id)
     if (!url) return
-    navigator.clipboard.writeText(url).catch(() => {})
-    setCopyingId(id)
-    window.setTimeout(() => setCopyingId(null), 1500)
+
+    try {
+      await copyText(url)
+      setCopyingId(id)
+      window.setTimeout(() => setCopyingId(null), 1500)
+    } catch (error) {
+      console.error('Failed to copy widget URL', error)
+    }
   }
 
   return (
@@ -132,7 +148,7 @@ export default function WidgetPage() {
         description="Create browser-source graphics that stay wired to live events, chat, Spotify, stats, and the overlay server."
         actions={
           <>
-          <OverlayStatusPill running={overlayRunning} port={overlayPort} />
+          <OverlayStatusPill running={overlayRunning} port={overlayPort} host={overlayHost} />
           <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-semibold">
             <IconPlus size={16} className="mr-2" />
             New Widget
@@ -185,7 +201,7 @@ export default function WidgetPage() {
               widget={widget}
               url={overlayUrlFor(widget.id)}
               copyState={copyingId === widget.id}
-              onCopyUrl={() => copyUrl(widget.id)}
+              onCopyUrl={() => void copyUrl(widget.id)}
               onConfigure={() => setEditingWidget(widget)}
               onDelete={() => void deleteWidget(widget.id)}
             />
@@ -216,13 +232,37 @@ export default function WidgetPage() {
   )
 }
 
-function OverlayStatusPill({ running, port }: { running: boolean; port: number | null }) {
+async function copyText(value: string): Promise<void> {
+  if (window.api?.system?.copyToClipboard) {
+    await window.api.system.copyToClipboard(value)
+    return
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('Clipboard copy was rejected')
+}
+
+function OverlayStatusPill({ running, port, host }: { running: boolean; port: number | null; host: string | null }) {
   return (
     <div
       className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-semibold ${ running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40' }`}
     >
       <span className={`h-2 w-2 rounded-full ${running ? 'bg-success' : 'bg-white/30'}`} />
-      {running && port ? `127.0.0.1:${port}` : 'Overlay server offline'}
+      {running && port ? (host || `127.0.0.1:${port}`) : 'Overlay server offline'}
     </div>
   )
 }

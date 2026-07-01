@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettingKey } from '../shared/app-settings'
 import type { WindowsSettingsTarget } from '../main/system/windows-settings'
-import type { GetTopUsersOptions } from '../shared/stats'
+import type { GetTopUsersOptions, ViewerAccountInput, ViewerProfileInput } from '../shared/stats'
 import type { Platform } from '../main/platforms/types'
 import type { VideoFramePayload, AudioFramePayload } from '../main/services/streaming-service'
 import type { EventLabSimulationPayload } from '../shared/event-lab'
+import type { LightingState } from '../shared/lighting'
+import type { RazerStatus, RazerThemeSettings } from '../shared/razer'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -55,6 +57,8 @@ const allowedEventChannels = new Set([
   'action:stop-all-sounds',
   'spotify:now-playing',
   'govee:status-changed',
+  'lighting:state-changed',
+  'razer:status-changed',
   'streaming:native-audio-clock',
   'system:log',
   'virtualcamera:status-changed',
@@ -103,7 +107,9 @@ const api = {
   widgets: {
     getAll: () => ipcRenderer.invoke('widgets:get-all'),
     save: (widget: any) => ipcRenderer.invoke('widgets:save', widget),
-    delete: (id: string) => ipcRenderer.invoke('widgets:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('widgets:delete', id),
+    renderPreview: (widget: any): Promise<string | null> =>
+      ipcRenderer.invoke('widgets:render-preview', widget)
   },
 
   // --- Platform ---
@@ -153,7 +159,8 @@ const api = {
     getQueue: () => ipcRenderer.invoke('tts:get-queue'),
     testSpeak: (payload: { text: string; voiceProfileId?: string }) =>
       ipcRenderer.invoke('tts:test-speak', payload),
-    notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete')
+    notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete'),
+    notifyReady: () => ipcRenderer.send('tts:renderer-ready')
   },
 
   // --- Voice profiles ---
@@ -215,6 +222,8 @@ const api = {
   system: {
     openWindowsSettings: (target: WindowsSettingsTarget) =>
       ipcRenderer.invoke('system:open-windows-settings', target),
+    copyToClipboard: (text: string) =>
+      ipcRenderer.invoke('system:copy-to-clipboard', text),
     installUpdate: () => ipcRenderer.invoke('system:install-update')
   },
 
@@ -264,7 +273,7 @@ const api = {
   device: {
     startPair: () => ipcRenderer.invoke('device:start-pair'),
     listPaired: () => ipcRenderer.invoke('device:list-paired'),
-    revoke: (token: string) => ipcRenderer.invoke('device:revoke', token)
+    revoke: (id: string) => ipcRenderer.invoke('device:revoke', id)
   },
 
   // --- Stats (lifetime totals) ---
@@ -272,13 +281,25 @@ const api = {
     getGlobal: () => ipcRenderer.invoke('stats:get-global'),
     getTopUsers: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-users', opts),
     getTopIdentities: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-identities', opts),
+    getIdentity: (id: string) => ipcRenderer.invoke('stats:get-identity', id),
+    getLinkSuggestions: (profileId: string) => ipcRenderer.invoke('stats:get-link-suggestions', profileId),
     getUser: (platform: Platform, username: string) =>
       ipcRenderer.invoke('stats:get-user', { platform, username }),
     reset: () => ipcRenderer.invoke('stats:reset'),
+    setFollowerCount: (platform: Platform, count: number) =>
+      ipcRenderer.invoke('stats:set-manual-follower-count', { platform, count }),
     linkAccounts: (payload: { p1: Platform; u1: string; p2: Platform; u2: string }) =>
       ipcRenderer.invoke('stats:link-accounts', payload),
     unlinkAccount: (payload: { platform: Platform; username: string }) =>
-      ipcRenderer.invoke('stats:unlink-account', payload)
+      ipcRenderer.invoke('stats:unlink-account', payload),
+    getViewerProfiles: (opts?: { query?: string; limit?: number }) =>
+      ipcRenderer.invoke('stats:get-viewer-profiles', opts),
+    createViewerProfile: (input: ViewerProfileInput) =>
+      ipcRenderer.invoke('stats:create-viewer-profile', input),
+    updateViewerProfile: (id: string, patch: Partial<ViewerProfileInput>) =>
+      ipcRenderer.invoke('stats:update-viewer-profile', { id, patch }),
+    addViewerAccount: (profileId: string, account: ViewerAccountInput) =>
+      ipcRenderer.invoke('stats:add-viewer-account', { profileId, account })
   },
 
   // --- Streaming ---
@@ -308,6 +329,23 @@ const api = {
     getDevices: (forceRefresh?: boolean) => ipcRenderer.invoke('govee:get-devices', forceRefresh),
     setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids),
     testStrobe: () => ipcRenderer.invoke('govee:test-strobe')
+  },
+  // --- Lighting ---
+  lighting: {
+    getState: (): Promise<LightingState> => ipcRenderer.invoke('lighting:get-state'),
+    scan: (): Promise<LightingState> => ipcRenderer.invoke('lighting:scan'),
+    executeAction: (deviceId: string, action: string, params?: any) =>
+      ipcRenderer.invoke('lighting:execute-action', deviceId, action, params)
+  },
+  // --- Razer Chroma ---
+  razer: {
+    getStatus: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:get-status'),
+    connect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:connect'),
+    disconnect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:disconnect'),
+    scan: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:scan'),
+    testEffect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:test-effect'),
+    setTheme: (theme: Partial<RazerThemeSettings>): Promise<RazerStatus> =>
+      ipcRenderer.invoke('razer:set-theme', theme)
   },
   // --- Virtual Camera ---
   virtualCamera: {

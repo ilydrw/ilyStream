@@ -1,5 +1,5 @@
 import { IconChevronRight, IconChevronLeft, IconChevronDown } from '../ui/icons'
-import { IconActivity, IconMixer, IconTriggerRelay, IconSettings } from '../ui/icons/nav'
+import { IconActivity, IconMixer, IconTriggerRelay, IconSettings, IconBroadcast } from '../ui/icons/nav'
 import { useState, useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { NavigationItem } from './navigation'
@@ -38,43 +38,43 @@ const navigationGroups: NavigationGroup[] = [
   {
     id: 'live',
     label: 'Live',
-    drawerTitle: 'Live Operations',
+    drawerTitle: 'Go Live',
     icon: IconActivity,
-    items: [itemByPath('/'), itemByPath('/broadcast'), itemByPath('/recordings'), itemByPath('/stats'), itemByPath('/chat')]
+    items: [itemByPath('/'), itemByPath('/broadcast'), itemByPath('/chat'), itemByPath('/stats'), itemByPath('/recordings')]
   },
   {
-    id: 'studio',
-    label: 'Studio',
-    drawerTitle: 'Studio Assets',
+    id: 'create',
+    label: 'Create',
+    drawerTitle: 'Overlays & Assets',
     icon: IconMixer,
-    items: [itemByPath('/alerts'), itemByPath('/soundboard'), itemByPath('/voice-effects'), itemByPath('/widgets')]
+    items: [itemByPath('/widgets'), itemByPath('/alerts'), itemByPath('/soundboard'), itemByPath('/voice-effects')]
   },
   {
     id: 'automation',
-    label: 'Rules',
-    drawerTitle: 'Automation & Logic',
+    label: 'Automate',
+    drawerTitle: 'Chat Automation',
     icon: IconTriggerRelay,
-    items: [itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/event-lab'), itemByPath('/tts')]
+    items: [itemByPath('/tts'), itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/spotify'), itemByPath('/event-lab')]
   },
   {
-    id: 'system',
-    label: 'System',
-    drawerTitle: 'Studio Systems',
-    icon: IconSettings,
+    id: 'connect',
+    label: 'Connect',
+    drawerTitle: 'Connections',
+    icon: IconBroadcast,
     items: [
-      { isHeader: true, label: 'Platform' },
-      itemByPath('/connections/discord'),
-      itemByPath('/connections/facebook'),
-      itemByPath('/connections/instagram'),
-      itemByPath('/connections/kick'),
-      itemByPath('/connections/linkedin'),
-      itemByPath('/connections/restream'),
-      itemByPath('/spotify'),
-      itemByPath('/connections/telegram'),
+      { isHeader: true, label: 'Live Platforms' },
       itemByPath('/connections/tiktok'),
       itemByPath('/connections/twitch'),
-      itemByPath('/connections/x'),
       itemByPath('/connections/youtube'),
+      itemByPath('/connections/kick'),
+      itemByPath('/connections/restream'),
+      { isHeader: true, label: 'Social Channels' },
+      itemByPath('/connections/discord'),
+      itemByPath('/connections/instagram'),
+      itemByPath('/connections/facebook'),
+      itemByPath('/connections/x'),
+      itemByPath('/connections/linkedin'),
+      itemByPath('/connections/telegram'),
       { isHeader: true, label: 'Hardware' },
       itemByPath('/connections/deskthing'),
       itemByPath('/connections/elgato'),
@@ -86,11 +86,15 @@ const navigationGroups: NavigationGroup[] = [
       itemByPath('/connections/nanoleaf'),
       itemByPath('/connections/razer'),
       itemByPath('/connections/wiz'),
-      itemByPath('/connections/yeelight'),
-      { isHeader: true, label: 'General' },
-      itemByPath('/console'),
-      itemByPath('/settings')
+      itemByPath('/connections/yeelight')
     ]
+  },
+  {
+    id: 'system',
+    label: 'System',
+    drawerTitle: 'App Settings',
+    icon: IconSettings,
+    items: [itemByPath('/settings'), itemByPath('/console')]
   }
 ]
 
@@ -191,8 +195,8 @@ export function Sidebar() {
         aria-hidden={sidebarCollapsed}
         className={`app-sidebar-drawer titlebar-no-drag flex flex-col overflow-hidden whitespace-nowrap bg-background/80 border-r border-white/5 relative transition-[width,opacity] duration-300 ease-in-out ${ sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100' }`}
         style={{
-          width: sidebarCollapsed ? 0 : 228,
-          flexBasis: sidebarCollapsed ? 0 : 228,
+          width: sidebarCollapsed ? 0 : 240,
+          flexBasis: sidebarCollapsed ? 0 : 240,
           borderRightWidth: sidebarCollapsed ? 0 : 1,
         }}
       >

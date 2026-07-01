@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 import type { VoiceProfile } from '../../../../main/tts/voice-profiles'
+import type { ViewerProfile } from '../../../../shared/stats'
 import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_TTS_COMMAND_PREFIXES,
@@ -9,8 +10,9 @@ import {
 } from '../../../../shared/app-settings'
 import {
   DEFAULT_KOKORO_VOICE,
-  type ElevenLabsVoicePreset
+  type SyncedElevenLabsVoicePreset
 } from '../../../../shared/tts-providers'
+import { resolveElevenLabsApiKeys, type ResolvedElevenLabsApiKey } from '../../../../shared/elevenlabs-keys'
 import { getMissingVoiceProfiles } from '../../../lib/local-voices'
 import { useTTSStore } from '../../../stores/tts-store'
 import { fetchElevenLabsVoices } from '../../../lib/elevenlabs-speech'
@@ -28,12 +30,23 @@ import {
 } from '../utils'
 import { toast } from '../../../components/ui/Toast'
 
+const SELECTED_PROFILE_STORAGE_KEY = 'ilystream:tts:selectedProfileId'
+
+function getPersistedSelectedProfileId(): string {
+  try {
+    return window.localStorage.getItem(SELECTED_PROFILE_STORAGE_KEY) || 'default'
+  } catch {
+    return 'default'
+  }
+}
+
 export function useTTSPage() {
   const { enabled, setEnabled } = useTTSStore()
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   const [profiles, setProfiles] = useState<VoiceProfile[]>([])
+  const [viewerProfiles, setViewerProfiles] = useState<ViewerProfile[]>([])
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('default')
+  const [selectedProfileId, setSelectedProfileIdState] = useState<string>(getPersistedSelectedProfileId)
   const [draft, setDraft] = useState<VoiceProfile | null>(null)
   const [previewText, setPreviewText] = useState(previewFallbackText)
   const [ttsRequireCommand, setTtsRequireCommand] = useState(false)
@@ -42,7 +55,8 @@ export function useTTSPage() {
   const [ttsIgnoreEmotes, setTtsIgnoreEmotes] = useState(true)
   const [ttsVolume, setTtsVolume] = useState(0.8)
   const [elevenlabsApiKey, setElevenlabsApiKey] = useState('')
-  const [syncedElevenLabsVoices, setSyncedElevenLabsVoices] = useState<ElevenLabsVoicePreset[]>([])
+  const [elevenlabsApiKeys, setElevenlabsApiKeys] = useState<ResolvedElevenLabsApiKey[]>([])
+  const [syncedElevenLabsVoices, setSyncedElevenLabsVoices] = useState<SyncedElevenLabsVoicePreset[]>([])
   const [voiceModifiers, setVoiceModifiers] = useState<AppSettings['voiceModifiers']>({
     radioFilter: false,
     speedRamping: true,
@@ -54,6 +68,21 @@ export function useTTSPage() {
   const [isSyncingVoices, setIsSyncingVoices] = useState(false)
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const elevenlabsApiKeyRef = useRef('')
+  const hasAutoSyncedElevenLabsRef = useRef(false)
+
+  const setSelectedProfileId = useCallback((next: SetStateAction<string>) => {
+    setSelectedProfileIdState((current) => {
+      const resolved = typeof next === 'function'
+        ? (next as (value: string) => string)(current)
+        : next
+      try {
+        window.localStorage.setItem(SELECTED_PROFILE_STORAGE_KEY, resolved)
+      } catch {
+        // Selection persistence is a UI convenience; ignore storage failures.
+      }
+      return resolved
+    })
+  }, [])
 
   // 1. Sync Settings
   useEffect(() => {
@@ -80,13 +109,18 @@ export function useTTSPage() {
   }, [])
 
   const applySettingsToState = (settings: AppSettings) => {
-    if (settings.elevenlabsApiKey !== elevenlabsApiKeyRef.current) {
-      elevenlabsApiKeyRef.current = settings.elevenlabsApiKey
+    const nextElevenLabsKeys = resolveElevenLabsApiKeys(settings)
+    const nextElevenLabsSignature = JSON.stringify(nextElevenLabsKeys.map((key) => [key.id, key.label, key.apiKey, key.isDefault]))
+    if (nextElevenLabsSignature !== elevenlabsApiKeyRef.current) {
+      elevenlabsApiKeyRef.current = nextElevenLabsSignature
       setElevenlabsApiKey(settings.elevenlabsApiKey)
-      if (settings.elevenlabsApiKey) {
+      setElevenlabsApiKeys(nextElevenLabsKeys)
+      if (nextElevenLabsKeys.length > 0 && !hasAutoSyncedElevenLabsRef.current) {
+        hasAutoSyncedElevenLabsRef.current = true
         setSyncError(null)
-        void syncVoices(settings.elevenlabsApiKey)
-      } else {
+        void syncVoices(undefined, settings)
+      } else if (nextElevenLabsKeys.length === 0) {
+        hasAutoSyncedElevenLabsRef.current = false
         setSyncedElevenLabsVoices([])
       }
     }
@@ -120,6 +154,28 @@ export function useTTSPage() {
   }, [])
 
   useEffect(() => {
+    if (!window.api?.stats?.getViewerProfiles) return
+    let active = true
+
+    const loadViewerProfiles = async () => {
+      try {
+        const nextProfiles = await window.api.stats.getViewerProfiles({ limit: 500 })
+        if (active) setViewerProfiles(Array.isArray(nextProfiles) ? nextProfiles as ViewerProfile[] : [])
+      } catch (err) {
+        console.warn('[tts] Viewer profiles failed to load:', err)
+        if (active) setViewerProfiles([])
+      }
+    }
+
+    void loadViewerProfiles()
+    const interval = setInterval(loadViewerProfiles, 15_000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
     const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null
     setDraft((current) => {
       if (!selectedProfile) return null
@@ -146,9 +202,10 @@ export function useTTSPage() {
   }, [refreshVoices])
 
   // 4. ElevenLabs Sync
-  const syncVoices = async (key?: string) => {
-    const apiKey = key || elevenlabsApiKey
-    if (!apiKey) {
+  const syncVoices = async (keyId?: string, settingsSnapshot: AppSettings = settings) => {
+    const keys = resolveElevenLabsApiKeys(settingsSnapshot)
+    const targets = keyId ? keys.filter((key) => key.id === keyId) : keys
+    if (targets.length === 0) {
       setSyncError('API key not configured')
       return
     }
@@ -156,12 +213,34 @@ export function useTTSPage() {
     setIsSyncingVoices(true)
     setSyncError(null)
     try {
-      const voices = await fetchElevenLabsVoices(apiKey)
+      const results = await Promise.allSettled(
+        targets.map(async (key) => ({
+          key,
+          voices: await fetchElevenLabsVoices(key.apiKey)
+        }))
+      )
+      const voices = results.flatMap((result) => {
+        if (result.status !== 'fulfilled') return []
+        return result.value.voices.map((voice) => ({
+          ...voice,
+          apiKeyId: result.value.key.id,
+          apiKeyLabel: result.value.key.label
+        }))
+      })
+      const failed = results.filter((result) => result.status === 'rejected')
+
       if (voices.length > 0) {
-        setSyncedElevenLabsVoices(voices)
+        setSyncedElevenLabsVoices((current) => {
+          const keep = keyId ? current.filter((voice) => voice.apiKeyId !== keyId) : []
+          return [...keep, ...voices]
+        })
         toast.success(`Synced ${voices.length} neural voices`)
+        if (failed.length > 0) {
+          setSyncError(`${failed.length} workspace key${failed.length === 1 ? '' : 's'} failed`)
+        }
       } else {
-        setSyncError('No voices found in account')
+        const firstError = results.find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined
+        setSyncError(firstError?.reason?.message || 'No voices found in configured workspaces')
       }
     } catch (err: any) {
       setSyncError(err.message || 'Failed to sync voices')
@@ -179,7 +258,27 @@ export function useTTSPage() {
     toast.info(next ? 'TTS Engine Active' : 'TTS Engine Muted')
   }
 
+  const syncLocalTtsSettingState = (key: string, value: unknown) => {
+    const resolved = resolveAppSettings({ [key]: value })
+
+    if (key === 'ttsRequireCommand') setTtsRequireCommand(resolved.tts.requireCommand)
+    if (key === 'ttsCommandPrefixes') setTtsCommandPrefixes(resolved.tts.commandPrefixes)
+    if (key === 'ttsAllowedRoles') setTtsAllowedRoles(resolved.tts.allowedRoles)
+    if (key === 'ttsIgnoreEmotes') setTtsIgnoreEmotes(resolved.tts.ignoreEmotes)
+    if (key === 'ttsVolume') setTtsVolume(resolved.tts.volume)
+    if (key === 'voiceModifiers') setVoiceModifiers(resolved.tts.modifiers)
+    if (key === 'elevenlabsApiKey') {
+      const nextKey = typeof value === 'string' ? value : ''
+      setElevenlabsApiKey(nextKey)
+    }
+    if (key === 'elevenlabsApiKeys' || key === 'elevenlabsDefaultApiKeyId') {
+      setElevenlabsApiKeys(resolveElevenLabsApiKeys(resolveAppSettings({ ...settings, [key]: value })))
+    }
+  }
+
   const updateSetting = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    const keyName = String(key)
+    syncLocalTtsSettingState(keyName, value)
     setSettings((current) => resolveAppSettings({ ...current, [key]: value }))
 
     if (key === 'ttsEnabled') {
@@ -254,23 +353,21 @@ export function useTTSPage() {
     if (!draft) return
     const profile = normalizeProfile(draft)
     const text = getPreviewSpeechText(previewText)
-    if (!confirmElevenLabsSpend(profile, text, elevenlabsApiKey)) return
-    await speakProfile('preview', profile, text, setIsPreviewing, utteranceRef, elevenlabsApiKey)
+    if (!confirmElevenLabsSpend(profile, text, settings)) return
+    await speakProfile('preview', profile, text, setIsPreviewing, utteranceRef, settings)
   }
 
   const stopPreview = () => stopAllSpeech(setIsPreviewing)
 
   const setRequireCommandSetting = async (value: boolean) => {
-    setTtsRequireCommand(value)
-    await window.api?.settings?.set('ttsRequireCommand', value)
+    await updateSetting('ttsRequireCommand', value)
     toast.info(value ? 'Commands Required' : 'Open Speech Enabled')
   }
 
   const selectCommandPrefix = async (prefix: string) => {
     if (ttsCommandPrefixes.length === 1 && ttsCommandPrefixes[0] === prefix) return
     const next = [prefix]
-    setTtsCommandPrefixes(next)
-    await window.api?.settings?.set('ttsCommandPrefixes', next)
+    await updateSetting('ttsCommandPrefixes', next)
   }
 
   const toggleAudiencePermission = async (permission: TTSAudiencePermission) => {
@@ -282,20 +379,19 @@ export function useTTSPage() {
           : [...ttsAllowedRoles.filter((role) => role !== 'everyone'), permission]
     const safeRoles = nextRoles.length > 0 ? nextRoles : ['everyone' as TTSAudiencePermission]
 
-    setTtsAllowedRoles(safeRoles)
-    await window.api?.settings?.set('ttsAllowedRoles', safeRoles)
+    await updateSetting('ttsAllowedRoles', safeRoles)
   }
 
   const updateVoiceModifiers = async (updates: Partial<AppSettings['voiceModifiers']>) => {
     const next = { ...voiceModifiers, ...updates }
-    setVoiceModifiers(next)
-    await window.api?.settings?.set('voiceModifiers', next)
+    await updateSetting('voiceModifiers', next)
   }
 
   return {
     enabled,
     settings,
     profiles,
+    viewerProfiles,
     availableVoices,
     selectedProfileId,
     draft,
@@ -306,6 +402,7 @@ export function useTTSPage() {
     ttsIgnoreEmotes,
     ttsVolume,
     elevenlabsApiKey,
+    elevenlabsApiKeys,
     syncedElevenLabsVoices,
     voiceModifiers,
     syncError,

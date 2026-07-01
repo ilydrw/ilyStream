@@ -95,6 +95,12 @@ function redactString(text: string): string {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
 }
 
+// Exported so the crash log writer (and any other sink that bypasses the
+// console.* redactor pipeline) can apply the same patterns to raw strings.
+// This matters because `error.stack` / `error.message` may carry tokens or
+// webhook URLs that the renderer log relay would otherwise mask.
+export { redactString }
+
 function redactValue(value: any, seen = new WeakSet<object>()): any {
   if (typeof value === 'string') return redactString(value)
   if (!value || typeof value !== 'object') return value

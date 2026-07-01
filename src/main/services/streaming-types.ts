@@ -1,3 +1,15 @@
+export type RecordingVideoCodec = 'h264' | 'h265'
+export type RecordingVideoEncoder =
+  | 'auto'
+  | 'libx264'
+  | 'h264_nvenc'
+  | 'h264_amf'
+  | 'h264_qsv'
+  | 'libx265'
+  | 'hevc_nvenc'
+  | 'hevc_amf'
+  | 'hevc_qsv'
+
 export interface StreamConfig {
   outputId?: string
   outputName?: string
@@ -23,7 +35,8 @@ export interface RecordingConfig {
   audioSampleRate?: number
   // Advanced
   container?: 'mkv' | 'mp4' | 'flv' | 'mov'
-  encoder?: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+  codec?: RecordingVideoCodec
+  encoder?: RecordingVideoEncoder
   crf?: number // 0-51, lower is better. Default depends on encoder.
   audioBitrate?: number // kbps, e.g. 192, 320
 }

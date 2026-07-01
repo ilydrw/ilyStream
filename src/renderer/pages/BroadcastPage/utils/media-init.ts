@@ -1,4 +1,9 @@
 import type { StudioLayer } from '../../../../shared/studio'
+import {
+  MAX_CAMERA_CAPTURE_FPS,
+  MAX_CAMERA_CAPTURE_HEIGHT,
+  MAX_CAMERA_CAPTURE_WIDTH
+} from './camera-capture'
 
 export interface ManagedMediaElement extends HTMLMediaElement {
   __ilyCleanup?: () => void
@@ -9,9 +14,9 @@ export interface ManagedMediaElement extends HTMLMediaElement {
 export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceInfo[]): MediaStreamConstraints {
   const deviceId = String(layer.config.deviceId || '')
   const label = layer.name || ''
-  const captureWidth = clampNumber(layer.config.captureWidth, 1920, 320, 3840)
-  const captureHeight = clampNumber(layer.config.captureHeight, 1080, 180, 2160)
-  const captureFps = clampNumber(layer.config.captureFps, 30, 15, 60)
+  const captureWidth = clampNumber(layer.config.captureWidth, 1920, 320, MAX_CAMERA_CAPTURE_WIDTH)
+  const captureHeight = clampNumber(layer.config.captureHeight, 1080, 180, MAX_CAMERA_CAPTURE_HEIGHT)
+  const captureFps = clampNumber(layer.config.captureFps, 30, 15, MAX_CAMERA_CAPTURE_FPS)
   
   const audioId = resolveCameraAudioDeviceId(layer, devices)
   const audioConstraints = audioId ? buildLowLatencyAudioConstraints(audioId) : false
@@ -167,7 +172,7 @@ export function getMediaSignature(layer: StudioLayer, devices: MediaDeviceInfo[]
     parts.push(
       `camera-audio:${layer.config.audioDeviceId || resolvedAudioId || 'none'}`,
       `capture:${layer.config.captureWidth || 1920}x${layer.config.captureHeight || 1080}@${layer.config.captureFps || 30}`,
-      `stabilize:${layer.config.stabilize !== false}`
+      `stabilize:${layer.config.stabilize !== false}:source-native`
     )
   }
 
@@ -215,6 +220,23 @@ export function formatMediaError(error: unknown): string {
 export function isTransientMediaError(error: unknown): boolean {
   const name = (error as any)?.name
   return ['AbortError', 'NotReadableError', 'TrackStartError', 'TransientNotFoundError', 'NotFoundError'].includes(name)
+}
+
+export function resolveStabilizedVideoTarget(
+  layer: StudioLayer,
+  stream: MediaStream,
+  fallback: { width: number; height: number; fps: number }
+): { width: number; height: number; fps: number } {
+  const settings = stream.getVideoTracks()[0]?.getSettings?.() || {}
+  const fallbackWidth = clampNumber(layer.config.captureWidth, fallback.width, 1, 7680)
+  const fallbackHeight = clampNumber(layer.config.captureHeight, fallback.height, 1, 4320)
+  const fallbackFps = clampNumber(layer.config.captureFps, fallback.fps, 1, MAX_CAMERA_CAPTURE_FPS)
+
+  return {
+    width: clampNumber(settings.width, fallbackWidth, 1, 7680),
+    height: clampNumber(settings.height, fallbackHeight, 1, 4320),
+    fps: clampNumber(settings.frameRate, fallbackFps, 1, MAX_CAMERA_CAPTURE_FPS)
+  }
 }
 
 export function drawVideoCover(

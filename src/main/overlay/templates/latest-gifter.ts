@@ -148,6 +148,17 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
     const widgetEl = document.getElementById('widget');
     const IS_PREVIEW = ${JSON.stringify(isPreview)};
 
+    function requestJson(url) {
+      var runtime = window.__ilystreamOverlayRuntime;
+      if (runtime && typeof runtime.requestJson === 'function') {
+        return runtime.requestJson(url);
+      }
+      return fetch(url, { cache: 'no-store' }).then(function(response) {
+        if (!response.ok) throw new Error('state HTTP ' + response.status);
+        return response.json();
+      });
+    }
+
     function updateGifter(name, avatar) {
       if (name) nameEl.innerText = name;
       if (avatar) avatarEl.src = avatar;
@@ -169,9 +180,8 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
         }
       };
 
-      fetch('/overlay/state/latest-gifter')
-        .then(r => r.json())
-        .then(data => {
+      requestJson('/overlay/state/latest-gifter')
+        .then(function(data) {
           if (data && data.username) {
             updateGifter(data.username, data.avatarUrl);
           }

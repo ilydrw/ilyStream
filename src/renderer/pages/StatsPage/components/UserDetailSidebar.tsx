@@ -81,6 +81,8 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
         <MetricBox label="Gifts" value={identity.totalGifts} color="text-yellow-300" />
         <MetricBox label="Subs" value={identity.totalSubscriptions} color="text-purple-400" />
         <MetricBox label="Songs" value={identity.totalSongRequests} color="text-green-400" />
+        <MetricBox label="Chats" value={identity.totalChats} color="text-white/60" />
+        <MetricBox label="AI Calls" value={identity.totalCohostCalls || 0} color="text-red-400" />
       </div>
 
       <h3 className="text-[10px] font-medium tracking-normal text-white/20 mb-4 px-1">Linked Accounts</h3>

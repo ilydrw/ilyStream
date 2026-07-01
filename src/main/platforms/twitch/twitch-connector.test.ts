@@ -65,6 +65,114 @@ describe('TwitchConnector follower enrichment', () => {
     expect(enriched.user.isFollower).toBe(false)
   })
 
+  it('adds Twitch profile pictures from Helix before emitting chat', async () => {
+    const connector = new TwitchConnector()
+    const getUserById = vi.fn().mockResolvedValue({
+      id: '123',
+      name: 'streamfriend',
+      displayName: 'StreamFriend Live',
+      profilePictureUrl: 'https://static-cdn.jtvnw.net/user-default-pic.png'
+    })
+    ;(connector as any).apiClient = {
+      users: { getUserById, getUserByName: vi.fn() },
+      channels: { getChannelFollowers: vi.fn() }
+    }
+    ;(connector as any).tokenScopes = []
+
+    const enriched = await (connector as any).enrichEventWithTwitchProfile(
+      createChatEvent({
+        id: '123',
+        username: 'streamfriend',
+        displayName: 'StreamFriend'
+      })
+    )
+
+    expect(getUserById).toHaveBeenCalledWith('123')
+    expect(enriched.user.profilePictureUrl).toBe('https://static-cdn.jtvnw.net/user-default-pic.png')
+    expect(enriched.user.displayName).toBe('StreamFriend Live')
+  })
+
+  it('reuses cached Twitch profile pictures without another Helix lookup', async () => {
+    const connector = new TwitchConnector()
+    const getUserById = vi.fn()
+    ;(connector as any).apiClient = {
+      users: { getUserById, getUserByName: vi.fn() },
+      channels: { getChannelFollowers: vi.fn() }
+    }
+    ;(connector as any).userCache.set('twitch', {
+      id: '123',
+      username: 'streamfriend',
+      displayName: 'StreamFriend',
+      profilePictureUrl: 'https://static-cdn.jtvnw.net/cached-pic.png',
+      isModerator: false,
+      isSubscriber: false,
+      isVip: false,
+      isFollower: true,
+      badges: []
+    })
+
+    const enriched = await (connector as any).enrichEventWithTwitchProfile(
+      createChatEvent({
+        id: '123',
+        username: 'streamfriend',
+        displayName: 'StreamFriend',
+        isFollower: false
+      })
+    )
+
+    expect(getUserById).not.toHaveBeenCalled()
+    expect(enriched.user.profilePictureUrl).toBe('https://static-cdn.jtvnw.net/cached-pic.png')
+    expect(enriched.user.isFollower).toBe(true)
+  })
+
+  it('skips startup follower-count telemetry when the token lacks the follower scope', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const connector = new TwitchConnector()
+    const getChannelFollowers = vi.fn().mockResolvedValue({ total: 42 })
+    const emitted: unknown[] = []
+    connector.on('event', (event) => emitted.push(event))
+    ;(connector as any).apiClient = {
+      channels: { getChannelFollowers }
+    }
+    ;(connector as any).broadcasterId = '999'
+    ;(connector as any).tokenScopes = ['chat:read', 'chat:edit']
+
+    try {
+      await (connector as any).emitFollowerCountIfPermitted()
+
+      expect(getChannelFollowers).not.toHaveBeenCalled()
+      expect(emitted).toHaveLength(0)
+      expect(logSpy).toHaveBeenCalledWith(
+        '[twitch-connector] Skipping follower-count telemetry; token is missing moderator:read:followers'
+      )
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('emits startup follower-count telemetry when the token has the follower scope', async () => {
+    const connector = new TwitchConnector()
+    const getChannelFollowers = vi.fn().mockResolvedValue({ total: 42 })
+    const emitted: unknown[] = []
+    connector.on('event', (event) => emitted.push(event))
+    ;(connector as any).apiClient = {
+      channels: { getChannelFollowers }
+    }
+    ;(connector as any).broadcasterId = '999'
+    ;(connector as any).tokenScopes = ['moderator:read:followers']
+
+    await (connector as any).emitFollowerCountIfPermitted()
+
+    expect(getChannelFollowers).toHaveBeenCalledWith('999')
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        platform: 'twitch',
+        type: 'follower-count',
+        count: 42
+      })
+    ])
+  })
+
   it('uses cached follower stats without waiting for the Twitch API', async () => {
     const db = {
       getUserStat: vi.fn().mockReturnValue({ total_follows: 1 })
@@ -134,6 +242,7 @@ function createChatEvent(user: Partial<ChatEvent['user']>): ChatEvent {
       id: user.id || 'user-id',
       username: user.username || 'viewer',
       displayName: user.displayName || 'Viewer',
+      profilePictureUrl: user.profilePictureUrl,
       isModerator: user.isModerator || false,
       isSubscriber: user.isSubscriber || false,
       isVip: user.isVip || false,

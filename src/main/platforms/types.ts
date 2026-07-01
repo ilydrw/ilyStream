@@ -36,6 +36,7 @@ export interface UserInfo {
   isVip: boolean
   isFollower?: boolean
   isFanClubMember?: boolean
+  isSuperFan?: boolean
   isTeamMember?: boolean
   badges: Badge[]
 }
@@ -130,6 +131,13 @@ export interface JoinEvent extends StreamEvent {
 export interface ViewerCountEvent extends StreamEvent {
   type: 'viewer-count'
   count: number
+  /**
+   * Identifiable viewers currently in the room (e.g. TikTok's top-viewers
+   * roster), surfaced so the "in stream" list can show people who are present
+   * but haven't chatted/reacted. Not every viewer — platforms only expose a
+   * subset by name.
+   */
+  viewers?: UserInfo[]
 }
 
 export interface FollowerCountEvent extends StreamEvent {
@@ -209,6 +217,8 @@ export interface TwitchConfig extends PlatformConfig {
 export interface YouTubeConfig extends PlatformConfig {
   platform: 'youtube'
   apiKey: string
+  clientId?: string
+  clientSecret?: string
   channelId?: string
   liveChatId?: string
   accessToken?: string

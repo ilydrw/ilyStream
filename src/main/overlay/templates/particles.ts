@@ -175,15 +175,25 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, isPreview: bool
       if (p.y < -20 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
   }
-  function burst() {
+  var burstQueue = 0;
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue <= 0) { isBursting = false; return; }
+    isBursting = true;
+    burstQueue--;
     for (var i = 0; i < cfg.count; i++) {
       (function(idx) { setTimeout(function() { particles.push(mkParticle(rnd(10, 90))); }, idx * 50); })(i);
     }
+    setTimeout(processQueue, Math.max(2500, (cfg.count * 50) + 1500));
+  }
+  function queueBurst() {
+    burstQueue++;
+    if (!isBursting) processQueue();
   }
   layers.push({
     update: update,
-    onEvent: function(ev) { if (ev.type === 'follow') burst(); },
-    trigger: burst
+    onEvent: function(ev) { if (ev.type === 'follow') queueBurst(); },
+    trigger: queueBurst
   });
 })();`
 }
@@ -235,19 +245,29 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, isPreview: boolean)
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
   }
-  function burst() {
+  var burstQueue = 0;
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue <= 0) { isBursting = false; return; }
+    isBursting = true;
+    burstQueue--;
     for (var i = 0; i < cfg.count; i++) {
       (function(idx) { setTimeout(function() { particles.push(mkParticle(rnd(2, 98))); }, idx * 50); })(i);
     }
+    setTimeout(processQueue, Math.max(3000, (cfg.count * 50) + 2000));
+  }
+  function queueBurst() {
+    burstQueue++;
+    if (!isBursting) processQueue();
   }
   layers.push({
     update: update,
     onEvent: function(ev) {
       if (ev.type !== 'gift') return;
       if (!(ev.giftName || '').toLowerCase().includes('rose')) return;
-      burst();
+      queueBurst();
     },
-    trigger: burst
+    trigger: queueBurst
   });
 })();`
 }
@@ -290,19 +310,29 @@ function buildGalaxyScript(g: GalaxyLayerConfig, isPreview: boolean): string {
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
   }
-  function burst() {
+  var burstQueue = 0;
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue <= 0) { isBursting = false; return; }
+    isBursting = true;
+    burstQueue--;
     for (var i = 0; i < cfg.count; i++) {
       (function(idx) { setTimeout(function() { particles.push(mkParticle(rnd(5, 95))); }, idx * 30); })(i);
     }
+    setTimeout(processQueue, Math.max(4000, (cfg.count * 30) + 3000));
+  }
+  function queueBurst() {
+    burstQueue++;
+    if (!isBursting) processQueue();
   }
   layers.push({
     update: update,
     onEvent: function(ev) {
       if (ev.type !== 'gift') return;
       if (!(ev.giftName || '').toLowerCase().includes('galaxy')) return;
-      burst();
+      queueBurst();
     },
-    trigger: burst
+    trigger: queueBurst
   });
 })();`
 }
@@ -356,19 +386,29 @@ function buildGGsScript(g: GGsLayerConfig, isPreview: boolean): string {
       if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); }
     }
   }
-  function burst() {
+  var burstQueue = 0;
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue <= 0) { isBursting = false; return; }
+    isBursting = true;
+    burstQueue--;
     for (var i = 0; i < cfg.count; i++) {
       (function(idx) { setTimeout(function() { particles.push(mkParticle(rnd(10, 90))); }, idx * 80); })(i);
     }
+    setTimeout(processQueue, Math.max(3000, (cfg.count * 80) + 1500));
+  }
+  function queueBurst() {
+    burstQueue++;
+    if (!isBursting) processQueue();
   }
   layers.push({
     update: update,
     onEvent: function(ev) {
       if (ev.type !== 'gift') return;
       if (!(ev.giftName || '').toLowerCase().includes('gg')) return;
-      burst();
+      queueBurst();
     },
-    trigger: burst
+    trigger: queueBurst
   });
 })();`
 }

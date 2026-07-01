@@ -18,6 +18,14 @@ export interface SpotifyUserProfile {
   product: 'premium' | 'free' | 'open'
 }
 
+export interface SpotifyDevice {
+  id: string
+  name: string
+  type: string
+  is_active: boolean
+  is_restricted: boolean
+}
+
 export class SpotifyClient {
   private accessToken: string | null = null
 
@@ -54,11 +62,18 @@ export class SpotifyClient {
     return undefined
   }
 
-  private fail(operation: string, res: Response): never {
+  private fail(operation: string, res: Response, message?: string): never {
     throw new SpotifyApiError(
-      `${operation} (${res.status})`,
+      message ?? `${operation} (${res.status})`,
       res.status,
       this.getRetryAfterMs(res)
+    )
+  }
+
+  private spotifyNoActiveDeviceError(): SpotifyApiError {
+    return new SpotifyApiError(
+      'No active Spotify device found. Open Spotify on desktop or mobile, press Play once, then try the song request again.',
+      404
     )
   }
 
@@ -78,9 +93,76 @@ export class SpotifyClient {
     return data.tracks?.items?.[0] || null
   }
 
-  async enqueue(uri: string): Promise<void> {
-    const res = await this.fetch(`/me/player/queue?uri=${encodeURIComponent(uri)}`, { method: 'POST' })
-    if (!res.ok) this.fail('Enqueue failed', res)
+  async enqueue(uri: string, deviceId?: string): Promise<void> {
+    const firstAttempt = await this.enqueueOnce(uri, deviceId)
+    if (firstAttempt.ok) return
+
+    if (firstAttempt.status === 404 && !deviceId) {
+      const activatedDeviceId = await this.activateAvailableDevice()
+      if (activatedDeviceId) {
+        const retry = await this.enqueueOnce(uri, activatedDeviceId)
+        if (retry.ok) return
+        if (retry.status === 404) throw this.spotifyNoActiveDeviceError()
+        this.failEnqueue(retry)
+      }
+
+      throw this.spotifyNoActiveDeviceError()
+    }
+
+    this.failEnqueue(firstAttempt)
+  }
+
+  private async enqueueOnce(uri: string, deviceId?: string): Promise<Response> {
+    const params = new URLSearchParams({ uri })
+    if (deviceId) params.set('device_id', deviceId)
+    return this.fetch(`/me/player/queue?${params.toString()}`, { method: 'POST' })
+  }
+
+  private failEnqueue(res: Response): never {
+    if (res.status === 403) {
+      this.fail('Enqueue failed', res, 'Spotify Premium is required for song requests.')
+    }
+    if (res.status === 401) {
+      this.fail('Enqueue failed', res, 'Spotify authorization expired. Reconnect Spotify.')
+    }
+    this.fail('Enqueue failed', res)
+  }
+
+  async getAvailableDevices(): Promise<SpotifyDevice[]> {
+    const res = await this.fetch('/me/player/devices')
+    if (!res.ok) this.fail('Device fetch failed', res)
+    const data = await res.json()
+    return Array.isArray(data?.devices) ? data.devices : []
+  }
+
+  async transferPlayback(deviceId: string, play = false): Promise<void> {
+    const res = await this.fetch('/me/player', {
+      method: 'PUT',
+      body: JSON.stringify({
+        device_ids: [deviceId],
+        play
+      })
+    })
+    if (!res.ok) this.fail('Playback transfer failed', res)
+  }
+
+  private async activateAvailableDevice(): Promise<string | null> {
+    const devices = await this.getAvailableDevices()
+    const controllable = devices.filter((device) => device.id && !device.is_restricted)
+    const active = controllable.find((device) => device.is_active)
+    if (active) return active.id
+
+    const candidate = controllable[0]
+    if (!candidate) return null
+
+    try {
+      await this.transferPlayback(candidate.id, false)
+      await delay(250)
+      return candidate.id
+    } catch (error) {
+      if (error instanceof SpotifyApiError && error.status === 403) throw error
+      return null
+    }
   }
 
   async skip(): Promise<void> {
@@ -126,4 +208,8 @@ export class SpotifyClient {
     const res = await this.fetch(`/me/tracks?ids=${encodeURIComponent(trackId)}`, { method: 'PUT' })
     if (!res.ok) this.fail('Save failed', res)
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }

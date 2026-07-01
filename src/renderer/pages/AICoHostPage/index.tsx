@@ -4,6 +4,7 @@ import { IconPower } from '../../components/ui/icons'
 import { toast } from '../../components/ui/Toast'
 import { resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
 import type { StreamInsightSnapshot } from '../../../shared/stream-insights'
+import type { VoiceProfile } from '../../../main/tts/voice-profiles'
 import { AICoHostIcon } from '../../components/ui/icons/AICoHostIcon'
 
 export default function AICoHostPage() {
@@ -11,6 +12,7 @@ export default function AICoHostPage() {
   const [isTesting, setIsTesting] = useState(false)
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected')
   const [insights, setInsights] = useState<StreamInsightSnapshot | null>(null)
+  const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([])
 
   useEffect(() => {
     if (!window.api?.settings) {
@@ -27,6 +29,15 @@ export default function AICoHostPage() {
     })
 
     return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (!window.api?.voice) return
+    window.api.voice.getAll().then((profiles: VoiceProfile[]) => setVoiceProfiles(profiles))
+    const unsubscribe = window.api.on('voice:changed', (profiles: unknown) => {
+      setVoiceProfiles(profiles as VoiceProfile[])
+    })
+    return () => unsubscribe()
   }, [])
 
   useEffect(() => {
@@ -114,7 +125,7 @@ export default function AICoHostPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-12 gap-4 items-start">
         {/* Main Configuration */}
         <div className="col-span-8 flex flex-col gap-4">
           <div className="app-section-card glass">
@@ -163,6 +174,33 @@ export default function AICoHostPage() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-medium text-white/55">Dedicated Voice Profile</label>
+                    <select
+                      value={settings.ai.voiceProfileId || ''}
+                      onChange={(e) => onUpdate('aiVoiceProfileId', e.target.value)}
+                      className="app-input w-full"
+                    >
+                      <option value="">Same as Chat TTS (Default)</option>
+                      {voiceProfiles.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-medium text-white/55">Speech Prefix Cues</label>
+                    <input
+                      type="text"
+                      value={settings.ai.speechPrefix ?? ''}
+                      onChange={(e) => onUpdate('aiSpeechPrefix', e.target.value)}
+                      placeholder="e.g. AI Co-Host says:"
+                      className="app-input w-full"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-[13px] font-semibold text-white">Neural persona</h3>
@@ -175,7 +213,8 @@ export default function AICoHostPage() {
                   <textarea
                     value={settings.ai.systemPrompt}
                     onChange={(e) => onUpdate('aiSystemPrompt', e.target.value)}
-                    className="app-input w-full !p-4 text-[13px] leading-relaxed min-h-[240px] resize-none custom-scrollbar"
+                    className="app-textarea w-full !p-4 text-[13px] leading-relaxed resize-none custom-scrollbar"
+                    style={{ minHeight: '240px' }}
                     placeholder="You are a witty AI co-host named ILY..."
                   />
                 </div>
@@ -215,7 +254,7 @@ export default function AICoHostPage() {
                     <span className="text-[11px] font-mono text-accent tabular-nums">0.7</span>
                   </div>
                   <input
-                    type="range" min="0" max="1" step="0.1" value="0.7"
+                    type="range" min="0" max="1" step="0.1" defaultValue="0.7"
                     className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-[#19c8ff]"
                   />
                 </div>

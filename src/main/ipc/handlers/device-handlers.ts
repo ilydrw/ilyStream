@@ -4,9 +4,9 @@ import type { DeviceApi } from '../../overlay/device-api'
 export function registerDeviceHandlers(deviceApi: DeviceApi): void {
   ipcMain.handle('device:start-pair', () => deviceApi.startPairCode())
   ipcMain.handle('device:list-paired', () => deviceApi.listPairedDevices())
-  ipcMain.handle('device:revoke', (_event, token: string) => {
-    if (typeof token !== 'string' || !token) return false
-    deviceApi.revokeDevice(token)
+  ipcMain.handle('device:revoke', (_event, id: string) => {
+    if (typeof id !== 'string' || !id) return false
+    deviceApi.revokeDevice(id)
     return true
   })
 }

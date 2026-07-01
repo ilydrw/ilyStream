@@ -1,8 +1,12 @@
 import { useEffect } from 'react'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
+import { LIKE_LOG_VERBOSE } from '../../shared/debug-flags'
 import { useChatStore } from '../stores/chat-store'
 import { useConnectionStore } from '../stores/connection-store'
+import { useLiveViewersStore } from '../stores/live-viewers-store'
 import { createEventLabId, summarizeEventForLab, useEventLabStore } from '../stores/event-lab-store'
+
+const PRESENCE_EVENT_TYPES = new Set(['chat', 'gift', 'follow', 'subscription', 'like', 'share', 'join'])
 
 export function usePlatformEvents(isMounted: boolean) {
   const addMessage = useChatStore((s) => s.addMessage)
@@ -12,6 +16,7 @@ export function usePlatformEvents(isMounted: boolean) {
   const setReconnectInfo = useConnectionStore((s) => s.setReconnectInfo)
   const addEventDiagnostic = useConnectionStore((s) => s.addEventDiagnostic)
   const addEventLabEntry = useEventLabStore((s) => s.addEntry)
+  const recordPresence = useLiveViewersStore((s) => s.recordPresence)
 
   useEffect(() => {
     if (!window.api?.platform || !isMounted) return
@@ -24,7 +29,9 @@ export function usePlatformEvents(isMounted: boolean) {
     // Listen for stream events
     cleanups.push(
       window.api.on('event:stream', (event: any) => {
-        console.log(`[usePlatformEvents] Received ${event.type} event from ${event.platform}:`, event)
+        if (event.type !== 'like' || LIKE_LOG_VERBOSE) {
+          console.log(`[usePlatformEvents] Received ${event.type} event from ${event.platform}:`, event)
+        }
         if (event.type === 'gift' && event.isCombo) return
         const suppressFromChat = shouldSuppressStreamEventFromChat(event)
         const labSummary = summarizeEventForLab(event)
@@ -51,6 +58,23 @@ export function usePlatformEvents(isMounted: boolean) {
           })
         }
 
+        // Track who's active in the stream right now for the live viewers list.
+        if (event.user?.username && PRESENCE_EVENT_TYPES.has(event.type)) {
+          recordPresence({
+            platform: event.platform,
+            username: event.user.username,
+            displayName: event.user.displayName,
+            profilePictureUrl: event.user.profilePictureUrl,
+            isModerator: event.user.isModerator,
+            isSubscriber: event.user.isSubscriber,
+            isVip: event.user.isVip,
+            isFanClub: event.user.isFanClubMember,
+            isSuperFan: event.user.isSuperFan,
+            badges: event.user.badges,
+            action: event.type
+          })
+        }
+
         if (event.type === 'chat') {
           if (suppressFromChat) return
           // Map Platform ChatEvent to Renderer ChatMessage
@@ -62,7 +86,12 @@ export function usePlatformEvents(isMounted: boolean) {
             message: event.message,
             isModerator: event.user.isModerator,
             isSubscriber: event.user.isSubscriber,
+            isVip: event.user.isVip,
+            isFollower: event.user.isFollower,
             isFanClub: event.user.isFanClubMember,
+            isSuperFan: event.user.isSuperFan,
+            isTeamMember: event.user.isTeamMember,
+            badges: event.user.badges,
             timestamp: new Date(event.timestamp),
             profilePictureUrl: event.user.profilePictureUrl
           }
@@ -72,6 +101,26 @@ export function usePlatformEvents(isMounted: boolean) {
 
         if (event.type === 'viewer-count') {
           setViewerCount(event.platform, event.count)
+          // The room's top-viewers roster (TikTok) — people present but not
+          // necessarily active. Surfaces lurkers in the "in stream" list.
+          if (Array.isArray(event.viewers)) {
+            for (const viewer of event.viewers) {
+              if (!viewer?.username) continue
+              recordPresence({
+                platform: event.platform,
+                username: viewer.username,
+                displayName: viewer.displayName,
+                profilePictureUrl: viewer.profilePictureUrl,
+                isModerator: viewer.isModerator,
+                isSubscriber: viewer.isSubscriber,
+                isVip: viewer.isVip,
+                isFanClub: viewer.isFanClubMember,
+                isSuperFan: viewer.isSuperFan,
+                badges: viewer.badges,
+                action: 'viewing'
+              })
+            }
+          }
         }
       })
     )
@@ -132,7 +181,7 @@ export function usePlatformEvents(isMounted: boolean) {
       clearTimeout(restoreTimer)
       cleanups.forEach((fn) => fn())
     }
-  }, [isMounted, addEventDiagnostic, addEventLabEntry, addMessage, setError, setReconnectInfo, setStatus, setViewerCount])
+  }, [isMounted, addEventDiagnostic, addEventLabEntry, addMessage, recordPresence, setError, setReconnectInfo, setStatus, setViewerCount])
 }
 
 function summarizeStreamEvent(event: any): string {
