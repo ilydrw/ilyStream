@@ -1,110 +1,103 @@
 ---
 import DocsLayout from '../../layouts/DocsLayout.astro';
+import { latestVersion } from '../../data/site';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
 const toc = [
   { id: 'install', label: 'Install ilyStream' },
-  { id: 'first-launch', label: 'First launch' },
-  { id: 'connect-obs', label: 'Connect OBS' },
-  { id: 'go-live', label: 'Go live' },
+  { id: 'first-launch', label: 'First launch tour' },
+  { id: 'health-check', label: 'Run Health Center' },
+  { id: 'connect-platforms', label: 'Connect platforms' },
+  { id: 'studio', label: 'Build the studio' },
   { id: 'next-steps', label: 'Next steps' },
 ];
 ---
 
 <DocsLayout
   title="Getting started"
-  description="Install ilyStream, walk through the first-launch checklist, and connect to OBS so you can go live in five minutes."
+  description="Install ilyStream, learn the main workspaces, run Health Center, and connect your first live platform."
   slug="getting-started"
-  updated="May 2026"
-  readingTime="5 min"
+  updated="July 2026"
+  readingTime="8 min"
   toc={toc}
 >
   <p>
-    This guide walks through installing ilyStream on a Windows PC, the first-launch
-    checklist, and the minimum configuration to go live with OBS. Once you finish,
-    you can drop into any of the integration guides to wire up lights, alerts,
-    and the DeskThing companion.
+    This is the shortest path from a fresh install to a stream-ready app. You will
+    install ilyStream, learn the main sections, run Health Center, connect at least
+    one platform, and verify that overlays and audio can be tested before you go live.
   </p>
 
   <h2 id="install">Install ilyStream</h2>
-  <p>
-    ilyStream ships as a standard Windows application. Pick the installer if this
-    is your stream PC and you want auto-updates, or the portable build if you are
-    testing.
-  </p>
   <ol>
-    <li><strong>Download the installer.</strong> Grab <code>ilyStream-Setup-0.0.20.exe</code> from the <a href={withBase('download/')}>Download page</a>.</li>
-    <li><strong>Run the installer.</strong> Double-click the file. If Windows SmartScreen warns about a new publisher, click <em>More info</em> &rarr; <em>Run anyway</em>.</li>
-    <li><strong>Launch ilyStream.</strong> Open it from the Start menu or the desktop shortcut the installer created.</li>
+    <li><strong>Download the Windows installer.</strong> Grab <code>{`ilyStream-Setup-${latestVersion}.exe`}</code> from the <a href={withBase('download/')}>Download page</a>.</li>
+    <li><strong>Run the installer.</strong> Double-click the file. If Windows SmartScreen appears, click <em>More info</em>, then <em>Run anyway</em>.</li>
+    <li><strong>Launch ilyStream.</strong> Open it from the Start menu or desktop shortcut.</li>
   </ol>
 
   <div class="callout">
     <span class="callout__icon">i</span>
-    <p><strong>Portable build.</strong> Prefer no install? Download <code>ilyStream-Portable-0.0.20.exe</code>, drop it in a folder, and run it. It stores config beside the executable.</p>
+    <p><strong>Portable build.</strong> Prefer no install? Download <code>{`ilyStream-Portable-${latestVersion}.exe`}</code>. Use the installer for your real stream PC unless you specifically need a throwaway portable copy.</p>
   </div>
 
-  <h2 id="first-launch">First launch</h2>
+  <h2 id="first-launch">First launch tour</h2>
   <p>
-    On first launch ilyStream opens to the Studio workspace with a default scene.
-    Take a minute to walk the three workspaces you will use the most:
+    ilyStream is organized by stream job, not by random settings buckets. The left
+    rail switches categories, and the second rail shows pages inside the current category.
   </p>
   <ul>
-    <li><strong>Studio</strong> &mdash; scene canvas, source list, preview, and audio mixer.</li>
-    <li><strong>Alerts</strong> &mdash; event rules, sound and image asset libraries.</li>
-    <li><strong>Settings</strong> &mdash; OBS connection, encoder, integrations, personalization.</li>
+    <li><strong>Live</strong>: Dashboard, Health Center, Broadcast Studio, Chat Hub, Audience Stats, and Recordings.</li>
+    <li><strong>Connect</strong>: TikTok, Twitch, YouTube, Kick, and social integrations.</li>
+    <li><strong>Create</strong>: Overlays, widgets, alert routes, soundboard, and Voice FX.</li>
+    <li><strong>Automate</strong>: TTS, AI Co-Host, automation rules, song requests, and event testing.</li>
+    <li><strong>Hardware</strong>: Hue, Govee, Elgato, Logitech, DeskThing, and other devices.</li>
   </ul>
 
-  <h3>Pick an encoder</h3>
-  <p>
-    Open <strong>Settings &rarr; Broadcast</strong> and choose the hardware encoder for your GPU:
-  </p>
-  <ul>
-    <li><strong>NVENC</strong> for NVIDIA cards.</li>
-    <li><strong>AMF</strong> for AMD cards.</li>
-    <li><strong>QuickSync</strong> for Intel iGPU or Arc.</li>
-    <li><strong>x264</strong> as a CPU fallback.</li>
-  </ul>
+  <h2 id="health-check">Run Health Center</h2>
+  <ol>
+    <li><strong>Open Live &rarr; Health Center.</strong> This page summarizes platform readiness, chat capability, relay support, recent events, and current risks.</li>
+    <li><strong>Click Refresh.</strong> Let ilyStream pull the latest status from every configured connector.</li>
+    <li><strong>Use Open Setup on anything blocked.</strong> Fix one platform at a time instead of hunting through the app.</li>
+    <li><strong>Use Chat Test or Test All Chats.</strong> Confirm that inbound chat and outbound relay paths behave before you start a stream.</li>
+    <li><strong>Copy Report when troubleshooting.</strong> The report is meant to give you or a helper enough context without digging through logs first.</li>
+  </ol>
 
-  <h2 id="connect-obs">Connect OBS</h2>
+  <h2 id="connect-platforms">Connect platforms</h2>
   <p>
-    ilyStream pairs cleanly with OBS via the WebSocket plugin built in to OBS 28+.
-    This lets ilyStream control scene transitions and lets you add ilyStream
-    widgets to OBS as browser sources.
+    Connect at least one live platform before spending time on automation. The full
+    guide covers all four, but the basic flow is the same: open the platform page,
+    add credentials, connect, then verify in Health Center.
   </p>
   <ol>
-    <li><strong>Enable WebSocket in OBS.</strong> In OBS, open <em>Tools &rarr; WebSocket Server Settings</em>. Toggle <em>Enable WebSocket Server</em>, set a password, and copy the host, port, and password.</li>
-    <li><strong>Add the connection in ilyStream.</strong> In ilyStream, open <em>Settings &rarr; OBS</em>. Paste the host, port, and password. Click <em>Connect</em>.</li>
-    <li><strong>Verify scene names.</strong> Once connected, ilyStream lists your OBS scenes. Make sure the scene names match what your overlays and triggers expect.</li>
+    <li><strong>TikTok.</strong> Open <em>Connect &rarr; TikTok</em>, enter your TikTok username, and use the waiting mode so ilyStream connects automatically when you go live.</li>
+    <li><strong>Twitch.</strong> Open <em>Connect &rarr; Twitch</em>, sign in with Twitch, and make sure chat read/send permissions are granted.</li>
+    <li><strong>YouTube.</strong> Open <em>Connect &rarr; YouTube</em>, use Google OAuth, and paste the exact live video URL if automatic discovery is blocked by quota.</li>
+    <li><strong>Kick.</strong> Open <em>Connect &rarr; Kick</em>, run the local receiver, expose it with Cloudflared, and subscribe your Kick app to events.</li>
   </ol>
 
   <div class="callout callout--success">
     <span class="callout__icon">&check;</span>
-    <p><strong>Connected.</strong> You now have a working studio. The next thing most creators set up is overlays in OBS &mdash; see the OBS browser sources guide.</p>
+    <p><strong>Verify after each platform.</strong> Return to Health Center after connecting a platform. If it says chat is read-only, relay buttons may stay disabled by design.</p>
   </div>
 
-  <h2 id="go-live">Go live</h2>
-  <p>
-    With OBS connected and scenes mapped, you can start the broadcast from OBS as
-    usual. ilyStream rides along: alerts, TTS, and any wired integrations all run
-    against the live session.
-  </p>
+  <h2 id="studio">Build the studio</h2>
   <ol>
-    <li><strong>Start streaming in OBS.</strong> Click <em>Start Streaming</em> in OBS.</li>
-    <li><strong>Confirm audio routing.</strong> Watch the ilyStream mixer meters &mdash; TTS and soundboard hits should show up alongside your mic.</li>
-    <li><strong>Test an alert.</strong> Open <em>Alerts</em> in ilyStream and use the test button to fire a sample event.</li>
+    <li><strong>Open Broadcast Studio.</strong> Add a scene, choose horizontal or dual/vertical mix, and add your capture sources.</li>
+    <li><strong>Add overlays.</strong> In <em>Create &rarr; Overlays &amp; Widgets</em>, copy browser-source URLs into OBS or TikTok Live Studio as needed.</li>
+    <li><strong>Check the mixer.</strong> Confirm your mic, TTS, soundboard, alerts, and master bus are visible and not clipping.</li>
+    <li><strong>Test alerts.</strong> In <em>Create &rarr; Alert Routes</em>, select a route and press <em>Test alert</em>.</li>
+    <li><strong>Confirm Chat Hub.</strong> Open <em>Live &rarr; Chat Hub</em> and verify incoming chat appears in one feed.</li>
   </ol>
 
   <h2 id="next-steps">Next steps</h2>
-  <p>Pick the integrations you actually need:</p>
   <ul>
-    <li><a href={withBase('docs/obs/')}>OBS browser sources</a> &mdash; add ilyStream widgets and alerts to your scenes.</li>
-    <li><a href={withBase('docs/audio-tts/')}>Audio routing &amp; TTS</a> &mdash; configure the broadcast mix and chat TTS voices.</li>
-    <li><a href={withBase('docs/spotify/')}>Spotify setup</a> &mdash; connect song requests and now-playing widgets.</li>
-    <li><a href={withBase('docs/philips-hue/')}>Philips Hue</a> &mdash; pair the Bridge so chat events can flash your lights.</li>
-    <li><a href={withBase('docs/govee/')}>Govee</a> &mdash; add Govee fixtures via the Developer API.</li>
-    <li><a href={withBase('docs/deskthing/')}>DeskThing pairing</a> &mdash; turn a Car Thing into a hardware deck.</li>
+    <li><a href={withBase('docs/platforms/')}>Live platform setup</a>: exact TikTok, Twitch, YouTube, and Kick steps.</li>
+    <li><a href={withBase('docs/chat-relay/')}>Chat Hub &amp; relay</a>: auto-relay, manual outbound replies, and relay cleanup.</li>
+    <li><a href={withBase('docs/audience-stats/')}>Audience profiles &amp; stats</a>: merged identities, primary accounts, badges, and sorting.</li>
+    <li><a href={withBase('docs/alerts-widgets/')}>Alerts &amp; widgets</a>: browser sources, event routes, and test alerts.</li>
+    <li><a href={withBase('docs/audio-tts/')}>Audio routing &amp; TTS</a>: command filtering, soundboard, Voice FX, and the broadcast mix.</li>
+    <li><a href={withBase('docs/spotify/')}>Spotify setup</a>: song requests, request filters, and now-playing widgets.</li>
   </ul>
 
   <div class="next-prev">
@@ -112,9 +105,9 @@ const toc = [
       <p>Back</p>
       <strong>Documentation overview</strong>
     </a>
-    <a class="is-next" href={withBase('docs/obs/')}>
+    <a class="is-next" href={withBase('docs/health-center/')}>
       <p>Next</p>
-      <strong>OBS browser sources &rarr;</strong>
+      <strong>Health Center &rarr;</strong>
     </a>
   </div>
 </DocsLayout>

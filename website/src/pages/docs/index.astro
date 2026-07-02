@@ -10,45 +10,66 @@ const sections = [
     cards: [
       {
         title: 'Getting started',
-        copy: 'Install ilyStream, launch it for the first time, and connect to your streaming service in under five minutes.',
+        copy: 'Install ilyStream, learn the main workspaces, run Health Center, and get ready for your first live session.',
         href: 'docs/getting-started/',
         kicker: 'Tutorial',
-        time: '5 min',
-      },
-    ],
-  },
-  {
-    label: 'Smart light integrations',
-    cards: [
-      {
-        title: 'Philips Hue',
-        copy: 'Pair the Hue Bridge with ilyStream, generate a developer username, and select the fixtures allowed to react to chat events.',
-        href: 'docs/philips-hue/',
-        kicker: 'Smart lights',
         time: '8 min',
       },
       {
-        title: 'Govee',
-        copy: 'Request a Govee Developer API key from the Govee Home app, paste it into ilyStream, and pick the lamps that join the show.',
-        href: 'docs/govee/',
-        kicker: 'Smart lights',
+        title: 'Health Center',
+        copy: 'Use the app-wide readiness screen to test chat paths, relay status, event routing, platform health, and current risks.',
+        href: 'docs/health-center/',
+        kicker: 'Diagnostics',
         time: '6 min',
       },
     ],
   },
   {
-    label: 'Broadcast & overlays',
+    label: 'Live platforms',
     cards: [
       {
-        title: 'OBS browser sources',
-        copy: 'Add ilyStream widgets and alerts to OBS as transparent browser sources so they composite cleanly with your scenes.',
-        href: 'docs/obs/',
-        kicker: 'Browser sources',
-        time: '7 min',
+        title: 'TikTok, Twitch, YouTube & Kick',
+        copy: 'Set up platform connections, outbound chat capability, live chat discovery, Kick webhooks, and YouTube manual fallback mode.',
+        href: 'docs/platforms/',
+        kicker: 'Connections',
+        time: '14 min',
+      },
+      {
+        title: 'Chat Hub & relay',
+        copy: 'Configure the unified feed, platform filters, automatic relay, manual outbound replies, and feedback-loop protection.',
+        href: 'docs/chat-relay/',
+        kicker: 'Unified chat',
+        time: '8 min',
+      },
+      {
+        title: 'X Composer',
+        copy: 'Use X as a manual go-live composer, or unlock automatic posts only if you bring a paid X API plan.',
+        href: 'docs/x-composer/',
+        kicker: 'Optional',
+        time: '6 min',
+      },
+    ],
+  },
+  {
+    label: 'Audience & automation',
+    cards: [
+      {
+        title: 'Audience profiles & stats',
+        copy: 'Merge bad identities, set primary accounts, fix avatars, verify platform badges, and keep rankings readable.',
+        href: 'docs/audience-stats/',
+        kicker: 'Audience',
+        time: '10 min',
+      },
+      {
+        title: 'Alerts & widgets',
+        copy: 'Create browser-source widgets, alert routes, media assets, platform filters, and safe test events.',
+        href: 'docs/alerts-widgets/',
+        kicker: 'Overlays',
+        time: '10 min',
       },
       {
         title: 'Audio routing & TTS',
-        copy: 'Set up the broadcast mix, configure chat TTS voices, and route alert audio so OBS hears the same thing you hear.',
+        copy: 'Set up the broadcast mix, configure TTS, Voice FX, soundboard output, and command-aware filtering.',
         href: 'docs/audio-tts/',
         kicker: 'Production audio',
         time: '10 min',
@@ -63,13 +84,39 @@ const sections = [
     ],
   },
   {
-    label: 'Companion',
+    label: 'Smart lights',
     cards: [
       {
+        title: 'Philips Hue',
+        copy: 'Pair the Hue Bridge with ilyStream, generate a developer username, and select fixtures for chat reactions.',
+        href: 'docs/philips-hue/',
+        kicker: 'Smart lights',
+        time: '8 min',
+      },
+      {
+        title: 'Govee',
+        copy: 'Connect Govee fixtures with cloud, LAN, and Bluetooth paths, then use them in event reactions.',
+        href: 'docs/govee/',
+        kicker: 'Smart lights',
+        time: '8 min',
+      },
+    ],
+  },
+  {
+    label: 'Broadcast & companion',
+    cards: [
+      {
+        title: 'OBS browser sources',
+        copy: 'Add ilyStream widgets and alerts to OBS as transparent browser sources so they composite cleanly with your scenes.',
+        href: 'docs/obs/',
+        kicker: 'Browser sources',
+        time: '7 min',
+      },
+      {
         title: 'DeskThing pairing',
-        copy: 'Install the DeskThing companion, pair over your local network, and use a Car Thing as a hardware deck for ilyStream.',
+        copy: 'Install the DeskThing companion, pair over your local network, and use a Car Thing as a hardware deck.',
         href: 'docs/deskthing/',
-        kicker: 'Companion app',
+        kicker: 'Companion',
         time: '6 min',
       },
     ],
@@ -80,23 +127,23 @@ const sections = [
 <Layout
   active="docs"
   title="Documentation"
-  description="ilyStream integration guides and setup workflows: Philips Hue, Govee, OBS, Spotify, DeskThing, and audio routing."
+  description="ilyStream setup guides for platform connections, chat relay, audience profiles, alerts, widgets, audio, Spotify, smart lights, OBS, and DeskThing."
 >
   <section class="page-hero">
     <div class="container">
       <p class="eyebrow">Documentation</p>
-      <h1>Integration guides &amp; setup workflows.</h1>
+      <h1>Setup guides for the whole control room.</h1>
       <p class="lede">
-        Hands-on guides for connecting ilyStream to the lights, overlays, music,
-        and companion devices that make a stream feel alive. Each guide walks through
-        the same path: prerequisites, step-by-step setup, configuration in ilyStream,
+        Hands-on guides for connecting ilyStream to live platforms, unified chat,
+        audience profiles, overlays, TTS, music, smart lights, OBS, and companion devices.
+        Each guide follows the same path: prerequisites, exact app steps, verification,
         and troubleshooting.
       </p>
       <div class="page-hero__actions">
         <a class="button button--primary" href={withBase('docs/getting-started/')}>Start here</a>
-        <a class="button button--ghost" href={withBase('docs/philips-hue/')}>Philips Hue</a>
-        <a class="button button--ghost" href={withBase('docs/obs/')}>OBS overlays</a>
-        <a class="button button--ghost" href={withBase('docs/spotify/')}>Spotify setup</a>
+        <a class="button button--ghost" href={withBase('docs/platforms/')}>Platforms</a>
+        <a class="button button--ghost" href={withBase('docs/chat-relay/')}>Chat relay</a>
+        <a class="button button--ghost" href={withBase('docs/audience-stats/')}>Audience</a>
       </div>
     </div>
   </section>

@@ -1,0 +1,91 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'read-cards', label: 'Read the summary cards' },
+  { id: 'platform-checkup', label: 'Platform checkup' },
+  { id: 'chat-tests', label: 'Chat tests' },
+  { id: 'checklist', label: 'Live checklist' },
+  { id: 'report', label: 'Copy a report' },
+];
+---
+
+<DocsLayout
+  title="Health Center"
+  description="Use Health Center to verify platform status, chat relay, event routing, and pre-stream risks before going live."
+  slug="health-center"
+  updated="July 2026"
+  readingTime="6 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    Health Center is the pre-flight page for ilyStream. It shows which platforms
+    are connected, which ones can read chat, which ones can send chat, and which
+    setup issues deserve attention before you go live.
+  </p>
+
+  <h2 id="read-cards">Read the summary cards</h2>
+  <ul>
+    <li><strong>Ready</strong>: platforms with active, healthy collection.</li>
+    <li><strong>Attention</strong>: services that are configured but need a check, reconnect, or live session.</li>
+    <li><strong>Blocked</strong>: services with actionable errors that will prevent an expected workflow.</li>
+    <li><strong>Relay</strong>: platforms currently able to send outbound chat.</li>
+  </ul>
+
+  <h2 id="platform-checkup">Platform checkup</h2>
+  <ol>
+    <li><strong>Click Refresh.</strong> Pull the latest connector state.</li>
+    <li><strong>Read each platform row.</strong> Each row reports input, chat relay capability, last event, audience count, and next action.</li>
+    <li><strong>Use Open Setup.</strong> Jump directly to the platform page when Health Center spots a missing credential or stale connection.</li>
+    <li><strong>Fix one issue at a time.</strong> Re-run Health Center after each fix so the status reflects the current app state.</li>
+  </ol>
+
+  <h2 id="chat-tests">Chat tests</h2>
+  <p>
+    Use chat tests before going live or after changing credentials. A successful
+    chat test only means the app can reach the configured path; it does not mean
+    the platform is live unless the connector also reports a live session.
+  </p>
+  <ol>
+    <li><strong>Click Chat Test on one platform.</strong> Start with the platform you rely on most.</li>
+    <li><strong>Watch Chat Hub.</strong> Confirm the test appears in the unified feed when it is supposed to.</li>
+    <li><strong>Check relay status.</strong> If relay is read-only, outbound buttons may be disabled. That is expected for platforms that do not have send permission.</li>
+    <li><strong>Use Test All Chats.</strong> Run the broad check only after individual setup is clean.</li>
+  </ol>
+
+  <h2 id="checklist">Live checklist</h2>
+  <p>
+    The right-side checklist is the human part of the pre-flight. It reminds you
+    to test event routing, audience identity, relay controls, and command filters
+    before chat gets busy.
+  </p>
+  <ul>
+    <li><strong>Event Testing</strong>: fire follows, chats, emotes, alerts, TTS, and overlay routes locally.</li>
+    <li><strong>Identity Manager</strong>: merge bad accounts and set primary profiles before reading stats.</li>
+    <li><strong>Relay Controls</strong>: review auto-relay targets and disabled send paths.</li>
+    <li><strong>Command Filters</strong>: confirm AI, song request, and TTS routing before chat gets noisy.</li>
+  </ul>
+
+  <h2 id="report">Copy a report</h2>
+  <p>
+    Click <strong>Copy Report</strong> when you need help debugging. The report is
+    designed to include connection state, recent events, relay capability, and
+    actionable risks without exposing your raw secrets.
+  </p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/getting-started/')}>
+      <p>Previous</p>
+      <strong>&larr; Getting started</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/platforms/')}>
+      <p>Next</p>
+      <strong>Live platforms &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

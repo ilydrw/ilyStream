@@ -9,6 +9,7 @@ const toc = [
   { id: 'prerequisites', label: 'Prerequisites' },
   { id: 'request-key', label: 'Request an API key' },
   { id: 'configure', label: 'Configure ilyStream' },
+  { id: 'bluetooth', label: 'Bluetooth strips' },
   { id: 'rules', label: 'Wire up reactions' },
   { id: 'lan-vs-cloud', label: 'LAN vs cloud' },
   { id: 'troubleshooting', label: 'Troubleshooting' },
@@ -17,25 +18,26 @@ const toc = [
 
 <DocsLayout
   title="Govee integration"
-  description="Connect Govee smart lights to ilyStream using a Developer API key, then assign fixtures to chat reactions."
+  description="Connect Govee smart lights to ilyStream with cloud, LAN, and Bluetooth paths, then assign fixtures to chat reactions."
   slug="govee"
-  updated="May 2026"
-  readingTime="6 min"
+  updated="July 2026"
+  readingTime="8 min"
   toc={toc}
 >
   <h2 id="overview">Overview</h2>
   <p>
-    The Govee integration uses Govee's official Developer API. You request a free
-    API key from the Govee Home app, paste it into ilyStream, and pick the lamps
-    or strips that get to react during the show. Compatible cloud-controlled and
-    LAN-controlled fixtures both work.
+    The Govee integration supports three paths when the device allows it: Govee's
+    cloud API, LAN control, and Bluetooth control for nearby strips. Use the cloud
+    API for account discovery, LAN for fast local devices, and Bluetooth when a
+    supported strip is near the stream PC but does not show up through the cloud path.
   </p>
 
   <h2 id="prerequisites">Prerequisites</h2>
   <ul>
     <li>The <strong>Govee Home</strong> app installed on your phone, signed in to the same account that owns the lights.</li>
-    <li>At least one Govee fixture that exposes the cloud API. Most current-generation lamps and strips do; check the product page if unsure.</li>
+    <li>At least one Govee fixture. Cloud/API support varies by model; Bluetooth support requires the strip to be nearby and powered on.</li>
     <li>The fixture is online in the Govee app right now.</li>
+    <li>For Bluetooth strips: Windows Bluetooth enabled and the Govee mobile app closed or not actively connected to the same strip.</li>
   </ul>
 
   <h2 id="request-key">Request an API key</h2>
@@ -54,11 +56,25 @@ const toc = [
 
   <h2 id="configure">Configure ilyStream</h2>
   <ol>
-    <li><strong>Open settings.</strong> In ilyStream go to <em>Settings &rarr; Integrations &rarr; Govee</em>.</li>
+    <li><strong>Open the Govee page.</strong> In ilyStream, go to the Hardware section and open <em>Govee</em>.</li>
     <li><strong>Paste the API key.</strong> Use the value Govee emailed you.</li>
     <li><strong>Click <em>Refresh devices</em>.</strong> ilyStream queries the Govee API and lists every supported fixture on your account.</li>
     <li><strong>Allow the fixtures you want.</strong> Toggle each device that is allowed to react. Devices left off remain controlled by Govee Home only.</li>
     <li><strong>Set a default state.</strong> Pick a default color or scene so ilyStream can return your fixtures to a known state after a reaction ends.</li>
+  </ol>
+
+  <h2 id="bluetooth">Bluetooth strips</h2>
+  <p>
+    Bluetooth discovery is local to the stream PC and depends on Windows being
+    able to see the strip. Use it when the strip is nearby but does not appear as
+    a useful cloud/LAN device.
+  </p>
+  <ol>
+    <li><strong>Turn on Windows Bluetooth.</strong> Keep the strip powered on and within range of the PC.</li>
+    <li><strong>Close competing connections.</strong> Quit the Govee mobile app or leave the device screen so the phone does not hold the BLE connection.</li>
+    <li><strong>Scan in ilyStream.</strong> Open the Bluetooth scan controls on the Govee page and let the scan finish.</li>
+    <li><strong>Identify the strip.</strong> Use the identify/test action to confirm which device is which.</li>
+    <li><strong>Save it as allowed.</strong> Once saved, the strip can be used by automation rules like cloud and LAN devices.</li>
   </ol>
 
   <h2 id="rules">Wire up reactions</h2>
@@ -91,11 +107,18 @@ Cooldown: 10s`}</code></pre>
     available because the round-trip stays inside your network. Nothing extra to
     configure &mdash; if a fixture supports LAN, ilyStream picks it automatically.
   </p>
+  <p>
+    Bluetooth is the most local path, but it also has the shortest range and the
+    most model-specific behavior. If a Bluetooth strip disappears, re-scan after
+    confirming Windows can see nearby Bluetooth devices.
+  </p>
 
   <h2 id="troubleshooting">Troubleshooting</h2>
   <p><strong>API key rejected.</strong> Re-check the email; the key is one continuous string. Trim leading or trailing spaces.</p>
   <p><strong>Device list is empty.</strong> Confirm the device is online in Govee Home. Some older models do not expose the cloud API. Refresh after a few seconds &mdash; Govee occasionally needs a moment to register the key.</p>
   <p><strong>Commands stop after many reactions.</strong> You hit the daily quota. Lower trigger density, or coalesce many micro-actions into a single longer cue.</p>
+  <p><strong>Bluetooth strip is missing.</strong> Move it closer to the stream PC, close the Govee phone app, toggle Windows Bluetooth off/on, then scan again.</p>
+  <p><strong>Bluetooth identify works but reactions fail.</strong> Save the device as allowed and avoid triggering rapid color changes; BLE strips can reject bursts.</p>
   <p><strong>Color is slightly wrong.</strong> Govee fixtures vary in color accuracy. Use named scenes from the Govee app if you need consistent palettes.</p>
 
   <div class="next-prev">

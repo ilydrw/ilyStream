@@ -1,0 +1,117 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'twitch', label: 'Twitch' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'kick', label: 'Kick' },
+  { id: 'verify', label: 'Verify setup' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="TikTok, Twitch, YouTube & Kick setup"
+  description="Connect the live platforms ilyStream can read from, relay to, and monitor during a stream."
+  slug="platforms"
+  updated="July 2026"
+  readingTime="14 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    Each platform has two jobs: bring events into ilyStream and, when the platform
+    allows it, send chat back out. Set them up one at a time, then verify each one
+    in Health Center and Chat Hub before going live.
+  </p>
+
+  <h2 id="tiktok">TikTok</h2>
+  <ol>
+    <li><strong>Open Connect &rarr; TikTok.</strong></li>
+    <li><strong>Enter your TikTok username.</strong> Use the handle without <code>@</code>.</li>
+    <li><strong>Start waiting mode.</strong> If you are not live yet, leave the page waiting. ilyStream checks again automatically and connects when your TikTok stream starts.</li>
+    <li><strong>Capture sender credentials if you relay to TikTok.</strong> Use <em>Capture from sender</em> to pull the session values from the logged-in sender window. This avoids hand-copying cookies.</li>
+    <li><strong>Keep the sender account appropriate.</strong> Use the account you want viewers to see when ilyStream posts mirrored messages.</li>
+  </ol>
+  <p>
+    TikTok is the most sensitive to live state. If you are not actually live, the
+    connector may correctly stay in <em>Waiting to go live</em>.
+  </p>
+
+  <h2 id="twitch">Twitch</h2>
+  <ol>
+    <li><strong>Open Connect &rarr; Twitch.</strong></li>
+    <li><strong>Sign in with Twitch.</strong> Use the channel account or a chat bot account that has permission to talk in your channel.</li>
+    <li><strong>Grant chat permissions.</strong> ilyStream needs chat read access for inbound messages and chat send access for outbound relay.</li>
+    <li><strong>Verify badges and emotes.</strong> Twitch mod badges, subscriber badges, and emotes should appear in Chat Hub and Audience Stats once messages arrive.</li>
+    <li><strong>Reconnect after password or token changes.</strong> If Twitch revokes the token, disconnect and sign in again.</li>
+  </ol>
+
+  <h2 id="youtube">YouTube</h2>
+  <p>
+    YouTube uses Google OAuth and the YouTube Data API. Automatic live chat
+    discovery can burn quota quickly if the project is new or repeatedly tested,
+    so ilyStream also supports manual live video input.
+  </p>
+  <ol>
+    <li><strong>Enable YouTube Data API v3.</strong> In Google Cloud, enable the API on the same project that owns your OAuth client and API key.</li>
+    <li><strong>Create OAuth credentials.</strong> Use a Web application client and add <code>http://127.0.0.1:8790/callback</code> as an authorized redirect URI.</li>
+    <li><strong>Add yourself as a test user.</strong> If the app is in testing mode, your Google account must be on the OAuth consent screen test-user list.</li>
+    <li><strong>Paste API key, client ID, and client secret.</strong> In ilyStream, open <em>Connect &rarr; YouTube</em> and save the credentials.</li>
+    <li><strong>Reconnect with Google.</strong> Approve the app in the browser and return to ilyStream.</li>
+    <li><strong>Use manual mode when quota is exhausted.</strong> Paste the exact live video URL into the manual field so ilyStream does not need to search for the stream.</li>
+  </ol>
+  <div class="callout callout--warn">
+    <span class="callout__icon">!</span>
+    <p><strong>Quota is project-wide.</strong> A brand-new key in the same exhausted Google Cloud project will still be exhausted. Use a fresh project or wait for quota reset if YouTube Data API quota is spent.</p>
+  </div>
+
+  <h2 id="kick">Kick</h2>
+  <p>
+    Kick event delivery is webhook-based. ilyStream listens locally, and a tunnel
+    such as Cloudflared gives Kick a public HTTPS URL it can call.
+  </p>
+  <ol>
+    <li><strong>Create a Kick app.</strong> In the Kick developer portal, create an app for your channel.</li>
+    <li><strong>Start the ilyStream receiver.</strong> On the Kick page, confirm the local endpoint is listening, usually <code>http://127.0.0.1:8792/kick/webhook</code>.</li>
+    <li><strong>Start Cloudflared.</strong> Run <code>cloudflared tunnel --url http://127.0.0.1:8792</code>.</li>
+    <li><strong>Paste the public webhook URL.</strong> Use the Cloudflared HTTPS URL plus <code>/kick/webhook</code>.</li>
+    <li><strong>Save client credentials.</strong> Paste the Kick client ID, client secret, broadcaster user ID, stream URL, and stream key as needed.</li>
+    <li><strong>Subscribe events.</strong> Click <em>Subscribe Events</em>. New Kick events should appear in the Kick feed and Chat Hub.</li>
+  </ol>
+  <p>
+    Kick outbound chat requires OAuth chat-write support. If Health Center marks
+    Kick relay as read-only, inbound events can still work while sending remains disabled.
+  </p>
+
+  <h2 id="verify">Verify setup</h2>
+  <ol>
+    <li><strong>Open Health Center.</strong> Refresh after saving each platform.</li>
+    <li><strong>Run Chat Test.</strong> Make sure inbound chat lands in Chat Hub.</li>
+    <li><strong>Check outbound buttons.</strong> Disabled buttons usually mean the platform is read-only or lacks chat send permission.</li>
+    <li><strong>Open Audience Stats.</strong> Confirm platform icons appear in TikTok, Twitch, YouTube, Kick order.</li>
+    <li><strong>Send one real message.</strong> Test from an alt account when possible so you know the live path is truly working.</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>TikTok says waiting forever.</strong> Confirm the exact username, then start the TikTok stream. TikTok will not produce live chat events while you are offline.</p>
+  <p><strong>Twitch reads but cannot send.</strong> Reconnect with chat send permission and make sure the sending account is allowed to talk in the channel.</p>
+  <p><strong>YouTube says quota exhausted after replacing keys.</strong> The quota belongs to the Google Cloud project. Create a new project with YouTube Data API enabled, or wait for reset.</p>
+  <p><strong>Kick webhooks do not arrive.</strong> Confirm Cloudflared is still running, the public URL includes <code>/kick/webhook</code>, and the Kick app subscription uses the newest tunnel URL.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/health-center/')}>
+      <p>Previous</p>
+      <strong>&larr; Health Center</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/chat-relay/')}>
+      <p>Next</p>
+      <strong>Chat Hub &amp; relay &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

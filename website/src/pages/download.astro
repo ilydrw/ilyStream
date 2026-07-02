@@ -1,23 +1,25 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import {
+  deskThingReleaseUrl,
+  deskThingVersion,
+  deskThingZipUrl,
+  latestVersion,
+  portableUrl,
+  releaseUrl,
+  repoUrl,
+  setupUrl,
+} from '../data/site';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
-
-const latestVersion = '0.0.20';
-const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
-const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
-const portableUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Portable-${latestVersion}.exe`;
-const repoUrl = 'https://github.com/ilydrw/ilyStream';
-const deskThingReleaseUrl = 'https://github.com/ilydrw/ilystream-deskthing/releases';
-const deskThingZipUrl = `https://github.com/ilydrw/ilystream-deskthing/releases/download/v${latestVersion}/ilyStream-DeskThing-v${latestVersion}.zip`;
 
 const downloads = [
   {
     tag: 'Recommended',
     title: 'Windows installer',
     badge: 'Setup .exe',
-    copy: 'Best for stream machines. Installs ilyStream into Program Files, adds Start Menu and desktop shortcuts, and supports automatic updates from GitHub Releases.',
+    copy: 'Best for stream machines. Installs ilyStream, adds shortcuts, and keeps the app in the normal Windows app flow.',
     href: setupUrl,
     action: 'Download Setup',
     featured: true,
@@ -36,7 +38,7 @@ const downloads = [
     tag: 'macOS',
     title: 'macOS builds',
     badge: 'In progress',
-    copy: 'macOS packaging requires a macOS runner for code signing and notarization. Watch the release page for signed DMG builds when they ship.',
+    copy: 'macOS packaging requires a macOS runner for signing and notarization. Watch the release page for signed DMG builds when they ship.',
     href: releaseUrl,
     action: 'Watch releases',
     bullets: ['Universal binary planned', 'Notarized DMG when signing lands', 'Use source for now'],
@@ -124,7 +126,7 @@ const downloads = [
     <div class="section__heading">
       <p class="eyebrow">Companion</p>
       <h2>DeskThing client</h2>
-      <p>The DeskThing companion v{latestVersion} runs on a Spotify Car Thing or any DeskThing client over your local network.</p>
+      <p>The DeskThing companion is versioned separately. Current companion release: v{deskThingVersion}.</p>
     </div>
     <div class="page-hero__actions">
       <a class="button button--primary" href={deskThingZipUrl} rel="noopener">Download DeskThing .zip</a>

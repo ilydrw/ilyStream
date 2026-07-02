@@ -2,6 +2,7 @@
 import { Image } from 'astro:assets';
 import logo from '../assets/logo.svg';
 import s3Icon from '../assets/s3.svg';
+import { latestVersion, releaseUrl, repoUrl, setupUrl } from '../data/site';
 
 interface Props {
   title?: string;
@@ -14,7 +15,7 @@ interface Props {
 const {
   title = 'ilyStream - Creator broadcast studio',
   description = 'ilyStream is a Windows broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place.',
-  image = 'images/studio-settings-preview.png',
+  image = 'images/dashboard-overview.png',
   active,
 } = Astro.props;
 
@@ -22,11 +23,6 @@ const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL :
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 const imageUrl = Astro.site ? new URL(withBase(image), Astro.site).toString() : withBase(image);
 const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
-
-const repoUrl = 'https://github.com/ilydrw/ilyStream';
-const latestVersion = '0.0.20';
-const releaseUrl = `https://github.com/ilydrw/ilyStream/releases/tag/v${latestVersion}`;
-const setupUrl = `https://github.com/ilydrw/ilyStream/releases/download/v${latestVersion}/ilyStream-Setup-${latestVersion}.exe`;
 
 // Auto-detect the active tab from the URL when the prop isn't provided.
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
@@ -163,8 +159,9 @@ const navItems = [
             <ul>
               <li><a href={withBase('docs/')}>All guides</a></li>
               <li><a href={withBase('docs/getting-started/')}>Getting started</a></li>
-              <li><a href={withBase('docs/philips-hue/')}>Philips Hue</a></li>
-              <li><a href={withBase('docs/obs/')}>OBS overlays</a></li>
+              <li><a href={withBase('docs/platforms/')}>Platform setup</a></li>
+              <li><a href={withBase('docs/chat-relay/')}>Chat Hub &amp; relay</a></li>
+              <li><a href={withBase('docs/audience-stats/')}>Audience profiles</a></li>
               <li><a href={withBase('docs/spotify/')}>Spotify setup</a></li>
             </ul>
           </div>

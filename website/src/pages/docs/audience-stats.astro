@@ -1,0 +1,104 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'primary', label: 'Primary accounts' },
+  { id: 'merge', label: 'Merge bad identities' },
+  { id: 'badges', label: 'Badge order' },
+  { id: 'sorting', label: 'Sorting and filters' },
+  { id: 'stats', label: 'Stats columns' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Audience profiles & stats"
+  description="Manage ilyStream audience profiles, primary accounts, merged identities, platform badges, status filters, and engagement stats."
+  slug="audience-stats"
+  updated="July 2026"
+  readingTime="10 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    Audience Stats turns separate TikTok, Twitch, YouTube, and Kick accounts into
+    readable ilyStream profiles. It tracks lifetime engagement, platform accounts,
+    badges, AI usage, songs, chats, gifts, likes, shares, raids, revenue, and last
+    seen time.
+  </p>
+
+  <h2 id="primary">Primary accounts</h2>
+  <p>
+    A primary account controls which display name and avatar the ilyStream profile
+    should use. This is useful when one viewer has an old alt, a display-name-only
+    entry, or multiple TikTok accounts connected.
+  </p>
+  <ol>
+    <li><strong>Open Audience Stats.</strong> Click a user row to expand their profile.</li>
+    <li><strong>Find the account they are best known by.</strong> Use the account cards under the expanded profile.</li>
+    <li><strong>Click Use picture or Primary.</strong> The profile display name and avatar should update to match that one account only.</li>
+    <li><strong>Verify platform scope.</strong> Setting one TikTok account as primary should not mark every TikTok alt as primary.</li>
+  </ol>
+
+  <h2 id="merge">Merge bad identities</h2>
+  <p>
+    Older builds could accidentally treat display names as usernames. Merge those
+    records into the real account instead of keeping duplicate rows.
+  </p>
+  <ol>
+    <li><strong>Open the incorrect profile.</strong> Example: a display-name account that does not exist as a real handle.</li>
+    <li><strong>Find the real account card.</strong> Look for the real username or linked platform account.</li>
+    <li><strong>Use the merge or link action.</strong> Move the stats into the correct ilyStream profile.</li>
+    <li><strong>Set the primary afterward.</strong> Pick the real account as primary so the avatar and name stay correct.</li>
+    <li><strong>Refresh Audience Stats.</strong> Confirm the duplicate no longer appears as a separate top user.</li>
+  </ol>
+
+  <h2 id="badges">Badge order</h2>
+  <p>
+    Badges and platform icons follow a stable order so the table is readable even
+    when users have different combinations.
+  </p>
+  <ul>
+    <li><strong>Platform icons</strong>: TikTok, Twitch, YouTube, Kick.</li>
+    <li><strong>Moderator badges first</strong>: TikTok mod, Twitch mod, YouTube mod, Kick mod.</li>
+    <li><strong>Other badges after mods</strong>: TikTok fan club, TikTok super fan, Twitch subscriber, YouTube superfan, Kick supporter badges.</li>
+    <li><strong>Platform-specific badges stay scoped</strong>: selecting Twitch Subscribers should show Twitch subscriber accounts, not TikTok fan club accounts.</li>
+  </ul>
+
+  <h2 id="sorting">Sorting and filters</h2>
+  <ol>
+    <li><strong>Use platform filter.</strong> Choose all platforms or one service.</li>
+    <li><strong>Use Sort by.</strong> Sort by overall rank, likes, gifts, revenue, shares, raids, chats, songs, or AI usage.</li>
+    <li><strong>Use Status.</strong> Filter by moderators, subscribers, superfans, or <em>None</em> when you want to stop badge-specific sorting.</li>
+    <li><strong>Click rows to expand.</strong> Expanded rows show account cards and per-account stats.</li>
+  </ol>
+
+  <h2 id="stats">Stats columns</h2>
+  <ul>
+    <li><strong>Overall</strong>: the user rank across all tracked categories.</li>
+    <li><strong>Likes, gifts, revenue, shares, raids, chats, songs</strong>: lifetime counters across linked accounts.</li>
+    <li><strong>AI</strong>: counted when a viewer intentionally invokes the AI command path.</li>
+    <li><strong>Last seen</strong>: newest event time from any linked account.</li>
+  </ul>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>A placeholder avatar appears.</strong> Expand the profile, choose the account with the correct avatar, and set it as primary.</p>
+  <p><strong>All alts become primary.</strong> That is wrong behavior. Primary selection should attach to one account id, not every account on the same platform.</p>
+  <p><strong>Mod badges are missing.</strong> Reconnect the platform and wait for fresh chat events; mod status often arrives with message metadata.</p>
+  <p><strong>A fake username exists.</strong> Merge the fake display-name record into the real handle, then set the real handle as primary.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/x-composer/')}>
+      <p>Previous</p>
+      <strong>&larr; X Composer</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/alerts-widgets/')}>
+      <p>Next</p>
+      <strong>Alerts &amp; widgets &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

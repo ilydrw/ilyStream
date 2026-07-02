@@ -9,6 +9,8 @@ const toc = [
   { id: 'devices', label: 'Pick your audio devices' },
   { id: 'mixer', label: 'Build the broadcast mix' },
   { id: 'tts', label: 'Configure chat TTS' },
+  { id: 'commands', label: 'Command-aware filtering' },
+  { id: 'soundboard', label: 'Audio Deck' },
   { id: 'voice-fx', label: 'Voice FX rack' },
   { id: 'alerts', label: 'Alert audio' },
   { id: 'troubleshooting', label: 'Troubleshooting' },
@@ -19,7 +21,7 @@ const toc = [
   title="Audio routing & TTS"
   description="Set up the broadcast mix in ilyStream, configure chat TTS voices, and route alerts so OBS receives the same audio you hear."
   slug="audio-tts"
-  updated="May 2026"
+  updated="July 2026"
   readingTime="10 min"
   toc={toc}
 >
@@ -80,6 +82,36 @@ const toc = [
     <li><strong>Length limit.</strong> Cap message length (default 200 characters) to avoid wall-of-text reads.</li>
   </ol>
 
+  <h2 id="commands">Command-aware filtering</h2>
+  <p>
+    Some messages should run commands instead of being read aloud. ilyStream's
+    command filter looks at intent instead of blindly blocking every message that
+    starts with punctuation.
+  </p>
+  <ul>
+    <li><strong>AI prompts</strong>: messages like <code>!ai explain this boss</code> are counted as AI usage and kept out of TTS.</li>
+    <li><strong>Song requests</strong>: messages like <code>!play Deftones Change</code> are routed to Spotify and kept out of TTS.</li>
+    <li><strong>Normal speech</strong>: messages like <code>!AI is really cool</code> or <code>!play dark souls</code> can still pass to TTS when they read like a normal sentence instead of a valid command request.</li>
+    <li><strong>Stats</strong>: intentional AI command usage increments the Audience Stats AI column.</li>
+  </ul>
+  <p>
+    Keep command aliases tight. The more aliases you enable, the harder it is for
+    the app to distinguish commands from stylized chat messages.
+  </p>
+
+  <h2 id="soundboard">Audio Deck</h2>
+  <p>
+    The Audio Deck is the soundboard surface for instant effects and externally
+    triggered stream actions.
+  </p>
+  <ol>
+    <li><strong>Open Create &rarr; Soundboard.</strong></li>
+    <li><strong>Upload sounds.</strong> Keep clips short and normalize volume before adding them.</li>
+    <li><strong>Trigger from the grid.</strong> Click a tile to play it through the broadcast mix.</li>
+    <li><strong>Use the deck overlay.</strong> Open the Studio Deck URL from a tablet, browser, Elgato, or touch portal.</li>
+    <li><strong>Copy trigger URLs.</strong> Use HTTP trigger links for external automation when needed.</li>
+  </ol>
+
   <h3>Voice profiles</h3>
   <p>
     Profiles let you bind a specific voice to a user, role, or command. Useful for
@@ -124,12 +156,13 @@ Profile: "Loud announcer"
   <p><strong>OBS receives no audio.</strong> In OBS, set the audio source to the same virtual cable you picked as Broadcast in ilyStream. Match sample rate (44.1 or 48 kHz) on both ends.</p>
   <p><strong>Echo on stream.</strong> You probably have OBS capturing both the broadcast bus and your mic separately. Drop the mic source in OBS &mdash; ilyStream already mixes it in.</p>
   <p><strong>TTS sounds choppy.</strong> Increase the TTS buffer size in <em>Settings &rarr; Audio &rarr; Advanced</em>. Cloud providers occasionally hiccup on long messages.</p>
+  <p><strong>AI or song commands are read aloud.</strong> Confirm the command alias is enabled and the message matches the command grammar. If a viewer is just talking, ilyStream intentionally lets it pass.</p>
   <p><strong>Latency on Voice FX.</strong> Some effects add a small buffer. Disable monitor on the FX channel if the delay is distracting; the broadcast still receives the processed signal.</p>
 
   <div class="next-prev">
-    <a class="is-prev" href={withBase('docs/obs/')}>
+    <a class="is-prev" href={withBase('docs/alerts-widgets/')}>
       <p>Previous</p>
-      <strong>&larr; OBS browser sources</strong>
+      <strong>&larr; Alerts &amp; widgets</strong>
     </a>
     <a class="is-next" href={withBase('docs/spotify/')}>
       <p>Next</p>

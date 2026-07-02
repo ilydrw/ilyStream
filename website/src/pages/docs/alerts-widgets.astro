@@ -1,0 +1,102 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'widgets', label: 'Widgets' },
+  { id: 'alert-routes', label: 'Alert routes' },
+  { id: 'assets', label: 'Assets' },
+  { id: 'obs', label: 'OBS and TikTok Studio' },
+  { id: 'testing', label: 'Testing' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Alerts & widgets"
+  description="Create ilyStream browser-source widgets, live alert routes, media assets, platform filters, and test events."
+  slug="alerts-widgets"
+  updated="July 2026"
+  readingTime="10 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    ilyStream has two overlay layers. Widgets are persistent browser sources like
+    Unified Chat, Now Playing, goals, and screen borders. Alert routes are event
+    reactions that fire when something happens, such as a follow, gift, sub, raid,
+    chat keyword, or join.
+  </p>
+
+  <h2 id="widgets">Widgets</h2>
+  <ol>
+    <li><strong>Open Create &rarr; Overlays &amp; Widgets.</strong></li>
+    <li><strong>Click New Widget.</strong> Pick Unified Chat, Event Alerts, Follower Goal, Goal Tracker, Now Playing, Socials Rotation, or Screen Border.</li>
+    <li><strong>Copy the browser-source URL.</strong> Each widget card has a local URL that can be pasted into OBS or another browser-source tool.</li>
+    <li><strong>Configure the widget.</strong> Use the Configure button to change layout, colors, labels, and widget-specific behavior.</li>
+    <li><strong>Use the open button to inspect it.</strong> Open the widget in a browser when you want a full-size preview.</li>
+  </ol>
+
+  <h2 id="alert-routes">Alert routes</h2>
+  <ol>
+    <li><strong>Open Create &rarr; Alert Routes.</strong></li>
+    <li><strong>Create or select a route.</strong> Routes can be broad, like all follows, or very specific, like Twitch raids only.</li>
+    <li><strong>Choose platforms.</strong> Use All or select TikTok, Twitch, YouTube, or Kick.</li>
+    <li><strong>Choose events.</strong> Pick chat, gift, sub/member, follow, raid, like, share, or join.</li>
+    <li><strong>Add optional keyword filters.</strong> Use this when a route should only fire on a specific phrase.</li>
+    <li><strong>Set outputs.</strong> Configure sound, image, text, and style tabs as needed.</li>
+  </ol>
+
+  <h2 id="assets">Assets</h2>
+  <p>
+    Alert routes can use sounds and images stored in ilyStream. Keep assets short,
+    stream-safe, and easy to recognize.
+  </p>
+  <ul>
+    <li><strong>Sounds</strong>: short <code>.wav</code> or <code>.mp3</code> files work best.</li>
+    <li><strong>Images</strong>: transparent <code>.png</code> files are easiest to place over gameplay.</li>
+    <li><strong>Names</strong>: use names you can recognize in a hurry, such as <code>follow-soft-chime</code>.</li>
+    <li><strong>Volume</strong>: adjust route gain instead of editing the audio file every time.</li>
+  </ul>
+
+  <h2 id="obs">OBS and TikTok Studio</h2>
+  <p>
+    OBS browser sources and TikTok Live Studio browser sources can both use
+    ilyStream URLs. Keep ilyStream open while streaming so the local overlay server
+    stays available.
+  </p>
+  <ol>
+    <li><strong>Copy the widget URL.</strong> Use the copy icon on the widget card.</li>
+    <li><strong>Add a Browser Source.</strong> Paste the URL into OBS or TikTok Live Studio.</li>
+    <li><strong>Use the correct canvas size.</strong> Set 1920x1080 for horizontal overlays or the vertical size shown by the app for mobile layouts.</li>
+    <li><strong>Keep transparency.</strong> If a source shows black, set the browser source background CSS to transparent.</li>
+  </ol>
+
+  <h2 id="testing">Testing</h2>
+  <ol>
+    <li><strong>Use Test alert.</strong> Fire the selected route without waiting for a real viewer event.</li>
+    <li><strong>Watch the live preview.</strong> Confirm image, text, sound, and timing are correct.</li>
+    <li><strong>Use Event Testing for broader checks.</strong> Fire synthetic follows, chats, gifts, and overlay events before going live.</li>
+    <li><strong>Re-check audio.</strong> If local alert sounds are on, avoid also monitoring the OBS browser source audio unless you want double playback.</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>The widget is blank in OBS.</strong> Open the URL in a normal browser. If it does not load, ilyStream or the overlay server is not running.</p>
+  <p><strong>The alert fires twice.</strong> Check whether the route is duplicated or whether both ilyStream and OBS are monitoring the same alert audio.</p>
+  <p><strong>A route fires for the wrong platform.</strong> Clear All, select the exact platform, and test again.</p>
+  <p><strong>The text is clipped.</strong> Reduce font size or increase the widget/source dimensions. Fixed-size browser sources will crop oversized alert text.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/audience-stats/')}>
+      <p>Previous</p>
+      <strong>&larr; Audience profiles</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/audio-tts/')}>
+      <p>Next</p>
+      <strong>Audio routing &amp; TTS &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

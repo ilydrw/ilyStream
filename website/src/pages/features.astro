@@ -1,91 +1,103 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { Image } from 'astro:assets';
-import broadcastCanvasPreview from '../assets/broadcast-canvas-preview.png';
-import alertsPreview from '../assets/alerts-preview.png';
-import widgetsPreview from '../assets/widgets-preview.png';
-import voiceFxPreview from '../assets/voice-fx-preview.png';
-import ttsPreview from '../assets/tts-preview.png';
-import studioSettingsPreview from '../assets/studio-settings-preview.png';
+import dashboardShot from '../assets/screenshots/dashboard-overview.png';
+import chatShot from '../assets/screenshots/chat-hub-relay.png';
+import audienceShot from '../assets/screenshots/audience-stats-profiles.png';
+import studioShot from '../assets/screenshots/broadcast-studio.png';
+import widgetsShot from '../assets/screenshots/widgets-overlays.png';
+import alertsShot from '../assets/screenshots/alerts-routes.png';
+import soundboardShot from '../assets/screenshots/soundboard.png';
+import tiktokShot from '../assets/screenshots/tiktok-integration.png';
+import spotifyShot from '../assets/screenshots/spotify-song-requests.png';
+import aiShot from '../assets/screenshots/ai-cohost.png';
+import healthShot from '../assets/screenshots/health-center.png';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
 
 const featureSections = [
   {
-    eyebrow: 'Studio',
-    title: 'Scenes, capture, and output in one canvas.',
-    copy: 'Compose horizontal and vertical scenes side by side, manage capture sources, and arrange overlays without switching apps.',
-    image: broadcastCanvasPreview,
-    bullets: [
-      'Scene canvas for horizontal and TikTok-style portrait layouts',
-      'Source list with quick visibility, lock, and reorder controls',
-      'Hardware-accelerated preview with selectable encoder (NVENC, AMF, QuickSync)',
-      'Persistent top bar with fixed window controls during long sessions',
-    ],
+    eyebrow: 'Dashboard',
+    title: 'Pre-stream decisions in one place.',
+    copy: 'The dashboard gives you audience health, output state, voice queue status, top audience, and quick routes before you hit Broadcast.',
+    image: dashboardShot,
+    bullets: ['Live audience and chat-rate monitoring', 'Service node readiness and stream controls', 'Top audience and quick setup routes', 'Current release and companion links'],
   },
   {
-    eyebrow: 'Audio',
-    title: 'TTS, soundboard, and Voice FX share one mixer.',
-    copy: 'Chat TTS, hotkey-triggered sound effects, and voice modulation all flow into a single broadcast bus that OBS receives unchanged.',
-    image: voiceFxPreview,
+    eyebrow: 'Health Center',
+    title: 'Know what is broken before chat does.',
+    copy: 'Health Center keeps platform readiness, chat tests, event tests, relay capability, and setup risks visible in one diagnostic workspace.',
+    image: healthShot,
     flip: true,
-    bullets: [
-      'Chat TTS engine with voice profiles, cooldowns, and routing rules',
-      'Soundboard with hotkeys, per-clip gain, and ducking',
-      'Voice FX rack with monitoring and signal meters',
-      'Single broadcast mix so OBS and recorder hear what you hear',
-    ],
+    bullets: ['Per-platform status cards', 'Open setup and chat-test shortcuts', 'Current risks before going live', 'Copyable report for troubleshooting'],
+  },
+  {
+    eyebrow: 'Platforms',
+    title: 'Platform setup without mystery buttons.',
+    copy: 'Each platform gets a focused setup surface for credentials, live detection, event delivery, and outbound send capability.',
+    image: tiktokShot,
+    bullets: ['TikTok sender capture and live detection', 'Twitch OAuth, badges, emotes, and chat', 'YouTube OAuth plus manual live chat fallback', 'Kick webhook receiver and Cloudflared setup'],
+  },
+  {
+    eyebrow: 'Chat Hub',
+    title: 'Read once, relay intentionally.',
+    copy: 'Unified chat keeps all platforms together while relay controls decide which mirrored messages should be sent back out.',
+    image: chatShot,
+    flip: true,
+    bullets: ['Merged message feed with platform filters', 'Viewer list grouped by platform', 'Auto-relay source controls', 'Outbound target buttons for manual replies'],
+  },
+  {
+    eyebrow: 'Audience',
+    title: 'Profiles, badges, and stats that stay sane.',
+    copy: 'Audience Stats tracks cross-platform identity, badges, AI usage, chat volume, gifts, revenue, and primary profile selection.',
+    image: audienceShot,
+    bullets: ['Primary account controls for avatar and display name', 'Mod badges before subscriber and fan badges', 'Stable platform and badge ordering', 'Status filters for subs, mods, super fans, and none'],
+  },
+  {
+    eyebrow: 'Studio',
+    title: 'Scenes, sources, output, and mixer together.',
+    copy: 'Broadcast Studio handles preview, scene selection, sources, vertical layouts, stream destinations, and the audio mixer without leaving the app.',
+    image: studioShot,
+    flip: true,
+    bullets: ['Horizontal and vertical scene composition', 'Scene list and output controls', 'Capture source visibility and ordering', 'Mixer meters for mic, TTS, music, and alerts'],
   },
   {
     eyebrow: 'Alerts & widgets',
-    title: 'Browser-source overlays without the asset shuffle.',
-    copy: 'Build alerts, chat widgets, goal counters, socials, and Spotify overlays from one workspace, then add them to OBS as transparent browser sources.',
-    image: alertsPreview,
-    bullets: [
-      'Alert routing with sound and image asset libraries',
-      'Widget composer with templates for common overlays',
-      'Per-widget URLs you paste straight into OBS',
-      'Preview behavior tuned for live editing',
-    ],
+    title: 'Build overlays where they actually run.',
+    copy: 'Widgets and overlay routes expose real browser-source URLs, live previews, and configuration surfaces for OBS or TikTok Studio.',
+    image: widgetsShot,
+    bullets: ['Unified Chat, Event Alerts, Goals, Now Playing, and Screen Border widgets', 'Copyable browser-source URLs', 'Live preview cards for each widget', 'Config panels for fast on-stream edits'],
   },
   {
-    eyebrow: 'Automation',
-    title: 'Chat events drive lights, alerts, and widgets together.',
-    copy: 'Wire chat triggers to ilyStream features and supported smart-light fixtures so the room reacts to what is happening on stream.',
-    image: widgetsPreview,
+    eyebrow: 'Live alerts',
+    title: 'Route platform events into sound and visuals.',
+    copy: 'Alert routes let follows, gifts, subs, raids, chats, and joins trigger the exact visual, image, sound, and style you want.',
+    image: alertsShot,
     flip: true,
-    bullets: [
-      'Trigger rules for follows, subs, raids, donations, and custom events',
-      'Philips Hue and Govee fixture targeting',
-      'Action chains: light pulse, sound, alert, widget cue',
-      'Cooldowns and per-rule enable toggles',
-    ],
+    bullets: ['Per-route platform and event filters', 'Sound, image, text, and style controls', 'Live alert preview and test firing', 'Optional local alert monitoring'],
   },
   {
-    eyebrow: 'TTS engine',
-    title: 'Voice profiles per chatter, per channel, per command.',
-    copy: 'Configure voices, queue behavior, and provider setup in one workspace. Per-user voices stick across sessions.',
-    image: ttsPreview,
-    bullets: [
-      'Multi-provider TTS with per-user voice persistence',
-      'Cooldowns, length limits, and moderation hooks',
-      'Queue controls so back-to-back messages stay readable',
-      'Mixing routes that keep TTS distinct from soundboard',
-    ],
+    eyebrow: 'Soundboard',
+    title: 'A stream deck for sounds and actions.',
+    copy: 'Audio Deck turns sounds and HTTP-triggerable actions into large, repeatable controls for your stream setup.',
+    image: soundboardShot,
+    bullets: ['Instant sound tiles', 'Remote deck URL for tablets and hardware tools', 'Uploadable audio effects', 'External trigger URLs for automation'],
   },
   {
-    eyebrow: 'Settings',
-    title: 'One settings surface for the whole rig.',
-    copy: 'Personalization, OBS, broadcast defaults, integrations, and runtime behavior live together so changes are easy to find.',
-    image: studioSettingsPreview,
+    eyebrow: 'Spotify',
+    title: 'Song requests without chat chaos.',
+    copy: 'Spotify Management handles the account bridge, request filters, queue controls, and stream-safe song command behavior.',
+    image: spotifyShot,
     flip: true,
-    bullets: [
-      'Personalization and theme controls',
-      'OBS connection, scene mapping, and encoder selection',
-      'Integration credentials for Hue, Govee, DeskThing',
-      'Runtime toggles for diagnostics and developer mode',
-    ],
+    bullets: ['Enable or pause viewer requests', 'Control play and skip commands', 'Explicit-audio and queue limits', 'Backlog queue and flush controls'],
+  },
+  {
+    eyebrow: 'AI co-host',
+    title: 'A co-host that stays inside your boundaries.',
+    copy: 'AI Co-Host keeps the model endpoint, response depth, temperature, persona, and stream context visible in one editor.',
+    image: aiShot,
+    bullets: ['Local or compatible chat-completions endpoint', 'Dedicated persona and speech prefix controls', 'Response depth and temperature tuning', 'Engagement context from chat velocity'],
   },
 ];
 ---
@@ -93,108 +105,116 @@ const featureSections = [
 <Layout
   active="features"
   title="ilyStream features"
-  description="Detailed feature breakdown of ilyStream: studio canvas, audio routing, TTS, alerts, widgets, automation, and integrations."
+  description="Detailed feature breakdown of ilyStream: dashboard, health checks, platform setup, unified chat, audience profiles, studio, alerts, widgets, TTS, audio routing, and smart-light automation."
+  image="images/dashboard-overview.png"
 >
   <section class="page-hero">
     <div class="container">
       <p class="eyebrow">Features</p>
-      <h1>Production tools that stay close together.</h1>
+      <h1>Every live workflow, wired into one app.</h1>
       <p class="lede">
-        Every workspace in ilyStream is built around the live workflow. Here is what
-        you get when you install it.
+        ilyStream is built for the part of streaming where things usually get messy:
+        chat, relay, badges, audio, profiles, overlays, and platform-specific setup.
       </p>
       <div class="page-hero__actions">
         <a class="button button--primary" href={withBase('download/')}>Download</a>
-        <a class="button button--ghost" href={withBase('docs/')}>Read the docs</a>
+        <a class="button button--ghost" href={withBase('docs/')}>Setup docs</a>
       </div>
     </div>
   </section>
 
   <section class="container section">
     <div class="feature-stack">
-      {featureSections.map((f) => (
-        <article class:list={['feature-row', { 'feature-row--flip': f.flip }]}>
+      {featureSections.map((feature) => (
+        <article class:list={['feature-row', { 'feature-row--flip': feature.flip }]}>
           <div class="feature-row__copy">
-            <p class="eyebrow">{f.eyebrow}</p>
-            <h2>{f.title}</h2>
-            <p>{f.copy}</p>
+            <p class="eyebrow">{feature.eyebrow}</p>
+            <h2>{feature.title}</h2>
+            <p>{feature.copy}</p>
             <ul>
-              {f.bullets.map((b) => <li>{b}</li>)}
+              {feature.bullets.map((bullet) => <li>{bullet}</li>)}
             </ul>
           </div>
           <div class="feature-row__media">
-            <Image src={f.image} alt="" loading="lazy" decoding="async" />
+            <Image src={feature.image} alt="" loading="lazy" decoding="async" />
           </div>
         </article>
       ))}
     </div>
   </section>
 
-  <section class="container section">
-    <div class="cta-band__inner">
-      <div>
-        <h2>Try it on your stream rig.</h2>
-        <p>Free, open source, and built by streamers.</p>
-      </div>
-      <div class="cta-band__actions">
-        <a class="button button--primary" href={withBase('download/')}>Download for Windows</a>
-        <a class="button button--ghost" href={withBase('docs/getting-started/')}>Getting started</a>
-      </div>
+  <section class="container section cta-band">
+    <div>
+      <h2>Want the exact setup steps?</h2>
+      <p>The documentation now walks through every major integration in the same order the app expects.</p>
+    </div>
+    <div class="cta-band__actions">
+      <a class="button button--primary" href={withBase('docs/getting-started/')}>Start setup</a>
+      <a class="button button--ghost" href={withBase('screens/')}>View screenshots</a>
     </div>
   </section>
 </Layout>
 
 <style>
   .page-hero {
-    padding: 64px 0 16px;
+    padding: 72px 0 24px;
     border-bottom: 1px solid var(--line);
     background:
-      radial-gradient(700px 280px at 80% 0%, rgba(167, 131, 255, 0.14), transparent 60%),
-      linear-gradient(180deg, rgba(37, 199, 255, 0.06), transparent 80%);
+      radial-gradient(760px 320px at 72% 0%, rgba(37, 199, 255, 0.14), transparent 65%),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.08), transparent 80%);
   }
+
   .page-hero h1 {
     margin-top: 12px;
-    font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+    max-width: 16ch;
+    font-size: clamp(2.4rem, 5vw, 4.2rem);
   }
+
   .lede {
     margin-top: 18px;
     color: var(--muted);
     font-size: 1.12rem;
-    max-width: 64ch;
+    max-width: 70ch;
   }
-  .page-hero__actions {
-    margin-top: 26px;
+
+  .page-hero__actions,
+  .cta-band__actions {
+    margin-top: 28px;
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
   }
 
-  .section { padding-top: 64px; }
+  .section { padding-top: 72px; }
 
   .feature-stack {
     display: grid;
-    gap: 64px;
+    gap: 76px;
   }
 
   .feature-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
     align-items: center;
-    gap: 56px;
+    gap: 52px;
   }
-  .feature-row--flip { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+
+  .feature-row--flip {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr);
+  }
+
   .feature-row--flip .feature-row__copy { order: 2; }
   .feature-row--flip .feature-row__media { order: 1; }
 
   .feature-row__copy h2 {
     margin-top: 12px;
-    font-size: clamp(1.7rem, 2.8vw, 2.2rem);
+    font-size: clamp(1.75rem, 3vw, 2.4rem);
   }
+
   .feature-row__copy > p {
     margin-top: 14px;
     color: var(--muted);
     font-size: 1.05rem;
-    max-width: 56ch;
   }
 
   .feature-row__copy ul {
@@ -204,18 +224,20 @@ const featureSections = [
     display: grid;
     gap: 10px;
   }
+
   .feature-row__copy li {
     position: relative;
     padding-left: 26px;
     color: var(--muted);
   }
+
   .feature-row__copy li::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 0.6em;
-    width: 14px;
-    height: 14px;
+    top: 0.58em;
+    width: 13px;
+    height: 13px;
     background: var(--cyan);
     mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
     -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
@@ -224,24 +246,25 @@ const featureSections = [
   .feature-row__media {
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    overflow: hidden;
     background: var(--bg-raised);
+    overflow: hidden;
     box-shadow: var(--shadow-card);
   }
+
   .feature-row__media img {
     width: 100%;
-    aspect-ratio: 16 / 10;
+    aspect-ratio: 16 / 9;
     object-fit: cover;
     display: block;
   }
 
-  .cta-band__inner {
-    margin-top: 64px;
-    padding: 36px;
+  .cta-band {
+    margin-bottom: 64px;
+    padding: 34px;
     border: 1px solid rgba(37, 199, 255, 0.28);
     border-radius: 16px;
     background:
-      radial-gradient(600px 200px at 20% 0%, rgba(37, 199, 255, 0.18), transparent 70%),
+      radial-gradient(600px 220px at 20% 0%, rgba(37, 199, 255, 0.18), transparent 70%),
       linear-gradient(180deg, rgba(167, 131, 255, 0.1), rgba(255, 255, 255, 0)),
       var(--bg-raised);
     display: flex;
@@ -250,17 +273,20 @@ const featureSections = [
     gap: 28px;
     flex-wrap: wrap;
   }
-  .cta-band__inner h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
-  .cta-band__inner p { color: var(--muted); margin-top: 8px; }
-  .cta-band__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .cta-band h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
+  .cta-band p { color: var(--muted); margin-top: 8px; }
 
   @media (max-width: 900px) {
-    .feature-row, .feature-row--flip {
+    .feature-row,
+    .feature-row--flip {
       grid-template-columns: 1fr;
       gap: 24px;
     }
-    .feature-row--flip .feature-row__copy { order: 0; }
-    .feature-row--flip .feature-row__media { order: 0; }
-    .feature-stack { gap: 48px; }
+
+    .feature-row--flip .feature-row__copy,
+    .feature-row--flip .feature-row__media {
+      order: initial;
+    }
   }
 </style>

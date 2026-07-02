@@ -1,0 +1,80 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'manual', label: 'Manual mode' },
+  { id: 'paid-api', label: 'Paid API option' },
+  { id: 'setup', label: 'Credential setup' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="X Composer"
+  description="Use ilyStream's X page as a manual go-live composer, with optional automatic posting only for users who bring paid X API access."
+  slug="x-composer"
+  updated="July 2026"
+  readingTime="6 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    X changed its API economics. Free/developer access can authenticate an app,
+    but posting can fail with credit or plan errors. ilyStream treats X as a
+    composer-first integration: write the post in the app, copy/open it, and only
+    enable automatic posting if you already have a paid X API plan.
+  </p>
+
+  <h2 id="manual">Manual mode</h2>
+  <ol>
+    <li><strong>Open Connect &rarr; X Composer.</strong></li>
+    <li><strong>Write your go-live post.</strong> Keep the stream link placeholder or paste the final link.</li>
+    <li><strong>Copy or open the post.</strong> Publish manually in the X website/app.</li>
+    <li><strong>Save your default text.</strong> ilyStream keeps the draft so it is ready between streams.</li>
+  </ol>
+  <p>
+    Manual mode is the recommended path for most users because it does not depend
+    on X API credits.
+  </p>
+
+  <h2 id="paid-api">Paid API option</h2>
+  <p>
+    If you have a paid X API plan, open the collapsible section labeled for paid
+    X API setup and connect credentials there. Automatic posting should remain
+    opt-in and visibly separate from the normal composer.
+  </p>
+  <ul>
+    <li><strong>Free API</strong>: use manual composer mode.</li>
+    <li><strong>Paid API</strong>: you may enable automatic go-live posts.</li>
+    <li><strong>No credits</strong>: automatic posting will fail even if OAuth succeeds.</li>
+  </ul>
+
+  <h2 id="setup">Credential setup</h2>
+  <ol>
+    <li><strong>Create an X developer app.</strong> Use the X Developer Console.</li>
+    <li><strong>Enable user authentication.</strong> Choose OAuth 2.0 and allow tweet write permissions if your plan supports posting.</li>
+    <li><strong>Add the callback URI.</strong> Use <code>http://127.0.0.1:8791/callback</code>.</li>
+    <li><strong>Paste client ID and secret.</strong> Add them to the paid API section in ilyStream.</li>
+    <li><strong>Connect with X.</strong> Approve the account you want posts to come from.</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>OAuth works but posting fails with credits depleted.</strong> That is an X plan/credit limitation. Use manual composer mode or upgrade the X API plan.</p>
+  <p><strong>Access blocked during OAuth.</strong> Add your account as a test user or finish the X app user-auth setup.</p>
+  <p><strong>Wrong account posts.</strong> Disconnect X, sign into the desired X account in the browser, then reconnect.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/chat-relay/')}>
+      <p>Previous</p>
+      <strong>&larr; Chat Hub &amp; relay</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/audience-stats/')}>
+      <p>Next</p>
+      <strong>Audience profiles &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>

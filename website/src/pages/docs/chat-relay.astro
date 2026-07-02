@@ -1,0 +1,91 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
+
+const toc = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'feed', label: 'Unified feed' },
+  { id: 'auto-relay', label: 'Auto-relay' },
+  { id: 'manual-outbound', label: 'Manual outbound' },
+  { id: 'filters', label: 'Filters and safety' },
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+];
+---
+
+<DocsLayout
+  title="Chat Hub & relay"
+  description="Configure ilyStream's unified chat, viewer list, auto-relay, manual outbound replies, and relay safeguards."
+  slug="chat-relay"
+  updated="July 2026"
+  readingTime="8 min"
+  toc={toc}
+>
+  <h2 id="overview">Overview</h2>
+  <p>
+    Chat Hub is where TikTok, Twitch, YouTube, and Kick messages become one feed.
+    Relay controls decide which messages should be mirrored across platforms and
+    which platforms are allowed to receive manual replies.
+  </p>
+
+  <h2 id="feed">Unified feed</h2>
+  <ul>
+    <li><strong>Platform tabs</strong> filter the feed without changing collection.</li>
+    <li><strong>Search</strong> filters visible messages by user or text.</li>
+    <li><strong>Viewer list</strong> groups currently known viewers by platform.</li>
+    <li><strong>Platform emotes</strong> are rendered where ilyStream can resolve them, including TikTok shortcode emoji and supported Twitch/Kick emotes.</li>
+  </ul>
+
+  <h2 id="auto-relay">Auto-relay</h2>
+  <ol>
+    <li><strong>Open Live &rarr; Chat Hub.</strong></li>
+    <li><strong>Turn on Auto-Relay.</strong> The switch enables mirroring, but messages still follow source and target rules.</li>
+    <li><strong>Choose the relay format.</strong> The default <code>[Platform] User: message</code> keeps context clear when a message crosses platforms.</li>
+    <li><strong>Select source platforms.</strong> The Mirror From buttons decide which inbound platforms are eligible to be relayed.</li>
+    <li><strong>Select targets.</strong> Target Channels decide where mirrored messages may be sent.</li>
+  </ol>
+  <p>
+    Relayed messages from your own sending account should not be treated like
+    normal audience messages in the unified feed. If you see your own mirrored
+    messages filling Chat Hub, check that the sender account is configured and
+    the platform has a stable username.
+  </p>
+
+  <h2 id="manual-outbound">Manual outbound</h2>
+  <ol>
+    <li><strong>Select target channels.</strong> Pick one or more platforms in the Outbound card.</li>
+    <li><strong>Type a message.</strong> Keep the message platform-safe; each service has its own limits.</li>
+    <li><strong>Click Send Message.</strong> ilyStream sends only to channels with working outbound permission.</li>
+  </ol>
+  <p>
+    Disabled target buttons usually mean that platform is read-only, disconnected,
+    or missing chat send permission. Health Center shows the same information in
+    the Relay summary.
+  </p>
+
+  <h2 id="filters">Filters and safety</h2>
+  <ul>
+    <li><strong>No feedback loops</strong>: ilyStream tags relay output so it does not bounce endlessly between platforms.</li>
+    <li><strong>Command awareness</strong>: song requests and AI prompts can be treated as commands instead of ordinary TTS/relay content.</li>
+    <li><strong>Source account cleanup</strong>: use a dedicated sender account when possible so relay output is easy to identify.</li>
+    <li><strong>Per-platform capability</strong>: YouTube and Kick may be read-only until OAuth and API support are complete.</li>
+  </ul>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p><strong>A platform button cannot be clicked.</strong> The channel is probably read-only or disconnected. Open Health Center and check the Relay card.</p>
+  <p><strong>Relayed messages appear in Chat Hub as normal chat.</strong> Make sure the sending account is configured correctly and not being merged as a viewer profile.</p>
+  <p><strong>Messages send to the wrong place.</strong> Clear targets, select only one platform, and test with a short message before enabling Auto-Relay again.</p>
+  <p><strong>Emotes show as text.</strong> Some platform emotes require metadata from the connector. Send a fresh message after reconnecting the platform.</p>
+
+  <div class="next-prev">
+    <a class="is-prev" href={withBase('docs/platforms/')}>
+      <p>Previous</p>
+      <strong>&larr; Live platforms</strong>
+    </a>
+    <a class="is-next" href={withBase('docs/x-composer/')}>
+      <p>Next</p>
+      <strong>X Composer &rarr;</strong>
+    </a>
+  </div>
+</DocsLayout>
