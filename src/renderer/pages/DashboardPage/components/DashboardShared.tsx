@@ -4,15 +4,15 @@ import { SpotifyIcon } from '../../../components/ui/SpotifyIcon'
 
 export function MetricCard({ icon, label, value, subValue, trend, accent = 'text-accent' }: { icon: ReactNode; label: string; value: string; subValue: string; trend: 'up' | 'down' | 'neutral'; accent?: string }) {
   return (
-    <div className="app-section-card glass !p-5 transition-colors group min-w-0">
-      <div className={`mb-3 ${accent}`}>
+    <div className="dashboard-metric-card app-section-card glass transition-colors group">
+      <div className={`dashboard-metric-icon ${accent}`}>
         {icon}
       </div>
-      <div className="text-[11px] font-medium text-white/55 mb-1 truncate">
+      <div className="dashboard-metric-label truncate">
         {label}
       </div>
-      <div className="text-[22px] font-semibold text-white tabular-nums leading-none mb-1.5 truncate tracking-tight">{value}</div>
-      <div className={`text-[11px] font-mono font-medium truncate ${trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-white/32'}`}>
+      <div className="dashboard-metric-value tabular-nums">{value}</div>
+      <div className={`dashboard-metric-sub ${trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-white/32'}`}>
         {subValue}
       </div>
     </div>
@@ -21,11 +21,11 @@ export function MetricCard({ icon, label, value, subValue, trend, accent = 'text
 
 export function QuickLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
   return (
-    <Link to={to} className="flex flex-col items-center justify-center gap-2 px-3 py-4 rounded-md bg-white/[0.025] hover:bg-white/[0.04] transition-colors group">
-      <div className="text-white/55 group-hover:text-accent transition-colors">
+    <Link to={to} className="dashboard-quick-link group">
+      <div className="transition-colors">
         {icon}
       </div>
-      <span className="text-[12px] font-medium text-white/55 group-hover:text-accent transition-colors tracking-tight">{label}</span>
+      <span>{label}</span>
     </Link>
   )
 }

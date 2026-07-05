@@ -208,6 +208,146 @@ describe('TTSEngine settings', () => {
     )
   })
 
+  it('applies a legacy username override across linked viewer identities', () => {
+    const resolveViewerProfileId = vi.fn((platform: string, username: string) => {
+      const normalized = username.replace(/^@+/, '').toLowerCase()
+      if (platform === 'tiktok' && normalized === 'queena.chaos') return 'viewer-queen'
+      if (platform === 'twitch' && normalized === 'queena_chaos') return 'viewer-queen'
+      return null
+    })
+    const engine = new TTSEngine(resolveViewerProfileId)
+    const speakListener = vi.fn()
+
+    engine.getVoiceProfiles().save({
+      id: 'queen-voice',
+      name: 'Queen Voice',
+      provider: 'system',
+      voiceName: 'Queen system voice',
+      kokoroVoice: 'af_heart',
+      lang: 'en-US',
+      pitch: 1,
+      rate: 1,
+      volume: 1,
+      effects: [],
+      isDefault: false
+    })
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
+        {
+          id: 'queen',
+          platform: 'tiktok',
+          username: 'queena.chaos',
+          mode: 'profile',
+          voiceProfileId: 'queen-voice',
+          provider: 'system',
+          voiceName: '',
+          kokoroVoice: 'af_heart',
+          elevenlabsVoiceId: '',
+          elevenlabsStability: 0.5,
+          elevenlabsSimilarity: 0.8,
+          elevenlabsStyle: 0,
+          lang: 'en-US',
+          pitch: 1,
+          rate: 1,
+          volume: 1,
+          enabled: true
+        }
+      ]
+    })
+    engine.on('tts:speak', speakListener)
+
+    const added = engine.enqueue({
+      text: 'hello from twitch',
+      username: 'queena_chaos',
+      platform: 'twitch',
+      priority: 'normal',
+      voiceProfileId: 'default',
+      eventType: 'chat'
+    })
+
+    expect(added).toBe(true)
+    expect(speakListener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: expect.objectContaining({
+          id: 'queen-voice'
+        })
+      })
+    )
+  })
+
+  it('applies a unified viewer profile override to any linked platform account', () => {
+    const resolveViewerProfileId = vi.fn((platform: string, username: string, identity?: { platformUserId?: string | null; displayName?: string | null }) => {
+      const normalized = username.replace(/^@+/, '').toLowerCase()
+      if (platform === 'twitch' && identity?.platformUserId === 'twitch-42') return 'viewer-logan'
+      if (platform === 'tiktok' && normalized === 'logan') return 'viewer-logan'
+      return null
+    })
+    const engine = new TTSEngine(resolveViewerProfileId)
+    const speakListener = vi.fn()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
+        {
+          id: 'logan-unified',
+          platform: 'all',
+          username: '',
+          viewerProfileId: 'viewer-logan',
+          mode: 'custom',
+          voiceProfileId: '',
+          provider: 'system',
+          voiceName: 'Logan unified voice',
+          kokoroVoice: 'af_heart',
+          elevenlabsVoiceId: '',
+          elevenlabsStability: 0.5,
+          elevenlabsSimilarity: 0.8,
+          elevenlabsStyle: 0,
+          lang: 'en-US',
+          pitch: 1.35,
+          rate: 1.1,
+          volume: 0.7,
+          enabled: true
+        }
+      ]
+    })
+    engine.on('tts:speak', speakListener)
+
+    engine.processEvent(
+      makeChatEvent({
+        platform: 'twitch',
+        message: 'same voice please',
+        user: makeUser({
+          id: 'twitch-42',
+          username: 'logan_ttv',
+          displayName: 'Logan'
+        })
+      })
+    )
+
+    expect(resolveViewerProfileId).toHaveBeenCalledWith(
+      'twitch',
+      'logan_ttv',
+      expect.objectContaining({
+        platformUserId: 'twitch-42',
+        displayName: 'Logan'
+      })
+    )
+    expect(speakListener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: expect.objectContaining({
+          id: 'user-voice:logan-unified',
+          voiceName: 'Logan unified voice',
+          pitch: 1.35,
+          rate: 1.1,
+          volume: 0.7 * DEFAULT_APP_SETTINGS.tts.volume
+        })
+      })
+    )
+  })
+
   it('can speak with an inline per-user voice without a saved profile', () => {
     const engine = new TTSEngine()
     const speakListener = vi.fn()
@@ -280,6 +420,7 @@ describe('TTSEngine settings', () => {
           voiceName: '',
           kokoroVoice: 'af_heart',
           elevenlabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
+          elevenlabsApiKeyId: 'friend-workspace',
           elevenlabsStability: 0.35,
           elevenlabsSimilarity: 0.9,
           elevenlabsStyle: 0.15,
@@ -308,6 +449,7 @@ describe('TTSEngine settings', () => {
         voice: expect.objectContaining({
           provider: 'elevenlabs',
           elevenlabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
+          elevenlabsApiKeyId: 'friend-workspace',
           elevenlabsStability: 0.35,
           elevenlabsSimilarity: 0.9,
           elevenlabsStyle: 0.15,
@@ -335,6 +477,88 @@ describe('TTSEngine settings', () => {
       expect.objectContaining({
         text: 'Alice says: read this one'
       })
+    ])
+  })
+
+  it('does not read executable AI or song request commands aloud', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: false
+    })
+    engine.pause()
+
+    engine.processEvent(makeChatEvent({ message: '!ai tell me a joke' }))
+    engine.processEvent(makeChatEvent({ message: '!play current song' }))
+
+    expect(engine.getQueue()).toHaveLength(0)
+  })
+
+  it('still reads command-looking chat when the command intent is ambiguous', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: false
+    })
+    engine.pause()
+
+    engine.processEvent(makeChatEvent({ message: '!AI is really cool' }))
+    engine.processEvent(makeChatEvent({ message: '!play dark souls' }))
+
+    expect(engine.getQueue()).toEqual([
+      expect.objectContaining({ text: 'Alice says: !AI is really cool' }),
+      expect.objectContaining({ text: 'Alice says: !play dark souls' })
+    ])
+  })
+
+  it('formats chat speech with the configured message template', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatMessageTemplate: '{username} says {message} on {platformLabel}'
+    })
+    engine.pause()
+
+    engine.processEvent(
+      makeChatEvent({
+        message: 'template check',
+        user: {
+          ...makeUser(),
+          username: 'alice_live',
+          displayName: 'Alice Live'
+        }
+      })
+    )
+
+    expect(engine.getQueue()).toEqual([
+      expect.objectContaining({
+        text: 'alice_live says template check on TikTok'
+      })
+    ])
+  })
+
+  it('supports displayname token casing and falls back to message if the template renders empty', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatMessageTemplate: '{displayname}: {message}'
+    })
+    engine.pause()
+    engine.processEvent(makeChatEvent({ message: 'lowercase token works' }))
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatMessageTemplate: '{unknown}'
+    })
+    engine.processEvent(makeChatEvent({ message: 'fallback still speaks' }))
+
+    expect(engine.getQueue()).toEqual([
+      expect.objectContaining({ text: 'Alice: lowercase token works' }),
+      expect.objectContaining({ text: 'fallback still speaks' })
     ])
   })
 
@@ -433,14 +657,16 @@ function makeFollowEvent(): FollowEvent {
 
 function makeChatEvent({
   message,
+  platform = 'tiktok',
   user = makeUser()
 }: {
   message: string
+  platform?: ChatEvent['platform']
   user?: UserInfo
 }): ChatEvent {
   return {
     id: `chat-${message}`,
-    platform: 'tiktok',
+    platform,
     timestamp: new Date(),
     type: 'chat',
     raw: {},

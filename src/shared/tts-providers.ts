@@ -18,6 +18,11 @@ export interface ElevenLabsVoicePreset {
   tags: string[]
 }
 
+export interface SyncedElevenLabsVoicePreset extends ElevenLabsVoicePreset {
+  apiKeyId?: string
+  apiKeyLabel?: string
+}
+
 /**
  * Curated subset of ElevenLabs built-in voices available on all plans.
  * Full list (including cloned voices) is fetched from the API using the user's key.

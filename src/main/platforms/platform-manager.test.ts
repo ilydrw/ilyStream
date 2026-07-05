@@ -35,4 +35,34 @@ describe('PlatformManager', () => {
     expect(resolvePlatformAutoReconnect({ platform: { autoReconnect: true } })).toBe(true)
     expect(resolvePlatformAutoReconnect({ platform: { autoReconnect: false } })).toBe(false)
   })
+
+  it('persists refreshed platform access tokens without dropping the existing refresh token', () => {
+    const existingConfig = {
+      platform: 'twitch',
+      enabled: true,
+      channel: 'ily2drw',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      accessToken: 'old-access-token',
+      refreshToken: 'old-refresh-token'
+    }
+    const db = {
+      getAllSettings: vi.fn().mockReturnValue({}),
+      getPlatformConfig: vi.fn().mockReturnValue(existingConfig),
+      savePlatformConfig: vi.fn()
+    } as any
+    const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
+    const manager = new PlatformManager(db, tiktokChatSender)
+
+    ;(manager as any).persistRefreshedPlatformToken({
+      platform: 'twitch',
+      accessToken: 'new-access-token'
+    })
+
+    expect(db.savePlatformConfig).toHaveBeenCalledWith({
+      ...existingConfig,
+      accessToken: 'new-access-token',
+      refreshToken: 'old-refresh-token'
+    })
+  })
 })

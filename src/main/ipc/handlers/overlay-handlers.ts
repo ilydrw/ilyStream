@@ -32,6 +32,6 @@ export function registerOverlayHandlers(
     const buffer = payload instanceof Uint8Array
       ? Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength)
       : Buffer.from(new Uint8Array(payload))
-    overlayServer.pushDualVerticalFrame(buffer)
+    overlayServer.setDualVerticalFrame(buffer)
   })
 }

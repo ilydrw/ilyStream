@@ -6,6 +6,7 @@ import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../../shared/app-sett
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { SpotifyIcon } from '../../components/ui/SpotifyIcon'
 import { Toggle, NumberInput } from '../../components/ui/Inputs'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 type SpotifySettings = Pick<
   AppSettings,
@@ -121,21 +122,11 @@ export default function SpotifyPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <SpotifyIcon size={48} branded />
-          </div>
-          <div>
-            <h1>Spotify Management</h1>
-            <p className="app-page-intro">
-              Synchronize your broadcast with Spotify. Viewers can request tracks directly via chat commands
-              to build a dynamic, collaborative stream soundtrack.
-            </p>
-          </div>
-        </div>
-
-        {status?.connected && (
+      <PageHeader
+        title="Spotify Management"
+        description="Synchronize your broadcast with Spotify and manage collaborative song requests."
+        iconNode={<SpotifyIcon size={24} branded />}
+        actions={status?.connected && (
           <div className="flex items-center gap-4 px-4 py-2 rounded-md bg-white/[0.03] border border-white/10 glass">
             <div className="p-2 rounded-lg bg-white/5 text-white/60">
               <IconUser size={16} />
@@ -146,7 +137,7 @@ export default function SpotifyPage() {
             </div>
           </div>
         )}
-      </header>
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-10 items-start">
         <div className="flex flex-col gap-10">

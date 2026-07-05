@@ -10,8 +10,10 @@ export class MediaPumper extends EventEmitter {
   private videoPumpTimer: ReturnType<typeof setInterval> | null = null
   private silentClockInterval: ReturnType<typeof setInterval> | null = null
   private watchdogInterval: ReturnType<typeof setInterval> | null = null
-  
+
   private latestVideoFrame: Uint8Array | null = null
+  private lastSentVideoFrame: Uint8Array | null = null
+  private framesRepeated = 0
   private videoPumpBusy = false
   private framesSinceLastReport = 0
   private totalSamples = 0
@@ -24,12 +26,35 @@ export class MediaPumper extends EventEmitter {
   startVideoPump(fps: number, onPump: (frame: Uint8Array) => void): void {
     const interval = 1000 / Math.max(1, Math.min(60, Math.round(fps || 30)))
     this.stopVideoPump()
+    this.lastSentVideoFrame = null
+    this.framesRepeated = 0
+
     this.videoPumpTimer = setInterval(() => {
       if (this.videoPumpBusy) return
-      const frame = this.latestVideoFrame
+
+      // CFR contract with FFmpeg: emit a frame every tick. If the renderer
+      // produced a fresh one since the last tick, use it; otherwise repeat
+      // the last frame we sent. Without this, a renderer hitch leaves
+      // FFmpeg's input pipe starved, the stream's instantaneous bitrate
+      // dips, and Twitch ingest reads that as a buffer-worthy stall.
+      const fresh = this.latestVideoFrame
+      let frame: Uint8Array | null = null
+      if (fresh) {
+        this.latestVideoFrame = null
+        this.lastSentVideoFrame = fresh
+        this.framesRepeated = 0
+        frame = fresh
+      } else if (this.lastSentVideoFrame && this.framesRepeated < Math.max(2, Math.round(fps))) {
+        // Cap repeats to ~1s of frozen frames so a fully stalled renderer
+        // doesn't stream the same JPEG forever (would burn bitrate on what
+        // is effectively a static image and Twitch would still mark it as a
+        // dead stream after ~5s anyway).
+        frame = this.lastSentVideoFrame
+        this.framesRepeated++
+      }
+
       if (!frame) return
-      
-      this.latestVideoFrame = null
+
       this.videoPumpBusy = true
       try {
         onPump(frame)
@@ -44,6 +69,8 @@ export class MediaPumper extends EventEmitter {
       clearInterval(this.videoPumpTimer)
       this.videoPumpTimer = null
     }
+    this.lastSentVideoFrame = null
+    this.framesRepeated = 0
   }
 
   setLatestFrame(data: Uint8Array): void {

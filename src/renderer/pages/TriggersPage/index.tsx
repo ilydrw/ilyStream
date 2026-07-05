@@ -1,6 +1,6 @@
 import { IconRobot, IconVolume } from '@tabler/icons-react'
 import { IconPlus } from '../../components/ui/icons'
-import { IconTriggerRelay } from '../../components/ui/icons/nav'
+import { IconAutomation } from '../../components/ui/icons/nav'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { VoiceProfile } from '../../../main/tts/voice-profiles'
@@ -18,6 +18,7 @@ import {
 import { createRecipeRule, type AutomationRecipe } from '../../lib/automation-recipes'
 import { CommanderView } from './CommanderView'
 import { RecipeGallery } from './RecipeGallery'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function TriggersPage() {
   const [triggers, setTriggers] = useState<TriggerRule[]>([])
@@ -147,16 +148,12 @@ export default function TriggersPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <IconTriggerRelay size={20} className="text-accent" />
-          </div>
-          <div>
-            <h1>Stream Triggers</h1>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
+      <PageHeader
+        title="Stream Triggers"
+        description="Build automatic stream actions, recipes, and command routes."
+        icon={IconAutomation}
+        actions={
+          <>
           <div className="flex items-center bg-white/[0.03] border border-white/5 rounded-xl p-1 h-12">
             <button
               onClick={() => setActiveTab('recipes')}
@@ -181,8 +178,9 @@ export default function TriggersPage() {
             <IconPlus size={18} className="mr-2" />
             New Trigger
           </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
         <Metric

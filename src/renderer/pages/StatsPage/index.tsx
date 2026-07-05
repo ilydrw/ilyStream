@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IconRefresh, IconTrash, IconActivity } from '../../components/ui/icons'
+import { IconRefresh, IconTrash, IconActivity, IconAlertTriangle } from '../../components/ui/icons'
 import type { GlobalStats, UserStat, UserStatSortKey, UserIdentity } from '../../../shared/stats'
 import { EMPTY_GLOBAL_STATS } from '../../../shared/stats'
 import type { Platform } from '../../../main/platforms/types'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
+import { Modal } from '../../components/ui/Modal'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 // Components
 import { StatsMetricGrid } from './components/StatsMetricGrid'
@@ -22,25 +24,33 @@ interface SortColumn {
 }
 
 const SORT_COLUMNS: SortColumn[] = [
+  // All-time ranking — combines each user's position across every other stat.
+  { key: 'overall', label: 'Overall', short: 'Overall', format: (s) => {
+    const rank = (s as { overallRank?: number }).overallRank
+    return typeof rank === 'number' && rank > 0 ? `#${rank.toLocaleString()}` : '—'
+  } },
   { key: 'totalLikes', label: 'Likes', short: 'Likes', format: (s) => s.totalLikes.toLocaleString() },
   { key: 'totalGifts', label: 'Gifts', short: 'Gifts', format: (s) => s.totalGifts.toLocaleString() },
-  { key: 'totalGiftValueCents', label: 'Earnings', short: 'Value', format: (s) => formatCurrency(s.totalGiftValueCents) },
-  { key: 'totalSubscriptions', label: 'Subs', short: 'Subs', format: (s) => s.totalSubscriptions.toLocaleString() },
-  { key: 'totalFollows', label: 'Follows', short: 'Follows', format: (s) => s.totalFollows.toLocaleString() },
+  { key: 'totalGiftValueCents', label: 'Estimated revenue', short: 'Revenue', format: (s) => formatCurrency(s.totalGiftValueCents) },
+  // Twitch subscriptions ("members") are still tracked, but intentionally not
+  // surfaced as a per-user column — it's a near-binary number that doesn't
+  // earn a spot on the table.
   { key: 'totalShares', label: 'Shares', short: 'Shares', format: (s) => s.totalShares.toLocaleString() },
   { key: 'totalRaids', label: 'Raids', short: 'Raids', format: (s) => s.totalRaids.toLocaleString() },
   { key: 'totalChats', label: 'Chats', short: 'Chats', format: (s) => s.totalChats.toLocaleString() },
-  { key: 'totalSongRequests', label: 'Song requests', short: 'Songs', format: (s) => s.totalSongRequests.toLocaleString() }
+  { key: 'totalSongRequests', label: 'Song requests', short: 'Songs', format: (s) => s.totalSongRequests.toLocaleString() },
+  { key: 'totalCohostCalls', label: 'AI calls', short: 'AI', format: (s) => (s.totalCohostCalls || 0).toLocaleString() }
 ]
 
-const RELEVANT_STATS: Record<Platform, UserStatSortKey[]> = {
-  tiktok: ['totalLikes', 'totalGifts', 'totalGiftValueCents', 'totalSubscriptions', 'totalFollows', 'totalShares', 'totalChats', 'totalSongRequests'],
-  twitch: ['totalGifts', 'totalGiftValueCents', 'totalSubscriptions', 'totalRaids', 'totalChats', 'totalSongRequests'],
-  youtube: ['totalSubscriptions', 'totalChats', 'totalSongRequests'],
-  kick: ['totalFollows', 'totalSubscriptions', 'totalChats', 'totalSongRequests']
+const RELEVANT_STATS: Partial<Record<Platform, UserStatSortKey[]>> = {
+  tiktok: ['totalLikes', 'totalGifts', 'totalGiftValueCents', 'totalShares', 'totalChats', 'totalSongRequests', 'totalCohostCalls'],
+  twitch: ['totalGifts', 'totalGiftValueCents', 'totalRaids', 'totalChats', 'totalSongRequests', 'totalCohostCalls'],
+  youtube: ['totalChats', 'totalSongRequests', 'totalCohostCalls'],
+  kick: ['totalChats', 'totalSongRequests', 'totalCohostCalls']
 }
 
 function isRelevant(platform: Platform | 'all', key: UserStatSortKey): boolean {
+  if (key === 'overall') return true
   if (platform === 'all') return true
   return RELEVANT_STATS[platform]?.includes(key) || key === 'lastSeenAt'
 }
@@ -48,13 +58,15 @@ function isRelevant(platform: Platform | 'all', key: UserStatSortKey): boolean {
 export default function StatsPage() {
   const [global, setGlobal] = useState<GlobalStats>(EMPTY_GLOBAL_STATS)
   const [identities, setIdentities] = useState<UserIdentity[]>([])
-  const [sortBy, setSortBy] = useState<UserStatSortKey>('totalLikes')
+  const [sortBy, setSortBy] = useState<UserStatSortKey>('overall')
   const [platform, setPlatform] = useState<Platform | 'all'>('all')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedIdentityId, setSelectedIdentityId] = useState<string | null>(null)
-  const [confirmReset, setConfirmReset] = useState(false)
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetConfirmText, setResetConfirmText] = useState('')
+  const [resetting, setResetting] = useState(false)
   const [activePlatformTab, setActivePlatformTab] = useState<Platform | 'all'>('all')
   
   // Linking state
@@ -94,17 +106,23 @@ export default function StatsPage() {
     [activePlatformTab]
   )
 
-  const handleReset = async () => {
-    if (!confirmReset) {
-      setConfirmReset(true)
-      setTimeout(() => setConfirmReset(false), 4000)
-      return
+  const openResetModal = () => {
+    setResetConfirmText('')
+    setResetModalOpen(true)
+  }
+
+  const performReset = async () => {
+    if (!window.api?.stats || resetConfirmText.trim().toUpperCase() !== 'RESET') return
+    setResetting(true)
+    try {
+      await window.api.stats.reset()
+      setSelectedIdentityId(null)
+      setResetModalOpen(false)
+      setResetConfirmText('')
+      await loadAll()
+    } finally {
+      setResetting(false)
     }
-    setConfirmReset(false)
-    if (!window.api?.stats) return
-    await window.api.stats.reset()
-    setSelectedIdentityId(null)
-    await loadAll()
   }
 
   const handleLink = async (target: UserStat) => {
@@ -144,41 +162,55 @@ export default function StatsPage() {
     }
   }
 
+  // Make one linked account the "face" of the identity — its avatar + platform
+  // become how the person is represented in the table and elsewhere.
+  const handleSetPrimary = async (identity: UserIdentity, account: UserStat) => {
+    if (!window.api?.stats) return
+    const profileId = identity.accounts.find((a) => a.profileId)?.profileId
+      || (!identity.id.includes(':') ? identity.id : null)
+    if (!profileId) return
+    setLoading(true)
+    try {
+      await window.api.stats.updateViewerProfile(profileId, {
+        primaryPlatform: account.platform,
+        primaryUsername: account.username,
+        displayName: account.displayName || account.username,
+        profilePictureUrl: account.profilePictureUrl ?? null
+      })
+      loadAll()
+    } catch (err) {
+      console.error('[Stats] Set primary failed', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            {activePlatformTab === 'all' ? (
-              <IconActivity size={20} className="text-accent" />
-            ) : (
-              <div className="w-10 h-10 flex items-center justify-center bg-white/10 rounded-xl ring-1 ring-white/20">
-                <PlatformLogo platform={activePlatformTab as Platform} size={28} />
-              </div>
-            )}
-          </div>
-          <div>
-            <h1>Stream Stats</h1>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Stream Stats"
+        description="Lifetime engagement, connected accounts, badges, and audience rankings."
+        iconNode={activePlatformTab === 'all' ? <IconActivity size={22} /> : <PlatformLogo platform={activePlatformTab as Platform} size={24} />}
+        actions={
+          <>
           <button onClick={loadAll} disabled={loading} className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2">
             <IconRefresh size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
           <button
-            onClick={handleReset}
-            className={`app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2 transition-all ${ confirmReset ? 'bg-danger/20 border-danger/40 text-danger' : 'text-white/40 hover:text-danger hover:border-danger/30' }`}
+            onClick={openResetModal}
+            className="app-button !h-10 !px-4 text-[10px] font-semibold tracking-tight flex items-center gap-2 transition-all text-white/40 hover:text-danger hover:border-danger/30"
           >
             <IconTrash size={14} />
-            {confirmReset ? 'Confirm Reset' : 'Reset stats'}
+            Reset stats
           </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <StatsMetricGrid global={global} activePlatformTab={activePlatformTab} />
 
-      <FollowersBreakdown global={global} />
+      <FollowersBreakdown global={global} onChanged={loadAll} />
 
       <PlatformTelemetry
         global={global}
@@ -208,9 +240,60 @@ export default function StatsPage() {
         onCancelLink={() => { setIsLinking(false); setLinkSource(null); }}
         onStartLink={(u) => { setLinkSource(u); setIsLinking(true); }}
         onUnlink={handleUnlink}
+        onSetPrimary={handleSetPrimary}
         isRelevant={isRelevant}
         SORT_COLUMNS={SORT_COLUMNS}
       />
+
+      <Modal
+        open={resetModalOpen}
+        onClose={() => { if (!resetting) setResetModalOpen(false) }}
+        title="Reset all stats"
+        className="!max-w-md"
+        headerActions={
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-danger/15 text-danger">
+            <IconAlertTriangle size={16} />
+          </span>
+        }
+      >
+        <div className="p-5 flex flex-col gap-4">
+          <p className="text-[13px] leading-relaxed text-white/70">
+            This permanently erases <strong className="text-white">every lifetime stat</strong> — all
+            viewer totals, leaderboards, and global counters. This cannot be undone. (Your platform
+            follower counts are kept.)
+          </p>
+          <div>
+            <label className="block text-[11px] font-semibold text-white/45 mb-2">
+              Type <span className="font-mono text-danger">RESET</span> to confirm
+            </label>
+            <input
+              autoFocus
+              value={resetConfirmText}
+              onChange={(e) => setResetConfirmText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') performReset() }}
+              placeholder="RESET"
+              className="h-11 w-full bg-white/[0.03] border border-white/10 rounded-md px-3 text-sm font-semibold text-white placeholder:text-white/20 focus:border-danger/40 outline-none transition-all"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={() => setResetModalOpen(false)}
+              disabled={resetting}
+              className="app-button !h-10 !px-4 text-[11px] font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={performReset}
+              disabled={resetting || resetConfirmText.trim().toUpperCase() !== 'RESET'}
+              className="!h-10 !px-4 rounded-md text-[11px] font-bold flex items-center gap-2 transition-all bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <IconTrash size={14} />
+              {resetting ? 'Resetting…' : 'Reset everything'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

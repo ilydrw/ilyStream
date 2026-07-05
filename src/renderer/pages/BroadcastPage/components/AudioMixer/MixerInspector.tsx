@@ -19,6 +19,7 @@ import { sanitizeChannelMode } from '../../../../utils/audio-engine'
 export function MixerInspector({
   selectedSource,
   selectedMeter,
+  mode,
   trackStatuses,
   sidebarWidth,
   setIsResizingSidebar,
@@ -32,6 +33,7 @@ export function MixerInspector({
 }: {
   selectedSource: AudioSource
   selectedMeter: MeterFrame
+  mode: 'mix' | 'fx' | 'send'
   trackStatuses: Record<string, AudioTrackStatus>
   sidebarWidth: number
   setIsResizingSidebar: (resizing: boolean) => void
@@ -127,6 +129,8 @@ export function MixerInspector({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">
+          {mode === 'mix' && (
+          <>
           <section>
             <div className="flex items-center justify-between mb-3">
               <HeaderLabel icon={IconRoute} label="Routing" />
@@ -168,6 +172,14 @@ export function MixerInspector({
           </section>
 
           <section>
+            <HeaderLabel icon={IconActivity} label="Spectrum" />
+            <Spectrum id={selectedSource.id} />
+          </section>
+          </>
+          )}
+
+          {mode === 'fx' && (
+          <section>
             <div className="flex items-center justify-between mb-3">
               <HeaderLabel icon={IconWaveSine} label="Insert Rack" />
               <select
@@ -205,11 +217,40 @@ export function MixerInspector({
             </div>
 
           </section>
+          )}
 
+          {mode === 'send' && (
           <section>
-            <HeaderLabel icon={IconActivity} label="Spectrum" />
-            <Spectrum id={selectedSource.id} />
+            <div className="flex items-center justify-between mb-3">
+              <HeaderLabel icon={IconHeadphones} label="Monitor Send" />
+              <span className="text-2xs font-semibold tracking-normal text-white/22">Headphones</span>
+            </div>
+            <div className="grid gap-3">
+              <InspectorToggle
+                active={selectedSource.monitoring}
+                label="Monitor"
+                icon={IconHeadphones}
+                onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
+              />
+              <Knob
+                label="Pan"
+                value={selectedSource.pan || 0}
+                min={-1}
+                max={1}
+                display={formatPan(selectedSource.pan || 0)}
+                onChange={value => updateSource(selectedSource.id, { pan: value })}
+              />
+              <Knob
+                label="Send Trim"
+                value={linearToDb(selectedSource.volume)}
+                min={-60}
+                max={6}
+                display={`${Math.round(linearToDb(selectedSource.volume))} dB`}
+                onChange={value => updateSource(selectedSource.id, { volume: dbToLinear(value) })}
+              />
+            </div>
           </section>
+          )}
         </div>
       </aside>
     </>

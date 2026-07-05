@@ -64,9 +64,26 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
               onChange={(value) => {
                 onUpdate('aiEnabled', value)
                 toast.info(value ? 'AI Agent Activated' : 'AI Agent Standby')
-              }} 
+              }}
             />
           </SettingRow>
+
+          <SettingRow label="Require Command" hint="If enabled, AI only responds to messages starting with a command prefix. If disabled, AI evaluates ALL chat messages.">
+            <Toggle
+              value={settings.ai.requireCommand}
+              onChange={(value) => onUpdate('aiRequireCommand', value)}
+            />
+          </SettingRow>
+
+          {settings.ai.requireCommand && (
+            <SettingRow label="Command Prefixes" hint="Comma separated list of commands to trigger the AI.">
+              <TextInput
+                value={(settings.ai.commandPrefixes || []).join(', ')}
+                onChange={(value) => onUpdate('aiCommandPrefixes', value.split(',').map((prefix) => prefix.trim()).filter(Boolean))}
+                placeholder="!ai, !ask"
+              />
+            </SettingRow>
+          )}
 
           <SettingRow label="Endpoint URL" hint="Base URL for your AI provider (Ollama, OpenAI, etc).">
             <div className="flex gap-3 w-full">

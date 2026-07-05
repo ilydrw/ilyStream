@@ -2,23 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconLayout } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { LoupedeckIcon } from '../../components/ui/LoupedeckIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function LoupedeckPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <LoupedeckIcon size={48} />
-          </div>
-          <div>
-            <h1>Loupedeck Console</h1>
-            <p className="app-page-intro">
-              Professional console integration. Map stream actions, volume dials, and scene transitions to your Loupedeck Live or CT.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Loupedeck Console"
+        description="Map stream actions, volume dials, and scene transitions to your Loupedeck Live or CT."
+        iconNode={<LoupedeckIcon size={24} />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 

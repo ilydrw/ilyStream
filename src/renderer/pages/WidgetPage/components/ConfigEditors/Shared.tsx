@@ -14,10 +14,10 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold text-white/80">{label}</span>
+        <span className="text-[12px] font-semibold text-white/85">{label}</span>
       </div>
       {children}
-      {hint && <p className="text-[10px] text-white/30">{hint}</p>}
+      {hint && <p className="text-[11px] text-white/35 leading-snug">{hint}</p>}
     </div>
   )
 }
@@ -36,8 +36,8 @@ export function SwitchRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-white/80">{label}</p>
-        {hint && <p className="text-[10px] text-white/30 mt-0.5">{hint}</p>}
+        <p className="text-[12px] font-semibold text-white/85">{label}</p>
+        {hint && <p className="text-[11px] text-white/35 mt-0.5 leading-snug">{hint}</p>}
       </div>
       <Toggle value={value} onChange={onChange} />
     </div>
@@ -55,20 +55,22 @@ export function ColorRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs font-semibold text-white/80">{label}</span>
+      <span className="text-[12px] font-semibold text-white/85">{label}</span>
       <div className="flex items-center gap-2">
         <input
           type="color"
           value={value}
           onChange={(e) => onChange(e.currentTarget.value)}
-          className="w-9 h-9 rounded-md border border-white/10 cursor-pointer bg-transparent p-0"
+          className="w-10 h-10 rounded-md border border-white/10 cursor-pointer bg-transparent p-0"
           style={{ background: 'none' }}
+          aria-label={`${label} color picker`}
         />
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.currentTarget.value)}
-          className="app-input !h-9 !text-xs !px-2 font-mono w-24"
+          className="app-input !h-10 !text-[13px] !px-3 font-mono w-28"
+          aria-label={`${label} hex value`}
         />
       </div>
     </div>

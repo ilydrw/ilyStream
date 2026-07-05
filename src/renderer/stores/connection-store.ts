@@ -5,6 +5,8 @@ export interface ReconnectInfo {
   attempt: number
   maxAttempts: number
   delayMs: number
+  /** Human-friendly reason for waiting, e.g. "you're not live yet". */
+  reason?: string
 }
 
 export interface PlatformEventDiagnostic {

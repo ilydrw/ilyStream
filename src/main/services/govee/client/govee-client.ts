@@ -13,7 +13,7 @@ export class GoveeClient {
       headers: { 'Govee-API-Key': this.apiKey }
     })
     if (!res.ok) throw new Error(`Cloud API failed: ${res.status}`)
-    const data = await res.json()
+    const data = (await res.json()) as { data?: { devices?: any[] } }
     return data.data?.devices || []
   }
 

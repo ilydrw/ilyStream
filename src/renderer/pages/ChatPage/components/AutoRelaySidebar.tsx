@@ -2,7 +2,7 @@ import {IconBolt} from '@tabler/icons-react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { Toggle } from '../../../components/ui/Inputs'
 import { PLATFORM_LABELS, type RelayTagMode } from '../../../../shared/chat-relay'
-import type { Platform } from '../../../../main/platforms/types'
+import { STREAM_PLATFORMS, type Platform } from '../../../../main/platforms/types'
 import { relayTagModeOptions } from '../constants'
 
 interface AutoRelaySidebarProps {
@@ -53,7 +53,7 @@ export function AutoRelaySidebar({
         <div className="flex flex-col gap-3">
           <label className="text-xs font-semibold tracking-tight text-white/50">Mirror From</label>
           <div className="grid grid-cols-2 gap-2">
-            {(Object.keys(chatAutoRelayPlatforms) as Platform[]).map((p) => {
+            {(STREAM_PLATFORMS as readonly Platform[]).map((p) => {
               const enabled = chatAutoRelayPlatforms[p]
               return (
                 <button

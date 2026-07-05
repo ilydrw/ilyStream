@@ -18,7 +18,7 @@ interface TrackNodes {
   _sourceNode?: { node: AudioNode; stream?: MediaStream; type: 'stream' | 'bus' }
 }
 
-function hasLiveAudioTrack(stream?: MediaStream | null): stream is MediaStream {
+function hasLiveAudioTrack(stream?: MediaStream | null): boolean {
   return Boolean(stream?.getAudioTracks().some(track => track.readyState === 'live'))
 }
 
@@ -58,6 +58,15 @@ export function useBroadcastAudio(
   const activeSceneId = useStudioStore(s => s.activeSceneId)
   const activeScene = useStudioStore(s => s.scenes.find(scene => scene.id === s.activeSceneId))
   const smoothingFactor = useStudioStore(s => s.audioReactivity?.smoothing ?? 0.6)
+  // Stable identity for "which layers exist" — reconciliation only cares about
+  // membership, so keying the effect on the scene OBJECT made every layer
+  // drag/resize re-run the whole audio graph reconcile (mic churn + log spam).
+  const activeLayerIdsKey = (activeScene?.layers || []).map(layer => layer.id).sort().join('|')
+  const activeSceneRef2 = useRef(activeScene)
+  activeSceneRef2.current = activeScene
+  // Streams already warned about ("no live audio tracks") so a video-only
+  // camera warns once per stream instance instead of on every reconcile.
+  const warnedSilentStreamsRef = useRef(new WeakSet<MediaStream>())
   const smoothingRef = useRef(smoothingFactor)
 
   useEffect(() => {
@@ -307,8 +316,7 @@ export function useBroadcastAudio(
     const ctx = audioCtxRef.current
     const masterInput = masterInputRef.current
     if (!ctx || !masterInput || ctx.state === 'closed') return
-    console.log(`[useBroadcastAudio] Reconciling ${audioSources.length} sources. Output active: ${outputActive}`)
-    const activeLayerIds = new Set((activeScene?.layers || []).map(layer => layer.id))
+    const activeLayerIds = new Set((activeSceneRef2.current?.layers || []).map(layer => layer.id))
 
     // Update Master Bus
     const mVol = masterBus.muted ? 0 : masterBus.volume
@@ -417,7 +425,7 @@ export function useBroadcastAudio(
 
         const stream = (globalMic || video?.__ilyRawStream || video?.srcObject || standaloneMicStreamsRef.current[s.id]) as MediaStream | null
 
-        if (hasLiveAudioTrack(stream)) {
+        if (stream && hasLiveAudioTrack(stream)) {
           if (existingSource?.stream !== stream) {
             if (existingSource) existingSource.node.disconnect()
             try {
@@ -430,7 +438,10 @@ export function useBroadcastAudio(
             }
           }
         } else if (stream) {
-          console.warn(`[useBroadcastAudio] Stream found for ${s.id} but has no live audio tracks.`)
+          if (!warnedSilentStreamsRef.current.has(stream)) {
+            warnedSilentStreamsRef.current.add(stream)
+            console.warn(`[useBroadcastAudio] Stream found for ${s.id} but has no live audio tracks (video-only source — this is fine).`)
+          }
         } else if (s.type === 'mic' && !activeLayerIds.has(s.id) && s.deviceId && s.deviceId !== 'match' && !pendingStandaloneMicsRef.current.has(s.id)) {
           pendingStandaloneMicsRef.current.add(s.id)
           navigator.mediaDevices.getUserMedia({
@@ -443,7 +454,9 @@ export function useBroadcastAudio(
             standaloneMicStreamsRef.current[s.id] = micStream
             setSharedMicStream(s.id, micStream)
             try {
-              const settings = micStream.getAudioTracks()[0]?.getSettings()
+              const settings = micStream.getAudioTracks()[0]?.getSettings() as
+                | (MediaTrackSettings & { latency?: number })
+                | undefined
               console.log(`[useBroadcastAudio] Opened standalone mic stream for ${s.id}`, {
                 sampleRate: settings?.sampleRate,
                 channelCount: settings?.channelCount,
@@ -520,5 +533,5 @@ export function useBroadcastAudio(
       nodes.fxNodes = fxState.nodes
 
     }
-  }, [audioSources, masterBus, streamReady, enabled, outputActive, activeSceneId, activeScene])
+  }, [audioSources, masterBus, streamReady, enabled, outputActive, activeSceneId, activeLayerIdsKey])
 }

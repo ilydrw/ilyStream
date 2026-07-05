@@ -3,6 +3,7 @@ import {
   Platform,
   ConnectionStatus,
   AnyStreamEvent,
+  AnyPlatformConfig,
   PlatformConfig,
   PlatformChatCapability
 } from './types'
@@ -16,12 +17,36 @@ export interface ConnectorError {
   timestamp: Date
 }
 
+export class ConnectorFatalError extends Error {
+  readonly recoverable = false
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConnectorFatalError'
+  }
+}
+
+/**
+ * Signals that the channel is reachable but the streamer simply isn't live yet.
+ * This is a normal waiting state — not a failure — so the connector keeps
+ * calmly retrying and the UI shows a "waiting to go live" state rather than a
+ * red error. The `message` is a human-friendly reason surfaced to the renderer.
+ */
+export class ConnectorOfflineError extends Error {
+  readonly recoverable = true
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConnectorOfflineError'
+  }
+}
+
 export abstract class BaseConnector extends EventEmitter {
   public status: ConnectionStatus = 'disconnected'
   public abstract readonly platform: Platform
   public lastError: ConnectorError | null = null
 
-  protected currentConfig: PlatformConfig | null = null
+  protected currentConfig: AnyPlatformConfig | null = null
   protected userCache = new UserCache()
   
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -32,14 +57,17 @@ export abstract class BaseConnector extends EventEmitter {
   private autoReconnect = true
   private isIntentionalDisconnect = false
   private connecting = false
+  // Human-friendly reason we're waiting to (re)connect, e.g. "you're not live
+  // yet". Non-null only during a calm ConnectorOfflineError wait.
+  private waitingReason: string | null = null
 
   constructor() {
     super()
     this.setMaxListeners(50)
   }
 
-  abstract validateConfig(config: PlatformConfig): string | null
-  protected abstract doConnect(config: PlatformConfig): Promise<void>
+  abstract validateConfig(config: AnyPlatformConfig): string | null
+  protected abstract doConnect(config: AnyPlatformConfig): Promise<void>
   protected abstract doDisconnect(): Promise<void>
 
   async sendChatMessage(_text: string): Promise<void> {
@@ -53,7 +81,7 @@ export abstract class BaseConnector extends EventEmitter {
     return { platform: this.platform, canSend: false, reason: `${this.platform} outbound chat is not supported` }
   }
 
-  async connect(config: PlatformConfig): Promise<void> {
+  async connect(config: AnyPlatformConfig): Promise<void> {
     if (this.connecting) throw new Error(`Already connecting to ${this.platform}`)
     if (this.status === 'connected') await this.disconnect()
 
@@ -78,6 +106,7 @@ export abstract class BaseConnector extends EventEmitter {
       }
       this.connecting = false
       this.reconnectAttempts = 0
+      this.waitingReason = null
       this.setStatus('connected')
     } catch (error) {
       if (this.isIntentionalDisconnect) {
@@ -85,7 +114,13 @@ export abstract class BaseConnector extends EventEmitter {
         return
       }
       this.connecting = false
-      this.handleError(error, 'connect', true)
+      // "Not live yet" is a waiting state, not a failure: keep retrying quietly
+      // and resolve normally so the platform stays enabled and no red error shows.
+      if (error instanceof ConnectorOfflineError) {
+        this.handleWaiting(error)
+        return
+      }
+      this.handleError(error, 'connect', isRecoverableConnectorError(error))
       throw error
     }
   }
@@ -93,6 +128,7 @@ export abstract class BaseConnector extends EventEmitter {
   async disconnect(): Promise<void> {
     this.isIntentionalDisconnect = true
     this.connecting = false
+    this.waitingReason = null
     this.clearReconnectTimer()
     try { await this.doDisconnect() } catch (error) { console.error(`[${this.platform}] Error during disconnect:`, error) }
     this.setStatus('disconnected')
@@ -114,12 +150,29 @@ export abstract class BaseConnector extends EventEmitter {
   }
 
   protected handleError(error: unknown, context: string, recoverable = true): void {
+    // A genuine error supersedes any "waiting to go live" state.
+    this.waitingReason = null
     const message = formatConnectorErrorMessage(error)
     console.error(`[${this.platform}] ${context}: ${message}`)
     this.lastError = { platform: this.platform, context, message, recoverable, timestamp: new Date() }
     this.setStatus('error')
     this.emit('error', this.lastError)
     if (recoverable && !this.isIntentionalDisconnect) this.scheduleReconnect()
+  }
+
+  /**
+   * Enter (or stay in) the calm "waiting to go live" state: no red error, keep
+   * the connecting status, and keep retrying. Used when the channel is reachable
+   * but the streamer isn't live yet.
+   */
+  protected handleWaiting(error: ConnectorOfflineError): void {
+    const message = error.message
+    console.log(`[${this.platform}] Waiting: ${message}`)
+    this.waitingReason = message
+    this.lastError = null
+    // Presented as "connecting" so the UI shows a calm retry state, not an error.
+    this.setStatus('connecting')
+    this.scheduleReconnect(message)
   }
 
   protected emitEvent(event: AnyStreamEvent): void {
@@ -134,7 +187,7 @@ export abstract class BaseConnector extends EventEmitter {
     this.emit('status', this.platform, status)
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(reason?: string): void {
     if (!this.autoReconnect || this.isIntentionalDisconnect) return
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(`[${this.platform}] Max reconnect attempts reached`)
@@ -144,7 +197,17 @@ export abstract class BaseConnector extends EventEmitter {
     this.clearReconnectTimer()
     this.reconnectAttempts++
     const delay = Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1) + Math.random() * 1000, this.maxReconnectDelayMs)
-    console.log(`[${this.platform}] Reconnecting in ${Math.round(delay / 1000)}s`)
+    const resolvedReason = reason ?? this.waitingReason ?? undefined
+    console.log(`[${this.platform}] Reconnecting in ${Math.round(delay / 1000)}s${resolvedReason ? ` (${resolvedReason})` : ''}`)
+    // Surface retry progress (and the waiting reason) to the renderer. Previously
+    // this event was never emitted, so reconnect progress was invisible.
+    this.emit('reconnecting', {
+      platform: this.platform,
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+      delayMs: Math.round(delay),
+      reason: resolvedReason
+    })
     this.reconnectTimer = setTimeout(async () => {
       if (this.isIntentionalDisconnect || !this.currentConfig) return
       this.setStatus('connecting')
@@ -153,10 +216,15 @@ export abstract class BaseConnector extends EventEmitter {
         await this.doConnect(this.currentConfig)
         this.connecting = false
         this.reconnectAttempts = 0
+        this.waitingReason = null
         this.setStatus('connected')
       } catch (error) {
         this.connecting = false
-        this.scheduleReconnect()
+        if (error instanceof ConnectorOfflineError) {
+          this.handleWaiting(error)
+          return
+        }
+        this.handleError(error, 'reconnect', isRecoverableConnectorError(error))
       }
     }, delay)
   }
@@ -170,6 +238,10 @@ export abstract class BaseConnector extends EventEmitter {
 
   setAutoReconnect(enabled: boolean): void { this.autoReconnect = enabled }
   setMaxReconnectAttempts(max: number): void { this.maxReconnectAttempts = max }
+}
+
+export function isRecoverableConnectorError(error: unknown): boolean {
+  return !(error instanceof ConnectorFatalError)
 }
 
 export function formatConnectorErrorMessage(error: unknown): string {

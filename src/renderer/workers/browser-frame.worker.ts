@@ -53,7 +53,11 @@ self.onmessage = (event: MessageEvent) => {
   const imageData = new ImageData(new Uint8ClampedArray(targetBuffer), targetWidth, targetHeight)
   createImageBitmap(imageData).then(bitmap => {
     const blankThreshold = Math.max(4, Math.min(96, Math.floor((targetWidth * targetHeight) * 0.00003)))
-    self.postMessage({ bitmap, id: event.data.id, width: targetWidth, height: targetHeight, isBlank: visiblePixels < blankThreshold }, [bitmap])
+    // Worker-scope postMessage overload (message, transfer) — the DOM lib types `self` as Window.
+    ;(self.postMessage as (message: unknown, transfer: Transferable[]) => void)(
+      { bitmap, id: event.data.id, width: targetWidth, height: targetHeight, isBlank: visiblePixels < blankThreshold },
+      [bitmap]
+    )
   })
 }
 

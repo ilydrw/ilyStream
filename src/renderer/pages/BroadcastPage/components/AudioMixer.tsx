@@ -1,8 +1,5 @@
-import React from 'react'
-import {
-  IconActivity,
-  IconAdjustmentsHorizontal
-} from '@tabler/icons-react'
+import React, { useMemo, useState } from 'react'
+import { IconAdjustmentsHorizontal } from '@tabler/icons-react'
 import type { StudioScene } from '../../../../shared/studio'
 import { ContextMenu } from '../../../components/ui/ContextMenu'
 import { ChannelStrip } from './AudioMixer/ChannelStrip'
@@ -18,46 +15,56 @@ interface Props {
 
 export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, streamReady = 0 }) => {
   const logic = useAudioMixerLogic(activeScene, videoRefs, devices, streamReady)
+  const [mixerMode, setMixerMode] = useState<'mix' | 'fx' | 'send'>('mix')
+  const [collapsedTracks, setCollapsedTracks] = useState<Set<string>>(() => new Set())
+  const channelCount = logic.audioSources.length + 1
+  const masterMeter = logic.meters.master || logic.mixMeters(logic.audioSources.map(source => logic.meters[source.id]))
+  const toggleCollapsedTrack = (id: string) => {
+    setCollapsedTracks(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const trackMenuBuilders = useMemo(() => ({
+    collapsed: collapsedTracks,
+    toggle: toggleCollapsedTrack
+  }), [collapsedTracks])
 
   return (
-    <div className="relative flex h-full min-h-0 bg-[#030303] text-white overflow-hidden select-none">
-      <section className="flex-1 min-w-0 flex flex-col">
-        <div className="h-12 shrink-0 px-5 border-b border-white/[0.06] flex items-center justify-between bg-[#070707]">
-          <div className="flex items-center gap-3">
-            <div className="h-7 w-7 rounded-lg bg-accent/12 border border-accent/25 text-accent flex items-center justify-center">
-              <IconAdjustmentsHorizontal size={15} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-normal text-white/55">Audio Console</div>
-              <div className="text-2xs font-semibold tracking-normal text-white/18">Program mix, monitor mix, inserts</div>
-            </div>
+    <div className="pro-mixer-root relative flex h-full min-h-0 text-white overflow-hidden select-none">
+      <section className="pro-mixer-main flex-1 min-w-0 flex flex-col">
+        <div className="pro-mixer-head">
+          <div className="pro-mixer-title">
+            <IconAdjustmentsHorizontal size={14} />
+            <span>Mixer</span>
+            <span className="pro-mixer-count">{channelCount} ch</span>
           </div>
-          <div className="flex items-center gap-2 text-2xs font-semibold tracking-normal text-white/25">
-            <IconActivity size={13} className="text-accent" />
-              48 kHz stereo engine
+          <div className="pro-mixer-tools">
+            {/* Engine readout — bullet-separator + mono text matches the
+                design's page-broadcast.jsx mixer head exactly. The leading
+                Activity icon from the prior version was a non-design addition. */}
+            <span className="pro-mixer-engine" title="Target loudness for stream-safe output. LUFS measures perceived loudness over time.">
+              Target −14 LUFS · 48 kHz · stereo
+            </span>
+            <div className="pro-mixer-segment" aria-label="Mixer mode">
+              {(['mix', 'fx', 'send'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={mixerMode === mode ? 'is-active' : ''}
+                  onClick={() => setMixerMode(mode)}
+                >
+                  {mode === 'mix' ? 'Mix' : mode === 'fx' ? 'FX' : 'Send'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-x-auto custom-scrollbar-horizontal">
-          <div className="h-full flex items-stretch gap-3 p-4">
-            <ChannelStrip
-              source={logic.masterBus}
-              meter={logic.meters.master || logic.mixMeters(logic.audioSources.map(source => logic.meters[source.id]))}
-              status={logic.trackStatuses.master || { hasStream: true, hasAudio: true, live: true, label: 'Master' }}
-              selected={logic.selectedSource.id === 'master'}
-              isMaster
-              onSelect={() => logic.setSelectedAudioSource('master')}
-              onUpdate={updates => logic.updateSource('master', updates)}
-              onContextMenu={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                logic.setSelectedAudioSource('master')
-                logic.setContextMenu({ x: event.clientX, y: event.clientY, source: logic.masterBus })
-              }}
-            />
-
-            <div className="w-px shrink-0 bg-white/[0.07] my-3" />
-
+        <div className="pro-mixer-scroll flex-1 min-h-0 overflow-x-auto custom-scrollbar-horizontal">
+          <div className="pro-mixer-strip-row h-full flex">
             {logic.audioSources.map((source, index) => (
               <ChannelStrip
                 key={source.id}
@@ -65,9 +72,11 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
                 meter={logic.meters[source.id] || { left: 0, right: 0, peak: 0 }}
                 status={logic.trackStatuses[source.id] || { hasStream: false, hasAudio: false, live: false, label: 'No stream' }}
                 selected={logic.selectedSource.id === source.id}
+                collapsed={collapsedTracks.has(source.id)}
                 locked={logic.getTrackLocked(source)}
                 dragActive={logic.dragIndex === index}
                 onSelect={() => logic.setSelectedAudioSource(source.id)}
+                onToggleCollapse={() => toggleCollapsedTrack(source.id)}
                 onUpdate={updates => logic.updateSource(source.id, updates)}
                 onDragStart={() => logic.setDragIndex(index)}
                 onDragOver={(event) => event.preventDefault()}
@@ -80,6 +89,26 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
                 }}
               />
             ))}
+
+            <div className="pro-mixer-divider" />
+
+            <ChannelStrip
+              source={logic.masterBus}
+              meter={masterMeter}
+              status={logic.trackStatuses.master || { hasStream: true, hasAudio: true, live: true, label: 'Master' }}
+              selected={logic.selectedSource.id === 'master'}
+              collapsed={collapsedTracks.has('master')}
+              isMaster
+              onSelect={() => logic.setSelectedAudioSource('master')}
+              onToggleCollapse={() => toggleCollapsedTrack('master')}
+              onUpdate={updates => logic.updateSource('master', updates)}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                logic.setSelectedAudioSource('master')
+                logic.setContextMenu({ x: event.clientX, y: event.clientY, source: logic.masterBus })
+              }}
+            />
           </div>
         </div>
       </section>
@@ -88,6 +117,7 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
         <MixerInspector
           selectedSource={logic.selectedSource}
           selectedMeter={logic.selectedMeter}
+          mode={mixerMode}
           trackStatuses={logic.trackStatuses}
           sidebarWidth={logic.sidebarWidth}
           setIsResizingSidebar={logic.setIsResizingSidebar}
@@ -105,7 +135,15 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
         <ContextMenu
           x={logic.contextMenu.x}
           y={logic.contextMenu.y}
-          items={logic.buildTrackMenu(logic.contextMenu.source)}
+          items={[
+            {
+              id: 'collapse',
+              label: trackMenuBuilders.collapsed.has(logic.contextMenu.source.id) ? 'Expand Track' : 'Collapse Track',
+              onClick: () => trackMenuBuilders.toggle(logic.contextMenu!.source.id)
+            },
+            { id: 'collapse-divider', label: '', divider: true },
+            ...logic.buildTrackMenu(logic.contextMenu.source)
+          ]}
           onClose={() => logic.setContextMenu(null)}
         />
       )}

@@ -12,13 +12,13 @@ import {
 import type { ChatMessage } from '../stores/chat-store'
 
 export function getSendablePlatforms(
-  capabilities: Record<Platform, PlatformChatCapability>
+  capabilities: Partial<Record<Platform, PlatformChatCapability>>
 ): Platform[] {
   return getSharedSendablePlatforms(capabilities)
 }
 
 export function getRelayTargets(
-  capabilities: Record<Platform, PlatformChatCapability>,
+  capabilities: Partial<Record<Platform, PlatformChatCapability>>,
   sourcePlatform: Platform
 ): Platform[] {
   return getSendablePlatforms(capabilities).filter((platform) => platform !== sourcePlatform)

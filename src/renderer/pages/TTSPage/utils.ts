@@ -4,6 +4,8 @@ import { getElevenLabsBillableCharacters } from '../../lib/elevenlabs-speech'
 import { speakWithKokoro, stopKokoroSpeech } from '../../lib/kokoro-speech'
 import { speakWithElevenLabs, stopElevenLabsSpeech } from '../../lib/elevenlabs-speech'
 import { previewFallbackText } from './constants'
+import { getElevenLabsApiKey } from '../../../shared/elevenlabs-keys'
+import type { AppSettings } from '../../../shared/app-settings'
 
 export function cloneProfile(profile: VoiceProfile): VoiceProfile {
   return JSON.parse(JSON.stringify(profile)) as VoiceProfile
@@ -69,10 +71,11 @@ export function getPreviewSpeechText(text: string): string {
   return (text.trim() || previewFallbackText).slice(0, 1000)
 }
 
-export function confirmElevenLabsSpend(profile: VoiceProfile, text: string, apiKey: string): boolean {
+export function confirmElevenLabsSpend(profile: VoiceProfile, text: string, settings: AppSettings): boolean {
   if (profile.provider !== 'elevenlabs') return true
+  const apiKey = getElevenLabsApiKey(settings, profile.elevenlabsApiKeyId)
   if (!apiKey) {
-    alert('Configure your ElevenLabs API key in Settings first.')
+    alert('Configure an ElevenLabs workspace key in Voice Engine first.')
     return false
   }
   return confirm(
@@ -86,7 +89,7 @@ export async function speakProfile(
   text: string,
   setIsSpeaking: (v: boolean) => void,
   utteranceRef: React.MutableRefObject<SpeechSynthesisUtterance | null>,
-  elevenlabsApiKey: string
+  settings: AppSettings
 ): Promise<void> {
   const provider = profile.provider ?? 'system'
 
@@ -95,8 +98,11 @@ export async function speakProfile(
   try {
     if (provider === 'kokoro') {
       await speakWithKokoro(id, text, profile)
+      setIsSpeaking(false)
     } else if (provider === 'elevenlabs') {
+      const elevenlabsApiKey = getElevenLabsApiKey(settings, profile.elevenlabsApiKeyId)
       await speakWithElevenLabs(id, text, profile, elevenlabsApiKey)
+      setIsSpeaking(false)
     } else {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)

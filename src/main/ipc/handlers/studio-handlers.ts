@@ -303,9 +303,8 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     return { success: true }
   })
 
-  // Persistence
+  // Persistence — routine and frequent, so no logging here.
   ipcMain.handle('studio:save-state', (_event, state) => {
-    console.log('[StudioHandlers] Saving state to DB...')
     db.setSetting('studio_state_v1', state)
     return true
   })

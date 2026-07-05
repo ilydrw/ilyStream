@@ -2,22 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconLayoutGrid } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { NanoleafIcon } from '../../components/ui/NanoleafIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function NanoleafPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <NanoleafIcon size={48} />
-          <div>
-            <h1>Nanoleaf Panels</h1>
-            <p className="app-page-intro">
-              Synchronize your Nanoleaf Shapes, Lines, and Canvas with your stream. 
-              Create immersive atmospheric lighting that reacts to gifts, subs, and raids.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Nanoleaf Panels"
+        description="Synchronize Nanoleaf Shapes, Lines, and Canvas with stream events."
+        iconNode={<NanoleafIcon size={24} />}
+      />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">

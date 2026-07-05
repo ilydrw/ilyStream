@@ -25,7 +25,7 @@ type ConfigEditorProps = {
 
 type ConfigEditorComponent = ComponentType<ConfigEditorProps>
 
-const CONFIG_EDITORS = {
+const CONFIG_EDITORS: Partial<Record<Widget['type'], ConfigEditorComponent>> = {
   'now-playing': NowPlayingConfigEditor,
   chat: ChatConfigEditor,
   'follower-goal': FollowerGoalConfigEditor,
@@ -43,7 +43,7 @@ const CONFIG_EDITORS = {
   'likes-tracker': LikesTrackerConfigEditor,
   alerts: AlertsConfigEditor,
   leaderboard: LeaderboardConfigEditor
-} satisfies Partial<Record<Widget['type'], ConfigEditorComponent>>
+}
 
 export function ConfigEditor({
   draft,

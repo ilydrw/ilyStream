@@ -28,10 +28,17 @@ export interface WidgetTemplate {
 
 export const WIDGET_TEMPLATES: WidgetTemplate[] = [
   {
-    type: 'chat',
+    type: 'chat-unified',
     label: 'Unified Chat',
+    icon: IconMessage,
+    description: 'High-performance cross-platform chat feed with featured message highlights.',
+    defaultConfig: DEFAULT_CHAT_UNIFIED_CONFIG as unknown as Record<string, unknown>
+  },
+  {
+    type: 'chat',
+    label: 'Classic Chat Feed',
     icon: IconMessageCircle,
-    description: 'Live cross-platform chat feed with glassmorphism styling.',
+    description: 'Legacy full-screen chat feed with glassmorphism styling.',
     defaultConfig: DEFAULT_CHAT_CONFIG as unknown as Record<string, unknown>
   },
   {
@@ -124,12 +131,5 @@ export const WIDGET_TEMPLATES: WidgetTemplate[] = [
     icon: IconHeart,
     description: 'Live TikTok-style top likers widget with total likes and animated rank changes.',
     defaultConfig: DEFAULT_LIKES_TRACKER_CONFIG as unknown as Record<string, unknown>
-  },
-  {
-    type: 'chat-unified',
-    label: 'Ninja Chat Feed',
-    icon: IconMessage,
-    description: 'High-performance unified chat with featured message highlights.',
-    defaultConfig: DEFAULT_CHAT_UNIFIED_CONFIG as unknown as Record<string, unknown>
   }
 ]

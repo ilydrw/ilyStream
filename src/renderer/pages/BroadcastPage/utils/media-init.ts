@@ -1,23 +1,75 @@
-import type { StudioLayer } from '../../../../shared/studio'
+import { resolveLayerLayout, type StudioLayer } from '../../../../shared/studio'
+import {
+  MAX_CAMERA_CAPTURE_FPS,
+  MAX_CAMERA_CAPTURE_HEIGHT,
+  MAX_CAMERA_CAPTURE_WIDTH
+} from './camera-capture'
 
 export interface ManagedMediaElement extends HTMLMediaElement {
   __ilyCleanup?: () => void
   __ilySignature?: string
   __ilyRawStream?: MediaStream
+  __ilyDeviceKey?: string
 }
 
-export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceInfo[]): MediaStreamConstraints {
+export type MediaAspectRatio = '16:9' | '9:16'
+
+export function shouldInitializeLayerMedia(
+  layer: StudioLayer,
+  activeAspectRatios: readonly MediaAspectRatio[]
+): boolean {
+  if (layer.type === 'audio') return true
+  if (layer.type !== 'camera' && layer.type !== 'display') return false
+
+  const ratios: readonly MediaAspectRatio[] = activeAspectRatios.length > 0 ? activeAspectRatios : ['16:9']
+  return ratios.some(ratio => resolveLayerLayout(layer, ratio).visible)
+}
+
+export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceInfo[], degradeLevel = 0): MediaStreamConstraints {
   const deviceId = String(layer.config.deviceId || '')
   const label = layer.name || ''
-  const captureWidth = clampNumber(layer.config.captureWidth, 1920, 320, 3840)
-  const captureHeight = clampNumber(layer.config.captureHeight, 1080, 180, 2160)
-  const captureFps = clampNumber(layer.config.captureFps, 30, 15, 60)
-  
-  const audioId = resolveCameraAudioDeviceId(layer, devices)
-  const audioConstraints = audioId ? buildLowLatencyAudioConstraints(audioId) : false
+
+  // Degrade level rules:
+  // degradeLevel >= 1: Disable audio entirely
+  // degradeLevel >= 2: Limit FPS to max 30
+  // degradeLevel >= 3: Limit resolution to max 1280x720 (and FPS to max 30)
+  // degradeLevel >= 4: Use a low-bandwidth 640x360@15 fallback
+  // degradeLevel >= 5: Request the device only and let Chromium pick any mode
+  let captureWidth = clampNumber(layer.config.captureWidth, 1920, 320, MAX_CAMERA_CAPTURE_WIDTH)
+  let captureHeight = clampNumber(layer.config.captureHeight, 1080, 180, MAX_CAMERA_CAPTURE_HEIGHT)
+  let captureFps = clampNumber(layer.config.captureFps, 30, 15, MAX_CAMERA_CAPTURE_FPS)
 
   const videoDevices = devices.filter(d => d.kind === 'videoinput')
   const exists = videoDevices.find(d => d.deviceId === deviceId)
+
+  if (degradeLevel >= 2) {
+    captureFps = Math.min(captureFps, 30)
+  }
+  if (degradeLevel >= 3) {
+    captureWidth = Math.min(captureWidth, 1280)
+    captureHeight = Math.min(captureHeight, 720)
+  }
+  if (degradeLevel >= 4) {
+    captureWidth = Math.min(captureWidth, 640)
+    captureHeight = Math.min(captureHeight, 360)
+    captureFps = Math.min(captureFps, 15)
+  }
+
+  const audioId = (degradeLevel >= 1 || layer.config.audioDeviceId === 'none') ? undefined : resolveCameraAudioDeviceId(layer, devices)
+  const audioConstraints = audioId ? buildLowLatencyAudioConstraints(audioId) : false
+  const videoQualityConstraints = degradeLevel >= 5
+    ? {}
+    : {
+        width: { ideal: captureWidth },
+        height: { ideal: captureHeight },
+        frameRate: { ideal: captureFps }
+      }
+
+  if (degradeLevel > 0) {
+    console.warn(`[media-init] Degrading camera "${label || deviceId}" constraints (level ${degradeLevel}): audio=${!!audioConstraints}, fps=${captureFps}, res=${captureWidth}x${captureHeight}`)
+  }
+
+  
   
   // Device IDs can change on Windows, but a configured capture-card layer
   // must never silently fall back to the default webcam.
@@ -28,9 +80,7 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
       return {
         video: {
           deviceId: { exact: match.deviceId },
-          width: { ideal: captureWidth },
-          height: { ideal: captureHeight },
-          frameRate: { ideal: captureFps }
+          ...videoQualityConstraints
         },
         audio: audioConstraints
       }
@@ -41,9 +91,7 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
     return {
       video: {
         deviceId: { exact: exists.deviceId },
-        width: { ideal: captureWidth },
-        height: { ideal: captureHeight },
-        frameRate: { ideal: captureFps }
+        ...videoQualityConstraints
       },
       audio: audioConstraints
     }
@@ -55,9 +103,7 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
 
   return {
     video: {
-      width: { ideal: captureWidth },
-      height: { ideal: captureHeight },
-      frameRate: { ideal: captureFps }
+      ...videoQualityConstraints
     },
     audio: audioConstraints
   }
@@ -65,7 +111,8 @@ export function buildCameraConstraints(layer: StudioLayer, devices: MediaDeviceI
 
 export function resolveCameraAudioDeviceId(layer: StudioLayer, devices: MediaDeviceInfo[]): string | undefined {
   const configuredAudioId = String(layer.config.audioDeviceId || '')
-  if (configuredAudioId && configuredAudioId !== 'match' && configuredAudioId !== 'none') {
+  if (configuredAudioId === 'none') return undefined
+  if (configuredAudioId && configuredAudioId !== 'match') {
     const exists = devices.some(d => d.kind === 'audioinput' && d.deviceId === configuredAudioId)
     if (exists) return configuredAudioId
   }
@@ -167,7 +214,7 @@ export function getMediaSignature(layer: StudioLayer, devices: MediaDeviceInfo[]
     parts.push(
       `camera-audio:${layer.config.audioDeviceId || resolvedAudioId || 'none'}`,
       `capture:${layer.config.captureWidth || 1920}x${layer.config.captureHeight || 1080}@${layer.config.captureFps || 30}`,
-      `stabilize:${layer.config.stabilize !== false}`
+      `stabilize:${layer.config.stabilize !== false}:source-native`
     )
   }
 
@@ -188,7 +235,8 @@ export function buildRawAudioConstraints(deviceId?: string): MediaTrackConstrain
 }
 
 export function buildLowLatencyAudioConstraints(deviceId?: string, channelCount = 2): MediaTrackConstraints {
-  const constraints: MediaTrackConstraints = {
+  // `latency` is a Chromium-only constraint missing from the standard lib types.
+  const constraints: MediaTrackConstraints & { latency?: ConstrainDouble } = {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
@@ -215,6 +263,23 @@ export function formatMediaError(error: unknown): string {
 export function isTransientMediaError(error: unknown): boolean {
   const name = (error as any)?.name
   return ['AbortError', 'NotReadableError', 'TrackStartError', 'TransientNotFoundError', 'NotFoundError'].includes(name)
+}
+
+export function resolveStabilizedVideoTarget(
+  layer: StudioLayer,
+  stream: MediaStream,
+  fallback: { width: number; height: number; fps: number }
+): { width: number; height: number; fps: number } {
+  const settings = stream.getVideoTracks()[0]?.getSettings?.() || {}
+  const fallbackWidth = clampNumber(layer.config.captureWidth, fallback.width, 1, 7680)
+  const fallbackHeight = clampNumber(layer.config.captureHeight, fallback.height, 1, 4320)
+  const fallbackFps = clampNumber(layer.config.captureFps, fallback.fps, 1, MAX_CAMERA_CAPTURE_FPS)
+
+  return {
+    width: clampNumber(settings.width, fallbackWidth, 1, 7680),
+    height: clampNumber(settings.height, fallbackHeight, 1, 4320),
+    fps: clampNumber(settings.frameRate, fallbackFps, 1, MAX_CAMERA_CAPTURE_FPS)
+  }
 }
 
 export function drawVideoCover(
@@ -304,16 +369,16 @@ export function createStabilizedCameraStream(
   sourceVideo.playsInline = true
   sourceVideo.setAttribute('playsinline', '')
   Object.assign(sourceVideo.style, {
-    position: 'fixed',
-    left: '-10000px',
-    top: '0',
+    position: 'absolute',
     width: '1px',
     height: '1px',
-    opacity: '0',
+    opacity: '1',
+    zIndex: '-9999',
     pointerEvents: 'none'
   })
 
   if (!ctx || typeof canvas.captureStream !== 'function') {
+    if (sourceVideo.parentNode) sourceVideo.parentNode.removeChild(sourceVideo)
     return {
       stream: sourceStream,
       cleanup: () => sourceStream.getTracks().forEach(track => track.stop())
@@ -370,6 +435,77 @@ export function createStabilizedCameraStream(
       sourceStream.getTracks().forEach(track => track.stop())
       sourceVideo.srcObject = null
       sourceVideo.remove()
+    }
+  }
+}
+
+export function createNativeFFmpegStream(
+  deviceName: string,
+  target: { width: number; height: number; fps: number }
+): { stream: MediaStream; cleanup: () => void } {
+  const sourceImg = new Image()
+  // Disable caching with a timestamp
+  sourceImg.src = `http://127.0.0.1:44444/camera?device=${encodeURIComponent(deviceName)}&width=${target.width}&height=${target.height}&fps=${target.fps}&t=${Date.now()}`
+  sourceImg.crossOrigin = 'anonymous'
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d', {
+    alpha: false,
+    desynchronized: true,
+    willReadFrequently: true
+  })
+
+  canvas.width = target.width
+  canvas.height = target.height
+
+  if (!ctx || typeof canvas.captureStream !== 'function') {
+    // Fallback if canvas is completely broken (should never happen)
+    return { stream: new MediaStream(), cleanup: () => {} }
+  }
+
+  const canvasStream = canvas.captureStream(target.fps)
+  
+  // Append to DOM to prevent Chrome from pausing the MJPEG stream
+  sourceImg.style.position = 'absolute'
+  sourceImg.style.width = '1px'
+  sourceImg.style.height = '1px'
+  sourceImg.style.opacity = '1'
+  sourceImg.style.zIndex = '-9999'
+  sourceImg.style.pointerEvents = 'none'
+  document.body.appendChild(sourceImg)
+
+  let disposed = false
+  let frameId = 0
+
+  const draw = () => {
+    if (disposed) return
+    frameId = requestAnimationFrame(draw)
+
+    if (sourceImg.naturalWidth > 0) {
+      // Scale to fit/cover
+      const scale = Math.max(canvas.width / sourceImg.naturalWidth, canvas.height / sourceImg.naturalHeight)
+      const w = sourceImg.naturalWidth * scale
+      const h = sourceImg.naturalHeight * scale
+      const x = (canvas.width - w) / 2
+      const y = (canvas.height - h) / 2
+      ctx.drawImage(sourceImg, x, y, w, h)
+    } else {
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+  }
+
+  frameId = requestAnimationFrame(draw)
+
+  return {
+    stream: canvasStream,
+    cleanup: () => {
+      disposed = true
+      cancelAnimationFrame(frameId)
+      sourceImg.src = ''
+      if (sourceImg.parentNode) sourceImg.parentNode.removeChild(sourceImg)
+      canvasStream.getTracks().forEach(t => t.stop())
+      sourceImg.src = ''
     }
   }
 }

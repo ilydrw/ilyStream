@@ -1,31 +1,39 @@
-import type { ReactNode, SVGProps } from 'react'
+import { useId, type ReactNode, type SVGProps } from 'react'
 
-interface NavIconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
+interface NavIconProps extends Omit<SVGProps<SVGSVGElement>, 'children' | 'stroke'> {
   size?: number
   stroke?: number
 }
 
-function Ic({ children, size = 16, stroke = 1.5, ...rest }: NavIconProps & { children: ReactNode }) {
+type GradientIconChildren = ReactNode | ((gradientId: string) => ReactNode)
+
+function useGradientId(prefix: string) {
+  return `${prefix}-${useId().replace(/:/g, '')}`
+}
+
+function Ic({ children, size = 16, stroke = 1.5, ...rest }: NavIconProps & { children: GradientIconChildren }) {
+  const gradientId = useGradientId('nav-icon-gradient')
+
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="url(#navIconGradient)"
+      stroke={`url(#${gradientId})`}
       strokeWidth={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"
       {...rest}
     >
       <defs>
-        <linearGradient id="navIconGradient" gradientUnits="userSpaceOnUse" x1="22" y1="22" x2="2" y2="2">
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="22" y1="22" x2="2" y2="2">
           <stop offset="0" stopColor="var(--icon-gradient-from)" />
           <stop offset="0.5" stopColor="var(--icon-gradient-via)" />
           <stop offset="1" stopColor="var(--icon-gradient-to)" />
         </linearGradient>
       </defs>
-      {children}
+      {typeof children === 'function' ? children(gradientId) : children}
     </svg>
   )
 }
@@ -49,13 +57,30 @@ export function IconActivity(props: NavIconProps) {
   )
 }
 
+export function IconHealthCenter(props: NavIconProps) {
+  return (
+    <Ic {...props}>
+      <rect x="3.5" y="4" width="17" height="16" rx="3" />
+      <path d="M7.25 8.25h4.5" />
+      <path d="M7.25 12h3.25" />
+      <path d="M7.25 15.75h2.5" />
+      <circle cx="16.5" cy="8.25" r="1.25" />
+      <path d="m12.75 15.25 1.65 1.65 3.65-4.15" />
+    </Ic>
+  )
+}
+
 export function IconStats(props: NavIconProps) {
   return (
     <Ic {...props}>
-      <path d="M3 15h3l2-6 3 10 3-14 3 10h4" />
-      <circle cx="6" cy="15" r="1" fill="url(#navIconGradient)" stroke="none" />
-      <circle cx="11" cy="19" r="1" fill="url(#navIconGradient)" stroke="none" />
-      <circle cx="17" cy="15" r="1" fill="url(#navIconGradient)" stroke="none" />
+      {(gradientId) => (
+        <>
+          <path d="M3 15h3l2-6 3 10 3-14 3 10h4" />
+          <circle cx="6" cy="15" r="1" fill={`url(#${gradientId})`} stroke="none" />
+          <circle cx="11" cy="19" r="1" fill={`url(#${gradientId})`} stroke="none" />
+          <circle cx="17" cy="15" r="1" fill={`url(#${gradientId})`} stroke="none" />
+        </>
+      )}
     </Ic>
   )
 }
@@ -105,21 +130,44 @@ export function IconBolt(props: NavIconProps) {
   )
 }
 
+export function IconAutomation(props: NavIconProps) {
+  return (
+    <Ic {...props}>
+      {(gradientId) => (
+        <>
+          <path d="M12 3.25 19 7.3v8.1l-7 4.05-7-4.05V7.3l7-4.05Z" />
+          <path d="M4 12H2.5" />
+          <path d="M21.5 12H20" />
+          <path d="M12 2v1.25" />
+          <path d="M12 20.75V22" />
+          <path
+            d="M13.1 7.25 9.4 12.2h2.85l-1.05 4.55 3.95-5.75H12.3l.8-3.75Z"
+            fill={`url(#${gradientId})`}
+            stroke="none"
+          />
+        </>
+      )}
+    </Ic>
+  )
+}
+
 export function IconTriggerRelay({ size = 16, stroke = 2, ...rest }: NavIconProps) {
+  const gradientId = useGradientId('trigger-relay-gradient')
+
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="url(#triggerRelayGradient)"
+      stroke={`url(#${gradientId})`}
       strokeWidth={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"
       {...rest}
     >
       <defs>
-        <linearGradient id="triggerRelayGradient" gradientUnits="userSpaceOnUse" x1="22" y1="22" x2="2" y2="2">
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="22" y1="22" x2="2" y2="2">
           <stop offset="0" stopColor="var(--icon-gradient-from)" />
           <stop offset="0.5" stopColor="var(--icon-gradient-via)" />
           <stop offset="1" stopColor="var(--icon-gradient-to)" />
@@ -172,7 +220,12 @@ export function IconSoundboard(props: NavIconProps) {
 export function IconFx(props: NavIconProps) {
   return (
     <Ic {...props}>
-      <path d="M4 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4" />
+      <rect x="9" y="3" width="6" height="10" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 17.5V21" />
+      <path d="M8.5 21h7" />
+      <path d="M4 7.75c-1.35 2.3-1.35 6.2 0 8.5" />
+      <path d="M20 7.75c1.35 2.3 1.35 6.2 0 8.5" />
     </Ic>
   )
 }
@@ -206,15 +259,30 @@ export function IconWidgets(props: NavIconProps) {
   )
 }
 
+export function IconCreate(props: NavIconProps) {
+  return (
+    <Ic {...props}>
+      <rect x="5" y="4.5" width="14" height="14" rx="2.5" />
+      <path d="M3 9.25V17a4 4 0 0 0 4 4h7.75" />
+      <path d="M12 8.25v6.5" />
+      <path d="M8.75 11.5h6.5" />
+    </Ic>
+  )
+}
+
 export function IconMixer(props: NavIconProps) {
   return (
     <Ic {...props}>
-      <line x1="4" y1="6" x2="20" y2="6" />
-      <circle cx="9" cy="6" r="2" fill="url(#navIconGradient)" stroke="none" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <circle cx="15" cy="12" r="2" fill="url(#navIconGradient)" stroke="none" />
-      <line x1="4" y1="18" x2="20" y2="18" />
-      <circle cx="8" cy="18" r="2" fill="url(#navIconGradient)" stroke="none" />
+      {(gradientId) => (
+        <>
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <circle cx="9" cy="6" r="2" fill={`url(#${gradientId})`} stroke="none" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <circle cx="15" cy="12" r="2" fill={`url(#${gradientId})`} stroke="none" />
+          <line x1="4" y1="18" x2="20" y2="18" />
+          <circle cx="8" cy="18" r="2" fill={`url(#${gradientId})`} stroke="none" />
+        </>
+      )}
     </Ic>
   )
 }

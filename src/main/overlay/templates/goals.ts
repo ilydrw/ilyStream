@@ -101,14 +101,24 @@ export function buildGoalsOverlayHtml(widget?: any, isPreview = false): string {
         return Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
       }
 
+      function requestJson(url) {
+        var runtime = window.__ilystreamOverlayRuntime;
+        if (runtime && typeof runtime.requestJson === 'function') {
+          return runtime.requestJson(url);
+        }
+        return fetch(url, { cache: 'no-store' }).then(function(response) {
+          if (!response.ok) throw new Error('state HTTP ' + response.status);
+          return response.json();
+        });
+      }
+
       function hydrate() {
         if (IS_PREVIEW) {
           render(PREVIEW_STATE);
           return;
         }
 
-        fetch('/overlay/goals/state')
-          .then(r => r.json())
+        requestJson('/overlay/goals/state')
           .then(render)
           .catch(console.error);
       }

@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { resolve } from 'path'
-import { SoundboardService } from '../../soundboard/soundboard-service'
+import { SoundboardService, type SoundCategory } from '../../soundboard/soundboard-service'
 import { Database } from '../../db/database'
 import { AppSettingKey, resolveAppSettings } from '../../../shared/app-settings'
 import { OverlayServer } from '../../overlay/overlay-server'
@@ -21,7 +21,7 @@ export function registerSoundHandlers(
 ) {
   const pickedSoundPaths = new Set<string>()
 
-  ipcMain.handle('sound:get-all', (_event, category?: 'alerts' | 'board') => soundboardService.getAllSounds(category))
+  ipcMain.handle('sound:get-all', (_event, category?: SoundCategory) => soundboardService.getAllSounds(category))
   ipcMain.handle('sound:pick-file', async () => {
     const result = await dialog.showOpenDialog(window, {
       title: 'Choose an audio file',
@@ -36,7 +36,7 @@ export function registerSoundHandlers(
 
     return selectedPath
   })
-  ipcMain.handle('sound:upload', (_event, path: string, emoji?: string, category: 'alerts' | 'board' = 'board') => {
+  ipcMain.handle('sound:upload', (_event, path: string, emoji?: string, category: SoundCategory = 'board') => {
     const sourcePath = consumePickedPath(path, pickedSoundPaths, 'sound')
     try {
       const result = soundboardService.uploadSound(sourcePath, category)

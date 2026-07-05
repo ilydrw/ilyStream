@@ -3,6 +3,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { PlatformManager } from '../platforms/platform-manager'
 import { SpotifyService } from '../spotify/spotify-service'
+import { XService } from '../x/x-service'
 import { TTSEngine } from '../tts/tts-engine'
 import { SoundboardService } from '../soundboard/soundboard-service'
 import { AssetService } from '../system/asset-service'
@@ -27,6 +28,7 @@ import { StatsService } from '../stats/stats-service'
 import { DeviceApi } from '../overlay/device-api'
 import { BrowserSourceService } from './browser-source-service'
 import { GoveeService } from './govee-service'
+import { RazerChromaService } from './razer-chroma-service'
 import { VirtualCameraService } from './virtual-camera-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { TikTokChatSender } from '../platforms/tiktok/tiktok-chat-sender'
@@ -35,11 +37,15 @@ import { LoyaltyService } from '../loyalty/loyalty-service'
 import { StreamIntelligenceService } from '../ai/stream-intelligence-service'
 import { StreamerbotBridgeService } from './streamerbot-bridge-service'
 
+// Ignore TikTok connect/reconnect flaps within this window so we announce a
+// go-live at most once per ~stream, not on every brief reconnect.
+const TIKTOK_GO_LIVE_COOLDOWN_MS = 30 * 60_000
 
 export class ServiceRegistry {
   public db: Database
   public platformManager: PlatformManager
   public spotifyService: SpotifyService
+  public xService: XService
   public ttsEngine: TTSEngine
   public soundboardService: SoundboardService
   public assetService: AssetService
@@ -66,6 +72,7 @@ export class ServiceRegistry {
   public deviceApi: DeviceApi
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
+  public razerChromaService: RazerChromaService
   public virtualCameraService: VirtualCameraService
   public lightingManager: LightingManagerService
   public tiktokChatSender: TikTokChatSender
@@ -73,13 +80,18 @@ export class ServiceRegistry {
 
   private initialized = false
   private initializationPromise: Promise<void> | null = null
+  private lastTikTokGoLiveAt = 0
 
   constructor() {
     this.db = new Database()
     this.tiktokChatSender = new TikTokChatSender()
     this.platformManager = new PlatformManager(this.db, this.tiktokChatSender)
     this.spotifyService = new SpotifyService(this.db, this.platformManager)
-    this.ttsEngine = new TTSEngine()
+    this.xService = new XService(this.db)
+    this.ttsEngine = new TTSEngine(
+      (platform, username, identity) => this.db.getViewerProfileId(platform, username, identity),
+      (profileId, permission) => this.db.stats.profileMatchesPermission(profileId, permission)
+    )
     this.soundboardService = new SoundboardService(this.db)
     this.assetService = new AssetService()
     this.aiService = new AIService()
@@ -91,7 +103,11 @@ export class ServiceRegistry {
     this.triggerEngine = new TriggerEngine(this.ttsEngine, this.aiService)
     this.triggerEngine.loadRules(this.db.getAllTriggers())
     this.overlayServer = new OverlayServer()
-    this.eventSoundService = new EventSoundService(this.soundboardService, this.overlayServer)
+    this.eventSoundService = new EventSoundService(
+      this.soundboardService,
+      this.overlayServer,
+      (platform, username, identity) => this.db.getViewerProfileId(platform, username, identity)
+    )
     this.obsService = new OBSService()
     this.streamingService = new StreamingService()
     this.browserSourceService = new BrowserSourceService()
@@ -99,6 +115,7 @@ export class ServiceRegistry {
     this.streamIntelligenceService = new StreamIntelligenceService()
     this.streamerbotBridgeService = new StreamerbotBridgeService()
     this.goveeService = new GoveeService(this.db)
+    this.razerChromaService = new RazerChromaService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
     this.lightingManager = new LightingManagerService()
     this.recordingsService = new RecordingsService()
@@ -107,6 +124,7 @@ export class ServiceRegistry {
     // Register lighting providers
     this.lightingManager.registerProvider(this.hueService)
     this.lightingManager.registerProvider(this.goveeService)
+    this.lightingManager.registerProvider(this.razerChromaService)
 
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)
@@ -115,7 +133,8 @@ export class ServiceRegistry {
       this.aiService,
       this.ttsEngine,
       this.chatRelayService,
-      this.memoryService
+      this.memoryService,
+      this.statsService
     )
     this.automationService = new AutomationService()
     this.voicemodService = new VoicemodService()
@@ -166,6 +185,17 @@ export class ServiceRegistry {
     this.platformManager.on('event', (event) => {
       this.streamIntelligenceService.recordEvent(event)
       this.streamerbotBridgeService.forwardEvent(event)
+    })
+
+    // TikTok go-live automations: when the connector reaches "connected" the host
+    // has actually gone live. Fire the opt-in automations, with a cooldown so a
+    // brief reconnect blip doesn't re-announce.
+    this.platformManager.on('status', (platform, status) => {
+      if (platform !== 'tiktok' || status !== 'connected') return
+      const now = Date.now()
+      if (now - this.lastTikTokGoLiveAt < TIKTOK_GO_LIVE_COOLDOWN_MS) return
+      this.lastTikTokGoLiveAt = now
+      void this.runTikTokGoLiveAutomations()
     })
 
     this.triggerEngine.on('receipt', (receipt) => {
@@ -248,6 +278,7 @@ export class ServiceRegistry {
       ['voicemod settings', () => this.voicemodService.applySettings(settings)],
       ['vtube settings', () => this.vtubeService.applySettings(settings)],
       ['streamerbot settings', () => this.streamerbotBridgeService.applySettings(settings.integrations.streamerbot)],
+      ['recordings folder', () => this.streamingService.setRecordingsFolder(settings.recordingsFolder)],
       ['voice profiles', () => this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())]
     ]
 
@@ -262,8 +293,11 @@ export class ServiceRegistry {
     // Start OverlayServer first (critical for renderer)
     try {
       const port = settings.overlay.port || 8899;
-      console.log(`[services] Starting OverlayServer on port ${port}...`)
-      await this.overlayServer.start(port)
+      // Only expose the server to the LAN at startup if the user has already
+      // paired a device — otherwise bind loopback (secure by default).
+      const preferLan = this.deviceApi.listPairedDevices().length > 0
+      console.log(`[services] Starting OverlayServer on port ${port}${preferLan ? ' (LAN — paired devices present)' : ' (loopback)'}...`)
+      await this.overlayServer.start(port, { preferLan })
       console.log('[services] OverlayServer ready.')
     } catch (err) {
       console.error('[services] OverlayServer failed:', err)
@@ -299,6 +333,30 @@ export class ServiceRegistry {
     console.log('[services] Service initialization sequence finished.')
   }
 
+  /**
+   * Runs opt-in TikTok go-live automations. X auto-posting stays behind the
+   * paid-API toggle and only fires when an OAuth account is connected.
+   */
+  private async runTikTokGoLiveAutomations(): Promise<void> {
+    const autoOpenSender = this.db.getSetting('tiktokAutoOpenSender') === true
+    const autoPostGoLiveX = this.db.getSetting('tiktokAutoPostGoLiveX') === true
+
+    if (autoOpenSender && !this.tiktokChatSender.getStatus().isWindowOpen) {
+      this.tiktokChatSender.openWindow().catch((err) => {
+        console.warn('[services] TikTok go-live: failed to open sender:', err)
+      })
+    }
+
+    if (autoPostGoLiveX && this.xService.getStatus().connected) {
+      const text = this.xService.getTemplate().trim()
+      if (text) {
+        this.xService.postTweet(text).catch((err) => {
+          console.warn('[services] TikTok go-live: X auto-post failed:', err)
+        })
+      }
+    }
+  }
+
   async dispose(): Promise<void> {
     this.chatRelayService.dispose()
     this.economyService.dispose()
@@ -307,6 +365,9 @@ export class ServiceRegistry {
     await this.lightingManager.dispose()
     this.tiktokChatSender.closeWindow()
     await Promise.allSettled([
+      // Stop streaming/recording FIRST and let ffmpeg finalize — otherwise a
+      // recording in progress is left corrupt and ffmpeg children are orphaned.
+      this.streamingService.dispose(),
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),
       this.obsService.disconnect(),

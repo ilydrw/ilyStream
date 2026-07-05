@@ -1,5 +1,5 @@
 import { IconRadio, IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconCircle, IconVideo, IconSquare, IconLayoutGrid, IconKeyboard, IconSettings, IconBroadcast, IconScreenShare, IconActivity, IconSparkles } from '@tabler/icons-react'
-import { IconRefresh, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown } from '../../../components/ui/icons'
+import { IconRefresh, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown, IconDeviceFloppy } from '../../../components/ui/icons'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -220,6 +220,20 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               <IconRefresh size={18} />
             </button>
           </Tooltip>
+          <div className="w-px h-6 bg-white/5 mx-1 self-center" />
+          <Tooltip content={isRecording ? 'Stop Recording' : 'Start Recording'} position="bottom">
+            <button
+              onClick={isRecording ? onStopRecording : onStartRecording}
+              className={`p-2.5 rounded-lg transition-all ${isRecording ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'text-white/25 hover:text-white hover:bg-white/5'}`}
+            >
+              <IconDeviceFloppy size={18} />
+            </button>
+          </Tooltip>
+          <Tooltip content="Recording Settings" position="bottom">
+            <button onClick={onOpenRecordingSettings} className="p-2.5 rounded-lg text-white/20 hover:text-white hover:bg-white/5 transition-all">
+              <IconSettings size={18} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Virtual Camera quick toggle (OBS-style) */}
@@ -428,17 +442,27 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <div className="w-px h-7 2xl:h-8 bg-white/10 mx-1 self-center" />
 
           {isStreaming ? (
+            // `.app-button-live` matches the design's "On Air" treatment:
+            // solid red surface with white text, inset hairline highlight,
+            // colored outer glow, and a pulsing white dot baked in via ::before.
+            // Sized via --h-button (30px) to align with the rest of the
+            // Pro Console primitives in this header.
             <button
               onClick={onStopBroadcast}
-              className="h-10 2xl:h-11 px-4 2xl:px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[12px] font-medium tracking-tight hover:bg-red-500/30 transition-all flex items-center gap-2 2xl:gap-3"
+              className="app-button-live"
+              title="End the live broadcast"
             >
               <IconSquare size={12} className="fill-current" /> Stop
             </button>
           ) : (
+            // `.app-button-primary` carries the brand gradient + cyan glow.
+            // Replaces the previous flat-cyan inline styling so Go Live matches
+            // the design system's primary CTA pattern (also used on Dashboard).
             <button
               onClick={onStartBroadcast}
               disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())}
-              className="h-9 2xl:h-10 px-4 2xl:px-6 rounded-md bg-accent text-[#04111a] text-[13px] font-semibold tracking-tight hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="app-button-primary"
+              title="Start the live broadcast"
             >
               <IconBroadcast size={14} /> Go live
             </button>

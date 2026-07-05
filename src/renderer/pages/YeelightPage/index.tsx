@@ -2,24 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconSun } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { YeelightIcon } from '../../components/ui/YeelightIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function YeelightPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <YeelightIcon size={48} />
-          </div>
-          <div>
-            <h1>Yeelight Smart Lighting</h1>
-            <p className="app-page-intro">
-              Connect your Yeelight bulbs and strips. Use the Yeelight LAN protocol for instant, 
-              low-latency lighting responses to stream events.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Yeelight Smart Lighting"
+        description="Use the Yeelight LAN protocol for low-latency lighting responses to stream events."
+        iconNode={<YeelightIcon size={24} />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 

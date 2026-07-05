@@ -50,8 +50,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:42px;line-height:1;text-transform:uppercase;color:#fff;text-shadow:0 8px 28px rgba(208,53,241,.55);">GG!</div><div style="margin-top:10px;font-size:20px;color:#f7d7ff;">{username} sent {giftName} x{giftCount}</div>',
+          template: 'GG!\n{username} sent {giftName} x{giftCount}',
           durationMs: 5200,
           animationIn: 'bounce',
           animationOut: 'dissolve',
@@ -98,8 +97,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:28px;color:#fff;">LIKE BURST</div><div style="margin-top:8px;font-size:18px;color:#ffd6df;">{username} is pushing the live</div>',
+          template: 'LIKE BURST\n{username} is pushing the live',
           durationMs: 3600,
           animationIn: 'zoom',
           animationOut: 'fade',
@@ -142,8 +140,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-size:18px;color:#7df58a;font-weight:900;text-transform:uppercase;">Song request</div><div style="margin-top:8px;font-size:24px;color:#fff;">{username}</div><div style="margin-top:6px;font-size:16px;color:#d8ffe1;">{message}</div>',
+          template: 'Song request\n{username}\n{message}',
           durationMs: 4200,
           animationIn: 'slide',
           animationOut: 'fade',
@@ -254,8 +251,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:34px;color:#fff;">SUPERFAN</div><div style="margin-top:8px;font-size:22px;color:#ead7ff;">{username} joined the inner circle</div>',
+          template: 'SUPERFAN\n{username} joined the inner circle',
           durationMs: 6200,
           animationIn: 'wave',
           animationOut: 'dissolve',
@@ -298,8 +294,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:36px;color:#fff;">RAID INCOMING</div><div style="margin-top:8px;font-size:20px;color:#ccf7ff;">{username} brought the crew</div>',
+          template: 'RAID INCOMING\n{username} brought the crew',
           durationMs: 6500,
           animationIn: 'slide',
           animationOut: 'dissolve',
@@ -346,8 +341,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:26px;color:#fff;">HELLO {username}</div><div style="margin-top:6px;font-size:15px;color:#ffe6b0;">Welcome to the stream</div>',
+          template: 'HELLO {username}\nWelcome to the stream',
           durationMs: 3600,
           animationIn: 'fade',
           animationOut: 'fade',
@@ -388,8 +382,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:30px;color:#fff;">AUDIENCE MILESTONE</div><div style="margin-top:8px;font-size:18px;color:#ccf7ff;">The room is filling up</div>',
+          template: 'AUDIENCE MILESTONE\nThe room is filling up',
           durationMs: 4200,
           animationIn: 'zoom',
           animationOut: 'fade',
@@ -430,8 +423,7 @@ export const automationRecipes: AutomationRecipe[] = [
       actions: [
         {
           type: 'show_alert',
-          template:
-            '<div style="font-weight:900;font-size:25px;color:#fff;">NEW FOLLOW</div><div style="margin-top:6px;font-size:18px;color:#d8ffe1;">{username}</div>',
+          template: 'NEW FOLLOW\n{username}',
           durationMs: 3400,
           animationIn: 'slide',
           animationOut: 'fade',

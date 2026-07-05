@@ -7,6 +7,7 @@ import { HueIcon } from '../../components/ui/HueIcon'
 import { HueBulbIcon } from '../../components/ui/HueBulbIcon'
 import { Toggle } from '../../components/ui/Inputs'
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../../shared/app-settings'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function HuePage() {
   const { 
@@ -72,7 +73,7 @@ export default function HuePage() {
 
   const updateSetting = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
-    await window.api.settings.set(key, value)
+    await window.api.settings.set(String(key), value)
   }
 
   const handleDiscover = async () => {
@@ -156,20 +157,11 @@ export default function HuePage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <HueIcon size={48} />
-          </div>
-          <div>
-            <h1>Philips Hue</h1>
-            <p className="app-page-intro">
-              Connect and synchronize your smart lighting with live stream events. 
-              Automate visual alerts for follows, gifts, and subscriptions.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Philips Hue"
+        description="Connect and synchronize your smart lighting with live stream events."
+        iconNode={<HueIcon size={24} />}
+      />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

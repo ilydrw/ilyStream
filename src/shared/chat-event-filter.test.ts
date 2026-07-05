@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isRelayFormattedEchoText,
   isTikTokLikeSystemPayload,
   isTikTokLikeSystemText,
   shouldSuppressStreamEventFromChat
@@ -8,6 +9,32 @@ import {
 describe('chat event suppression', () => {
   it('suppresses direct like events from chat-style feeds', () => {
     expect(shouldSuppressStreamEventFromChat({ platform: 'tiktok', type: 'like' })).toBe(true)
+  })
+
+  it('suppresses our own relayed chat echoes from the unified chat feed', () => {
+    expect(
+      shouldSuppressStreamEventFromChat({
+        platform: 'youtube',
+        type: 'chat',
+        message: '[Twitch] queena.chaos: Wild',
+        chatRelayEcho: true
+      })
+    ).toBe(true)
+  })
+
+  it('suppresses relay-formatted messages when they appear on another platform', () => {
+    expect(isRelayFormattedEchoText('[TikTok] queena.chaos: Wild', 'youtube')).toBe(true)
+    expect(isRelayFormattedEchoText('[Twitch] AnubisOfGiza: damn I was just about to say w app', 'tiktok')).toBe(true)
+    expect(isRelayFormattedEchoText('[TikTok] queena.chaos: Wild', 'tiktok')).toBe(false)
+    expect(isRelayFormattedEchoText('normal viewer chat', 'youtube')).toBe(false)
+
+    expect(
+      shouldSuppressStreamEventFromChat({
+        platform: 'youtube',
+        type: 'chat',
+        message: '[TikTok] queena.chaos: Wild'
+      })
+    ).toBe(true)
   })
 
   it('recognizes TikTok like payloads by metadata and counters', () => {

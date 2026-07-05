@@ -23,4 +23,14 @@ describe('automation recipes', () => {
       expect(recipe.simulation.platform).toBeTruthy()
     }
   })
+
+  it('ships alert recipes as plain text templates', () => {
+    for (const recipe of automationRecipes) {
+      for (const action of recipe.rule.actions) {
+        if (action.type === 'show_alert') {
+          expect(action.template).not.toMatch(/<\/?[a-z][\s>]/i)
+        }
+      }
+    }
+  })
 })

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useStudioStore } from '../../../../stores/studio-store'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
+import { DEFAULT_AUDIO_SOURCE_VOLUME } from '../../../../../shared/studio'
 import { IconEraser, IconHeadphones, IconLock, IconLockOpen, IconPalette, IconRoute, IconSparkles, IconVolume, IconVolumeOff } from '@tabler/icons-react'
 import { IconPencil, IconRefresh, IconTrash } from '../../../../components/ui/icons'
 import type { ContextMenuItem } from '../../../../components/ui/ContextMenu'
@@ -215,7 +216,7 @@ export function useAudioMixerLogic(
         label: 'Reset Mix Settings',
         icon: <IconRefresh size={16} />,
         onClick: () => updateSource(source.id, {
-          volume: 0.8,
+          volume: DEFAULT_AUDIO_SOURCE_VOLUME,
           pan: 0,
           muted: false,
           monitoring: source.id === 'master',

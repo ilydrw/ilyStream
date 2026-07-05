@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { IconVideo, IconFolderOpen, IconCalendar, IconDatabase, IconFilter } from '@tabler/icons-react'
 import { IconPlayerPlay, IconTrash, IconDotsVertical, IconSearch, IconArrowRight } from '../../components/ui/icons'
 import { format } from 'date-fns'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 interface Recording {
   id: string
@@ -52,18 +53,12 @@ export default function RecordingsPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="p-3 rounded-md bg-accent/20 text-accent">
-            <IconVideo size={32} />
-          </div>
-          <div>
-            <h1>Recording Library</h1>
-            <p className="app-page-intro">Manage your past broadcasts and high-quality captures.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
+      <PageHeader
+        title="Recording Library"
+        description="Manage your past broadcasts and high-quality captures."
+        icon={IconVideo}
+        actions={
+          <>
           <div className="relative">
             <IconSearch size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
             <input
@@ -81,8 +76,9 @@ export default function RecordingsPage() {
             <IconFolderOpen size={16} />
             OPEN FOLDER
           </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="mt-12">
         {isLoading ? (

@@ -3,14 +3,14 @@ import { type RelayTagMode } from '../../../shared/chat-relay'
 
 export const platforms = ['all', 'tiktok', 'twitch', 'youtube', 'kick'] as const
 
-export const platformBadgeColors: Record<Platform, string> = {
+export const platformBadgeColors: Partial<Record<Platform, string>> = {
   tiktok: 'border-tiktok/35 bg-tiktok/10 text-tiktok',
   twitch: 'border-twitch/35 bg-twitch/10 text-twitch',
   youtube: 'border-youtube/35 bg-youtube/10 text-youtube',
   kick: 'border-kick/35 bg-kick/10 text-kick'
 }
 
-export const defaultCapabilities: Record<Platform, PlatformChatCapability> = {
+export const defaultCapabilities: Partial<Record<Platform, PlatformChatCapability>> = {
   tiktok: { platform: 'tiktok', canSend: false, reason: 'Not connected' },
   twitch: { platform: 'twitch', canSend: false, reason: 'Not connected' },
   youtube: { platform: 'youtube', canSend: false, reason: 'Not connected' },

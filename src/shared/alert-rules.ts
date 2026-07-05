@@ -42,6 +42,30 @@ export interface AlertRule {
 export const ALERT_RULE_PLATFORMS: AlertRulePlatform[] = ['all', 'tiktok', 'twitch', 'youtube', 'kick']
 export const ALERT_RULE_EVENT_TYPES: AlertRuleEventType[] = ['chat', 'gift', 'subscription', 'follow', 'raid', 'like', 'share', 'join']
 
+/**
+ * Which event types each platform actually emits. Used by the Alerts page to
+ * scope the event-type picker per platform section so users can't configure
+ * rules for events that will never fire.
+ *
+ * `Partial` because only the four live-chat platforms emit alertable events;
+ * the rest of the Platform union (x, discord, restream, ...) are listed for
+ * other features but don't push stream events through the alert pipeline.
+ *
+ * Verified against the connectors:
+ *  - TikTok:  tiktok-connector.ts setupEventListeners (chat, gift, like, follow, share, member→join)
+ *  - Twitch:  twitch-connector.ts (subscription, raid, gift/bits, chat, follow via EventSub)
+ *  - YouTube: youtube-connector.ts (textMessageEvent → chat, superChatEvent → gift)
+ *  - Kick:    kick-connector.ts (chat, subscription, follow; raid mapped but
+ *             only wired through the Pusher fallback — kept here because the
+ *             mapping is real and works on that path)
+ */
+export const SUPPORTED_EVENTS_BY_PLATFORM: Partial<Record<Platform, AlertRuleEventType[]>> = {
+  tiktok:  ['chat', 'gift', 'like', 'follow', 'share', 'join'],
+  twitch:  ['chat', 'gift', 'follow', 'subscription', 'raid'],
+  youtube: ['chat', 'gift'],
+  kick:    ['chat', 'follow', 'subscription', 'raid']
+}
+
 export const DEFAULT_ALERT_RULES: AlertRule[] = [
   {
     id: 'default-gifts',
@@ -50,7 +74,7 @@ export const DEFAULT_ALERT_RULES: AlertRule[] = [
     platforms: ['all'],
     eventTypes: ['gift'],
     priority: 100,
-    cooldownMs: 0,
+    cooldownMs: 10000,
     minGiftCount: 1,
     minAmountCents: 0,
     keyword: '',
@@ -63,15 +87,15 @@ export const DEFAULT_ALERT_RULES: AlertRule[] = [
     textEnabled: true,
     textTemplate: '{displayName} sent {giftCount}x {giftName}!',
     textColor: '#ffffff',
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    borderColor: 'gradient',
-    fontSize: 48,
-    fontWeight: 800,
-    textShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    layout: 'stacked',
-    animationIn: 'bounce',
+    backgroundColor: 'rgba(18, 22, 30, 0.82)',
+    borderColor: 'rgba(247, 201, 72, 0.26)',
+    fontSize: 32,
+    fontWeight: 760,
+    textShadow: '0 8px 26px rgba(0,0,0,0.36)',
+    layout: 'side-by-side',
+    animationIn: 'slide',
     animationOut: 'fade',
-    durationMs: 5000,
+    durationMs: 4200,
     imageTop: 0,
     imageLeft: 0
   },
@@ -95,15 +119,15 @@ export const DEFAULT_ALERT_RULES: AlertRule[] = [
     textEnabled: true,
     textTemplate: '{displayName} is now following!',
     textColor: '#ffffff',
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    borderColor: 'gradient',
-    fontSize: 44,
-    fontWeight: 800,
-    textShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    layout: 'stacked',
-    animationIn: 'fade',
+    backgroundColor: 'rgba(18, 22, 30, 0.82)',
+    borderColor: 'rgba(56, 189, 248, 0.24)',
+    fontSize: 31,
+    fontWeight: 760,
+    textShadow: '0 8px 26px rgba(0,0,0,0.36)',
+    layout: 'side-by-side',
+    animationIn: 'slide',
     animationOut: 'fade',
-    durationMs: 5000,
+    durationMs: 3800,
     imageTop: 0,
     imageLeft: 0
   },

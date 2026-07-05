@@ -19,14 +19,21 @@ interface ContextMenuProps {
   y: number
   onClose: () => void
   isSubmenu?: boolean
+  anchorRect?: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>
 }
 
-export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: ContextMenuProps) {
+export function ContextMenu({ items, x, y, onClose, isSubmenu = false, anchorRect }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [activeSubmenu, setActiveSubmenu] = useState<{ id: string, x: number, y: number, items: ContextMenuItem[] } | null>(null)
+  const [activeSubmenu, setActiveSubmenu] = useState<{ id: string, x: number, y: number, items: ContextMenuItem[], anchorRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null)
   const [position, setPosition] = useState({ x, y })
   const openSubmenu = (id: string, rect: DOMRect, items: ContextMenuItem[]) => {
-    setActiveSubmenu({ id, x: rect.right + 6, y: rect.top - 4, items })
+    setActiveSubmenu({
+      id,
+      x: rect.right + 6,
+      y: rect.top - 4,
+      items,
+      anchorRect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
+    })
   }
 
   useEffect(() => {
@@ -51,15 +58,23 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
       let newY = y
 
       if (x + rect.width > winW) {
-        newX = isSubmenu ? x - rect.width - 10 : winW - rect.width - 5
+        newX = isSubmenu && anchorRect
+          ? anchorRect.left - rect.width - 6
+          : winW - rect.width - 5
+      }
+      if (newX < 5) {
+        newX = isSubmenu && anchorRect && anchorRect.right + rect.width + 6 <= winW - 5
+          ? anchorRect.right + 6
+          : 5
       }
       if (y + rect.height > winH) {
         newY = winH - rect.height - 5
       }
+      if (newY < 5) newY = 5
       
       setPosition({ x: newX, y: newY })
     }
-  }, [x, y, isSubmenu])
+  }, [x, y, isSubmenu, anchorRect])
 
   return (
     <>
@@ -129,6 +144,7 @@ export function ContextMenu({ items, x, y, onClose, isSubmenu = false }: Context
             y={activeSubmenu.y}
             onClose={onClose}
             isSubmenu={true}
+            anchorRect={activeSubmenu.anchorRect}
           />
         )}
       </AnimatePresence>

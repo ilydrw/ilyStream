@@ -27,6 +27,7 @@ export type EventSoundSettingKey =
   | `eventAlert${AlertKind}FontWeight`
   | 'alertTop'
   | 'alertLeft'
+  | 'alertSoundLocalMonitoring'
 
 export type EventSoundSettings = Pick<AppSettings, EventSoundSettingKey>
 
@@ -54,7 +55,8 @@ export const EVENT_SOUND_SETTING_KEYS: EventSoundSettingKey[] = [
     `eventAlert${kind}FontWeight`
   ] as EventSoundSettingKey[]),
   'alertTop',
-  'alertLeft'
+  'alertLeft',
+  'alertSoundLocalMonitoring'
 ]
 
 export function pickEventSoundSettings(settings: AppSettings): EventSoundSettings {

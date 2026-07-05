@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { TTSEngine } from '../../tts/tts-engine'
 import { Database } from '../../db/database'
-import { AppSettingKey, resolveAppSettings, resolveAppSetting } from '../../../shared/app-settings'
+import { AppSettingKey, resolveAppSettings, resolveAppSetting, type TTSUserVoiceOverride } from '../../../shared/app-settings'
 import { sendToRenderer } from '../safe-send'
 
 export function registerTTSHandlers(
@@ -29,7 +29,7 @@ export function registerTTSHandlers(
       }
     }
 
-    const nextOverrides = settings.ttsUserVoiceOverrides.filter(
+    const nextOverrides = (settings.ttsUserVoiceOverrides as TTSUserVoiceOverride[]).filter(
       (override) => override.voiceProfileId !== deletedProfileId
     )
     if (nextOverrides.length !== settings.ttsUserVoiceOverrides.length) {
@@ -86,5 +86,12 @@ export function registerTTSHandlers(
 
   ipcMain.on('tts:speech-complete', () => {
     ttsEngine.onSpeechComplete()
+  })
+
+  // The renderer's TTS hook (re)initialized — e.g. after a reload. Any speech
+  // that was mid-flight is gone with the old page, so reset the playing flag
+  // and resume the queue rather than staying wedged.
+  ipcMain.on('tts:renderer-ready', () => {
+    ttsEngine.resetPlayback()
   })
 }

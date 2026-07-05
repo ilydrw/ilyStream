@@ -11,7 +11,7 @@ interface AutomationSectionProps {
 }
 
 export function AutomationSection({ settings, onUpdate }: AutomationSectionProps) {
-  const mappings = settings?.automationKeystrokeMapping || []
+  const mappings: AutomationKeystrokeMapping[] = settings?.automationKeystrokeMapping || []
 
   const addMapping = () => {
     const newMapping: AutomationKeystrokeMapping = {

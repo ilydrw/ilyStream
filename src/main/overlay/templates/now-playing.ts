@@ -29,6 +29,24 @@ function resolveAnimatedBorderStops(borderType: NowPlayingConfig['borderType']):
   return '#ff00ff, #00ffff, #ff00ff'
 }
 
+function clamp(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const cleaned = (hex || '').replace('#', '').trim()
+  if (cleaned.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(cleaned)) {
+    return { r: 11, g: 13, b: 16 }
+  }
+  return {
+    r: parseInt(cleaned.slice(0, 2), 16),
+    g: parseInt(cleaned.slice(2, 4), 16),
+    b: parseInt(cleaned.slice(4, 6), 16)
+  }
+}
+
 export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: NowPlayingConfig = { ...DEFAULT_NOW_PLAYING_CONFIG, ...(widget?.config || {}) }
   const glassIntensity = cfg.glassIntensity ?? 0.5
@@ -36,10 +54,19 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
   const blur = glassIntensity * 45
   const borderRadius = cfg.borderRadius ?? 24
   const fontFamily = cfg.fontFamily || 'Inter'
-  const bgRgba = hexToRgba(cfg.backgroundColor, bgOpacity)
+  // Split the background into its rgb + alpha CSS variables so the live-config
+  // hook can flip glassIntensity (alpha) and backgroundColor (rgb)
+  // independently without rebuilding the document.
+  const bgRgb = hexToRgb(cfg.backgroundColor)
   const accentRgba = hexToRgba(cfg.accentColor, 1)
 
-  const shellStyle = OVERLAY_POSITION_MAP[cfg.position] ?? OVERLAY_POSITION_MAP['top-left']
+  // Clamp the sizing fields server-side so a corrupt/legacy config can't render
+  // the widget as a single 1px stripe in OBS/TLS. The editor's NumberInput
+  // enforces these ranges in the UI, but stored values predate the clamp.
+  const widthPx = clamp(cfg.width, 240, 1600, DEFAULT_NOW_PLAYING_CONFIG.width)
+  const fontSizePx = clamp(cfg.fontSize, 12, 72, DEFAULT_NOW_PLAYING_CONFIG.fontSize)
+  const borderWidthPx = clamp(cfg.borderWidth, 0, 20, DEFAULT_NOW_PLAYING_CONFIG.borderWidth)
+
   const accentSoftRgba = hexToRgba(cfg.accentColor, 0.15)
   const animatedBorderStops = resolveAnimatedBorderStops(cfg.borderType)
 
@@ -56,23 +83,55 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         --cyber: linear-gradient(45deg, #ff00ff, #00ffff, #ff00ff);
         --radius: ${borderRadius}px;
         --blur: ${blur}px;
+        --width: ${widthPx}px;
+        --font-size: ${fontSizePx}px;
+        --bg-rgb: ${bgRgb.r}, ${bgRgb.g}, ${bgRgb.b};
+        --bg-alpha: ${bgOpacity};
+        --bg: rgba(var(--bg-rgb), var(--bg-alpha));
       }
       * { box-sizing: border-box; }
-      body {
+      /* Fluid sizing so the widget fills the user's browser source whatever
+         dimensions they set in OBS / TikTok Live Studio. The min-* fallback
+         guards against CEF's "iframe collapses to 1px before first layout"
+         quirk — without it, 100% would resolve to 0px and the page would be
+         invisible. A 1920×1080 fixed stage (the pattern alerts.ts uses) is
+         wrong here: this is a small fixed widget, and locking to 1920×1080
+         pushes any non-top-left position config off-screen for a typical
+         500×120 source. */
+      html, body {
+        width: 100%;
+        height: 100%;
+        min-width: 480px;
+        min-height: 140px;
         margin: 0;
-        min-height: 100vh;
-        background: transparent;
+        padding: 0;
+        overflow: hidden;
+        background: transparent !important;
+      }
+      body {
         color: ${cfg.textColor};
         display: flex;
-        ${shellStyle};
         padding: 32px;
       }
+      /* All six positions are emitted up-front so the live-config hook can
+         switch the layout via a single attribute flip. The default matches
+         OVERLAY_POSITION_MAP's top-left, which is also the legacy fallback. */
+      body { align-items: flex-start; justify-content: flex-start; }
+      body[data-position="top-left"]      { align-items: flex-start; justify-content: flex-start; }
+      body[data-position="top-center"]    { align-items: flex-start; justify-content: center; }
+      body[data-position="top-right"]     { align-items: flex-start; justify-content: flex-end; }
+      body[data-position="bottom-left"]   { align-items: flex-end;   justify-content: flex-start; }
+      body[data-position="bottom-center"] { align-items: flex-end;   justify-content: center; }
+      body[data-position="bottom-right"]  { align-items: flex-end;   justify-content: flex-end; }
       .container {
         display: flex;
         flex-direction: column;
         gap: 12px;
-        width: ${cfg.width}px;
-        max-width: calc(100vw - 64px);
+        width: var(--width);
+        /* Body has min-width 480px (above), so 100% - 64px is at least 416px
+           even when the iframe viewport collapses. The width itself is also
+           server-clamped to [240, 1600], so it can't grow past the body. */
+        max-width: calc(100% - 64px);
         filter: drop-shadow(0 20px 40px rgba(0,0,0,0.4));
       }
       ${getAnimationCss({ style: cfg.animationStyle || 'slide', duration: cfg.animationDuration || 600 }, '.container')}
@@ -103,7 +162,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         pointer-events: none;
         display: ${cfg.showBorder && cfg.borderType !== 'solid' ? 'block' : 'none'};
         border-radius: var(--radius);
-        padding: ${cfg.borderWidth}px;
+        padding: ${borderWidthPx}px;
         background: conic-gradient(from var(--angle), ${animatedBorderStops}) border-box;
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         -webkit-mask-composite: xor;
@@ -116,14 +175,14 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         display: flex;
         align-items: center;
         gap: 20px;
-        background: ${bgRgba};
-        margin: ${cfg.showBorder ? cfg.borderWidth : 0}px;
-        border-radius: ${cfg.showBorder ? `calc(var(--radius) - ${cfg.borderWidth}px)` : 'var(--radius)'};
+        background: var(--bg);
+        margin: ${cfg.showBorder ? borderWidthPx : 0}px;
+        border-radius: ${cfg.showBorder ? `calc(var(--radius) - ${borderWidthPx}px)` : 'var(--radius)'};
         backdrop-filter: blur(var(--blur)) saturate(220%);
         -webkit-backdrop-filter: blur(var(--blur)) saturate(220%);
         box-shadow: inset 0 0 20px rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.12);
-        width: calc(100% - ${cfg.showBorder ? cfg.borderWidth * 2 : 0}px);
+        width: calc(100% - ${cfg.showBorder ? borderWidthPx * 2 : 0}px);
         overflow: hidden;
       }
       .panel-inner::before {
@@ -172,7 +231,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         color: ${accentRgba};
       }
       .track {
-        font-size: ${cfg.fontSize}px;
+        font-size: var(--font-size);
         font-weight: 800;
         line-height: 1.2;
         white-space: nowrap;
@@ -180,7 +239,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         display: inline-block;
       }
       .artist {
-        font-size: ${Math.max(12, cfg.fontSize * 0.65)}px;
+        font-size: max(12px, calc(var(--font-size) * 0.65));
         font-weight: 500;
         opacity: 0.7;
         white-space: nowrap;
@@ -234,7 +293,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
       }
 
       .queue-panel {
-        background: ${bgRgba};
+        background: var(--bg);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 16px;
         padding: 12px;
@@ -301,9 +360,35 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
+
+      /* Self-diagnosing banner that fires when the browser-source iframe is
+         too small to render the widget — typically OBS / TLS added the source
+         without explicit Width/Height. Without this the widget would clip to
+         invisibility with no clue why. Pattern mirrors alerts.ts. */
+      .size-warning {
+        position: fixed;
+        inset: 8px;
+        border: 2px dashed rgba(255, 200, 0, 0.6);
+        border-radius: 12px;
+        background: rgba(20, 16, 0, 0.88);
+        color: #ffd166;
+        font-family: "${fontFamily}", "Inter", "Segoe UI", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 12px;
+        z-index: 10001;
+        gap: 6px;
+      }
+      .size-warning h1 { font-size: clamp(14px, 4vw, 20px); font-weight: 800; margin: 0; }
+      .size-warning p  { font-size: clamp(11px, 2.4vw, 14px); line-height: 1.45; max-width: 520px; margin: 0; }
+      .size-warning code { background: rgba(0, 0, 0, 0.45); padding: 2px 6px; border-radius: 4px; font-size: 0.95em; }
+      .size-warning .current { opacity: 0.6; font-size: clamp(10px, 2vw, 12px); }
     </style>
   </head>
-  <body>
+  <body data-position="${cfg.position}">
     <div class="container" id="container">
       <div class="panel" id="panel">
         <div class="panel-border-wrap"></div>
@@ -432,6 +517,17 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         }
       }
 
+      function requestJson(url) {
+        var runtime = window.__ilystreamOverlayRuntime;
+        if (runtime && typeof runtime.requestJson === 'function') {
+          return runtime.requestJson(url);
+        }
+        return fetch(url, { cache: 'no-store' }).then(function(response) {
+          if (!response.ok) throw new Error('state HTTP ' + response.status);
+          return response.json();
+        });
+      }
+
       function render(state) {
         if (!state) return;
 
@@ -526,8 +622,10 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
             row.className = 'queue-item' + (isInjected ? ' is-injected' : '');
 
             let html = '<div class="queue-info">';
-            html += '<div class="queue-track">' + escapeHtml(item.track.name) + '</div>';
-            html += '<div class="queue-artist">' + escapeHtml((item.track?.artists || []).join(', ')) + '</div>';
+            var track = item.track || {};
+            var artists = Array.isArray(track.artists) ? track.artists : [];
+            html += '<div class="queue-track">' + escapeHtml(track.name || 'Unknown track') + '</div>';
+            html += '<div class="queue-artist">' + escapeHtml(artists.join(', ')) + '</div>';
             html += '</div>';
 
             if (item.requestedBy) {
@@ -548,18 +646,43 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         }
       }
 
-      async function hydrate() {
+      // Default fallback state — guarantees the widget paints something the
+      // moment the script runs so TikTok Live Studio / OBS don't see a zero
+      // dimension box while the first fetch is in flight. Replaced as soon as
+      // /overlay/now-playing/state resolves.
+      const IDLE_FALLBACK_STATE = {
+        isPlaying: false,
+        trackId: null,
+        trackName: '',
+        artists: [],
+        durationMs: 0,
+        progressMs: 0,
+        queue: [],
+        status: 'ok'
+      };
+
+      function hydrate() {
         if (IS_PREVIEW) {
           render(PREVIEW_STATE);
           return;
         }
 
-        const response = await fetch('/overlay/now-playing/state', { cache: 'no-store' });
-        const state = await response.json();
-        render(state);
+        // Paint the idle fallback immediately so the iframe has visible layout
+        // before the network round-trip resolves.
+        render(IDLE_FALLBACK_STATE);
+
+        requestJson('/overlay/now-playing/state')
+        .then(function(state) {
+          render(state);
+        })
+        .catch(function(err) {
+          console.error('[now-playing] hydrate failed:', err);
+          // Leave the idle fallback on screen — SSE will catch up if the
+          // server comes back online.
+        });
       }
 
-      hydrate().catch(console.error);
+      hydrate();
 
       if (!IS_PREVIEW) {
         const source = new EventSource('/overlay/events?channel=now-playing');
@@ -569,6 +692,90 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
           else if (msg.type === 'reload') window.location.reload();
         };
       }
+
+      // Self-diagnosing size check. Skipped in preview mode (the editor
+      // intentionally varies its preview size — the message would be noise).
+      function checkViewportSize() {
+        if (IS_PREVIEW) return;
+        var existing = document.getElementById('np-size-warning');
+        if (existing) existing.remove();
+        var tooSmall = window.innerWidth < 240 || window.innerHeight < 100;
+        if (!tooSmall) return;
+        var el = document.createElement('div');
+        el.id = 'np-size-warning';
+        el.className = 'size-warning';
+        el.innerHTML = ''
+          + '<h1>Browser source too small</h1>'
+          + '<p>Set this source\\'s width &amp; height to at least <code>480 \\u00d7 140</code> '
+          + 'so the now-playing widget can render. In OBS / TikTok Live Studio, '
+          + 'right-click the source and edit its dimensions.</p>'
+          + '<p class="current">Current viewport: ' + window.innerWidth + ' \\u00d7 ' + window.innerHeight + '</p>';
+        document.body.appendChild(el);
+      }
+      window.addEventListener('load', checkViewportSize);
+      window.addEventListener('resize', checkViewportSize);
+      checkViewportSize();
+
+      // Live-config hook. Handles the high-frequency tweaks (size, position,
+      // radius, font-size, glass, background color) that map cleanly to CSS
+      // variables and attribute flips. Border type / animation / font-family
+      // touch CSS rules that are config-baked at render time; if those
+      // change, the hook bails out and asks the parent to fall back to HTML
+      // mode.
+      var NP_LIVE_FIELDS = {
+        borderRadius: 1, width: 1, fontSize: 1, glassIntensity: 1, position: 1,
+        backgroundColor: 1
+      };
+      window.__ilystreamApplyConfig = function(cfg) {
+        if (!cfg) return;
+        var root = document.documentElement;
+        var body = document.body;
+        var prev = window.__ilystreamLastConfig || null;
+        // On the second+ call, check whether any field outside our handled
+        // set changed since the last apply. If so, ask the parent for HTML.
+        if (prev) {
+          for (var k in cfg) {
+            if (!cfg.hasOwnProperty(k)) continue;
+            if (NP_LIVE_FIELDS[k]) continue;
+            if (prev[k] !== cfg[k]) {
+              try {
+                window.parent && window.parent.postMessage(
+                  { type: 'ilystream:preview-needs-html' }, '*'
+                );
+              } catch (e) {}
+              // Don't apply partial state — let the HTML push replace us.
+              return;
+            }
+          }
+        }
+        if (cfg.borderRadius != null) root.style.setProperty('--radius', cfg.borderRadius + 'px');
+        if (cfg.width != null) root.style.setProperty('--width', cfg.width + 'px');
+        if (cfg.fontSize != null) root.style.setProperty('--font-size', cfg.fontSize + 'px');
+        if (cfg.glassIntensity != null) {
+          // Both --blur and --bg-alpha track glassIntensity using the same
+          // formulas the TS renderer uses (blur = glass * 45, bgAlpha =
+          // 0.4 + glass * 0.45). Without the alpha update, the panel would
+          // stay at its original transparency while the blur changed —
+          // confusing the user who sees only half of the slider's effect.
+          root.style.setProperty('--blur', (cfg.glassIntensity * 45) + 'px');
+          root.style.setProperty('--bg-alpha', String(0.4 + cfg.glassIntensity * 0.45));
+        }
+        if (typeof cfg.position === 'string') {
+          body.setAttribute('data-position', cfg.position);
+        }
+        if (typeof cfg.backgroundColor === 'string') {
+          var c = cfg.backgroundColor.replace('#', '').trim();
+          if (c.length === 6 && /^[0-9a-fA-F]{6}$/.test(c)) {
+            root.style.setProperty(
+              '--bg-rgb',
+              parseInt(c.slice(0, 2), 16) + ', ' +
+              parseInt(c.slice(2, 4), 16) + ', ' +
+              parseInt(c.slice(4, 6), 16)
+            );
+          }
+        }
+        window.__ilystreamLastConfig = cfg;
+      };
     </script>
   </body>
 </html>`

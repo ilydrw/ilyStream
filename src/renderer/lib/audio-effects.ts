@@ -1,4 +1,12 @@
 import type { VoiceModifiers } from '../../shared/app-settings'
+import type { AudioEffect } from '../../main/tts/voice-profiles'
+
+const profileEffectMap: Partial<Record<AudioEffect['type'], string>> = {
+  echo: 'echo',
+  reverb: 'cave',
+  robot: 'robot',
+  chorus: 'vibrato'
+}
 
 export function createDistortionCurve(amount = 20) {
   const k = typeof amount === 'number' ? amount : 50
@@ -18,7 +26,8 @@ export function applyVoiceEffects(
   modifiers: VoiceModifiers | { id: string, enabled: boolean },
 ): AudioNode {
   let lastNode = source
-  const type = (modifiers as any).id || (modifiers as any).radioFilter ? 'radio' : 'none'
+  const effectSource = modifiers as { id?: string; radioFilter?: boolean }
+  const type: string = effectSource.id || (effectSource.radioFilter ? 'radio' : 'none')
 
   // 1. Radio Filter (Aggressive High-pass + Distortion)
   if (type === 'radio' || (modifiers as any).radioFilter) {
@@ -233,6 +242,11 @@ export function applyVoiceEffects(
   }
 
   return lastNode
+}
+
+export function getEnabledProfileEffectId(effects: AudioEffect[] | undefined): string | null {
+  const effect = effects?.find((item) => item.enabled !== false && profileEffectMap[item.type])
+  return effect ? profileEffectMap[effect.type] ?? null : null
 }
 
 export function getDynamicPitchAndRate(

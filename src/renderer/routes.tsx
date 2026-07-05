@@ -4,14 +4,15 @@ import {
   IconVideo,
   IconChat,
   IconTTS,
-  IconTriggerRelay,
+  IconAutomation,
   IconTerminal,
   IconAlert,
   IconSoundboard,
   IconFx,
   IconSettings,
   IconStats,
-  IconWidgets
+  IconWidgets,
+  IconHealthCenter
 } from './components/ui/icons/nav'
 
 import { DashboardIcon } from './components/ui/icons/DashboardIcon'
@@ -68,11 +69,13 @@ const XIcon = ({ size, className }: { size?: number; className?: string }) => (
 const DiscordIcon = ({ size, className }: { size?: number; className?: string }) => (
   <div className={className}><PlatformLogo platform="discord" size={size} /></div>
 )
+const navMonochromeClass = (className?: string) =>
+  ['app-nav-monochrome-icon', className].filter(Boolean).join(' ')
 const AICoHostNavIcon = ({ size, className }: { size?: number; className?: string }) => (
-  <AICoHostIcon size={size} className={className} />
+  <AICoHostIcon size={size} className={navMonochromeClass(className)} />
 )
 const DashboardNavIcon = ({ size, className }: { size?: number; className?: string }) => (
-  <DashboardIcon size={size} className={className} />
+  <DashboardIcon size={size} className={navMonochromeClass(className)} />
 )
 const BroadcastRoutePlaceholder = lazy(() => Promise.resolve({ default: () => null }))
 
@@ -96,17 +99,25 @@ export const routes: AppRoute[] = [
     component: lazy(() => import('./pages/DashboardPage'))
   },
   {
+    path: '/health',
+    label: 'Health Center',
+    description: 'Check connection readiness, chat relay capability, event traffic, and platform-specific fixes.',
+    section: 'operate',
+    icon: IconHealthCenter,
+    component: lazy(() => import('./pages/HealthPage'))
+  },
+  {
     path: '/stats',
-    label: 'Stats',
-    description: 'Lifetime totals across every platform — likes, gifts, follows, song requests, and per-user breakdowns.',
+    label: 'Audience Stats',
+    description: 'Review live, session, and lifetime audience totals with per-user and per-platform breakdowns.',
     section: 'operate',
     icon: IconStats,
     component: lazy(() => import('./pages/StatsPage'))
   },
   {
     path: '/broadcast',
-    label: 'Live Broadcast',
-    description: 'Control your live scene, monitor stream health, and manage sources in real-time.',
+    label: 'Broadcast Studio',
+    description: 'Build scenes, manage sources, mix audio, and start the live or recording output.',
     section: 'operate',
     icon: IconBroadcast,
     component: BroadcastRoutePlaceholder
@@ -121,32 +132,32 @@ export const routes: AppRoute[] = [
   },
   {
     path: '/chat',
-    label: 'Unified Chat',
-    description: 'Merge live chat, relay responses across services, and keep moderators aligned.',
+    label: 'Chat Hub',
+    description: 'Read every platform chat in one place and relay host responses across connected services.',
     section: 'operate',
     icon: IconChat,
     component: lazy(() => import('./pages/ChatPage'))
   },
   {
     path: '/tts',
-    label: 'TTS',
-    description: 'Tune text-to-speech behavior, queue flow, and voice delivery while you are live.',
+    label: 'Text-to-Speech',
+    description: 'Control who can speak, what gets filtered, and how chat messages enter the voice queue.',
     section: 'operate',
     icon: IconTTS,
     component: lazy(() => import('./pages/TTSPage'))
   },
   {
     path: '/triggers',
-    label: 'Triggers',
-    description: 'Control reactions, alerts, webhooks, and spoken moments with event-driven rules.',
+    label: 'Automation Rules',
+    description: 'Turn stream events into alerts, voice lines, device actions, webhooks, and other reactions.',
     section: 'operate',
-    icon: IconTriggerRelay,
+    icon: IconAutomation,
     component: lazy(() => import('./pages/TriggersPage'))
   },
   {
     path: '/event-lab',
-    label: 'Event Lab',
-    description: 'Inspect live stream events, overlay packets, device broadcasts, and replay local test events.',
+    label: 'Event Testing',
+    description: 'Test realistic events and inspect what they send to alerts, widgets, automations, and devices.',
     section: 'operate',
     icon: IconTerminal,
     component: lazy(() => import('./pages/EventLabPage'))
@@ -154,15 +165,15 @@ export const routes: AppRoute[] = [
   {
     path: '/ai-cohost',
     label: 'AI Co-Host',
-    description: 'Configure your automated AI assistant, its personality, connection, and neural depth.',
+    description: 'Configure when the AI responds, what it sounds like, and which chat prompts can wake it.',
     section: 'operate',
     icon: AICoHostNavIcon,
     component: lazy(() => import('./pages/AICoHostPage'))
   },
   {
     path: '/alerts',
-    label: 'Alerts',
-    description: 'Upload MP3/WAV files and route gifts, follows, and trigger events to local alert sounds.',
+    label: 'Alert Routes',
+    description: 'Choose which stream events show sounds, images, and messages in the overlay.',
     section: 'operate',
     icon: IconAlert,
     component: lazy(() => import('./pages/AlertsPage/index'))
@@ -170,7 +181,7 @@ export const routes: AppRoute[] = [
   {
     path: '/soundboard',
     label: 'Soundboard',
-    description: 'A Stream Deck styled layout for triggering sound effects and studio actions instantly.',
+    description: 'Trigger sound effects and studio actions instantly from a grid built for live use.',
     section: 'operate',
     icon: IconSoundboard,
     component: lazy(() => import('./pages/SoundboardPage'))
@@ -178,15 +189,15 @@ export const routes: AppRoute[] = [
   {
     path: '/voice-effects',
     label: 'Voice FX',
-    description: 'Transform your voice with studio-grade real-time filters. Alien, Robot, and custom pitch shifting.',
+    description: 'Apply real-time voice filters and pitch effects for stream moments.',
     section: 'operate',
     icon: IconFx,
     component: lazy(() => import('./pages/VoiceEffectsPage'))
   },
   {
     path: '/spotify',
-    label: 'Spotify',
-    description: 'Let viewers request songs via chat commands that queue directly into your Spotify playback.',
+    label: 'Song Requests',
+    description: 'Connect Spotify and control viewer song-request commands, queue behavior, and playback status.',
     section: 'operate',
     icon: SpotifyIcon,
     component: lazy(() => import('./pages/SpotifyPage/index'))
@@ -225,8 +236,8 @@ export const routes: AppRoute[] = [
   },
   {
     path: '/connections/x',
-    label: 'X (Twitter)',
-    description: 'Connect to the X Developer API to monitor real-time sentiment and mentions.',
+    label: 'X Composer',
+    description: 'Prepare reusable go-live posts, open X composer, or enable paid-API automatic posting.',
     section: 'configure',
     icon: XIcon,
     component: lazy(() => import('./pages/XPage'))
@@ -378,15 +389,15 @@ export const routes: AppRoute[] = [
   {
     path: '/settings',
     label: 'Settings',
-    description: 'Tune themes, runtime limits, broadcast defaults, OBS remote control, and overlay delivery.',
+    description: 'Tune app defaults, broadcast settings, overlay delivery, integrations, and advanced runtime options.',
     section: 'configure',
     icon: IconSettings,
     component: lazy(() => import('./pages/SettingsPage'))
   },
   {
     path: '/widgets',
-    label: 'Widgets',
-    description: 'Configure interactive overlays, goals, and visual alerts for your stream.',
+    label: 'Overlays & Widgets',
+    description: 'Configure browser-source overlays, goals, chat widgets, trackers, and visual stream elements.',
     section: 'configure',
     icon: IconWidgets,
     component: lazy(() => import('./pages/WidgetPage'))

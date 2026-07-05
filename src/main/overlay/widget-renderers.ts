@@ -133,21 +133,30 @@ export function generateOverlayHtml(
 }
 
 export function buildOverlayDirectoryHtml(widgetId?: string): string {
-  const cards = Object.keys(WIDGET_ALIAS_MAP).sort().map((key) => {
-    const icons: Record<string, string> = {
-      likes: '❤️',
-      chat: '💬',
-      alerts: '🔔',
-      spotify: '🎵',
-      goals: '🎯',
-      socials: '📱',
-      border: '🖼️',
-      roses: '🌹'
-    }
+  const entries: Array<{ key: string; label: string; icon: string }> = [
+    { key: 'chat-unified', label: 'Unified Chat', icon: '💬' },
+    { key: 'chat', label: 'Classic Chat Feed', icon: '💬' },
+    { key: 'alerts', label: 'Event Alerts', icon: '🔔' },
+    { key: 'follower-goal', label: 'Follower Goal', icon: '👥' },
+    { key: 'goals', label: 'Goal Tracker', icon: '🎯' },
+    { key: 'now-playing', label: 'Now Playing', icon: '🎵' },
+    { key: 'socials', label: 'Socials Rotation', icon: '📱' },
+    { key: 'screen-border', label: 'Screen Border', icon: '🖼️' },
+    { key: 'particles', label: 'Particles', icon: '✨' },
+    { key: 'discord-promo', label: 'Discord Promo', icon: '💬' },
+    { key: 'node-network', label: 'Node Network', icon: '🔗' },
+    { key: 'latest-gifter', label: 'Latest Gifter', icon: '✨' },
+    { key: 'physics', label: 'Physics Field', icon: '⚡' },
+    { key: 'leaderboard', label: 'Likeathon Board', icon: '🏆' },
+    { key: 'likes-tracker', label: 'Like Tracker', icon: '❤️' },
+    { key: 'deck', label: 'Deck', icon: '🎛️' }
+  ]
+
+  const cards = entries.map((entry) => {
     return `
-      <a href="/overlay/${key}" class="card">
-        <div class="icon">${icons[key] || '🔗'}</div>
-        <div class="name">${key.replace(/-/g, ' ')}</div>
+      <a href="/overlay/${entry.key}" class="card">
+        <div class="icon">${entry.icon}</div>
+        <div class="name">${escapeHtml(entry.label)}</div>
       </a>
     `
   }).join('')
@@ -212,7 +221,7 @@ export function buildOverlayDirectoryHtml(widgetId?: string): string {
           <div class="error-box"><b>Unknown Path:</b> The widget ID "${escapeHtml(widgetId)}" was not found.</div>
         ` : ''}
         <h1>Overlay Directory</h1>
-        <p class="subtitle">Select a widget to open it in a new tab for OBS.</p>
+        <p class="subtitle">Legacy fallback routes. For OBS, use the URL shown on a saved widget card in the app.</p>
         <div class="grid">${cards}</div>
       </div>
     </body>
@@ -226,4 +235,314 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+// Bootstrap script injected into preview HTML so the WidgetEditorModal can
+// update the preview via postMessage instead of changing the iframe `src`
+// (which would tear down the document and restart all timers/animations).
+//
+// Protocol:
+//   parent -> iframe: { type: 'ilystream:preview-config', config: object }
+//     Live config delivery. The template can define
+//     `window.__ilystreamApplyConfig(config)` to consume it without a DOM
+//     swap (CSS variables + data attributes). If no handler is registered,
+//     the bootstrap posts `preview-needs-html` back so the parent falls
+//     back to the HTML-swap path for that iframe.
+//
+//   parent -> iframe: { type: 'ilystream:preview-html', html: string }
+//     Full HTML replacement. Used when a template hasn't opted into the
+//     live-config protocol. Head children (other than this bootstrap) are
+//     replaced, body innerHTML is swapped, and inline <script>s are
+//     re-executed via the clone-and-replace dance (innerHTML alone doesn't
+//     run them).
+//
+//   iframe -> parent: { type: 'ilystream:preview-ready' }
+//     Sent once on load so the parent knows to push the initial draft.
+//
+//   iframe -> parent: { type: 'ilystream:preview-needs-html' }
+//     Sent when the iframe receives a `preview-config` but has no
+//     `__ilystreamApplyConfig` to handle it. Parent should switch to the
+//     HTML-swap path for this iframe.
+const PREVIEW_BOOTSTRAP_SCRIPT = `<script id="ilystream-preview-bootstrap">
+(function(){
+  var APPLY_HTML='ilystream:preview-html';
+  var APPLY_CONFIG='ilystream:preview-config';
+  var READY='ilystream:preview-ready';
+  var NEEDS_HTML='ilystream:preview-needs-html';
+  function reexecScripts(root){
+    var scripts = root.querySelectorAll('script');
+    for (var i=0; i<scripts.length; i++){
+      var old = scripts[i];
+      var ns = document.createElement('script');
+      for (var j=0; j<old.attributes.length; j++){
+        var a = old.attributes[j];
+        ns.setAttribute(a.name, a.value);
+      }
+      ns.textContent = old.textContent || '';
+      old.parentNode && old.parentNode.replaceChild(ns, old);
+    }
+  }
+  function applyHtml(htmlString){
+    try {
+      var doc = new DOMParser().parseFromString(htmlString, 'text/html');
+      var newHead = doc.head;
+      var newBody = doc.body;
+      if (!newHead || !newBody) return;
+      var bootstrap = document.getElementById('ilystream-preview-bootstrap');
+      var head = document.head;
+      var keep = bootstrap;
+      while (head.firstChild) head.removeChild(head.firstChild);
+      var heads = Array.prototype.slice.call(newHead.childNodes);
+      for (var i=0; i<heads.length; i++) {
+        var node = heads[i];
+        if (node && node.nodeType === 1 && node.id === 'ilystream-preview-bootstrap') continue;
+        head.appendChild(document.importNode(node, true));
+      }
+      if (keep) head.appendChild(keep);
+      document.body.innerHTML = newBody.innerHTML;
+      reexecScripts(document.body);
+    } catch (err) {
+      console.error('[ilystream-preview] apply HTML failed', err);
+    }
+  }
+  function applyConfig(config){
+    var fn = window.__ilystreamApplyConfig;
+    if (typeof fn === 'function') {
+      try { fn(config); return true; }
+      catch (err) { console.error('[ilystream-preview] applyConfig failed', err); return true; }
+    }
+    return false;
+  }
+  function postToParent(message){
+    var p = window.parent;
+    if (p && p !== window) {
+      try { p.postMessage(message, '*'); } catch (e) {}
+    }
+  }
+  window.addEventListener('message', function(event){
+    var data = event && event.data;
+    if (!data) return;
+    if (data.type === APPLY_HTML && typeof data.html === 'string') {
+      applyHtml(data.html);
+      return;
+    }
+    if (data.type === APPLY_CONFIG && data.config && typeof data.config === 'object') {
+      var handled = applyConfig(data.config);
+      if (!handled) postToParent({ type: NEEDS_HTML });
+      return;
+    }
+  });
+  function postReady(){ postToParent({ type: READY }); }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    postReady();
+  } else {
+    document.addEventListener('DOMContentLoaded', postReady, { once: true });
+  }
+})();
+</script>`
+
+const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime">
+(function(){
+  if (window.__ilystreamOverlayRuntime) return;
+  var NativeEventSource = window.EventSource;
+  function toAbsoluteUrl(value){
+    try { return new URL(value, window.location.href).href; }
+    catch (err) { return String(value || ''); }
+  }
+  function requestJson(url){
+    if (typeof fetch === 'function') {
+      return fetch(url, { cache: 'no-store' }).then(function(response){
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      });
+    }
+    return new Promise(function(resolve, reject){
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onreadystatechange = function(){
+        if (xhr.readyState !== 4) return;
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error('HTTP ' + xhr.status));
+          return;
+        }
+        try { resolve(JSON.parse(xhr.responseText || '{}')); }
+        catch (err) { reject(err); }
+      };
+      xhr.onerror = function(){ reject(new Error('network error')); };
+      xhr.send();
+    });
+  }
+  function RuntimeEventSource(url, config){
+    this.url = toAbsoluteUrl(url);
+    this.config = config;
+    this.readyState = RuntimeEventSource.CONNECTING;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onerror = null;
+    this._listeners = { open: [], message: [], error: [] };
+    this._native = null;
+    this._pollTimer = null;
+    this._lastEventId = 0;
+    this._closed = false;
+    this._startNative();
+  }
+  RuntimeEventSource.CONNECTING = 0;
+  RuntimeEventSource.OPEN = 1;
+  RuntimeEventSource.CLOSED = 2;
+  RuntimeEventSource.prototype.addEventListener = function(type, listener){
+    if (!this._listeners[type]) this._listeners[type] = [];
+    this._listeners[type].push(listener);
+  };
+  RuntimeEventSource.prototype.removeEventListener = function(type, listener){
+    var list = this._listeners[type];
+    if (!list) return;
+    this._listeners[type] = list.filter(function(item){ return item !== listener; });
+  };
+  RuntimeEventSource.prototype.close = function(){
+    this._closed = true;
+    this.readyState = RuntimeEventSource.CLOSED;
+    if (this._native) {
+      try { this._native.close(); } catch (err) {}
+      this._native = null;
+    }
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
+  };
+  RuntimeEventSource.prototype._dispatch = function(type, event){
+    if (this._closed) return;
+    var handler = this['on' + type];
+    if (typeof handler === 'function') {
+      try { handler.call(this, event); } catch (err) { setTimeout(function(){ throw err; }, 0); }
+    }
+    var list = this._listeners[type] || [];
+    for (var i = 0; i < list.length; i++) {
+      try { list[i].call(this, event); } catch (err) { setTimeout(function(){ throw err; }, 0); }
+    }
+  };
+  RuntimeEventSource.prototype._dispatchMessage = function(data, id){
+    var event = { type: 'message', data: data, lastEventId: String(id || '') };
+    this._dispatch('message', event);
+  };
+  RuntimeEventSource.prototype._readChannel = function(){
+    try {
+      var parsed = new URL(this.url, window.location.href);
+      return parsed.searchParams.get('channel') || 'chat';
+    } catch (err) {
+      return 'chat';
+    }
+  };
+  RuntimeEventSource.prototype._startNative = function(){
+    var self = this;
+    if (typeof NativeEventSource !== 'function') {
+      this._startPolling('EventSource unavailable');
+      return;
+    }
+    try {
+      this._native = new NativeEventSource(this.url, this.config);
+    } catch (err) {
+      this._startPolling('EventSource constructor failed');
+      return;
+    }
+    var opened = false;
+    var openTimer = setTimeout(function(){
+      if (!opened && !self._closed) self._startPolling('EventSource open timeout');
+    }, 5000);
+    this._native.onopen = function(event){
+      opened = true;
+      clearTimeout(openTimer);
+      if (self._closed) return;
+      self.readyState = RuntimeEventSource.OPEN;
+      self._dispatch('open', event || { type: 'open' });
+    };
+    this._native.onmessage = function(event){
+      if (self._closed) return;
+      var id = parseInt(event.lastEventId || '', 10);
+      if (Number.isFinite(id) && id > self._lastEventId) self._lastEventId = id;
+      self._dispatchMessage(event.data, event.lastEventId);
+    };
+    this._native.onerror = function(){
+      clearTimeout(openTimer);
+      if (self._closed) return;
+      if (self._native) {
+        try { self._native.close(); } catch (err) {}
+        self._native = null;
+      }
+      self._startPolling('EventSource stream failed');
+    };
+  };
+  RuntimeEventSource.prototype._startPolling = function(reason){
+    var self = this;
+    if (this._pollTimer || this._closed) return;
+    this.readyState = RuntimeEventSource.OPEN;
+    console.warn('[ilystream-overlay] ' + reason + '; using polling transport for ' + this._readChannel() + '.');
+    this._dispatch('open', { type: 'open' });
+    var poll = function(){
+      if (self._closed) return;
+      var url = new URL('/overlay/events/poll', window.location.href);
+      url.searchParams.set('channel', self._readChannel());
+      url.searchParams.set('after', String(self._lastEventId || 0));
+      url.searchParams.set('limit', '80');
+      url.searchParams.set('t', String(Date.now()));
+      requestJson(url.href).then(function(result){
+        var events = Array.isArray(result && result.events) ? result.events : [];
+        for (var i = 0; i < events.length; i++) {
+          var item = events[i];
+          var id = Number(item && item.id) || 0;
+          if (id > self._lastEventId) self._lastEventId = id;
+          self._dispatchMessage(JSON.stringify(item ? item.data : null), id);
+        }
+        var cursor = Number(result && result.cursor);
+        if (Number.isFinite(cursor) && cursor > self._lastEventId) self._lastEventId = cursor;
+      }).catch(function(err){
+        console.warn('[ilystream-overlay] polling transport failed', err);
+      });
+    };
+    poll();
+    this._pollTimer = setInterval(poll, 2000);
+  };
+  window.__ilystreamOverlayRuntime = {
+    nativeEventSource: NativeEventSource || null,
+    pollingEndpoint: '/overlay/events/poll',
+    requestJson: requestJson
+  };
+  window.__ilystreamRequestJson = requestJson;
+  window.EventSource = RuntimeEventSource;
+})();
+</script>`
+
+/**
+ * Inject the preview-bootstrap script into a rendered widget HTML string.
+ * Inserted just before `</head>` so it runs before any body scripts. If there
+ * is no `</head>` the script is prepended so it still runs first.
+ */
+export function injectPreviewBootstrap(html: string): string {
+  if (!html) return html
+  const idx = html.toLowerCase().indexOf('</head>')
+  if (idx === -1) return PREVIEW_BOOTSTRAP_SCRIPT + html
+  return html.slice(0, idx) + PREVIEW_BOOTSTRAP_SCRIPT + html.slice(idx)
+}
+
+/**
+ * Inject runtime hardening for external browser sources such as TikTok Live
+ * Studio. It wraps EventSource with a native-first transport that falls back
+ * to local HTTP polling through /overlay/events/poll when embedded Chromium
+ * drops or blocks SSE.
+ */
+export function injectOverlayRuntimeBootstrap(html: string): string {
+  if (!html || html.includes('id="ilystream-overlay-runtime"')) return html
+  const idx = html.toLowerCase().indexOf('</head>')
+  if (idx === -1) return OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT + html
+  return html.slice(0, idx) + OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT + html.slice(idx)
+}
+
+/**
+ * Render a widget's preview HTML with the bootstrap pre-injected. Returns
+ * `null` if the widget type has no renderer (matches `generateOverlayHtml`).
+ */
+export function renderWidgetPreviewHtml(widget: Widget, context: OverlayRendererContext): string | null {
+  const html = generateOverlayHtml(widget, true, context)
+  if (!html) return null
+  return injectPreviewBootstrap(html)
 }

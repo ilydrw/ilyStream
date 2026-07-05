@@ -2,6 +2,7 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { IconSettings, IconVideo, IconMusic, IconSparkles } from '@tabler/icons-react'
 import { IconX, IconDeviceFloppy } from '../../../components/ui/icons'
+import { useShallow } from 'zustand/react/shallow'
 import { useStudioStore } from '../../../stores/studio-store'
 
 interface RecordingSettingsModalProps {
@@ -10,11 +11,39 @@ interface RecordingSettingsModalProps {
 }
 
 export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsModalProps) {
-  const { recordingSettings, setRecordingSettings, audioReactivity, setAudioReactivity } = useStudioStore()
+  // Narrow subscription: this modal only needs recording/audio-reactivity slices,
+  // so it no longer re-renders on unrelated store changes (e.g. every scene edit).
+  const { recordingSettings, setRecordingSettings, audioReactivity, setAudioReactivity } = useStudioStore(
+    useShallow((s) => ({
+      recordingSettings: s.recordingSettings,
+      setRecordingSettings: s.setRecordingSettings,
+      audioReactivity: s.audioReactivity,
+      setAudioReactivity: s.setAudioReactivity
+    }))
+  )
 
   if (!isOpen) return null
 
   const smoothing = audioReactivity?.smoothing ?? 0.6
+  const videoCodec = recordingSettings.codec || (String(recordingSettings.encoder || '').startsWith('hevc') || recordingSettings.encoder === 'libx265' ? 'h265' : 'h264')
+  const activeContainer = videoCodec === 'h265' && recordingSettings.container === 'flv'
+    ? 'mkv'
+    : recordingSettings.container
+  const encoderOptions = videoCodec === 'h265'
+    ? [
+        { id: 'auto', name: 'Auto HEVC', desc: 'Best available H.265 encoder' },
+        { id: 'hevc_nvenc', name: 'NVIDIA HEVC', desc: 'GPU accelerated H.265' },
+        { id: 'hevc_amf', name: 'AMD HEVC', desc: 'GPU accelerated H.265' },
+        { id: 'hevc_qsv', name: 'Intel HEVC', desc: 'GPU accelerated H.265' },
+        { id: 'libx265', name: 'Software (x265)', desc: 'CPU only - highest load' }
+      ]
+    : [
+        { id: 'auto', name: 'Auto H.264', desc: 'Best available H.264 encoder' },
+        { id: 'h264_nvenc', name: 'NVIDIA NVENC', desc: 'GPU accelerated H.264' },
+        { id: 'h264_amf', name: 'AMD AMF', desc: 'GPU accelerated H.264' },
+        { id: 'h264_qsv', name: 'Intel QSV', desc: 'GPU accelerated H.264' },
+        { id: 'libx264', name: 'Software (x264)', desc: 'CPU only - high load' }
+      ]
 
   return (
     <AnimatePresence>
@@ -52,8 +81,12 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
                 {(['mkv', 'mp4', 'mov', 'flv'] as const).map(fmt => (
                   <button
                     key={fmt}
-                    onClick={() => setRecordingSettings({ container: fmt })}
-                    className={`py-3 rounded-xl border font-semibold text-[11px] tracking-tight transition-all ${recordingSettings.container === fmt ? 'bg-accent border-accent text-white ' : 'bg-white/5 border-white/10 text-white/30 hover:border-white/20'}`}
+                    onClick={() => {
+                      if (videoCodec === 'h265' && fmt === 'flv') return
+                      setRecordingSettings({ container: fmt })
+                    }}
+                    disabled={videoCodec === 'h265' && fmt === 'flv'}
+                    className={`py-3 rounded-xl border font-semibold text-[11px] tracking-tight transition-all disabled:opacity-20 disabled:cursor-not-allowed ${activeContainer === fmt ? 'bg-accent border-accent text-white ' : 'bg-white/5 border-white/10 text-white/30 hover:border-white/20'}`}
                   >
                     {fmt}
                   </button>
@@ -64,19 +97,39 @@ export function RecordingSettingsModal({ isOpen, onClose }: RecordingSettingsMod
               </p>
             </div>
 
+            {/* Codec */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-[10px] font-semibold tracking-tight text-white/40">
+                <IconVideo size={14} /> Video Codec
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { id: 'h264', name: 'H.264', desc: 'Most compatible' },
+                  { id: 'h265', name: 'H.265 / HEVC', desc: 'Smaller files, newer players' }
+                ] as const).map(codec => (
+                  <button
+                    key={codec.id}
+                    onClick={() => setRecordingSettings({
+                      codec: codec.id,
+                      encoder: 'auto',
+                      ...(codec.id === 'h265' && recordingSettings.container === 'flv' ? { container: 'mkv' as const } : {})
+                    })}
+                    className={`px-4 py-3 rounded-xl border text-left transition-all ${videoCodec === codec.id ? 'bg-white/10 border-accent/40 text-white shadow-inner' : 'bg-white/5 border-white/5 text-white/30 hover:bg-white/10'}`}
+                  >
+                    <div className="text-[11px] font-semibold tracking-tight">{codec.name}</div>
+                    <div className="text-[9px] font-semibold text-white/20 tracking-tight">{codec.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Encoder */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-[10px] font-semibold tracking-tight text-white/40">
                 <IconSparkles size={14} /> Video Encoder
               </div>
               <div className="space-y-2">
-                {[
-                  { id: 'auto', name: 'Auto (Recommended)', desc: 'Best available hardware' },
-                  { id: 'h264_nvenc', name: 'NVIDIA NVENC', desc: 'GPU accelerated' },
-                  { id: 'h264_amf', name: 'AMD AMF', desc: 'GPU accelerated' },
-                  { id: 'h264_qsv', name: 'Intel QSV', desc: 'GPU accelerated' },
-                  { id: 'libx264', name: 'Software (x264)', desc: 'CPU only - High load' }
-                ].map(enc => (
+                {encoderOptions.map(enc => (
                   <button
                     key={enc.id}
                     onClick={() => setRecordingSettings({ encoder: enc.id as any })}

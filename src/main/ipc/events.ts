@@ -4,6 +4,7 @@ import { ServiceRegistry } from '../services/service-registry'
 import { ConnectorError } from '../platforms/base-connector'
 import { logEmitter } from '../lib/logger'
 import { sendToRenderer } from './safe-send'
+import { LIKE_LOG_VERBOSE } from '../../shared/debug-flags'
 
 /**
  * Forward events from main process services to the renderer via IPC.
@@ -16,7 +17,9 @@ export function setupEventForwarding(
 
   // Forward all stream events to renderer
   platformManager.on('event', (event: AnyStreamEvent) => {
-    console.log(`[ipc:events] Forwarding ${event.type} to renderer...`)
+    if (event.type !== 'like' || LIKE_LOG_VERBOSE) {
+      console.log(`[ipc:events] Forwarding ${event.type} to renderer...`)
+    }
     if (!sendToRenderer(window, 'event:stream', toRendererStreamEvent(event))) {
       console.warn('[ipc:events] Cannot forward event: window is destroyed')
     }
@@ -31,7 +34,7 @@ export function setupEventForwarding(
     sendToRenderer(window, 'platform:error', toRendererConnectorError(error))
   })
 
-  platformManager.on('reconnecting', (data: { platform: string; attempt: number; maxAttempts: number; delayMs: number }) => {
+  platformManager.on('reconnecting', (data: { platform: string; attempt: number; maxAttempts: number; delayMs: number; reason?: string }) => {
     sendToRenderer(window, 'platform:reconnecting', data)
   })
 
@@ -75,7 +78,6 @@ export function setupEventForwarding(
     }
   })
   
-  triggerEngine.on('action:show-alert', forwardAlert)
   services.overlayServer.on('show-alert', forwardAlert)
   soundboardService.on('action:play-sound', forwardSound)
   triggerEngine.on('receipt', (receipt) => {
@@ -111,6 +113,10 @@ export function setupEventForwarding(
   // Forward Govee status changes
   services.goveeService.on('status-changed', (status) => {
     sendToRenderer(window, 'govee:status-changed', status)
+  })
+
+  services.goveeService.on('ble-command', (payload) => {
+    sendToRenderer(window, 'govee:ble-command', payload)
   })
 
   // Forward logs to renderer

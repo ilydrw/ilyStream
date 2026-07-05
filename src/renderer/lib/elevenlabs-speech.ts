@@ -11,7 +11,7 @@
 
 import type { VoiceProfile } from '../../main/tts/voice-profiles'
 import { ELEVENLABS_DEFAULT_MODEL, ELEVENLABS_DEFAULT_VOICE_ID, type ElevenLabsVoicePreset } from '../../shared/tts-providers'
-import { applyVoiceEffects, getDynamicPitchAndRate } from './audio-effects'
+import { applyVoiceEffects, getDynamicPitchAndRate, getEnabledProfileEffectId } from './audio-effects'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { audioEngine } from '../utils/audio-engine'
 
@@ -152,18 +152,12 @@ export async function fetchElevenLabsVoices(apiKey: string): Promise<ElevenLabsV
   if (!apiKey) return []
 
   try {
-    const prefix = apiKey ? apiKey.slice(0, 4) + '...' : 'MISSING'
-    console.log(`[ElevenLabs] Fetching voices with key prefix: ${prefix}`)
-    
     const response = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: { 'xi-api-key': apiKey }
     })
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error('Invalid ElevenLabs API Key')
-      if (response.status === 429) throw new Error('ElevenLabs rate limit exceeded')
-      const body = await response.text().catch(() => '')
-      throw new Error(`ElevenLabs API Error (${response.status}): ${body || response.statusText}`)
+      throw new Error(await describeElevenLabsError(response))
     }
 
     const data = await response.json()
@@ -217,11 +211,34 @@ async function fetchElevenLabsAudio(
   )
 
   if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText)
-    throw new Error(`ElevenLabs API error ${response.status}: ${message}`)
+    throw new Error(await describeElevenLabsError(response, voiceId))
   }
 
   return response.blob()
+}
+
+/**
+ * ElevenLabs reuses 401 for both invalid-key and quota-exceeded, so we have to
+ * parse the body to give the user an honest error. Falls back to status text
+ * if the body isn't parseable JSON.
+ */
+async function describeElevenLabsError(response: Response, voiceId?: string): Promise<string> {
+  const raw = await response.text().catch(() => '')
+  let detail: any = null
+  try { detail = raw ? JSON.parse(raw)?.detail : null } catch {}
+
+  const code = detail?.code || detail?.status
+  const message = detail?.message
+
+  if (code === 'quota_exceeded') return `ElevenLabs quota exceeded — ${message || 'out of credits'}`
+  if (code === 'voice_not_found') {
+    const voiceLabel = voiceId ? ` "${voiceId}"` : ''
+    return `ElevenLabs voice${voiceLabel} is not available to this API key. Sync voices, choose a listed voice, or have the voice owner share it to this ElevenLabs account.`
+  }
+  if (code === 'invalid_api_key' || (response.status === 401 && !code)) return 'Invalid ElevenLabs API Key'
+  if (response.status === 429) return 'ElevenLabs rate limit exceeded — slow down requests'
+
+  return `ElevenLabs API error ${response.status}: ${message || raw || response.statusText}`
 }
 
 async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, text: string): Promise<void> {
@@ -229,28 +246,18 @@ async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, te
 
   const objectUrl = URL.createObjectURL(blob)
   const audio = new Audio(objectUrl)
-  const rate = Math.max(0.5, Math.min(2, profile.rate ?? 1))
+  const profileRate = Math.max(0.5, Math.min(2, profile.rate ?? 1))
   
   // Apply modifiers
   const settingsRaw = await window.api.settings.getAll()
   const globalSettings = resolveAppSettings(settingsRaw)
   
-  // Merge profile-specific effects
-  const settings = {
-    ...globalSettings,
-    voiceModifiers: {
-      ...globalSettings.voiceModifiers,
-      ...(profile.effects ? {
-        radioFilter: profile.effects.some(e => e.type === 'robot' && (e as any).enabled !== false),
-        speedRamping: profile.effects.some(e => e.type === 'pitch-shift' && (e as any).enabled !== false),
-        pitchShifting: profile.effects.some(e => e.type === 'pitch-shift') ? 'high' : globalSettings.voiceModifiers.pitchShifting
-      } : {})
-    }
-  }
+  const voiceModifiers = globalSettings.voiceModifiers
+  const profileEffectId = getEnabledProfileEffectId(profile.effects)
 
-  const { pitch, rate: dynamicRate } = getDynamicPitchAndRate(text, settings.voiceModifiers, 1.0, rate)
+  const { rate: dynamicRate } = getDynamicPitchAndRate(text, voiceModifiers, 1, profileRate)
   
-  audio.playbackRate = dynamicRate
+  audio.playbackRate = Math.max(0.5, Math.min(2, dynamicRate))
 
   // Web Audio for filters
   const context = audioEngine.getContext()
@@ -270,7 +277,10 @@ async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, te
   gain.gain.value = Math.max(0, Math.min(1, profile.volume ?? 1))
 
   let lastNode: AudioNode = source
-  lastNode = applyVoiceEffects(context, lastNode, settings.voiceModifiers, text)
+  lastNode = applyVoiceEffects(context, lastNode, voiceModifiers)
+  if (profileEffectId) {
+    lastNode = applyVoiceEffects(context, lastNode, { id: profileEffectId, enabled: true })
+  }
   
   lastNode.connect(gain)
 

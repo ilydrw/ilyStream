@@ -14,6 +14,7 @@ export interface TTSQueueItem {
   text: string
   originalText: string
   username: string
+  userKey?: string
   platform: string
   priority: TTSPriority
   voiceProfileId?: string
@@ -39,7 +40,8 @@ export class TTSQueue {
 
     // Per-user rate limit
     const now = Date.now()
-    const recentTimestamps = this.getRecentUserTimestamps(item.username, now)
+    const rateLimitKey = item.userKey || item.username
+    const recentTimestamps = this.getRecentUserTimestamps(rateLimitKey, now)
     const userCount = recentTimestamps.length
 
     if (item.eventType !== 'test' && userCount >= this.perUserLimit) {
@@ -72,7 +74,7 @@ export class TTSQueue {
 
     if (item.eventType !== 'test') {
       recentTimestamps.push(now)
-      this.recentUserEnqueues.set(item.username, recentTimestamps)
+      this.recentUserEnqueues.set(rateLimitKey, recentTimestamps)
     }
 
     return true

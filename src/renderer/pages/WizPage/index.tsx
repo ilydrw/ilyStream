@@ -2,23 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconBolt } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { WizIcon } from '../../components/ui/WizIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function WizPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <WizIcon size={48} />
-          </div>
-          <div>
-            <h1>WiZ Connected</h1>
-            <p className="app-page-intro">
-              Connect your WiZ Connected smart lights. Leverage the UDP local protocol for lightning-fast synchronization with your stream events.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="WiZ Connected"
+        description="Connect WiZ smart lights with UDP local control for fast stream-event lighting."
+        iconNode={<WizIcon size={24} />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 

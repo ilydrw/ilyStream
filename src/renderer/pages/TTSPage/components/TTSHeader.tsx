@@ -1,5 +1,6 @@
 import React from 'react'
 import {IconVolume} from '@tabler/icons-react'
+import { PageHeader } from '../../../components/layout/PageHeader'
 
 interface TTSHeaderProps {
   enabled: boolean
@@ -8,16 +9,11 @@ interface TTSHeaderProps {
 
 export function TTSHeader({ enabled, onToggle }: TTSHeaderProps) {
   return (
-    <header className="app-page-header">
-      <div className="flex items-center gap-6">
-        <div className="flex items-center justify-center">
-          <IconVolume size={32} className="text-accent" />
-        </div>
-        <div>
-          <h1>Text-to-Speech</h1>
-        </div>
-      </div>
-      <div className="flex items-center gap-4">
+    <PageHeader
+      title="Text-to-Speech"
+      description="Manage voices, routing, queue behavior, and user-specific speech rules."
+      icon={IconVolume}
+      actions={
         <button
           onClick={onToggle}
           className={`app-button-primary !h-12 !px-8 relative overflow-hidden transition-all ${!enabled ? '!bg-white/[0.03] !text-white/40 !border-white/5 shadow-none' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
@@ -26,7 +22,7 @@ export function TTSHeader({ enabled, onToggle }: TTSHeaderProps) {
             {enabled ? 'System Online' : 'Engine Muted'}
           </span>
         </button>
-      </div>
-    </header>
+      }
+    />
   )
 }

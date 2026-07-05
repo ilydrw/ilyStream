@@ -326,6 +326,7 @@ export interface LeaderboardConfig {
 
 export interface ChatUnifiedConfig {
   maxItems: number
+  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   opacity: number
   scale: number
   backgroundOpacity: number
@@ -360,4 +361,9 @@ export interface LikesTrackerConfig {
   glassIntensity: number
   animationStyle: 'fade' | 'slide' | 'zoom' | 'none'
   animationDuration?: number
+  lifetimeGlimpseEnabled: boolean
+  streamWindowMinutes: number
+  lifetimeWindowMinutes: number
+  lifetimeTitle: string
+  showPulsingHeart: boolean
 }

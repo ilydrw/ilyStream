@@ -2,24 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconBulb } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { LifxIcon } from '../../components/ui/LifxIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function LifxPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <LifxIcon size={48} />
-          </div>
-          <div>
-            <h1>LIFX Smart Lighting</h1>
-            <p className="app-page-intro">
-              Connect your high-performance LIFX bulbs and strips. 
-              Leverage ultra-low latency local control for synchronized stream alerts.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="LIFX Smart Lighting"
+        description="Connect LIFX bulbs and strips for low-latency local stream alerts."
+        iconNode={<LifxIcon size={24} />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 

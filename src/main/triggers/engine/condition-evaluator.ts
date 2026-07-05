@@ -72,13 +72,9 @@ export class ConditionEvaluator {
             const badges = (user as any).badges || []
             const badgeText = badges.map((b: any) => `${b.id} ${b.name}`).join(' ').toLowerCase()
             return (
+              Boolean((user as any).isSuperFan) ||
               badgeText.includes('superfan') ||
-              badgeText.includes('top gifter') ||
-              badgeText.includes('level 20') ||
-              badgeText.includes('level 30') ||
-              badgeText.includes('level 40') ||
-              badgeText.includes('level 50') ||
-              user.isVip
+              badgeText.includes('super fan')
             )
           }
           case 'is_fan_club': return !!(user as any).isFanClubMember

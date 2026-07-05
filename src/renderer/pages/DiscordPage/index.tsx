@@ -22,16 +22,17 @@ export default function DiscordPage() {
   const reconnectInfo = useConnectionStore((s) => s.reconnectInfo)
   const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, string>>({})
+  const [connectFeedback, setConnectFeedback] = useState<string | null>(null)
 
   const status = statuses[PLATFORM_ID] || 'disconnected'
-  const error = errors[PLATFORM_ID]
+  const error = errors[PLATFORM_ID] || connectFeedback
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
 
   useEffect(() => {
     window.api.platform.getConfigs().then((configs) => {
       const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
-      if (platformConfig) setConfig(platformConfig)
+      if (platformConfig) setConfig(platformConfig as unknown as Record<string, string>)
     })
   }, [status])
 
@@ -41,14 +42,16 @@ export default function DiscordPage() {
   )
 
   const handleConnect = async () => {
+    setConnectFeedback(null)
     try {
       await window.api.platform.connect({
+        ...config,
         platform: PLATFORM_ID,
-        enabled: true,
-        ...config
+        enabled: true
       })
     } catch (err) {
-      console.error('Failed to connect:', err)
+      const message = err instanceof Error ? err.message : String(err)
+      setConnectFeedback(message.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, ''))
     }
   }
 
@@ -62,7 +65,6 @@ export default function DiscordPage() {
         platformId={PLATFORM_ID}
         title="Discord Integration"
         description="Bridge your stream community to your Discord server. Send automated alerts, sync chat messages, and manage roles based on viewer activity."
-        icon={<IconMessage size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">

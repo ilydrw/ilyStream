@@ -48,22 +48,18 @@ export function Modal({ open, onClose, title, children, className, headerActions
               className
             )}
           >
-            {(title || onClose) && (
-              <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
-                  {headerActions}
-                  {title && <h2 className="text-[15px] font-semibold tracking-tight text-white">{title}</h2>}
-                </div>
-                {onClose && (
-                  <button
-                    onClick={onClose}
-                    className="w-8 h-8 grid place-items-center rounded-md hover:bg-white/[0.04] text-white/55 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <IconX size={16} />
-                  </button>
-                )}
+            <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                {headerActions}
+                {title && <h2 className="text-[15px] font-semibold tracking-tight text-white">{title}</h2>}
               </div>
-            )}
+              <button
+                onClick={onClose}
+                className="w-8 h-8 grid place-items-center rounded-md hover:bg-white/[0.04] text-white/55 hover:text-white transition-colors cursor-pointer"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
             {noScroll ? (
               children
             ) : (

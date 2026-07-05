@@ -16,8 +16,13 @@ import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { StreamingService } from './streaming-service'
 import { BrowserWindow } from 'electron'
-import { ChatRelayService } from '../chat/chat-relay-service'
+import { ChatRelayService, isSuppressedChatRelayEcho } from '../chat/chat-relay-service'
 import { LoyaltyService } from '../loyalty/loyalty-service'
+import { LIKE_LOG_VERBOSE } from '../../shared/debug-flags'
+import { LowValueGiftCooldown } from '../../shared/gift-alert-protection'
+import { isCohostIdentity } from '../ai/cohost-identity'
+import { htmlToSingleLinePlainText } from '../../shared/plain-text'
+import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
 import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
 import type { AnyStreamEvent, Platform } from '../platforms/types'
@@ -31,6 +36,11 @@ export class EventOrchestrator {
   /** Track requestIds we've already counted, so a queue-update doesn't double-count. */
   private countedSongRequestIds = new Set<string>()
   private initialized = false
+  private lowValueGiftHardwareCooldown = new LowValueGiftCooldown()
+  /** Wall-clock ms of the last history-prune pass. Throttles prune to at most
+   * once every `HISTORY_PRUNE_INTERVAL_MS` instead of every event. */
+  private lastHistoryPruneAt = 0
+  private static readonly HISTORY_PRUNE_INTERVAL_MS = 5 * 60 * 1000
 
   constructor(
     private platformManager: PlatformManager,
@@ -81,11 +91,6 @@ export class EventOrchestrator {
 
     // Listen to Economy Events
     this.economyService.on('leaderboard-update', (data) => {
-      console.log(`[orchestrator] Economy leaderboard-update received. overlayServer types:`, {
-        exists: !!this.overlayServer,
-        hasBroadcast: typeof (this.overlayServer as any).broadcast === 'function',
-        constructor: this.overlayServer?.constructor?.name
-      })
       if (typeof (this.overlayServer as any).broadcast === 'function') {
         this.overlayServer.broadcast('deck', { type: 'leaderboard', data })
         this.overlayServer.broadcast('leaderboard', { type: 'update', data })
@@ -155,7 +160,10 @@ export class EventOrchestrator {
   }
 
   private async handlePlatformEvent(event: AnyStreamEvent): Promise<void> {
-    console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
+    const verboseForEvent = event.type !== 'like' || LIKE_LOG_VERBOSE
+    if (verboseForEvent) {
+      console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
+    }
 
     // 1. Log to DB
     await this.runEventStage('event history', () => {
@@ -169,9 +177,15 @@ export class EventOrchestrator {
 
     // 2. Broadcast to Overlay
     await this.runEventStage('overlay broadcast', () => {
-      console.log(`[orchestrator] Broadcasting to overlays...`)
+      if (verboseForEvent) {
+        console.log(`[orchestrator] Broadcasting to overlays...`)
+      }
       this.overlayServer.handleStreamEvent(event)
     })
+
+    if (isDisplayOnlyChatEvent(event)) {
+      return
+    }
 
     // 3. Play Sounds
     await this.runEventStage('event sounds', () => {
@@ -199,7 +213,9 @@ export class EventOrchestrator {
 
     // 7. Automation Triggers
     await this.runEventStage('triggers', () => {
-      console.log(`[orchestrator] Processing triggers...`)
+      if (verboseForEvent) {
+        console.log(`[orchestrator] Processing triggers...`)
+      }
       this.triggerEngine.evaluate(event)
     })
 
@@ -225,9 +241,12 @@ export class EventOrchestrator {
 
     // 11. DB Pruning (Throttle)
     await this.runEventStage('event history pruning', () => {
-      if (Date.now() % 100 === 0) {
-        this.db.pruneEventHistory()
+      const now = Date.now()
+      if (now - this.lastHistoryPruneAt < EventOrchestrator.HISTORY_PRUNE_INTERVAL_MS) {
+        return
       }
+      this.lastHistoryPruneAt = now
+      this.db.pruneEventHistory()
     })
   }
 
@@ -308,7 +327,7 @@ export class EventOrchestrator {
   }
 
   private cleanHostChatText(value: unknown): string {
-    return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+    return htmlToSingleLinePlainText(value)
   }
 
   private truncateHostChatMessage(message: string): string {
@@ -354,7 +373,11 @@ export class EventOrchestrator {
       await fetch(settings.discordWebhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        // Bound the outbound call so a slow/misconfigured webhook never blocks
+        // the orchestrator pipeline. Discord's own servers respond in well under
+        // a second, so 3s is generous and protects the next event from stall.
+        signal: AbortSignal.timeout(3000)
       })
     } catch (err) {
       console.error('[Discord] Webhook failed:', err)
@@ -376,7 +399,7 @@ export class EventOrchestrator {
     try {
       this.overlayServer.pushAlert({
         type: 'show_alert',
-        template: `<strong>${escapeAlertHtml(event.displayName)}</strong> hit level ${event.level}!`,
+        template: `${event.displayName} hit level ${event.level}!`,
         durationMs: 4200,
         animationIn: 'zoom',
         animationOut: 'fade'
@@ -407,31 +430,48 @@ export class EventOrchestrator {
   private handleHardwareAlerts(event: any): void {
     const settings = resolveAppSettings(this.db.getAllSettings())
     const devices = this.lightingManager.getState().devices
+    const hueSettings = settings.integrations?.hue
+    const goveeSettings = settings.integrations?.govee
+    const hueFlashDurationMs = hueSettings?.flashDurationMs ?? (settings as any).hueFlashDurationMs
+    const goveeFlashDurationMs = goveeSettings?.flashDurationMs ?? (settings as any).goveeFlashDurationMs
+    const hueFlashOnFollow = hueSettings?.flashOnFollow ?? (settings as any).hueFlashOnFollow
+    const goveeFlashOnFollow = goveeSettings?.flashOnFollow ?? (settings as any).goveeFlashOnFollow
+    const hueFlashOnGift = hueSettings?.flashOnGift ?? (settings as any).hueFlashOnGift
+    const goveeFlashOnGift = goveeSettings?.flashOnGift ?? (settings as any).goveeFlashOnGift
 
     if (event.type === 'follow') {
-      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      const duration = hueFlashDurationMs || goveeFlashDurationMs || 5000
       for (const device of devices) {
-        if (device.platform === 'hue' && settings.hueFlashOnFollow) {
+        if (device.platform === 'hue' && hueFlashOnFollow) {
           this.lightingManager.executeAction(device.id, 'flash', { duration })
-        } else if (device.platform === 'govee' && settings.goveeFlashOnFollow) {
+        } else if (device.platform === 'govee' && goveeFlashOnFollow) {
           this.lightingManager.executeAction(device.id, 'flash', { duration })
+        } else if (device.platform === 'razer' && settings.razerFlashOnFollow !== false) {
+          this.lightingManager.executeAction(device.id, 'flash', { duration, color: '#19C8FF' })
         }
       }
     }
 
     if (event.type === 'gift' && !event.isCombo) {
-      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      if (this.lowValueGiftHardwareCooldown.shouldSuppress(event)) {
+        console.log('[orchestrator] Suppressed low-value TikTok gift lighting during anti-spam cooldown.')
+        return
+      }
+
+      const duration = hueFlashDurationMs || goveeFlashDurationMs || 5000
       for (const device of devices) {
-        if (device.platform === 'hue' && settings.hueFlashOnGift) {
+        if (device.platform === 'hue' && hueFlashOnGift) {
           this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#D035F1' })
-        } else if (device.platform === 'govee' && settings.goveeFlashOnGift) {
+        } else if (device.platform === 'govee' && goveeFlashOnGift) {
+          this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#D035F1' })
+        } else if (device.platform === 'razer' && settings.razerFlashOnGift !== false) {
           this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#D035F1' })
         }
       }
     }
 
     if (event.type === 'subscription') {
-      const duration = settings.hueFlashDurationMs || settings.goveeFlashDurationMs || 5000
+      const duration = hueFlashDurationMs || goveeFlashDurationMs || 5000
       for (const device of devices) {
         this.lightingManager.executeAction(device.id, 'pulse', { duration, color: '#19C8FF' })
       }
@@ -560,7 +600,9 @@ export class EventOrchestrator {
 
   private handleEconomy(event: any): void {
     if (event.type === 'like') {
-      this.economyService.registerLike(event.user.username, event.likeCount)
+      const username = event.user?.username || event.user?.id || event.user?.displayName || 'anonymous'
+      const displayName = event.user?.displayName || event.user?.username || username
+      this.economyService.registerLike(username, event.likeCount, displayName)
     } else if (event.type === 'gift') {
       // 1 cent = 1 second for example (standard tikfinity-like logic)
       const seconds = Math.floor(event.monetaryValue / 10) // Simplified
@@ -610,18 +652,16 @@ function isHostChatPlatform(value: unknown): value is Platform {
 }
 
 function shouldRouteEventToTts(event: AnyStreamEvent): boolean {
+  if (shouldSuppressStreamEventFromChat(event)) return false
+  if (isSuppressedChatRelayEcho(event)) return false
+  if (event.type === 'chat' && isCohostIdentity(event.user)) return false
   return event.type === 'chat' || event.type === 'subscription'
 }
 
-function escapeAlertHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&': return '&amp;'
-      case '<': return '&lt;'
-      case '>': return '&gt;'
-      case '"': return '&quot;'
-      case "'": return '&#x27;'
-      default: return char
-    }
-  })
+function isDisplayOnlyChatEvent(event: AnyStreamEvent): boolean {
+  return event.type === 'chat' && (
+    shouldSuppressStreamEventFromChat(event) ||
+    isSuppressedChatRelayEcho(event) ||
+    isCohostIdentity(event.user)
+  )
 }

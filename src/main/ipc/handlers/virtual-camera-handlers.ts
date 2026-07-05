@@ -1,5 +1,5 @@
 // src/main/ipc/handlers/virtual-camera-handlers.ts
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { ServiceRegistry } from '../../services/service-registry'
 import { StartVirtualCameraOptions } from '../../../shared/virtual-camera'
 import { sendToRenderer } from '../safe-send'
@@ -23,10 +23,7 @@ export function registerVirtualCameraHandlers(registry: ServiceRegistry) {
 
   // Listen for status changes and forward to all windows
   registry.virtualCameraService.on('status-change', (status) => {
-    // Note: We need a way to find all windows. 
-    // Usually, this is handled by a window manager or by broadcasting to all BrowserWindow instances.
-    const { BrowserWindow } = require('electron')
-    BrowserWindow.getAllWindows().forEach(win => {
+    BrowserWindow.getAllWindows().forEach((win) => {
       sendToRenderer(win, 'virtualcamera:status-changed', status)
     })
   })

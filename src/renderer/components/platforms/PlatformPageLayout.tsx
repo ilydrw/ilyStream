@@ -1,23 +1,30 @@
 import { ReactNode } from 'react'
-import { PlatformId } from '../../../shared/platforms'
+import type { Platform as PlatformId } from '../../../main/platforms/types'
 import { PlatformLogo } from './PlatformLogo'
 import { ReconnectInfo } from '../../stores/connection-store'
+import { PageHeader } from '../layout/PageHeader'
 
 export function StatusBadge({ status, reconnect }: { status: string; reconnect?: ReconnectInfo | null }) {
+  // A reconnect carrying a reason is a calm "waiting to go live" state, not an
+  // error — style and label it distinctly from a failure-driven retry.
+  const isWaiting = status === 'connecting' && Boolean(reconnect?.reason)
+
   const styles: Record<string, string> = {
     connected: 'bg-success/10 text-success',
     connecting: 'bg-warning/10 text-warning',
     disconnected: 'bg-white/5 text-white/40',
     error: 'bg-danger/10 text-danger'
   }
+  const badgeClass = isWaiting ? 'bg-info/10 text-info' : styles[status] || styles.disconnected
 
-  const label =
-    status === 'connecting' && reconnect
+  const label = isWaiting
+    ? 'Waiting'
+    : status === 'connecting' && reconnect
       ? `Retrying ${reconnect.attempt}/${reconnect.maxAttempts}`
       : status.toUpperCase()
 
   return (
-    <span className={`flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-normal ${styles[status] || styles.disconnected}`}>
+    <span className={`flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-normal ${badgeClass}`}>
       {status === 'connected' && (
         <span className="relative flex h-1.5 w-1.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-40" />
@@ -25,7 +32,7 @@ export function StatusBadge({ status, reconnect }: { status: string; reconnect?:
         </span>
       )}
       {status === 'connecting' && (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+        <span className={`h-1.5 w-1.5 animate-pulse rounded-full ${isWaiting ? 'bg-info' : 'bg-warning'}`} />
       )}
       {label}
     </span>
@@ -41,16 +48,18 @@ export function Metric({
   icon: ReactNode
   label: string
   value: string
-  tone?: 'neutral' | 'danger'
+  tone?: 'neutral' | 'warning' | 'danger'
 }) {
+  const toneClass = tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : ''
+
   return (
     <div className="app-section-card glass !p-10 flex flex-col items-center justify-center text-center gap-6">
-      <div className={`flex items-center justify-center ${tone === 'danger' ? 'text-danger' : ''}`}>
+      <div className={`flex items-center justify-center ${toneClass}`}>
         {icon}
       </div>
       <div>
         <p className="text-[10px] font-semibold tracking-normal text-white/30 mb-2">{label}</p>
-        <p className={`text-3xl font-semibold font-mono ${tone === 'danger' ? 'text-danger' : 'text-white'}`}>{value}</p>
+        <p className={`text-3xl font-semibold font-mono ${toneClass || 'text-white'}`}>{value}</p>
       </div>
     </div>
   )
@@ -87,27 +96,17 @@ export function DiagnosticLine({
 export function PlatformPageHeader({ 
   platformId, 
   title, 
-  description,
-  icon
+  description
 }: { 
   platformId: PlatformId, 
   title: string, 
-  description: string,
-  icon: ReactNode
+  description: string
 }) {
   return (
-    <header className="app-page-header">
-      <div className="flex items-center gap-6">
-        <div className="flex items-center justify-center">
-          <PlatformLogo platform={platformId} size={48} />
-        </div>
-        <div>
-          <h1>{title}</h1>
-          <p className="app-page-intro">
-            {description}
-          </p>
-        </div>
-      </div>
-    </header>
+    <PageHeader
+      title={title}
+      description={description}
+      iconNode={<PlatformLogo platform={platformId} size={24} />}
+    />
   )
 }

@@ -1,15 +1,18 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useStudioStore } from '../../stores/studio-store'
-import { resolveLayerLayout } from '../../../shared/studio'
+import { blendModeToCompositeOp, resolveLayerLayout, type StudioShapeMask } from '../../../shared/studio'
 import {
   croppedSourceRect,
   drawAndCacheMediaFrame,
   drawFittedSource,
   drawMediaFallback,
+  applyShapeBorderStroke,
+  clampShapeMaskTransform,
   resolveSourceFitMode,
   resolveBrowserCaptureSettings,
-  resolveBrowserSourceUrl
+  resolveBrowserSourceUrl,
+  traceShapePath
 } from './components/CanvasEditor.utils'
 import {
   getMediaSignature,
@@ -450,63 +453,47 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
           if (e.filterPreset === 'warm') filters.push('sepia(30%) saturate(140%)')
           if (e.filterPreset === 'faded') filters.push('opacity(80%) saturate(60%) brightness(110%)')
         }
-        if (filters.length > 0) ctx.filter = filters.join(' ')
+        ctx.filter = filters.length > 0 ? filters.join(' ') : 'none'
 
         ctx.globalAlpha = raw.opacity ?? 1
+        ctx.globalCompositeOperation = blendModeToCompositeOp(raw.blendMode)
         const rotation = Number(layout.rotation || 0)
+        const flipH = Boolean(layout.flipH)
+        const flipV = Boolean(layout.flipV)
         const fitMode = resolveSourceFitMode(raw)
-        if (rotation) {
+        if (rotation || flipH || flipV) {
           ctx.translate(drawLayout.x + drawLayout.width / 2, drawLayout.y + drawLayout.height / 2)
-          ctx.rotate(rotation * Math.PI / 180)
+          if (rotation) ctx.rotate(rotation * Math.PI / 180)
+          if (flipH || flipV) ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1)
           drawLayout.x = -drawLayout.width / 2; drawLayout.y = -drawLayout.height / 2
         }
 
-        const shape = (typeof e.shape === 'object' ? e.shape.type : e.shape) || 'none'
-        const scope = (typeof e.shape === 'object' ? e.shape.scope : 'both')
-        const captureX = (typeof e.shape === 'object' ? e.shape.captureX : 50) ?? 50
-        const captureY = (typeof e.shape === 'object' ? e.shape.captureY : 50) ?? 50
-        const cx = ((captureX - 50) / 100) * drawLayout.width
-        const cy = ((captureY - 50) / 100) * drawLayout.height
+        const rawShapeObj: StudioShapeMask = typeof e.shape === 'object' ? e.shape : { type: e.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+        const shapeObj = clampShapeMaskTransform(rawShapeObj, drawLayout.width, drawLayout.height)
+        const shape = shapeObj.type || 'none'
+        const scope = shapeObj.scope || 'both'
+        const captureX = shapeObj.captureX ?? 50
+        const captureY = shapeObj.captureY ?? 50
 
         const shouldClip = shape !== 'none' && (scope === 'both' || scope === aspectRatio)
+        const cx = shouldClip ? ((captureX - 50) / 100) * drawLayout.width : 0
+        const cy = shouldClip ? ((captureY - 50) / 100) * drawLayout.height : 0
         if (shouldClip) {
-          ctx.beginPath()
-          const offX = typeof e.shape === 'object' ? (e.shape.x - 50) / 100 * drawLayout.width : 0
-          const offY = typeof e.shape === 'object' ? (e.shape.y - 50) / 100 * drawLayout.height : 0
-          const scaleFac = typeof e.shape === 'object' ? e.shape.scale / 100 : 1
+          const offX = (shapeObj.x - 50) / 100 * drawLayout.width
+          const offY = (shapeObj.y - 50) / 100 * drawLayout.height
+          const scaleFac = shapeObj.scale / 100
           const sx = drawLayout.x + drawLayout.width / 2 + offX
           const sy = drawLayout.y + drawLayout.height / 2 + offY
           const sw = scaleFac * drawLayout.width
           const sh = scaleFac * drawLayout.height
           const r = Math.min(sw, sh) / 2
+          const cr = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
 
-          if (shape === 'circle') ctx.arc(sx, sy, r, 0, Math.PI * 2)
-          else if (shape === 'star') {
-            const spikes = 5, outerR = r, innerR = r/2.5; let rot = Math.PI/2*3, step = Math.PI/spikes
-            ctx.moveTo(sx, sy - outerR)
-            for(let i=0; i<spikes; i++) {
-              ctx.lineTo(sx + Math.cos(rot) * outerR, sy + Math.sin(rot) * outerR); rot += step
-              ctx.lineTo(sx + Math.cos(rot) * innerR, sy + Math.sin(rot) * innerR); rot += step
-            }
-            ctx.lineTo(sx, sy - outerR)
-          } else if (shape === 'heart') {
-            const d = r * 2.2, hx = sx, hy = sy - d/4; ctx.moveTo(hx, hy + d/4)
-            ctx.bezierCurveTo(hx, hy + d/4, hx - d/2, hy, hx - d/2, hy - d/4)
-            ctx.bezierCurveTo(hx - d/2, hy - d/2, hx, hy - d/2, hx, hy - d/4)
-            ctx.bezierCurveTo(hx, hy - d/2, hx + d/2, hy - d/2, hx + d/2, hy - d/4)
-            ctx.bezierCurveTo(hx + d/2, hy, hx, hy + d/4, hx, hy + d/4)
-          } else if (shape === 'diamond') { ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy); ctx.lineTo(sx, sy + r); ctx.lineTo(sx - r, sy) }
-          else if (shape === 'hexagon') { for(let i=0; i<6; i++) ctx.lineTo(sx + r * Math.cos(i * Math.PI/3), sy + r * Math.sin(i * Math.PI/3)) }
-          else {
-            const cr = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
-            const rx = sx - sw / 2, ry = sy - sh / 2
-            if ((ctx as any).roundRect) (ctx as any).roundRect(rx, ry, sw, sh, cr)
-            else ctx.rect(rx, ry, sw, sh)
-          }
+          traceShapePath(ctx, shape, sx, sy, r, sw, sh, cr, shapeObj.cutDepth)
 
-          if (typeof e.shape === 'object' && e.shape.shadow?.enabled) {
+          if (shapeObj.shadow?.enabled) {
             ctx.save()
-            const s = e.shape.shadow
+            const s = shapeObj.shadow
             ctx.shadowColor = s.color || '#000000'
             ctx.shadowBlur = s.blur ?? 15
             ctx.shadowOffsetX = s.offsetX ?? 0
@@ -525,7 +512,9 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
             const coversProgram = drawLayout.width >= canvas.width * 0.85 && drawLayout.height >= canvas.height * 0.85
             const drawSource = (withBlur = false) => {
               const oldFilter = ctx.filter
-              if (withBlur && e.focusCircle?.enabled) ctx.filter = `${oldFilter === 'none' ? '' : oldFilter} blur(${(e.focusCircle.blur / 100) * 40}px)`
+              if (withBlur && e.focusCircle?.enabled) {
+                ctx.filter = `${oldFilter === 'none' ? '' : oldFilter} blur(${(e.focusCircle.blur / 100) * 40}px)`.trim()
+              }
               const sx_orig = drawLayout.x, sy_orig = drawLayout.y
               drawLayout.x -= cx; drawLayout.y -= cy
               drawAndCacheMediaFrame(ctx, mediaFrameCache.current, raw.id, video, drawLayout, renderFrameCount, drawLayout.crop, coversProgram ? 1 : 2, fitMode)
@@ -568,71 +557,22 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         ctx.restore()
 
         // --- DRAW SHAPE BORDER ---
-        if (shouldClip && typeof e.shape === 'object' && e.shape.border?.enabled) {
-          const b = e.shape.border
+        if (shouldClip && shapeObj.border?.enabled) {
+          const b = shapeObj.border
           ctx.save()
 
-          const offX = (e.shape.x - 50) / 100 * drawLayout.width
-          const offY = (e.shape.y - 50) / 100 * drawLayout.height
-          const scaleFac = e.shape.scale / 100
+          const offX = (shapeObj.x - 50) / 100 * drawLayout.width
+          const offY = (shapeObj.y - 50) / 100 * drawLayout.height
+          const scaleFac = shapeObj.scale / 100
           const sx = drawLayout.x + drawLayout.width / 2 + offX
           const sy = drawLayout.y + drawLayout.height / 2 + offY
           const sw = scaleFac * drawLayout.width
           const sh = scaleFac * drawLayout.height
           const r = Math.min(sw, sh) / 2
 
-          ctx.beginPath()
-          if (shape === 'circle') ctx.arc(sx, sy, r, 0, Math.PI * 2)
-          else if (shape === 'star') {
-            const spikes = 5, outerR = r, innerR = r/2.5; let rot = Math.PI/2*3, step = Math.PI/spikes
-            ctx.moveTo(sx, sy - outerR)
-            for(let i=0; i<spikes; i++) {
-              ctx.lineTo(sx + Math.cos(rot) * outerR, sy + Math.sin(rot) * outerR); rot += step
-              ctx.lineTo(sx + Math.cos(rot) * innerR, sy + Math.sin(rot) * innerR); rot += step
-            }
-            ctx.lineTo(sx, sy - outerR)
-          } else if (shape === 'heart') {
-            const d = r * 2.2, hx = sx, hy = sy - d/4; ctx.moveTo(hx, hy + d/4)
-            ctx.bezierCurveTo(hx, hy + d/4, hx - d/2, hy, hx - d/2, hy - d/4)
-            ctx.bezierCurveTo(hx - d/2, hy - d/2, hx, hy - d/2, hx, hy - d/4)
-            ctx.bezierCurveTo(hx, hy - d/2, hx + d/2, hy - d/2, hx + d/2, hy - d/4)
-            ctx.bezierCurveTo(hx + d/2, hy, hx, hy + d/4, hx, hy + d/4)
-          } else if (shape === 'diamond') { ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy); ctx.lineTo(sx, sy + r); ctx.lineTo(sx - r, sy) }
-          else if (shape === 'hexagon') { for(let i=0; i<6; i++) ctx.lineTo(sx + r * Math.cos(i * Math.PI/3), sy + r * Math.sin(i * Math.PI/3)) }
-          else {
-            const cr = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
-            const rx = sx - sw / 2, ry = sy - sh / 2
-            if ((ctx as any).roundRect) (ctx as any).roundRect(rx, ry, sw, sh, cr)
-            else ctx.rect(rx, ry, sw, sh)
-          }
-
-          const vol = (window as any).__masterVolume || 0
-          const reactiveScale = b.audioReactive ? 1 + (vol * 1.5) : 1
-
-          ctx.lineWidth = (b.thickness || 4) * reactiveScale
-          ctx.lineJoin = 'round'
-          ctx.lineCap = 'round'
-          ctx.globalAlpha = Math.min(1, ((b.opacity ?? 100) / 100) * (b.audioReactive ? 0.8 + vol * 0.4 : 1))
-
-          if (b.type === 'chroma') {
-            const grad = ctx.createLinearGradient(sx - r, sy - r, sx + r, sy + r)
-            const time = performance.now() / 2000
-            grad.addColorStop(0, `hsl(${(time * 360) % 360}, 100%, 50%)`)
-            grad.addColorStop(0.5, `hsl(${(time * 360 + 180) % 360}, 100%, 50%)`)
-            grad.addColorStop(1, `hsl(${(time * 360 + 360) % 360}, 100%, 50%)`)
-            ctx.strokeStyle = grad
-            ctx.shadowBlur = 15 * reactiveScale
-            ctx.shadowColor = `hsl(${(time * 360) % 360}, 100%, 50%)`
-          } else if (b.type === 'cyber') {
-            const grad = ctx.createLinearGradient(sx - r, sy, sx + r, sy)
-            grad.addColorStop(0, '#00f2ff') // Cyan
-            grad.addColorStop(1, '#d035f1') // Purple
-            ctx.strokeStyle = grad
-            ctx.shadowBlur = 20 * reactiveScale
-            ctx.shadowColor = '#d035f1'
-          } else {
-            ctx.strokeStyle = b.color || '#ffffff'
-          }
+          const cr = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
+          traceShapePath(ctx, shape, sx, sy, r, sw, sh, cr, shapeObj.cutDepth)
+          applyShapeBorderStroke(ctx, b, { x: sx, y: sy, r })
 
           ctx.stroke()
           ctx.restore()

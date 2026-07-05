@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettingKey } from '../shared/app-settings'
 import type { WindowsSettingsTarget } from '../main/system/windows-settings'
-import type { GetTopUsersOptions } from '../shared/stats'
+import type { GetTopUsersOptions, ViewerAccountInput, ViewerProfileInput } from '../shared/stats'
 import type { Platform } from '../main/platforms/types'
 import type { VideoFramePayload, AudioFramePayload } from '../main/services/streaming-service'
 import type { EventLabSimulationPayload } from '../shared/event-lab'
+import type { LightingState } from '../shared/lighting'
+import type { RazerStatus, RazerThemeSettings } from '../shared/razer'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -47,6 +49,7 @@ const allowedEventChannels = new Set([
   'overlay:status-changed',
   'spotify:status-changed',
   'spotify:queue-update',
+  'x:status-changed',
   'clip:created',
   'browser-source:frame',
   'browser-source:error',
@@ -55,6 +58,10 @@ const allowedEventChannels = new Set([
   'action:stop-all-sounds',
   'spotify:now-playing',
   'govee:status-changed',
+  'govee:ble-device-list',
+  'govee:ble-command',
+  'lighting:state-changed',
+  'razer:status-changed',
   'streaming:native-audio-clock',
   'system:log',
   'virtualcamera:status-changed',
@@ -103,12 +110,15 @@ const api = {
   widgets: {
     getAll: () => ipcRenderer.invoke('widgets:get-all'),
     save: (widget: any) => ipcRenderer.invoke('widgets:save', widget),
-    delete: (id: string) => ipcRenderer.invoke('widgets:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('widgets:delete', id),
+    renderPreview: (widget: any): Promise<string | null> =>
+      ipcRenderer.invoke('widgets:render-preview', widget)
   },
 
   // --- Platform ---
   platform: {
     connect: (config: any) => ipcRenderer.invoke('platform:connect', config),
+    saveConfig: (config: any) => ipcRenderer.invoke('platform:save-config', config),
     disconnect: (platform: string) => ipcRenderer.invoke('platform:disconnect', platform),
     getStatuses: () => ipcRenderer.invoke('platform:get-statuses'),
     getErrors: () => ipcRenderer.invoke('platform:get-errors'),
@@ -123,7 +133,19 @@ const api = {
       fixStats: () => ipcRenderer.invoke('tiktok:fix-stats'),
       openSender: () => ipcRenderer.invoke('tiktok:open-sender'),
       closeSender: () => ipcRenderer.invoke('tiktok:close-sender'),
-      getSenderStatus: () => ipcRenderer.invoke('tiktok:get-sender-status')
+      getSenderStatus: () => ipcRenderer.invoke('tiktok:get-sender-status'),
+      captureCredentials: () => ipcRenderer.invoke('tiktok:capture-credentials'),
+      getAutomations: () => ipcRenderer.invoke('tiktok:get-automations'),
+      setAutomation: (key: string, value: boolean) =>
+        ipcRenderer.invoke('tiktok:set-automation', { key, value })
+    },
+    youtube: {
+      beginAuth: (payload: { clientId?: string; clientSecret?: string }) =>
+        ipcRenderer.invoke('youtube:begin-auth', payload)
+    },
+    kick: {
+      subscribeEvents: (payload: { clientId: string; clientSecret: string; broadcasterUserId?: string | number; channelName?: string }) =>
+        ipcRenderer.invoke('kick:subscribe-events', payload)
     }
   },
 
@@ -153,7 +175,8 @@ const api = {
     getQueue: () => ipcRenderer.invoke('tts:get-queue'),
     testSpeak: (payload: { text: string; voiceProfileId?: string }) =>
       ipcRenderer.invoke('tts:test-speak', payload),
-    notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete')
+    notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete'),
+    notifyReady: () => ipcRenderer.send('tts:renderer-ready')
   },
 
   // --- Voice profiles ---
@@ -215,7 +238,15 @@ const api = {
   system: {
     openWindowsSettings: (target: WindowsSettingsTarget) =>
       ipcRenderer.invoke('system:open-windows-settings', target),
-    installUpdate: () => ipcRenderer.invoke('system:install-update')
+    copyToClipboard: (text: string) =>
+      ipcRenderer.invoke('system:copy-to-clipboard', text),
+    installUpdate: () => ipcRenderer.invoke('system:install-update'),
+    checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
+    getAppInfo: () => ipcRenderer.invoke('system:get-app-info'),
+    setLoginItem: (enabled: boolean) => ipcRenderer.invoke('system:set-login-item', enabled),
+    openAppFolder: (target: 'logs' | 'userData' | 'recordings') =>
+      ipcRenderer.invoke('system:open-app-folder', target),
+    chooseFolder: (title?: string) => ipcRenderer.invoke('system:choose-folder', title)
   },
 
   // --- Spotify ---
@@ -227,6 +258,15 @@ const api = {
     removeFromQueue: (requestId: string) => ipcRenderer.invoke('spotify:remove-from-queue', requestId),
     clearQueue: () => ipcRenderer.invoke('spotify:clear-queue'),
     skip: () => ipcRenderer.invoke('spotify:skip')
+  },
+  // --- X (Twitter) ---
+  x: {
+    connect: (clientId: string) => ipcRenderer.invoke('x:connect', clientId),
+    disconnect: () => ipcRenderer.invoke('x:disconnect'),
+    getStatus: () => ipcRenderer.invoke('x:get-status'),
+    getTemplate: () => ipcRenderer.invoke('x:get-template'),
+    setTemplate: (text: string) => ipcRenderer.invoke('x:set-template', text),
+    post: (text: string) => ipcRenderer.invoke('x:post', text)
   },
   // --- Hue ---
   hue: {
@@ -264,7 +304,7 @@ const api = {
   device: {
     startPair: () => ipcRenderer.invoke('device:start-pair'),
     listPaired: () => ipcRenderer.invoke('device:list-paired'),
-    revoke: (token: string) => ipcRenderer.invoke('device:revoke', token)
+    revoke: (id: string) => ipcRenderer.invoke('device:revoke', id)
   },
 
   // --- Stats (lifetime totals) ---
@@ -272,13 +312,25 @@ const api = {
     getGlobal: () => ipcRenderer.invoke('stats:get-global'),
     getTopUsers: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-users', opts),
     getTopIdentities: (opts: GetTopUsersOptions) => ipcRenderer.invoke('stats:get-top-identities', opts),
+    getIdentity: (id: string) => ipcRenderer.invoke('stats:get-identity', id),
+    getLinkSuggestions: (profileId: string) => ipcRenderer.invoke('stats:get-link-suggestions', profileId),
     getUser: (platform: Platform, username: string) =>
       ipcRenderer.invoke('stats:get-user', { platform, username }),
     reset: () => ipcRenderer.invoke('stats:reset'),
+    setFollowerCount: (platform: Platform, count: number) =>
+      ipcRenderer.invoke('stats:set-manual-follower-count', { platform, count }),
     linkAccounts: (payload: { p1: Platform; u1: string; p2: Platform; u2: string }) =>
       ipcRenderer.invoke('stats:link-accounts', payload),
     unlinkAccount: (payload: { platform: Platform; username: string }) =>
-      ipcRenderer.invoke('stats:unlink-account', payload)
+      ipcRenderer.invoke('stats:unlink-account', payload),
+    getViewerProfiles: (opts?: { query?: string; limit?: number }) =>
+      ipcRenderer.invoke('stats:get-viewer-profiles', opts),
+    createViewerProfile: (input: ViewerProfileInput) =>
+      ipcRenderer.invoke('stats:create-viewer-profile', input),
+    updateViewerProfile: (id: string, patch: Partial<ViewerProfileInput>) =>
+      ipcRenderer.invoke('stats:update-viewer-profile', { id, patch }),
+    addViewerAccount: (profileId: string, account: ViewerAccountInput) =>
+      ipcRenderer.invoke('stats:add-viewer-account', { profileId, account })
   },
 
   // --- Streaming ---
@@ -286,6 +338,8 @@ const api = {
     start: (config: any) => ipcRenderer.invoke('streaming:start', config),
     stop: () => ipcRenderer.invoke('streaming:stop'),
     getStatus: () => ipcRenderer.invoke('streaming:get-status'),
+    getOutputs: () => ipcRenderer.invoke('streaming:get-outputs'),
+    stopOutput: (outputId: string) => ipcRenderer.invoke('streaming:stop-output', outputId),
     startRecording: (config: any) => ipcRenderer.invoke('streaming:start-recording', config),
     stopRecording: () => ipcRenderer.invoke('streaming:stop-recording'),
     getRecordingStatus: () => ipcRenderer.invoke('streaming:get-recording-status'),
@@ -307,7 +361,33 @@ const api = {
     getStatus: () => ipcRenderer.invoke('govee:get-status'),
     getDevices: (forceRefresh?: boolean) => ipcRenderer.invoke('govee:get-devices', forceRefresh),
     setSelectedDevices: (ids: string[]) => ipcRenderer.invoke('govee:set-selected-devices', ids),
-    testStrobe: () => ipcRenderer.invoke('govee:test-strobe')
+    testStrobe: () => ipcRenderer.invoke('govee:test-strobe'),
+    selectBleDevice: (deviceId: string) => ipcRenderer.invoke('govee:ble-select-device', deviceId),
+    cancelBleSelection: () => ipcRenderer.invoke('govee:ble-cancel-selection'),
+    getBleDevices: () => ipcRenderer.invoke('govee:ble-get-devices'),
+    registerBleDevice: (device: any) => ipcRenderer.invoke('govee:ble-register-device', device),
+    updateBleDeviceStatus: (payload: { device: string; connected: boolean; lastError?: string }) =>
+      ipcRenderer.invoke('govee:ble-update-status', payload),
+    setBleDeviceProtocol: (deviceId: string, protocol: string) =>
+      ipcRenderer.invoke('govee:ble-set-protocol', { deviceId, protocol }),
+    removeBleDevice: (deviceId: string) => ipcRenderer.invoke('govee:ble-remove-device', deviceId)
+  },
+  // --- Lighting ---
+  lighting: {
+    getState: (): Promise<LightingState> => ipcRenderer.invoke('lighting:get-state'),
+    scan: (): Promise<LightingState> => ipcRenderer.invoke('lighting:scan'),
+    executeAction: (deviceId: string, action: string, params?: any) =>
+      ipcRenderer.invoke('lighting:execute-action', deviceId, action, params)
+  },
+  // --- Razer Chroma ---
+  razer: {
+    getStatus: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:get-status'),
+    connect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:connect'),
+    disconnect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:disconnect'),
+    scan: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:scan'),
+    testEffect: (): Promise<RazerStatus> => ipcRenderer.invoke('razer:test-effect'),
+    setTheme: (theme: Partial<RazerThemeSettings>): Promise<RazerStatus> =>
+      ipcRenderer.invoke('razer:set-theme', theme)
   },
   // --- Virtual Camera ---
   virtualCamera: {
@@ -315,6 +395,11 @@ const api = {
     stop: () => ipcRenderer.invoke('virtualcamera:stop'),
     getStatus: () => ipcRenderer.invoke('virtualcamera:get-status'),
     installDriver: () => ipcRenderer.invoke('virtualcamera:install-driver')
+  },
+  // --- Native Camera ---
+  nativeCamera: {
+    start: (deviceName: string, width: number, height: number, fps: number) => ipcRenderer.send('native-camera:start', deviceName, width, height, fps),
+    stop: (deviceName: string) => ipcRenderer.send('native-camera:stop', deviceName)
   }
 }
 

@@ -10,7 +10,24 @@ declare const HTMLTextAreaElement: any
 declare const InputEvent: any
 declare const KeyboardEvent: any
 
-const TIKTOK_CHAT_URL = 'https://www.tiktok.com/live/creators/vi/live-center'
+const TIKTOK_CHAT_URL = 'https://livecenter.tiktok.com/producer'
+const TIKTOK_WEB_FALLBACK_URL = 'https://livecenter.tiktok.com/'
+const TIKTOK_OWNED_WEB_HOSTS = new Set([
+  'tiktok.com',
+  'www.tiktok.com',
+  'm.tiktok.com',
+  'accounts.tiktok.com',
+  'livecenter.tiktok.com'
+])
+const TIKTOK_BLOCKED_APP_PROTOCOLS = new Set([
+  'bytedance:',
+  'bytedanceauth:',
+  'musically:',
+  'snssdk1128:',
+  'snssdk1233:',
+  'tiktok:',
+  'tiktoklive:'
+])
 const DETECTION_INTERVAL_MS = 2000
 const TIKTOK_AUTH_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'uid_tt'])
 
@@ -35,6 +52,13 @@ export interface TikTokSenderMessageValidation {
   ok: boolean
   text: string
   error?: string
+}
+
+export interface TikTokCapturedCredentials {
+  sessionId: string | null
+  ttTargetIdc: string | null
+  /** True when a sessionid cookie was present (i.e. the sender is logged in). */
+  loggedIn: boolean
 }
 
 interface TikTokSenderDomState {
@@ -108,18 +132,50 @@ export class TikTokChatSender {
     })
 
     this.window.webContents.setWindowOpenHandler(({ url }) => {
+      if (isTikTokOwnedWebUrl(url)) {
+        void this.window?.loadURL(url)
+        return { action: 'deny' }
+      }
+
       if (isSafeNavigationUrl(url)) {
         shell.openExternal(url).catch((err) => {
           console.warn('[tiktok-sender] Failed to open external URL:', err)
         })
+      } else {
+        this.lastError = getBlockedNavigationMessage(url)
       }
       return { action: 'deny' }
     })
 
     this.window.webContents.on('will-navigate', (event, url) => {
       if (!isSafeNavigationUrl(url)) {
+        this.lastError = getBlockedNavigationMessage(url)
         event.preventDefault()
       }
+    })
+
+    this.window.webContents.on('will-redirect', (event, url) => {
+      if (!isSafeNavigationUrl(url)) {
+        this.lastError = getBlockedNavigationMessage(url)
+        event.preventDefault()
+      }
+    })
+
+    this.window.webContents.on('will-frame-navigate', (event) => {
+      if (event.isMainFrame && !isSafeNavigationUrl(event.url)) {
+        this.lastError = getBlockedNavigationMessage(event.url)
+        event.preventDefault()
+      }
+    })
+
+    this.window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedUrl) => {
+      if (errorCode === -3) return
+      if (!isSafeNavigationUrl(validatedUrl)) {
+        this.lastError = getBlockedNavigationMessage(validatedUrl)
+        return
+      }
+
+      this.lastError = `TikTok sender failed to load: ${errorDescription}`
     })
 
     this.window.on('closed', () => {
@@ -131,7 +187,12 @@ export class TikTokChatSender {
       this.currentUrl = undefined
     })
 
-    await this.window.loadURL(TIKTOK_CHAT_URL)
+    try {
+      await this.window.loadURL(TIKTOK_CHAT_URL)
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error)
+      await this.window.loadURL(TIKTOK_WEB_FALLBACK_URL)
+    }
     this.startDetectionLoop()
   }
 
@@ -167,9 +228,9 @@ export class TikTokChatSender {
         await delay(cooldownMs)
       }
 
-      const result = await this.window.webContents.executeJavaScript<TikTokSendScriptResult>(
+      const result = (await this.window.webContents.executeJavaScript(
         `(${sendMessageInTikTokPage.toString()})(${JSON.stringify(text)})`
-      )
+      )) as TikTokSendScriptResult
 
       if (result?.ok) {
         this.lastMessageSentAt = Date.now()
@@ -216,9 +277,9 @@ export class TikTokChatSender {
     try {
       const previousUnavailableReason = this.getUnavailableReason()
       const [domState, hasSessionCookie] = await Promise.all([
-        this.window.webContents.executeJavaScript<TikTokSenderDomState>(
+        this.window.webContents.executeJavaScript(
           `(${detectTikTokSenderStateInPage.toString()})()`
-        ),
+        ) as Promise<TikTokSenderDomState>,
         this.hasTikTokAuthCookie()
       ])
 
@@ -247,6 +308,25 @@ export class TikTokChatSender {
     }
   }
 
+  /**
+   * Pulls the connector's sending credentials straight from the logged-in sender
+   * session — the `sessionid` cookie and the `tt-target-idc` data-center hint —
+   * so the streamer never has to hand-extract them from browser cookies.
+   */
+  async captureAuthCredentials(): Promise<TikTokCapturedCredentials> {
+    if (!this.window || this.window.isDestroyed()) {
+      return { sessionId: null, ttTargetIdc: null, loggedIn: false }
+    }
+
+    try {
+      const cookies = await this.window.webContents.session.cookies.get({ url: 'https://www.tiktok.com' })
+      return pickTikTokCredentialsFromCookies(cookies)
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error)
+      return { sessionId: null, ttTargetIdc: null, loggedIn: false }
+    }
+  }
+
   private getUnavailableReason(): string {
     return describeTikTokSenderStatus({
       isWindowOpen: !!this.window,
@@ -255,6 +335,21 @@ export class TikTokChatSender {
       isChatReady: this.isChatReady
     })
   }
+}
+
+/**
+ * Extracts the connector's sending credentials from a set of TikTok cookies:
+ * the `sessionid` cookie and the `tt-target-idc` data-center hint. Pure so it
+ * can be unit-tested without a live browser session.
+ */
+export function pickTikTokCredentialsFromCookies(
+  cookies: Array<{ name: string; value?: string }>
+): TikTokCapturedCredentials {
+  const read = (name: string) =>
+    cookies.find((cookie) => cookie.name === name)?.value?.trim() || null
+  const sessionId = read('sessionid')
+  const ttTargetIdc = read('tt-target-idc')
+  return { sessionId, ttTargetIdc, loggedIn: Boolean(sessionId) }
 }
 
 export function validateTikTokSenderMessage(
@@ -531,11 +626,37 @@ async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScrip
   return { ok: true, method: 'enter' }
 }
 
-function isSafeNavigationUrl(value: string): boolean {
+export function isSafeNavigationUrl(value: string): boolean {
   try {
     const url = new URL(value)
     return url.protocol === 'https:'
   } catch {
     return false
   }
+}
+
+export function isTikTokOwnedWebUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && TIKTOK_OWNED_WEB_HOSTS.has(url.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+export function isTikTokBlockedAppProtocol(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return TIKTOK_BLOCKED_APP_PROTOCOLS.has(url.protocol.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+function getBlockedNavigationMessage(value: string): string {
+  if (isTikTokBlockedAppProtocol(value)) {
+    return 'Blocked TikTok native-app link. Use the web LIVE Center login in this sender window.'
+  }
+
+  return 'Blocked unsafe TikTok sender navigation.'
 }

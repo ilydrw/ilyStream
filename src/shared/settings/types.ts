@@ -18,6 +18,7 @@ import {
 } from '../alert-rules'
 
 export const DEFAULT_TTS_COMMAND_PREFIXES = ['!tts', '!say', '!speak']
+export const DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE = '{displayName} says: {message}'
 
 export interface VoiceModifiers {
   radioFilter: boolean
@@ -25,7 +26,13 @@ export interface VoiceModifiers {
   pitchShifting: 'low' | 'normal' | 'high' | 'dynamic'
 }
 
-export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'joker'
+export interface ElevenLabsApiKeyEntry {
+  id: string
+  label: string
+  apiKey: string
+}
+
+export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'joker' | 'custom'
 export type InterfaceDensity = 'comfortable' | 'compact'
 
 export type TTSAudiencePermission = 
@@ -42,12 +49,14 @@ export interface TTSUserVoiceOverride {
   id: string
   platform: 'all' | 'tiktok' | 'twitch' | 'youtube' | 'kick'
   username: string
+  viewerProfileId?: string
   mode: 'profile' | 'custom'
   voiceProfileId: string
   provider: TTSVoiceProvider
   voiceName: string
   kokoroVoice: string
   elevenlabsVoiceId: string
+  elevenlabsApiKeyId?: string
   elevenlabsStability: number
   elevenlabsSimilarity: number
   elevenlabsStyle: number
@@ -55,6 +64,27 @@ export interface TTSUserVoiceOverride {
   pitch: number
   rate: number
   volume: number
+  enabled: boolean
+}
+
+export type TTSUserVoiceOverridePlatform = TTSUserVoiceOverride['platform']
+
+/**
+ * A sound that plays when a specific viewer joins the stream. Scoped either to
+ * a linked viewer profile (preferred — follows the viewer across platforms) or
+ * to a raw platform+username pair.
+ */
+export interface ViewerJoinSound {
+  id: string
+  /** Linked viewer profile id; empty when scoped by username. */
+  viewerProfileId: string
+  platform: 'all' | 'tiktok' | 'twitch' | 'youtube' | 'kick'
+  username: string
+  /** Soundboard sound id, e.g. "board/airhorn.mp3". */
+  soundId: string
+  volume: number
+  /** Minutes before the same viewer's join sound can fire again. 0 = every join. */
+  cooldownMinutes: number
   enabled: boolean
 }
 
@@ -77,6 +107,7 @@ export interface TTSSettings {
   perUserLimit: number
   requireCommand: boolean
   commandPrefixes: string[]
+  chatMessageTemplate: string
   allowedRoles: TTSAudiencePermission[]
   chatVoiceProfileId: string
   giftVoiceProfileId: string
@@ -130,6 +161,10 @@ export interface ChatSettings {
 
 export interface AISettings {
   enabled: boolean
+  requireCommand: boolean
+  commandPrefixes: string[]
+  voiceProfileId: string
+  speechPrefix: string
   apiKey: string
   model: string
   endpoint: string
@@ -174,6 +209,12 @@ export interface UISettings {
   accentColor: string
   density: InterfaceDensity
   reducedMotion: boolean
+  /** Global interface zoom, 0.8–1.3. 1 = 100%. */
+  uiScale: number
+  /** Base surface color when theme === 'custom'; the rest of the palette is derived. */
+  customBackground: string
+  /** Secondary/gradient color when theme === 'custom'. */
+  customSecondary: string
 }
 
 export interface StreamingSettings {
@@ -218,6 +259,22 @@ export interface AppSettings {
   streamingWidth: number
   streamingHeight: number
   aiEnabled: boolean
+  aiRequireCommand: boolean
+  aiCommandPrefixes: string[]
+  aiVoiceProfileId: string
+  aiSpeechPrefix: string
+  ttsChatMessageTemplate: string
+  elevenlabsApiKey: string
+  elevenlabsApiKeys: ElevenLabsApiKeyEntry[]
+  elevenlabsDefaultApiKeyId: string
+  /**
+   * When true, alert sounds also play in the app (local monitoring) even while
+   * an overlay browser source is connected. Off by default so users who monitor
+   * their OBS overlay audio don't hear every alert twice.
+   */
+  alertSoundLocalMonitoring: boolean
+  /** Per-viewer join sounds, managed from the viewer profile page. */
+  viewerJoinSounds: ViewerJoinSound[]
 }
 
 export type AppSettingKey = string // Simplified for broad compatibility

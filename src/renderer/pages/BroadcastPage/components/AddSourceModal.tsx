@@ -3,6 +3,11 @@ import { IconVideo, IconStack2, IconWorld, IconTypography, IconPhoto as ImageIco
 import { IconChevronLeft } from '../../../components/ui/icons'
 import type { LayerType } from '../../../../shared/studio'
 import { Modal } from '../../../components/ui/Modal'
+import {
+  CAMERA_CAPTURE_PRESETS,
+  DEFAULT_CAMERA_CAPTURE_PRESET
+} from '../utils/camera-capture'
+import { getDeviceDisplayName } from '../utils/device-labels'
 
 interface Props {
   open: boolean
@@ -10,6 +15,8 @@ interface Props {
   onAdd: (type: LayerType, config: Record<string, any>, name?: string) => void
   widgets: Array<{ id: string; name: string; type: string }>
   devices: MediaDeviceInfo[]
+  deviceAccessError?: string | null
+  onRefreshDevices?: () => void
 }
 
 const SOURCE_TYPES: Array<{ type: LayerType; label: string; desc: string; icon: any; iconClass: string; bgClass: string }> = [
@@ -31,12 +38,14 @@ interface DesktopSourceOption {
   type: 'screen' | 'window'
 }
 
-export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props) {
+export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceAccessError, onRefreshDevices }: Props) {
   const [step, setStep] = useState<'pick' | 'configure'>('pick')
   const [selectedType, setSelectedType] = useState<LayerType | null>(null)
   const [name, setName] = useState('')
   const [config, setConfig] = useState<Record<string, any>>({})
   const [desktopSources, setDesktopSources] = useState<DesktopSourceOption[]>([])
+  const videoDevices = devices.filter(d => d.kind === 'videoinput')
+  const dropdownClass = "w-full h-12 rounded-md border border-white/20 bg-[#181b22] px-4 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] outline-none transition-all hover:border-white/35 hover:bg-[#20242c] focus:border-accent/70 focus:ring-2 focus:ring-accent/25 [&>option]:bg-[#1a1a1a]"
 
   useEffect(() => {
     if (open) {
@@ -58,7 +67,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
           deviceId: defaultVideoDevice.deviceId,
           audioDeviceId: matchedAudioDevice?.deviceId || 'match'
         }))
-        if (!name) setName(defaultVideoDevice.label || 'Camera')
+        if (!name) setName(getDeviceDisplayName(defaultVideoDevice, 'Camera'))
       }
     }
   }, [devices, step, selectedType])
@@ -66,31 +75,32 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
   const handleSelectType = (type: LayerType) => {
     const defaultVideoDevice = devices.find(d => d.kind === 'videoinput')
     const matchedAudioDevice = findLikelyAudioDevice(defaultVideoDevice, devices)
+    const defaultCameraPreset = CAMERA_CAPTURE_PRESETS[DEFAULT_CAMERA_CAPTURE_PRESET]
     setSelectedType(type)
     setStep('configure')
     setName({ 
-      camera: defaultVideoDevice?.label || 'Camera', 
-      display: 'Display Capture', 
-      audio: 'Microphone', 
-      widget: 'Widget', 
-      browser: 'Browser Source', 
-      text: 'Text', 
-      image: 'Image' 
+      camera: getDeviceDisplayName(defaultVideoDevice, 'Camera'),
+      display: 'Display Capture',
+      audio: 'Microphone',
+      widget: 'Widget',
+      browser: 'Browser Source',
+      text: 'Text',
+      image: 'Image'
     }[type] || type)
     setConfig({
       camera: {
         deviceId: defaultVideoDevice?.deviceId || '',
         audioDeviceId: matchedAudioDevice?.deviceId || 'match',
-        capturePreset: '1080p30',
-        captureWidth: 1920,
-        captureHeight: 1080,
-        captureFps: 30,
+        capturePreset: DEFAULT_CAMERA_CAPTURE_PRESET,
+        captureWidth: defaultCameraPreset.width,
+        captureHeight: defaultCameraPreset.height,
+        captureFps: defaultCameraPreset.fps,
         stabilize: false,
         fitMode: 'contain'
       },
       display: { captureAudio: true, desktopSourceId: '', desktopSourceName: '', fitMode: 'contain' },
       audio: { captureMode: 'mic', deviceId: devices.find(d => d.kind === 'audioinput')?.deviceId || '', desktopSourceId: '', desktopSourceName: '' },
-      widget: { widgetId: widgets[0]?.id || '', fps: 8 },
+      widget: { widgetId: widgets[0]?.id || '', fps: 30 },
       browser: { url: '', fps: 8, fitMode: 'contain' },
       text: { text: 'New Text', color: '#ffffff', fontSize: 48 },
       image: { assetPath: '', fitMode: 'contain' }
@@ -231,33 +241,51 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   onChange={e => {
                     const videoDevice = devices.find(d => d.deviceId === e.target.value)
                     const matchedAudioDevice = findLikelyAudioDevice(videoDevice, devices)
+                    const keepAudioDisabled = config.audioDeviceId === 'none'
                     setConfig({
                       ...config,
                       deviceId: e.target.value,
-                      audioDeviceId: matchedAudioDevice?.deviceId || config.audioDeviceId || 'match'
+                      audioDeviceId: keepAudioDisabled ? 'none' : matchedAudioDevice?.deviceId || config.audioDeviceId || 'match',
+                      audioMixerHidden: keepAudioDisabled
                     })
-                    if (videoDevice?.label) setName(videoDevice.label)
+                    if (videoDevice) setName(getDeviceDisplayName(videoDevice, 'Camera'))
                   }}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-accent/50 focus:outline-none [&>option]:bg-[#1a1a1a]"
+                  className={dropdownClass}
                 >
-                  {devices.filter(d => d.kind === 'videoinput').length === 0 && <option value="">No cameras detected</option>}
-                  {devices.filter(d => d.kind === 'videoinput').map(d => (
-                    <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 8)}`}</option>
+                  {videoDevices.length === 0 && <option value="">No cameras detected</option>}
+                  {videoDevices.map(d => (
+                    <option key={d.deviceId} value={d.deviceId}>{getDeviceDisplayName(d, 'Camera')}</option>
                   ))}
                 </select>
               </div>
+              {(deviceAccessError || videoDevices.length === 0) && (
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3">
+                  <p className="text-xs leading-relaxed text-amber-100/80">
+                    {deviceAccessError || 'No cameras were reported by Windows. Connect a camera, close other camera apps, then refresh devices.'}
+                  </p>
+                  {onRefreshDevices && (
+                    <button
+                      type="button"
+                      onClick={onRefreshDevices}
+                      className="shrink-0 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-[10px] font-semibold tracking-tight text-amber-100 hover:bg-amber-300/20 transition-colors cursor-pointer"
+                    >
+                      Refresh
+                    </button>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold tracking-tight text-white/30 mb-2 block">Audio Input</label>
                 <select
                   value={config.audioDeviceId || 'match'}
-                  onChange={e => setConfig({ ...config, audioDeviceId: e.target.value })}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-accent/50 focus:outline-none [&>option]:bg-[#1a1a1a]"
+                  onChange={e => setConfig({ ...config, audioDeviceId: e.target.value, audioMixerHidden: e.target.value === 'none' })}
+                  className={dropdownClass}
                 >
                   <option value="match">Auto-match capture card audio</option>
                   <option value="default">Default system input</option>
                   <option value="none">No audio from this source</option>
                   {devices.filter(d => d.kind === 'audioinput').map(d => (
-                    <option key={d.deviceId} value={d.deviceId}>{d.label || `Audio ${d.deviceId.slice(0, 8)}`}</option>
+                    <option key={d.deviceId} value={d.deviceId}>{getDeviceDisplayName(d, 'Audio')}</option>
                   ))}
                 </select>
               </div>
@@ -267,20 +295,22 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   <select
                     value={config.capturePreset || '1080p60'}
                     onChange={e => {
-                      const preset = {
-                        '1080p60': { captureWidth: 1920, captureHeight: 1080, captureFps: 60 },
-                        '1080p30': { captureWidth: 1920, captureHeight: 1080, captureFps: 30 },
-                        '720p60': { captureWidth: 1280, captureHeight: 720, captureFps: 60 },
-                        '720p30': { captureWidth: 1280, captureHeight: 720, captureFps: 30 }
-                      }[e.target.value] || {}
-                      setConfig({ ...config, capturePreset: e.target.value, ...preset })
+                      const preset = CAMERA_CAPTURE_PRESETS[e.target.value]
+                      setConfig({
+                        ...config,
+                        capturePreset: e.target.value,
+                        ...(preset ? {
+                          captureWidth: preset.width,
+                          captureHeight: preset.height,
+                          captureFps: preset.fps
+                        } : {})
+                      })
                     }}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-accent/50 focus:outline-none [&>option]:bg-[#1a1a1a]"
+                    className={dropdownClass}
                   >
-                    <option value="1080p60">1080p 60 FPS</option>
-                    <option value="1080p30">1080p 30 FPS</option>
-                    <option value="720p60">720p 60 FPS</option>
-                    <option value="720p30">720p 30 FPS</option>
+                    {Object.entries(CAMERA_CAPTURE_PRESETS).map(([value, preset]) => (
+                      <option key={value} value={value}>{preset.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -330,11 +360,11 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   <select
                     value={config.deviceId || ''}
                     onChange={e => setConfig({ ...config, deviceId: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-accent/50 focus:outline-none [&>option]:bg-[#1a1a1a]"
+                    className={dropdownClass}
                   >
                     {devices.filter(d => d.kind === 'audioinput').length === 0 && <option value="">No audio devices detected</option>}
                     {devices.filter(d => d.kind === 'audioinput').map(d => (
-                      <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 8)}`}</option>
+                      <option key={d.deviceId} value={d.deviceId}>{getDeviceDisplayName(d, 'Microphone')}</option>
                     ))}
                   </select>
                 </div>
@@ -370,7 +400,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices }: Props
                   setConfig({ ...config, widgetId: e.target.value })
                   if (w) setName(w.name)
                 }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-accent/50 focus:outline-none [&>option]:bg-[#1a1a1a]"
+                className={dropdownClass}
               >
                 {widgets.length === 0 && <option value="">No widgets configured</option>}
                 {widgets.map(w => (

@@ -96,8 +96,8 @@ export function resolveWidgetStudioPreset(
       portrait: panelBox(portraitWidth, portraitHeight, 500, 760, 'bottom-left', 48)
     },
     'chat-unified': {
-      landscape: panelBox(canvasWidth, canvasHeight, 460, 680, 'bottom-right'),
-      portrait: panelBox(portraitWidth, portraitHeight, 520, 820, 'bottom-left', 48)
+      landscape: panelBox(canvasWidth, canvasHeight, 360, 640, 'top-left'),
+      portrait: panelBox(portraitWidth, portraitHeight, portraitWidth, portraitHeight, 'top-left', 0)
     },
     'now-playing': {
       landscape: panelBox(canvasWidth, canvasHeight, 520, 170, 'bottom-left'),
@@ -124,8 +124,8 @@ export function resolveWidgetStudioPreset(
       portrait: panelBox(portraitWidth, portraitHeight, 500, 160, 'top-left', 48)
     },
     'likes-tracker': {
-      landscape: panelBox(canvasWidth, canvasHeight, 420, 220, 'top-right'),
-      portrait: panelBox(portraitWidth, portraitHeight, 500, 240, 'top-left', 48)
+      landscape: panelBox(canvasWidth, canvasHeight, 420, 280, 'top-right'),
+      portrait: panelBox(portraitWidth, portraitHeight, 500, 280, 'top-left', 48)
     },
     leaderboard: {
       landscape: panelBox(canvasWidth, canvasHeight, 430, 520, 'top-right'),

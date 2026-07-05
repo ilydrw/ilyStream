@@ -2,14 +2,18 @@ import { ipcMain } from 'electron'
 import { PlatformManager } from '../../platforms/platform-manager'
 import { Database } from '../../db/database'
 import { ChatRelayService } from '../../chat/chat-relay-service'
-import { restoreEnabledPlatformConnections } from '../../platforms/platform-persistence'
-import { AnyPlatformConfig, Platform } from '../../platforms/types'
+import { restorePlatformConnectionsOnce } from '../../platforms/platform-persistence'
+import { AnyPlatformConfig, Emote, Platform } from '../../platforms/types'
 import { randomUUID } from 'crypto'
 import { AnyStreamEvent, UserInfo } from '../../platforms/types'
 import type { EventLabSimulationPayload } from '../../../shared/event-lab'
 import { TikTokChatSender } from '../../platforms/tiktok/tiktok-chat-sender'
-
-let hasRestoredPlatformConnections = false
+import {
+  initiateYouTubeAuth,
+  DEFAULT_YOUTUBE_CLIENT_ID,
+  DEFAULT_YOUTUBE_CLIENT_SECRET
+} from '../../platforms/youtube/youtube-auth'
+import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
 
 export function registerPlatformHandlers(
   platformManager: PlatformManager,
@@ -18,7 +22,16 @@ export function registerPlatformHandlers(
   tiktokChatSender: TikTokChatSender
 ) {
   ipcMain.handle('platform:connect', async (_event, config: AnyPlatformConfig) => {
-    await platformManager.connect(config)
+    db.savePlatformConfig(config)
+    try {
+      await platformManager.connect(config)
+    } catch (err) {
+      db.setPlatformEnabled(config.platform, false)
+      throw err
+    }
+  })
+
+  ipcMain.handle('platform:save-config', (_event, config: AnyPlatformConfig) => {
     db.savePlatformConfig(config)
   })
 
@@ -66,11 +79,89 @@ export function registerPlatformHandlers(
   )
 
   ipcMain.handle('platform:restore-connections', async () => {
-    if (hasRestoredPlatformConnections) return
-
-    hasRestoredPlatformConnections = true
-    await restoreEnabledPlatformConnections(platformManager, db.getAllPlatformConfigs())
+    await restorePlatformConnectionsOnce(platformManager, db.getAllPlatformConfigs())
   })
+
+  // Runs the interactive Google OAuth flow (opens the browser, listens on a
+  // loopback port) and returns the resolved credentials + tokens. The renderer
+  // merges these into the YouTube config and calls platform:connect, so the
+  // access/refresh tokens get persisted through the normal save path.
+  ipcMain.handle(
+    'youtube:begin-auth',
+    async (_event, payload: { clientId?: string; clientSecret?: string }) => {
+      const savedConfig = db.getAllPlatformConfigs().youtube as
+        | { clientId?: string; clientSecret?: string }
+        | undefined
+      const clientId = (
+        payload?.clientId?.trim() ||
+        savedConfig?.clientId?.trim() ||
+        DEFAULT_YOUTUBE_CLIENT_ID
+      ).trim()
+      const clientSecret = (
+        payload?.clientSecret?.trim() ||
+        savedConfig?.clientSecret?.trim() ||
+        DEFAULT_YOUTUBE_CLIENT_SECRET
+      ).trim()
+
+      const tokens = await initiateYouTubeAuth(clientId, clientSecret)
+      return {
+        clientId,
+        clientSecret,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'kick:subscribe-events',
+    async (_event, payload: { clientId: string; clientSecret: string; broadcasterUserId?: string | number; channelName?: string }) => {
+      const existing = db.getPlatformConfig('kick') as Extract<AnyPlatformConfig, { platform: 'kick' }> | null
+      db.savePlatformConfig({
+        ...existing,
+        platform: 'kick',
+        enabled: existing?.enabled ?? false,
+        channelName: payload.channelName || existing?.channelName || '',
+        clientId: payload.clientId,
+        clientSecret: payload.clientSecret,
+        broadcasterUserId: String(payload.broadcasterUserId || '')
+      })
+      return ensureKickEventSubscriptions(payload)
+    }
+  )
+
+  ipcMain.handle(
+    'discord:test-webhook',
+    async (_event, payload: { webhookUrl?: string; content?: string }) => {
+      const webhookUrl = String(payload?.webhookUrl || '').trim()
+      if (!/^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\//i.test(webhookUrl)) {
+        throw new Error('Enter a valid Discord webhook URL first.')
+      }
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'ilyStream',
+          content: payload?.content || 'ilyStream Discord webhook test is working.',
+          embeds: [{
+            title: 'Webhook connected',
+            description: 'Stream trigger alerts can now post to this Discord channel.',
+            color: 0x19c8ff,
+            timestamp: new Date().toISOString()
+          }]
+        }),
+        signal: AbortSignal.timeout(3000)
+      })
+
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '')
+        throw new Error(`Discord webhook test failed (${response.status})${detail ? `: ${detail}` : ''}`)
+      }
+
+      return { ok: true }
+    }
+  )
 
   // --- TikTok Gift DB ---
 
@@ -97,6 +188,29 @@ export function registerPlatformHandlers(
   ipcMain.handle('tiktok:get-sender-status', () => {
     return tiktokChatSender.getStatus()
   })
+
+  ipcMain.handle('tiktok:capture-credentials', () => {
+    return tiktokChatSender.captureAuthCredentials()
+  })
+
+  // Go-live automation toggles, persisted as plain DB settings. Consumed by the
+  // status hook in ServiceRegistry when TikTok transitions to connected.
+  ipcMain.handle('tiktok:get-automations', () => ({
+    autoOpenSender: db.getSetting('tiktokAutoOpenSender') === true,
+    autoPostGoLiveX: db.getSetting('tiktokAutoPostGoLiveX') === true
+  }))
+
+  ipcMain.handle('tiktok:set-automation', (_event, payload: { key: string; value: boolean }) => {
+    const storageKey = TIKTOK_AUTOMATION_KEYS[payload?.key]
+    if (!storageKey) return
+    db.setSetting(storageKey, payload.value === true)
+  })
+}
+
+// Maps renderer-facing automation names to their DB setting keys.
+const TIKTOK_AUTOMATION_KEYS: Record<string, string> = {
+  autoOpenSender: 'tiktokAutoOpenSender',
+  autoPostGoLiveX: 'tiktokAutoPostGoLiveX'
 }
 
 function createSimulatedEvent(payload: {
@@ -225,6 +339,7 @@ function createSimulatedEvent(payload: {
   }
 
   if (payload.type === 'chat') {
+    const message = createSimulatedChatMessage(platform, payload.message)
     return {
       id: randomUUID(),
       platform,
@@ -232,8 +347,8 @@ function createSimulatedEvent(payload: {
       type: 'chat',
       raw,
       user,
-      message: cleanText(payload.message, 'This is a local alert test message', 500),
-      emotes: []
+      message,
+      emotes: createSimulatedChatEmotes(platform, message)
     }
   }
 
@@ -301,4 +416,83 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
   const numericValue = Math.floor(Number(value))
   if (!Number.isFinite(numericValue)) return fallback
   return Math.min(max, Math.max(min, numericValue))
+}
+
+export function createSimulatedChatMessage(platform: Platform, message: unknown): string {
+  return cleanText(message, getDefaultSimulatedChatMessage(platform), 500)
+}
+
+export function createSimulatedChatEmotes(platform: Platform, message: string): Emote[] {
+  if (platform === 'twitch') {
+    return createTwitchSimulatedEmotes(message)
+  }
+
+  if (platform === 'kick') {
+    return createKickSimulatedEmotes(message)
+  }
+
+  return []
+}
+
+function getDefaultSimulatedChatMessage(platform: Platform): string {
+  switch (platform) {
+    case 'tiktok':
+      return 'TikTok emoji test [laugh cry] [rocky love]'
+    case 'twitch':
+      return 'Twitch emote test Kappa'
+    case 'kick':
+      return 'Kick emote test [emote:37236:ThisIsFine]'
+    case 'youtube':
+      return 'YouTube chat test from Event Lab'
+    default:
+      return 'This is a local alert test message'
+  }
+}
+
+function createTwitchSimulatedEmotes(message: string): Emote[] {
+  return [
+    createTextEmote({
+      message,
+      name: 'Kappa',
+      id: '25',
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0'
+    })
+  ].filter((emote): emote is Emote => Boolean(emote))
+}
+
+function createKickSimulatedEmotes(message: string): Emote[] {
+  const emotes: Emote[] = []
+  const pattern = /\[emote:(\d+):([^\]]+)\]/g
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(message)) !== null) {
+    const [token, id, name] = match
+    emotes.push({
+      id,
+      name,
+      imageUrl: `https://files.kick.com/emotes/${id}/fullsize`,
+      startIndex: match.index,
+      endIndex: match.index + token.length - 1
+    })
+  }
+
+  return emotes
+}
+
+function createTextEmote(input: {
+  message: string
+  name: string
+  id: string
+  imageUrl: string
+}): Emote | null {
+  const startIndex = input.message.indexOf(input.name)
+  if (startIndex < 0) return null
+
+  return {
+    id: input.id,
+    name: input.name,
+    imageUrl: input.imageUrl,
+    startIndex,
+    endIndex: startIndex + input.name.length - 1
+  }
 }

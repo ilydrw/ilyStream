@@ -1,6 +1,11 @@
 export function shouldSuppressStreamEventFromChat(event: any): boolean {
   if (!event) return false
+  if (event.chatRelayEcho === true) return true
   if (event.type === 'like') return true
+
+  if (event.type === 'chat' && isRelayFormattedEchoText(event.message, event.platform)) {
+    return true
+  }
 
   if (event.platform !== 'tiktok' || event.type !== 'chat') return false
   if (isTikTokLikeSystemPayload(event.raw)) return true
@@ -34,6 +39,30 @@ export function isTikTokLikeSystemText(text: unknown): boolean {
     /^(?:.{1,80}\s+)?liked the live[.!?]?$/i.test(normalized) ||
     /^(?:.{1,80}\s+)?sent (?:\d+\s+)?likes?[.!?]?$/i.test(normalized)
   )
+}
+
+const RELAY_PLATFORM_LABELS: Record<string, string> = {
+  tiktok: 'TikTok',
+  twitch: 'Twitch',
+  youtube: 'YouTube',
+  kick: 'Kick'
+}
+
+export function isRelayFormattedEchoText(text: unknown, platform: unknown): boolean {
+  const normalized = firstText(text)
+  if (!normalized) return false
+
+  const match = normalized.match(/^\[([^\]]+)\]\s+\S/)
+  if (!match) return false
+
+  const sourcePlatform = Object.entries(RELAY_PLATFORM_LABELS).find(
+    ([, label]) => label.toLowerCase() === match[1].trim().toLowerCase()
+  )?.[0]
+
+  if (!sourcePlatform) return false
+
+  const targetPlatform = String(platform || '').trim().toLowerCase()
+  return targetPlatform.length > 0 && sourcePlatform !== targetPlatform
 }
 
 function getTikTokDisplayTexts(payload: any): any[] {

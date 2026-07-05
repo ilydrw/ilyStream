@@ -10,6 +10,13 @@ export interface StreamPlatformDestination {
 }
 
 export const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number }> = {
+  '2160p144': { width: 3840, height: 2160, fps: 144 },
+  '2160p120': { width: 3840, height: 2160, fps: 120 },
+  '2160p60': { width: 3840, height: 2160, fps: 60 },
+  '1440p144': { width: 2560, height: 1440, fps: 144 },
+  '1440p120': { width: 2560, height: 1440, fps: 120 },
+  '1080p144': { width: 1920, height: 1080, fps: 144 },
+  '1080p120': { width: 1920, height: 1080, fps: 120 },
   '1080p60': { width: 1920, height: 1080, fps: 60 },
   '1080p30': { width: 1920, height: 1080, fps: 30 },
   '720p60': { width: 1280, height: 720, fps: 60 },
@@ -27,6 +34,8 @@ const AVC_LEVELS: { level: string; maxMbps: number }[] = [
   { level: '33', maxMbps: 983_040 }
 ]
 
+const DEFAULT_KICK_STREAM_URL = 'rtmps://fa723fc1b171.global-contribute.live-video.net:443/app'
+
 export function buildStreamPlatforms(configs: any): StreamPlatformDestination[] {
   const available: StreamPlatformDestination[] = []
   const twitchKey = String(configs.twitch?.streamKey || '').trim()
@@ -36,8 +45,19 @@ export function buildStreamPlatforms(configs: any): StreamPlatformDestination[] 
   if (twitchKey) available.push({ id: 'twitch', name: 'Twitch', url: 'rtmp://ingest.global-contribute.live-video.net/app', key: twitchKey })
   if (youtubeKey) available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: youtubeKey })
   if (tiktokKey) available.push({ id: 'tiktok', name: 'TikTok', url: 'rtmp://open-rtmp.tiktok.com/stage', key: tiktokKey })
-  if (kickKey) available.push({ id: 'kick', name: 'Kick', url: 'rtmp://fa7d171e3f81.global-contribute.live-video.net/app', key: kickKey })
+  if (kickKey) available.push({ id: 'kick', name: 'Kick', url: normalizeKickStreamUrl(configs.kick?.streamUrl), key: kickKey })
   return available
+}
+
+export function normalizeKickStreamUrl(value: unknown): string {
+  const url = String(value || '').trim()
+  if (!url) return DEFAULT_KICK_STREAM_URL
+
+  const withoutKey = url.replace(/\/+$/, '').replace(/\/app\/[^/]+$/, '/app')
+  if (/\/app$/i.test(withoutKey)) return withoutKey
+  if (/global-contribute\.live-video\.net(?::\d+)?$/i.test(withoutKey)) return `${withoutKey}/app`
+
+  return withoutKey
 }
 
 export async function getOptimizedCaptureInputFormat(

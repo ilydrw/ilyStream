@@ -2,7 +2,7 @@ import React from 'react'
 import {IconLayout} from '@tabler/icons-react'
 import { AppSettings } from '../../../../shared/app-settings'
 import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
-import { NumberInput, RuntimeLink, StatusBadge } from './SettingsShared'
+import { NumberInput, StatusBadge } from './SettingsShared'
 
 interface OverlayHubSectionProps {
   settings: AppSettings
@@ -44,29 +44,21 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
 
           <div className="mt-4 p-8 rounded-lg bg-black/40 border border-white/5 space-y-6 group hover:border-white/10 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-tight text-white/30">Local Deployment</span>
+              <span className="text-xs font-semibold tracking-tight text-white/30">Overlay Server</span>
               <StatusBadge status={overlayStatus} />
             </div>
-            <div className="space-y-4">
-              <RuntimeLink
-                label="Chat Overlay"
-                href={overlayStatus?.chatUrl || undefined}
-                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/chat`}
-              />
-              <RuntimeLink
-                label="Alert Source"
-                href={overlayStatus?.alertsUrl || undefined}
-                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/alerts`}
-              />
-              <RuntimeLink
-                label="Goals Widget"
-                href={
-                  overlayStatus?.goalsUrl
-                    ? `${overlayStatus.goalsUrl}?likes=5000&follows=100&subs=25`
-                    : undefined
-                }
-                fallback={`http://127.0.0.1:${settings.overlay.port}/overlay/goals?likes=5000&follows=100&subs=25`}
-              />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4 text-xs">
+                <span className="text-white/25 font-semibold">Server origin</span>
+                <span className="font-mono text-white/55 truncate">
+                  {overlayStatus?.running && overlayStatus.port
+                    ? `http://${overlayStatus.deviceHost || `127.0.0.1:${overlayStatus.port}`}`
+                    : `http://127.0.0.1:${settings.overlay.port}`}
+                </span>
+              </div>
+              <p className="text-xs text-white/35 leading-relaxed">
+                OBS browser-source URLs are generated on saved widget cards in Overlays & Widgets. This server setting only controls the port those widget URLs use.
+              </p>
             </div>
           </div>
         </div>

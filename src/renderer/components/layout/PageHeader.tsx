@@ -7,6 +7,9 @@ interface PageHeaderProps {
   icon?: ComponentType<{ size?: number; className?: string }>
   iconNode?: ReactNode
   actions?: ReactNode
+  className?: string
+  iconClassName?: string
+  actionsClassName?: string
 }
 
 export function PageHeader({
@@ -15,14 +18,17 @@ export function PageHeader({
   kicker,
   icon: Icon,
   iconNode,
-  actions
+  actions,
+  className,
+  iconClassName,
+  actionsClassName
 }: PageHeaderProps) {
   return (
-    <header className="app-page-header">
+    <header className={['app-page-header', className].filter(Boolean).join(' ')}>
       <div className="app-page-title-cluster">
         {(Icon || iconNode) && (
-          <div className="app-page-title-icon">
-            {iconNode ?? (Icon ? <Icon size={24} /> : null)}
+          <div className={['app-page-title-icon', iconClassName].filter(Boolean).join(' ')}>
+            {iconNode ?? (Icon ? <Icon size={22} /> : null)}
           </div>
         )}
         <div className="app-page-title-copy">
@@ -31,7 +37,7 @@ export function PageHeader({
           {description && <p className="app-page-intro">{description}</p>}
         </div>
       </div>
-      {actions && <div className="app-page-actions">{actions}</div>}
+      {actions && <div className={['app-page-actions', actionsClassName].filter(Boolean).join(' ')}>{actions}</div>}
     </header>
   )
 }

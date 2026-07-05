@@ -49,7 +49,7 @@ export class AudioStreamPlayer {
     }
 
     const buffer = ctx.createBuffer(1, pcm.length, sampleRate)
-    buffer.copyToChannel(pcm, 0)
+    buffer.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0)
     
     const source = ctx.createBufferSource()
     source.buffer = buffer

@@ -4,6 +4,7 @@ import {
   buildTikTokConnectionOptions,
   buildTikTokConnectionOptionCandidates,
   isFatalTikTokConnectionErrorMessage,
+  isTikTokOfflineErrorMessage,
   isTikTokFollowSocialPayload,
   isTikTokLikeSocialPayload,
   mapTikTokUserInfo,
@@ -77,10 +78,86 @@ describe('TikTokConnector connection hardening', () => {
       getStatus: vi.fn().mockReturnValue({
         isChatReady: true,
         lastError: 'TikTok chat input was not found'
-      })
+      }),
+      captureAuthCredentials: vi.fn().mockResolvedValue({ sessionId: null, ttTargetIdc: null, loggedIn: false })
     } as any)
 
     await expect(connector.sendChatMessage('hello')).rejects.toThrow('TikTok chat input was not found')
+  })
+
+  it('sends outbound chat through the authenticated TikTok live connector when cookies are configured', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({})
+    const connector = new TikTokConnector({} as any, {
+      sendMessage: vi.fn(),
+      getStatus: vi.fn().mockReturnValue({ isChatReady: false }),
+      captureAuthCredentials: vi.fn()
+    } as any)
+    ;(connector as any).connection = { sendMessage }
+    ;(connector as any).activeConfig = {
+      platform: 'tiktok',
+      enabled: true,
+      username: 'creator',
+      sessionId: 'session-id',
+      ttTargetIdc: 'useast2a'
+    }
+
+    await connector.sendChatMessage('hello host chat')
+
+    expect(sendMessage).toHaveBeenCalledWith('hello host chat', {
+      sessionId: 'session-id',
+      ttTargetIdc: 'useast2a'
+    })
+  })
+
+  it('captures sender-window cookies for the authenticated TikTok live send path', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({})
+    const captureAuthCredentials = vi.fn().mockResolvedValue({
+      sessionId: 'captured-session',
+      ttTargetIdc: 'useast1a',
+      loggedIn: true
+    })
+    const connector = new TikTokConnector({} as any, {
+      sendMessage: vi.fn(),
+      getStatus: vi.fn().mockReturnValue({ isChatReady: false }),
+      captureAuthCredentials
+    } as any)
+    ;(connector as any).connection = { sendMessage }
+    ;(connector as any).activeConfig = {
+      platform: 'tiktok',
+      enabled: true,
+      username: 'creator'
+    }
+
+    await connector.sendChatMessage('captured cookie send')
+
+    expect(captureAuthCredentials).toHaveBeenCalled()
+    expect(sendMessage).toHaveBeenCalledWith('captured cookie send', {
+      sessionId: 'captured-session',
+      ttTargetIdc: 'useast1a'
+    })
+  })
+
+  it('falls back to the host sender window when authenticated TikTok live sending fails', async () => {
+    const senderSendMessage = vi.fn().mockResolvedValue(true)
+    const connector = new TikTokConnector({} as any, {
+      sendMessage: senderSendMessage,
+      getStatus: vi.fn().mockReturnValue({ isChatReady: true }),
+      captureAuthCredentials: vi.fn().mockResolvedValue({ sessionId: null, ttTargetIdc: null, loggedIn: false })
+    } as any)
+    ;(connector as any).connection = {
+      sendMessage: vi.fn().mockRejectedValue(new Error('webcast send rejected'))
+    }
+    ;(connector as any).activeConfig = {
+      platform: 'tiktok',
+      enabled: true,
+      username: 'creator',
+      sessionId: 'session-id',
+      ttTargetIdc: 'useast2a'
+    }
+
+    await connector.sendChatMessage('fallback please')
+
+    expect(senderSendMessage).toHaveBeenCalledWith('fallback please')
   })
 
   it('tries every transient connection candidate and rejects when TikTok is unreachable', async () => {
@@ -90,7 +167,7 @@ describe('TikTokConnector connection hardening', () => {
       WebcastPushConnection: class FakeWebcastPushConnection extends EventEmitter {
         async connect() {
           connectAttempts += 1
-          throw new Error('The requested user is not online')
+          throw new Error('connect ECONNREFUSED')
         }
 
         disconnect() {}
@@ -102,10 +179,42 @@ describe('TikTokConnector connection hardening', () => {
 
     await expect(
       connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
-    ).rejects.toThrow('The requested user is not online')
+    ).rejects.toThrow('connect ECONNREFUSED')
 
     expect(connectAttempts).toBe(3)
     expect(connector.status).toBe('error')
+  })
+
+  it('waits (not errors) when the host is reachable but not live yet', async () => {
+    let connectAttempts = 0
+
+    vi.doMock('tiktok-live-connector', () => ({
+      WebcastPushConnection: class FakeWebcastPushConnection extends EventEmitter {
+        async connect() {
+          connectAttempts += 1
+          throw new Error("The requested user isn't online :(")
+        }
+
+        disconnect() {}
+      }
+    }))
+
+    const connector = new TikTokConnector({} as any, {} as any)
+    connector.setAutoReconnect(false)
+    const errors: unknown[] = []
+    connector.on('error', (error) => errors.push(error))
+
+    // Resolves rather than rejecting — "not live yet" is a normal waiting state,
+    // so the platform stays enabled instead of surfacing a hard failure.
+    await expect(
+      connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
+    ).resolves.toBeUndefined()
+
+    // Still tries every candidate in case a flaky room lookup was the culprit.
+    expect(connectAttempts).toBe(3)
+    // Waiting is presented as "connecting", never "error", and emits no error.
+    expect(connector.status).toBe('connecting')
+    expect(errors).toHaveLength(0)
   })
 
   it('stops candidate fallback on fatal identity errors', async () => {
@@ -153,11 +262,13 @@ describe('TikTokConnector connection hardening', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
+    // "not online" resolves into the waiting state rather than rejecting.
     await expect(
       connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
-    ).rejects.toThrow('The requested user is not online')
+    ).resolves.toBeUndefined()
 
     expect(connectAttempts).toBe(3)
+    expect(connector.status).toBe('connecting')
     expect(errorSpy.mock.calls.some((call) => String(call[0]).includes('[tiktok] connection:'))).toBe(false)
     expect(warnSpy).not.toHaveBeenCalled()
     errorSpy.mockRestore()
@@ -174,6 +285,19 @@ describe('TikTokConnector connection hardening', () => {
     expect(isFatalTikTokConnectionErrorMessage('User not found')).toBe(true)
     expect(isFatalTikTokConnectionErrorMessage('Invalid username')).toBe(true)
     expect(isFatalTikTokConnectionErrorMessage('user does not exist')).toBe(true)
+  })
+
+  it('recognizes "not live yet" results as an offline waiting state', () => {
+    expect(isTikTokOfflineErrorMessage("The requested user isn't online :(")).toBe(true)
+    expect(isTikTokOfflineErrorMessage('The requested user is not online')).toBe(true)
+    expect(isTikTokOfflineErrorMessage('LIVE has ended')).toBe(false) // handled elsewhere as room-state
+    expect(isTikTokOfflineErrorMessage('stream ended')).toBe(true)
+  })
+
+  it('does not confuse a missing user with an offline host', () => {
+    // Fatal identity errors must not be swallowed by the offline waiting path.
+    expect(isTikTokOfflineErrorMessage('User not found')).toBe(false)
+    expect(isTikTokOfflineErrorMessage('Invalid username')).toBe(false)
   })
 
   it('recognizes follow social payloads from TikTok display metadata', () => {

@@ -8,6 +8,7 @@ import { DashboardLayout } from './components/layout/DashboardLayout'
 // Static imports for core performance-critical pages
 import BroadcastPage from './pages/BroadcastPage'
 import StudioOverlayPage from './pages/BroadcastPage/StudioOverlay'
+import ViewerProfilePage from './pages/StatsPage/ViewerProfilePage'
 import { usePlatformEvents } from './hooks/usePlatformEvents'
 import { useTTS } from './hooks/useTTS'
 import { useSettingsSync } from './hooks/useSettingsSync'
@@ -16,6 +17,7 @@ import { useLogInterception } from './hooks/useLogInterception'
 import { useUpdateSync } from './hooks/useUpdateSync'
 import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
+import { GoveeBleRuntime } from './components/govee/GoveeBleRuntime'
 
 function MountingDiagnostics() {
   useEffect(() => {
@@ -150,6 +152,7 @@ export default function App() {
                       element={route.path === '/broadcast' ? null : <route.component />} 
                     />
                   ))}
+                  <Route path="/stats/viewer/:id" element={<ViewerProfilePage />} />
                   <Route path="/overlay/studio/:sceneId" element={<StudioOverlayPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
@@ -172,6 +175,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <MountingDiagnostics />
+      <GoveeBleRuntime />
       <ConsoleModal />
       <DashboardLayout>
         <ToastContainer />

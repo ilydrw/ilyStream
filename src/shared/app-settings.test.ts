@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAppSettings } from './app-settings'
+import { resolveAppSetting, resolveAppSettings } from './app-settings'
 
 describe('resolveAppSettings TTS command and audience gates', () => {
+  it('maps flat chat relay toggles into nested Chat Hub settings', () => {
+    const settings = resolveAppSettings({
+      chatAutoRelayEnabled: true,
+      chatRelayTagMode: 'message-only',
+      chatAutoRelayPlatforms: {
+        tiktok: true,
+        twitch: false,
+        youtube: true,
+        kick: false
+      }
+    })
+
+    expect(settings.chat.autoRelayEnabled).toBe(true)
+    expect(settings.chatAutoRelayEnabled).toBe(true)
+    expect(settings.chat.relayTagMode).toBe('message-only')
+    expect(settings.chatRelayTagMode).toBe('message-only')
+    expect(settings.chat.autoRelayPlatforms).toEqual({
+      tiktok: true,
+      twitch: false,
+      youtube: true,
+      kick: false
+    })
+    expect(settings.chatAutoRelayPlatforms).toEqual(settings.chat.autoRelayPlatforms)
+  })
+
   it('normalizes command prefixes from compact or comma-separated input', () => {
     expect(resolveAppSettings({ ttsCommandPrefixes: '!/.' }).ttsCommandPrefixes).toEqual([
       '!',
@@ -25,6 +50,107 @@ describe('resolveAppSettings TTS command and audience gates', () => {
 
     expect(settings.ttsAllowedRoles).toEqual(['followers', 'subscribers'])
     expect(everyoneSettings.ttsAllowedRoles).toEqual(['everyone'])
+  })
+
+  it('normalizes the chat TTS message template and exposes the flat alias', () => {
+    const settings = resolveAppSettings({
+      ttsChatMessageTemplate: '  {username}   says   {message}  '
+    })
+    const fallback = resolveAppSettings({
+      ttsChatMessageTemplate: ''
+    })
+
+    expect(settings.tts.chatMessageTemplate).toBe('{username} says {message}')
+    expect(settings.ttsChatMessageTemplate).toBe('{username} says {message}')
+    expect(fallback.tts.chatMessageTemplate).toBe('{displayName} says: {message}')
+  })
+
+  it('exposes persisted TTS menu settings through flat and nested aliases', () => {
+    const settings = resolveAppSettings({
+      ttsRequireCommand: true,
+      ttsCommandPrefixes: '/',
+      ttsAllowedRoles: ['moderators'],
+      ttsIgnoreEmotes: false,
+      ttsVolume: 0.42,
+      ttsReadAtSymbol: true,
+      ttsSkipMessagesStartingWithAt: true,
+      ttsChatVoiceProfileId: 'chat-profile',
+      ttsSubscriptionVoiceProfileId: 'sub-profile',
+      elevenlabsApiKey: 'eleven-key',
+      elevenlabsApiKeys: [
+        { id: 'friend-workspace', label: 'Friend Workspace', apiKey: 'friend-key' }
+      ],
+      elevenlabsDefaultApiKeyId: 'friend-workspace',
+      audioOutputDeviceId: 'output-123',
+      voiceModifiers: {
+        radioFilter: true,
+        speedRamping: false,
+        pitchShifting: 'high'
+      }
+    })
+
+    expect(settings.tts.requireCommand).toBe(true)
+    expect(settings.ttsRequireCommand).toBe(true)
+    expect(settings.tts.commandPrefixes).toEqual(['/'])
+    expect(settings.ttsCommandPrefixes).toEqual(['/'])
+    expect(settings.tts.allowedRoles).toEqual(['moderators'])
+    expect(settings.ttsAllowedRoles).toEqual(['moderators'])
+    expect(settings.tts.ignoreEmotes).toBe(false)
+    expect(settings.ttsIgnoreEmotes).toBe(false)
+    expect(settings.tts.volume).toBe(0.42)
+    expect(settings.ttsVolume).toBe(0.42)
+    expect(settings.tts.readAtSymbol).toBe(true)
+    expect(settings.ttsReadAtSymbol).toBe(true)
+    expect(settings.tts.skipMessagesStartingWithAt).toBe(true)
+    expect(settings.ttsSkipMessagesStartingWithAt).toBe(true)
+    expect(settings.tts.chatVoiceProfileId).toBe('chat-profile')
+    expect(settings.ttsChatVoiceProfileId).toBe('chat-profile')
+    expect(settings.tts.subscriptionVoiceProfileId).toBe('sub-profile')
+    expect(settings.ttsSubscriptionVoiceProfileId).toBe('sub-profile')
+    expect(settings.elevenlabsApiKey).toBe('eleven-key')
+    expect(settings.elevenlabsApiKeys).toEqual([
+      { id: 'friend-workspace', label: 'Friend Workspace', apiKey: 'friend-key' }
+    ])
+    expect(settings.elevenlabsDefaultApiKeyId).toBe('friend-workspace')
+    expect(settings.audio.outputDeviceId).toBe('output-123')
+    expect(settings.audioOutputDeviceId).toBe('output-123')
+    expect(settings.tts.modifiers).toEqual({
+      radioFilter: true,
+      speedRamping: false,
+      pitchShifting: 'high'
+    })
+    expect(settings.voiceModifiers).toEqual(settings.tts.modifiers)
+  })
+
+  it('normalizes partial or invalid voice modifier settings', () => {
+    const settings = resolveAppSettings({
+      voiceModifiers: {
+        radioFilter: true,
+        pitchShifting: 'helium'
+      }
+    })
+
+    expect(settings.voiceModifiers).toEqual({
+      radioFilter: true,
+      speedRamping: true,
+      pitchShifting: 'normal'
+    })
+    expect(settings.tts.modifiers).toEqual(settings.voiceModifiers)
+  })
+})
+
+describe('resolveAppSetting write guard', () => {
+  it('rejects unsupported and prototype-pollution setting keys', () => {
+    expect(() => resolveAppSetting('__proto__', { polluted: true })).toThrow('Unsupported setting key')
+    expect(() => resolveAppSetting('randomRendererPayload', true)).toThrow('Unsupported setting key')
+  })
+
+  it('coerces primitive settings and rejects oversized payloads', () => {
+    expect(resolveAppSetting('spotifyVotesRequired', 0)).toBe(1)
+    expect(resolveAppSetting('overlayPort', 99999)).toBe(65535)
+    expect(resolveAppSetting('spotifySkipEnabled', 'false')).toBe(false)
+    expect(resolveAppSetting('elevenlabsApiKey', '  el-key  ')).toBe('  el-key  ')
+    expect(() => resolveAppSetting('aiSystemPrompt', 'x'.repeat(300_000))).toThrow('too large')
   })
 })
 
@@ -266,7 +392,7 @@ describe('resolveAppSettings streaming aliases', () => {
       }
     })
 
-    expect(defaults.streaming.bitrate).toBe(4500)
+    expect(defaults.streaming.bitrate).toBe(6000)
     expect(defaults.streaming.fps).toBe(30)
     expect(flat.streaming.rtmpUrl).toBe('rtmp://example.test/app')
     expect(flat.streaming.streamKey).toBe('stream-key')

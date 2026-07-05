@@ -12,7 +12,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1" />
   <title>ilyStream Alerts</title>
   <style>
     :root {
@@ -30,21 +30,23 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
     html,
     body {
-      width: 100vw;
-      height: 100vh;
+      width: 1920px;
+      height: 1080px;
       margin: 0;
       padding: 0;
-      background: transparent !important;
       overflow: hidden;
+      background: transparent !important;
       font-family: var(--font-main);
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }
 
     #v5-alert-stage {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
       overflow: hidden;
       perspective: 1200px;
     }
@@ -174,6 +176,38 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       height: 120px;
     }
 
+    /* Diagnostic tile shown when an alert image 404s (usually a stale OBS
+       browser-source cache from before the asset was uploaded). Makes a silent
+       missing image obvious instead of leaving a blank gap. */
+    .alert-image-container.alert-image-failed {
+      width: 200px;
+      height: 200px;
+      box-sizing: border-box;
+      flex-direction: column;
+      gap: 6px;
+      padding: 12px;
+      border: 2px dashed rgba(255, 90, 90, 0.75);
+      border-radius: 16px;
+      background: rgba(255, 60, 60, 0.08);
+      color: rgba(255, 170, 170, 0.96);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      word-break: break-all;
+      overflow: hidden;
+    }
+    .alert-image-container.alert-image-failed .alert-image { display: none; }
+    .alert-image-container.alert-image-failed::before {
+      content: "⚠ image failed to load";
+      display: block;
+    }
+    .alert-image-container.alert-image-failed::after {
+      content: attr(data-image-error);
+      display: block;
+      font-weight: 500;
+      opacity: 0.85;
+    }
+
     @keyframes float {
       0%, 100% { transform: translateY(0) scale(1); }
       50% { transform: translateY(-12px) scale(1.05); }
@@ -197,6 +231,173 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
     .layout-side-by-side .alert-main-text {
       text-align: left;
+    }
+
+    .alert-wrapper.alert-clean {
+      max-width: 720px;
+      filter: blur(8px);
+      transform: translate(-50%, 0) translateY(18px) scale(0.98);
+    }
+
+    .alert-wrapper.alert-clean.active {
+      filter: blur(0);
+      transform: translate(-50%, 0) translateY(0) scale(1);
+    }
+
+    .alert-clean .alert-content {
+      width: min(640px, calc(100vw - 96px));
+      min-width: 420px;
+      max-width: 640px;
+      min-height: 112px;
+      flex-direction: row;
+      align-items: center;
+      gap: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(18, 22, 30, 0.88), rgba(12, 15, 22, 0.74)),
+        radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.12), transparent 34%);
+      padding: 18px 22px;
+      text-align: left;
+      box-shadow:
+        0 22px 70px rgba(0, 0, 0, 0.46),
+        0 1px 0 rgba(255, 255, 255, 0.12) inset;
+      backdrop-filter: blur(26px) saturate(165%);
+      -webkit-backdrop-filter: blur(26px) saturate(165%);
+    }
+
+    .alert-clean .alert-content::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 5px;
+      border-radius: inherit;
+      background: var(--alert-accent, #38bdf8);
+      box-shadow: 0 0 24px var(--alert-accent, #38bdf8);
+      pointer-events: none;
+    }
+
+    .alert-clean .alert-content::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 42%, rgba(255, 255, 255, 0.04));
+      pointer-events: none;
+    }
+
+    .clean-alert-media {
+      position: relative;
+      z-index: 1;
+      flex: 0 0 auto;
+      width: 76px;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.20), transparent 36%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03));
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.30);
+    }
+
+    .clean-alert-media::after {
+      content: "";
+      position: absolute;
+      inset: auto 10px 8px 10px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--alert-accent, #38bdf8);
+      opacity: 0.78;
+    }
+
+    .clean-alert-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: none;
+      animation: none;
+    }
+
+    .clean-alert-initial {
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .clean-alert-body {
+      position: relative;
+      z-index: 1;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .clean-alert-topline {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      margin-bottom: 5px;
+    }
+
+    .clean-alert-eyebrow {
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .clean-alert-pill {
+      flex: 0 0 auto;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.52);
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .clean-alert-title {
+      color: #ffffff;
+      font-size: 31px;
+      font-weight: 760;
+      line-height: 1.04;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+      text-shadow: 0 8px 26px rgba(0, 0, 0, 0.36);
+    }
+
+    .clean-alert-subtitle {
+      margin-top: 6px;
+      color: rgba(255, 255, 255, 0.70);
+      font-size: 17px;
+      font-weight: 560;
+      line-height: 1.28;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .alert-clean-gift .alert-content {
+      border-color: rgba(247, 201, 72, 0.26);
+    }
+
+    .alert-clean-follow .alert-content {
+      border-color: rgba(56, 189, 248, 0.24);
+    }
+
+    .alert-clean-superfan .alert-content {
+      border-color: rgba(232, 121, 249, 0.26);
     }
 
     .exit-fade {
@@ -245,6 +446,50 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       opacity: 0;
       transform: translate(-50%, -100%);
     }
+
+    /* Self-diagnosing banner that fires when the iframe viewport is too
+       small to render alerts (typically the browser source was added to
+       OBS / TikTok Live Studio without explicit Width/Height). Without
+       this the alert renders at 1px and looks broken with no explanation. */
+    .size-warning {
+      position: fixed;
+      inset: 8px;
+      border: 2px dashed rgba(255, 200, 0, 0.6);
+      border-radius: 12px;
+      background: rgba(20, 16, 0, 0.88);
+      color: #ffd166;
+      font-family: var(--font-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 12px;
+      z-index: 10001;
+      gap: 6px;
+    }
+    .size-warning h1 {
+      font-size: clamp(14px, 4vw, 20px);
+      font-weight: 800;
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+    .size-warning p {
+      font-size: clamp(11px, 2.4vw, 14px);
+      line-height: 1.45;
+      max-width: 520px;
+      margin: 0;
+    }
+    .size-warning code {
+      background: rgba(0, 0, 0, 0.45);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.95em;
+    }
+    .size-warning .current {
+      opacity: 0.6;
+      font-size: clamp(10px, 2vw, 12px);
+    }
   </style>
 </head>
 <body>
@@ -265,21 +510,27 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     let eventSource = null;
     let lastPollAt = bootTime;
 
+    function getAlertCreatedAt(alert) {
+      const createdAt = alert && alert.createdAt ? Date.parse(alert.createdAt) : Date.now();
+      return Number.isNaN(createdAt) ? null : createdAt;
+    }
+
     function markSeen(alert) {
       if (alert && alert.id) seenAlertIds.add(alert.id);
+      const createdAt = getAlertCreatedAt(alert);
+      if (createdAt !== null) lastPollAt = Math.max(lastPollAt, createdAt);
     }
 
     function shouldShow(alert) {
       if (!alert || !alert.id) return true;
       if (seenAlertIds.has(alert.id)) return false;
-      const createdAt = alert.createdAt ? Date.parse(alert.createdAt) : Date.now();
-      return Number.isNaN(createdAt) || createdAt >= bootTime;
+      const createdAt = getAlertCreatedAt(alert);
+      return createdAt === null || createdAt >= bootTime;
     }
 
     function queueAlert(alert) {
       if (!shouldShow(alert)) return;
       markSeen(alert);
-      playAlertAudioOnce(alert);
       showAlert(alert);
     }
 
@@ -364,10 +615,14 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       }
 
       isShowing = true;
-      const alertHtml = String(alert.html || alert.template || '');
-      const hasVisual = Boolean(alert.imageUrl || alertHtml.trim());
+      playAlertAudioOnce(alert);
 
-      if (!hasVisual) {
+      const alertHtml = String(alert.html || alert.template || '');
+      const cleanAlertType = getCleanAlertType(alert);
+      const hasVisual = Boolean(cleanAlertType || alert.imageUrl || alertHtml.trim());
+      const hasAudio = Boolean(alert.audioUrl);
+
+      if (!hasVisual && !hasAudio) {
         isShowing = false;
         if (alertQueue.length > 0) {
           showAlert(alertQueue.shift());
@@ -375,62 +630,97 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         return;
       }
 
-      const layout = normalizeLayout(alert.layout);
-      const animationIn = normalizeAnimationIn(alert.animationIn);
-      const isCyber = alert.borderColor === 'gradient' || alert.isCyber;
-      const wrapper = document.createElement('div');
-      wrapper.className = 'alert-wrapper layout-' + layout + ' anim-' + animationIn + (isCyber ? ' cyber-border' : '');
-      wrapper.style.setProperty('--alert-left', clampNumber(alert.alertLeft, 0, 100, 50) + '%');
-      wrapper.style.setProperty('--alert-top', clampNumber(alert.alertTop, 0, 100, 10) + '%');
+      let wrapper = null;
 
-      const alertContent = document.createElement('div');
-      alertContent.className = 'alert-content';
-      alertContent.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
-      if (!isCyber) {
-        alertContent.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
-      }
+      if (hasVisual) {
+        const layout = normalizeLayout(alert.layout);
+        const animationIn = normalizeAnimationIn(alert.animationIn);
+        const isCyber = !cleanAlertType && (alert.borderColor === 'gradient' || alert.isCyber);
+        wrapper = document.createElement('div');
+        wrapper.className = cleanAlertType
+          ? 'alert-wrapper alert-clean alert-clean-' + cleanAlertType + ' anim-' + animationIn
+          : 'alert-wrapper layout-' + layout + ' anim-' + animationIn + (isCyber ? ' cyber-border' : '');
+        wrapper.style.setProperty('--alert-left', clampNumber(alert.alertLeft, 0, 100, 50) + '%');
+        wrapper.style.setProperty('--alert-top', clampNumber(alert.alertTop, 0, 100, 10) + '%');
+        if (cleanAlertType) {
+          wrapper.style.setProperty('--alert-accent', safeCssValue(alert.accentColor, getCleanAlertAccent(cleanAlertType)));
+        }
 
-      const innerHtml = [];
+        const alertContent = document.createElement('div');
+        alertContent.className = 'alert-content';
+        if (!cleanAlertType) {
+          alertContent.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
+        }
+        if (!cleanAlertType && !isCyber) {
+          alertContent.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
+        }
 
-      if (layout !== 'text-only' && alert.imageUrl) {
-        const imageLeft = clampNumber(alert.imageLeft, -1000, 1000, 0);
-        const imageTop = clampNumber(alert.imageTop, -1000, 1000, 0);
-        innerHtml.push('<div class="alert-image-container" style="transform: translate(' + imageLeft + 'px, ' + imageTop + 'px)">');
-        innerHtml.push('  <img class="alert-image" src="' + escapeAttr(alert.imageUrl) + '" alt="" />');
-        innerHtml.push('</div>');
-      }
+        const innerHtml = [];
 
-      if (layout !== 'image-only') {
-        const fontSize = clampNumber(alert.fontSize, 12, 180, layout === 'side-by-side' ? 34 : 42);
-        const fontWeight = clampNumber(alert.fontWeight, 100, 1000, 900);
-        const textStyle = [
-          'font-size: ' + fontSize + 'px',
-          'color: ' + safeCssValue(alert.textColor, '#ffffff'),
-          'text-shadow: ' + safeCssValue(alert.textShadow, '0 4px 15px rgba(0,0,0,0.5)'),
-          'font-weight: ' + fontWeight
-        ].join('; ');
+        if (cleanAlertType) {
+          innerHtml.push(renderCleanAlert(alert, cleanAlertType));
+        } else if (layout !== 'text-only' && alert.imageUrl) {
+          const imageLeft = clampNumber(alert.imageLeft, -1000, 1000, 0);
+          const imageTop = clampNumber(alert.imageTop, -1000, 1000, 0);
+          innerHtml.push('<div class="alert-image-container" style="transform: translate(' + imageLeft + 'px, ' + imageTop + 'px)">');
+          innerHtml.push('  <img class="alert-image" src="' + escapeAttr(alert.imageUrl) + '" alt="" />');
+          innerHtml.push('</div>');
+        }
 
-        innerHtml.push('<div class="alert-text">');
-        innerHtml.push('  <div class="alert-main-text" style="' + escapeAttr(textStyle) + '">');
-        innerHtml.push('    ' + (alert.html || alert.template || ''));
-        innerHtml.push('  </div>');
-        innerHtml.push('</div>');
-      }
+        if (!cleanAlertType && layout !== 'image-only') {
+          const fontSize = clampNumber(alert.fontSize, 12, 180, layout === 'side-by-side' ? 34 : 42);
+          const fontWeight = clampNumber(alert.fontWeight, 100, 1000, 900);
+          const textStyle = [
+            'font-size: ' + fontSize + 'px',
+            'color: ' + safeCssValue(alert.textColor, '#ffffff'),
+            'text-shadow: ' + safeCssValue(alert.textShadow, '0 4px 15px rgba(0,0,0,0.5)'),
+            'font-weight: ' + fontWeight
+          ].join('; ');
 
-      alertContent.innerHTML = innerHtml.join('');
-      wrapper.appendChild(alertContent);
-      container.appendChild(wrapper);
+          innerHtml.push('<div class="alert-text">');
+          innerHtml.push('  <div class="alert-main-text" style="' + escapeAttr(textStyle) + '">');
+          innerHtml.push('    ' + (alert.html || alert.template || ''));
+          innerHtml.push('  </div>');
+          innerHtml.push('</div>');
+        }
 
-      setTimeout(function() {
-        wrapper.classList.add('active');
-      }, 50);
+        alertContent.innerHTML = innerHtml.join('');
+        wrapper.appendChild(alertContent);
+        container.appendChild(wrapper);
 
-      setTimeout(function() {
-        wrapper.classList.add('exit-' + normalizeAnimationOut(alert.animationOut));
-        wrapper.classList.remove('active');
+        // Surface image load failures instead of leaving a silent gap. If the
+        // <img> 404s (commonly a stale OBS browser-source cache from before the
+        // asset was uploaded), log the URL and swap in a visible error tile.
+        const alertImg = alertContent.querySelector('.alert-image');
+        if (alertImg) {
+          alertImg.addEventListener('load', function() {
+            console.log('[alerts] image loaded: ' + alertImg.getAttribute('src'));
+          }, { once: true });
+          alertImg.addEventListener('error', function() {
+            const failedSrc = alertImg.getAttribute('src') || '';
+            console.error('[alerts] image FAILED to load: ' + failedSrc +
+              ' — check the asset exists and refresh the OBS browser-source cache.');
+            const box = alertImg.closest('.alert-image-container');
+            if (box) {
+              box.classList.add('alert-image-failed');
+              box.setAttribute('data-image-error', failedSrc);
+            }
+          }, { once: true });
+        }
 
         setTimeout(function() {
-          wrapper.remove();
+          if (wrapper) wrapper.classList.add('active');
+        }, 50);
+      }
+
+      setTimeout(function() {
+        if (wrapper) {
+          wrapper.classList.add('exit-' + normalizeAnimationOut(alert.animationOut));
+          wrapper.classList.remove('active');
+        }
+
+        setTimeout(function() {
+          if (wrapper) wrapper.remove();
           isShowing = false;
           if (alertQueue.length > 0) {
             showAlert(alertQueue.shift());
@@ -453,26 +743,31 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       }
     }
 
+    function requestJson(url) {
+      var runtime = window.__ilystreamOverlayRuntime;
+      if (runtime && typeof runtime.requestJson === 'function') {
+        return runtime.requestJson(url);
+      }
+      return fetch(url, { cache: 'no-store' }).then(function(response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      });
+    }
+
     async function pollAlertState(seedOnly) {
       try {
         const url = '/overlay/alerts/state?since=' + encodeURIComponent(String(seedOnly ? 0 : lastPollAt));
-        const response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) {
-          console.warn('[alerts] Poll failed with status:', response.status);
-          return;
-        }
-
-        const alerts = await response.json();
+        const alerts = await requestJson(url);
         if (!Array.isArray(alerts)) return;
 
         let newestSeenAt = lastPollAt;
         for (const alert of alerts) {
-          const createdAt = alert.createdAt ? Date.parse(alert.createdAt) : Date.now();
-          if (!Number.isNaN(createdAt)) {
+          const createdAt = getAlertCreatedAt(alert);
+          if (createdAt !== null) {
             newestSeenAt = Math.max(newestSeenAt, createdAt);
           }
 
-          if (seedOnly && !Number.isNaN(createdAt) && createdAt < bootTime) {
+          if (seedOnly && createdAt !== null && createdAt < bootTime) {
             markSeen(alert);
           } else {
             queueAlert(alert);
@@ -489,6 +784,12 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       console.log('[alerts] Starting fallback polling...');
       pollAlertState(seedOnly);
       pollingTimer = setInterval(function() { pollAlertState(false); }, 2000);
+    }
+
+    function stopPolling() {
+      if (!pollingTimer) return;
+      clearInterval(pollingTimer);
+      pollingTimer = null;
     }
 
     function connectEventStream() {
@@ -510,7 +811,8 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
         eventSource.onopen = function() {
           setDiag('CONNECTED! READY FOR ALERTS', true);
-          startPolling(true);
+          stopPolling();
+          pollAlertState(true);
         };
 
         eventSource.onmessage = function(event) {
@@ -529,8 +831,8 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         };
 
         eventSource.onerror = function() {
-          fetch('/overlay/health').then(function(response) {
-            setDiag(response.ok ? 'SSE BLOCKED - USING POLLING' : 'SERVER UNREACHABLE', response.ok);
+          requestJson('/overlay/health').then(function() {
+            setDiag('SSE BLOCKED - USING POLLING', true);
           }).catch(function() {
             setDiag('SERVER OFFLINE', false);
           });
@@ -547,6 +849,68 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       if (layout === 'above-below') return 'stacked';
       if (layout === 'side-by-side' || layout === 'text-only' || layout === 'image-only') return layout;
       return 'stacked';
+    }
+
+    function getCleanAlertType(alert) {
+      if (!alert) return '';
+      if (alert.variant === 'clean-gift') return 'gift';
+      if (alert.variant === 'clean-follow') return 'follow';
+      if (alert.variant === 'clean-superfan') return 'superfan';
+      return '';
+    }
+
+    function getCleanAlertAccent(cleanAlertType) {
+      if (cleanAlertType === 'gift') return '#f7c948';
+      if (cleanAlertType === 'superfan') return '#e879f9';
+      return '#38bdf8';
+    }
+
+    function renderCleanAlert(alert, cleanAlertType) {
+      const headline = String(alert.headline || textFromHtml(alert.html) || 'Viewer');
+      const fallbackSubtitle = cleanAlertType === 'gift'
+        ? 'sent a gift'
+        : cleanAlertType === 'superfan'
+          ? 'joined the community'
+          : 'started following';
+      const fallbackEyebrow = cleanAlertType === 'gift'
+        ? 'Gift received'
+        : cleanAlertType === 'superfan'
+          ? 'Super fan'
+          : 'New follower';
+      const subtitle = String(alert.subtitle || textFromHtml(alert.html) || fallbackSubtitle);
+      const eyebrow = String(alert.eyebrow || fallbackEyebrow);
+      const meta = String(alert.meta || platformLabel(alert.platform));
+      const initial = (headline.trim().charAt(0) || 'V').toUpperCase();
+      const media = alert.imageUrl
+        ? '<img class="clean-alert-image" src="' + escapeAttr(alert.imageUrl) + '" alt="" />'
+        : '<span class="clean-alert-initial">' + escapeHtml(initial) + '</span>';
+
+      return ''
+        + '<div class="clean-alert-media">' + media + '</div>'
+        + '<div class="clean-alert-body">'
+        + '  <div class="clean-alert-topline">'
+        + '    <span class="clean-alert-eyebrow">' + escapeHtml(eyebrow) + '</span>'
+        + (meta ? '    <span class="clean-alert-pill">' + escapeHtml(meta) + '</span>' : '')
+        + '  </div>'
+        + '  <div class="clean-alert-title">' + escapeHtml(headline) + '</div>'
+        + '  <div class="clean-alert-subtitle">' + escapeHtml(subtitle) + '</div>'
+        + '</div>';
+    }
+
+    function platformLabel(platform) {
+      switch (platform) {
+        case 'tiktok': return 'TikTok';
+        case 'twitch': return 'Twitch';
+        case 'youtube': return 'YouTube';
+        case 'kick': return 'Kick';
+        default: return platform ? String(platform) : '';
+      }
+    }
+
+    function textFromHtml(html) {
+      const el = document.createElement('div');
+      el.innerHTML = String(html || '');
+      return el.textContent || el.innerText || '';
     }
 
     function normalizeAnimationIn(animation) {
@@ -579,6 +943,15 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         .replace(/>/g, '&gt;');
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     window.addEventListener('message', function(event) {
       const data = event.data;
       if (!data || data.type !== 'ilystream:preview-alert') return;
@@ -589,6 +962,35 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         createdAt: new Date().toISOString()
       });
     });
+
+    // Self-diagnosing size check. When a streamer adds this overlay as a
+    // browser source in OBS / TikTok Live Studio without explicit Width /
+    // Height, the iframe loads at ~1px and alerts render invisibly. Show a
+    // big yellow warning when that happens so the user knows what to fix.
+    // Skipped in preview mode — the WidgetEditorModal intentionally varies
+    // its preview size and the message would just be noise there.
+    function checkViewportSize() {
+      if (IS_PREVIEW) return;
+      try { window.resizeTo(1920, 1080); } catch (e) {}
+      const tooSmall = window.innerWidth < 200 || window.innerHeight < 200;
+      const existing = document.getElementById('alert-size-warning');
+      if (existing) existing.remove();
+      if (!tooSmall) return;
+      const el = document.createElement('div');
+      el.id = 'alert-size-warning';
+      el.className = 'size-warning';
+      el.innerHTML = ''
+        + '<h1>Browser source too small</h1>'
+        + '<p>Set this source\\'s width &amp; height to at least <code>1280 \\u00d7 720</code> '
+        + '(ideally <code>1920 \\u00d7 1080</code>) so the alert can render. '
+        + 'In OBS / TikTok Live Studio, right-click the source and edit its dimensions.</p>'
+        + '<p class="current">Current viewport: ' + window.innerWidth + ' \\u00d7 ' + window.innerHeight + '</p>';
+      document.body.appendChild(el);
+    }
+    window.addEventListener('load', checkViewportSize);
+    window.addEventListener('resize', checkViewportSize);
+    // Run once now in case load already fired (some embed environments).
+    checkViewportSize();
 
     if (IS_PREVIEW) {
       setDiag('PREVIEW MODE', true);

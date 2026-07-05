@@ -4,7 +4,7 @@ import { IconRotateClockwise2, IconSparkles, IconContrast, IconBrightnessUp, Ico
 import { IconX, IconCheck } from '../../../components/ui/icons'
 import { StudioLayer } from '../../../../shared/studio'
 import { segmentationService } from '../../../services/SegmentationService'
-import { traceShapePath } from './CanvasEditor.utils'
+import { applyShapeBorderStroke, clampShapeMaskTransform, traceShapePath } from './CanvasEditor.utils'
 
 interface Props {
   open: boolean
@@ -32,27 +32,27 @@ function EnhancementSlider({ label, icon: Icon, value, onChange, min = 0, max = 
   label: string; icon: any; value: number; onChange: (v: number) => void; min?: number; max?: number; def?: number
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2 text-white/60">
-          <Icon size={14} />
-          <label className="text-[10px] font-semibold tracking-tight">{label}</label>
+        <div className="flex items-center gap-2.5 text-white/85">
+          <Icon size={17} />
+          <label className="text-[13px] font-semibold tracking-tight">{label}</label>
         </div>
-        <span className="text-[10px] font-mono text-white/80">{Math.round(value)}</span>
+        <span className="min-w-[2.5rem] text-right text-[13px] font-mono font-semibold text-white tabular-nums">{Math.round(value)}</span>
       </div>
       <div className="flex items-center gap-3">
         <input
           type="range" min={min} max={max} step={1}
           value={value}
           onChange={e => onChange(parseInt(e.target.value))}
-          className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent"
+          className="flex-1 h-2.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent"
         />
         <button
           onClick={() => onChange(def)}
-          className="p-1 rounded hover:bg-white/5 text-white/20 hover:text-white transition-colors"
-          title="Reset"
+          className="p-1.5 rounded-lg hover:bg-white/10 text-white/45 hover:text-white transition-colors shrink-0"
+          title="Reset to default"
         >
-          <IconRotateClockwise2 size={12} />
+          <IconRotateClockwise2 size={16} />
         </button>
       </div>
     </div>
@@ -69,13 +69,39 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
   const [localEnhancements, setLocalEnhancements] = useState<any>(layer?.enhancements || {})
 
+  const defaultShape = (shape?: any) => ({
+    type: shape?.type || shape || 'none',
+    x: shape?.x ?? 50,
+    y: shape?.y ?? 50,
+    scale: shape?.scale ?? 100,
+    cutDepth: shape?.cutDepth,
+    scope: shape?.scope || 'both',
+    captureX: shape?.captureX ?? 50,
+    captureY: shape?.captureY ?? 50,
+    border: shape?.border,
+    shadow: shape?.shadow
+  })
+
+  const clampShape = (shape: any) => {
+    const canvas = canvasRef.current
+    return clampShapeMaskTransform(defaultShape(shape), canvas?.width || 1920, canvas?.height || 1080)
+  }
+
+  const updateShape = (patch: Record<string, unknown>) => {
+    const curr = defaultShape(localEnhancements.shape)
+    setLocalEnhancements({ ...localEnhancements, shape: clampShape({ ...curr, ...patch }) })
+  }
+
   useEffect(() => {
     if (layer) setLocalEnhancements(layer.enhancements || {})
   }, [layer?.id])
 
   const apply = () => {
     if (!layer) return
-    onUpdate(layer.id, { enhancements: localEnhancements })
+    const nextEnhancements = typeof localEnhancements.shape === 'object'
+      ? { ...localEnhancements, shape: clampShape(localEnhancements.shape) }
+      : localEnhancements
+    onUpdate(layer.id, { enhancements: nextEnhancements })
     onClose()
   }
 
@@ -149,11 +175,12 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             if (e.blur > 0) {
               f.push(`blur(${(e.blur / 100) * 20}px)`)
             }
-            return f.join(' ')
+            return f.length ? f.join(' ') : 'none'
           }
 
           ctx.save()
-          const shapeObj = typeof e.shape === 'object' ? e.shape : { type: e.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+          const rawShapeObj = typeof e.shape === 'object' ? e.shape : { type: e.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+          const shapeObj = clampShapeMaskTransform(rawShapeObj, canvas.width, canvas.height)
           const { type: shape, x: sxp, y: syp, scale: ssc, captureX = 50, captureY = 50 } = shapeObj
 
           const sx = (sxp / 100) * canvas.width
@@ -166,10 +193,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
           const cx = ((captureX - 50) / 100) * canvas.width
           const cy = ((captureY - 50) / 100) * canvas.height
+          const hasShapeMask = shape !== 'none'
 
-          traceShapePath(ctx, shape === 'none' ? 'rect' : shape, sx, sy, r, sw, sh, radius)
+          if (hasShapeMask) {
+            traceShapePath(ctx, shape, sx, sy, r, sw, sh, radius, shapeObj.cutDepth)
+          }
 
-          if (shapeObj.shadow?.enabled) {
+          if (hasShapeMask && shapeObj.shadow?.enabled) {
             ctx.save()
             const s = shapeObj.shadow
             ctx.shadowColor = s.color || '#000000'
@@ -181,9 +211,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             ctx.restore()
           }
 
-          ctx.clip()
+          if (hasShapeMask) {
+            ctx.clip()
+          }
 
           const maskResult = isVbEnabled && isCamera ? segmentationService.getMask(layer.id) : null
+          const drawX = hasShapeMask ? -cx : 0
+          const drawY = hasShapeMask ? -cy : 0
 
           if (maskResult && maskResult.mask) {
             const tempCanvas = document.createElement('canvas')
@@ -192,14 +226,14 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             const tCtx = tempCanvas.getContext('2d')
             if (tCtx) {
               tCtx.filter = getFilters(e.focusCircle?.enabled)
-              tCtx.drawImage(video, -cx, -cy, canvas.width, canvas.height)
+              tCtx.drawImage(video, drawX, drawY, canvas.width, canvas.height)
               tCtx.globalCompositeOperation = 'destination-in'
-              tCtx.drawImage(maskResult.mask, -cx, -cy, canvas.width, canvas.height)
+              tCtx.drawImage(maskResult.mask, drawX, drawY, canvas.width, canvas.height)
               ctx.drawImage(tempCanvas, 0, 0)
             }
           } else {
             ctx.filter = getFilters(e.focusCircle?.enabled)
-            ctx.drawImage(video, -cx, -cy, canvas.width, canvas.height)
+            ctx.drawImage(video, drawX, drawY, canvas.width, canvas.height)
           }
 
           if (e.focusCircle?.enabled) {
@@ -211,7 +245,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             const fr = (e.focusCircle.radius / 100) * (Math.max(canvas.width, canvas.height) / 2)
             ctx.arc(fx, fy, fr, 0, Math.PI * 2)
             ctx.clip()
-            ctx.drawImage(video, -cx, -cy, canvas.width, canvas.height)
+            ctx.drawImage(video, drawX, drawY, canvas.width, canvas.height)
             ctx.restore()
           }
 
@@ -233,37 +267,9 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
           if (shape !== 'none' && shapeObj.border?.enabled) {
             const b = shapeObj.border
             ctx.save()
-            traceShapePath(ctx, shape, sx, sy, r, sw, sh, radius)
+            traceShapePath(ctx, shape, sx, sy, r, sw, sh, radius, shapeObj.cutDepth)
 
-            const vol = (window as any).__masterVolume || 0
-            const sensitivity = (b.reactivity ?? 100) / 100
-            const reactiveScale = b.audioReactive ? 1 + (vol * 1.5 * sensitivity) : 1
-
-            ctx.lineWidth = ((b.thickness || 4) * (canvas.width / 1920)) * reactiveScale // Scale thickness for preview
-            ctx.lineJoin = 'round'
-            ctx.lineCap = 'round'
-            ctx.globalAlpha = Math.min(1, ((b.opacity ?? 100) / 100) * (b.audioReactive ? 0.8 + vol * 0.4 : 1))
-
-            if (b.type === 'chroma') {
-              const grad = ctx.createLinearGradient(sx - r, sy - r, sx + r, sy + r)
-              const time = performance.now() / 2000
-              grad.addColorStop(0, `hsl(${(time * 360) % 360}, 100%, 50%)`)
-              grad.addColorStop(0.5, `hsl(${(time * 360 + 180) % 360}, 100%, 50%)`)
-              grad.addColorStop(1, `hsl(${(time * 360 + 360) % 360}, 100%, 50%)`)
-              ctx.strokeStyle = grad
-              ctx.shadowBlur = 15 * reactiveScale
-              ctx.shadowColor = `hsl(${(time * 360) % 360}, 100%, 50%)`
-            } else if (b.type === 'cyber') {
-              const grad = ctx.createLinearGradient(sx - r, sy, sx + r, sy)
-              grad.addColorStop(0, '#00f2ff')
-              grad.addColorStop(1, '#d035f1')
-              ctx.strokeStyle = grad
-              ctx.shadowBlur = 20 * reactiveScale
-              ctx.shadowColor = '#d035f1'
-            } else {
-              ctx.strokeStyle = b.color || '#ffffff'
-            }
-
+            applyShapeBorderStroke(ctx, b, { x: sx, y: sy, r }, { thicknessScale: canvas.width / 1920 })
             ctx.stroke()
             ctx.restore()
           }
@@ -361,9 +367,9 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
   }
 
   const updateDrag = (x: number, y: number, target: 'mask' | 'capture') => {
-    const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+    const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
     if (target === 'mask') {
-      setLocalEnhancements({ ...localEnhancements, shape: { ...curr, x, y } })
+      setLocalEnhancements({ ...localEnhancements, shape: clampShape({ ...curr, x, y }) })
     } else {
       setLocalEnhancements({ ...localEnhancements, shape: { ...curr, captureX: x, captureY: y } })
     }
@@ -375,7 +381,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
     <Modal
       open={open}
       onClose={onClose}
-      className="max-w-6xl aspect-[16/9] h-auto !rounded-[32px]"
+      className="max-w-[1440px] w-[96vw] h-[92vh] !rounded-[10px]"
       noScroll
       headerActions={
         <div className="flex items-center gap-4">
@@ -389,7 +395,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
         </div>
       }
     >
-      <div className="flex h-full min-h-0">
+      <div className="flex flex-1 min-h-0">
         {/* Preview Area */}
         <div ref={containerRef} className="flex-1 flex flex-col min-w-0 bg-black/40">
           <div className="flex-1 flex items-center justify-center p-12 relative overflow-hidden">
@@ -423,18 +429,18 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
           </div>
         </div>
 
-        <div className="w-[340px] border-l border-white/5 flex flex-col bg-[#0c0d10]/50">
+        <div className="w-[480px] border-l border-white/5 flex flex-col bg-[#0c0d10]/50">
           <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
             {/* Focus Engine */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                  <IconFocus2 size={12} className="text-accent" />
+                <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                  <IconFocus2 size={17} className="text-accent" />
                   Focus Engine
                 </h3>
                 <button
                   onClick={() => setLocalEnhancements({ ...localEnhancements, focusCircle: { ...localEnhancements.focusCircle, enabled: !localEnhancements.focusCircle?.enabled, x: 50, y: 50, radius: 30, blur: 50 } })}
-                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.focusCircle?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-lg transition-all ${localEnhancements.focusCircle?.enabled ? 'bg-accent text-white ' : 'bg-white/[0.07] text-white/75 border border-white/15'}`}
                 >
                   {localEnhancements.focusCircle?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -470,8 +476,8 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Master Controls */}
             <div className="space-y-6">
-              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                <IconSunHigh size={12} className="text-accent" />
+              <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                <IconSunHigh size={17} className="text-accent" />
                 Master Controls
               </h3>
               <div className="space-y-6">
@@ -516,8 +522,8 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             {/* Chroma Key */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                  <IconColorSwatch size={12} className="text-accent" />
+                <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                  <IconColorSwatch size={17} className="text-accent" />
                   Chroma Key
                 </h3>
                 <button
@@ -531,7 +537,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       spill: 10
                     }
                   })}
-                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.chromaKey?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-lg transition-all ${localEnhancements.chromaKey?.enabled ? 'bg-accent text-white ' : 'bg-white/[0.07] text-white/75 border border-white/15'}`}
                 >
                   {localEnhancements.chromaKey?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -540,7 +546,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
               {localEnhancements.chromaKey?.enabled && (
                 <div className="space-y-6 animate-in slide-in-from-top-2 duration-300">
                   <div className="space-y-2">
-                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Key Color</label>
+                    <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Key Color</label>
                     <div className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/5">
                       <input
                         type="color"
@@ -552,7 +558,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         type="text"
                         value={localEnhancements.chromaKey.color}
                         onChange={e => setLocalEnhancements({ ...localEnhancements, chromaKey: { ...localEnhancements.chromaKey, color: e.target.value } })}
-                        className="flex-1 bg-transparent border-0 text-[11px] font-mono text-white/60 focus:text-white outline-none"
+                        className="flex-1 bg-transparent border-0 text-[13px] font-mono text-white/80 focus:text-white outline-none"
                       />
                     </div>
                   </div>
@@ -578,8 +584,8 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
             {/* Virtual Background */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                  <IconPhoto size={12} className="text-accent" />
+                <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                  <IconPhoto size={17} className="text-accent" />
                   Virtual Background
                 </h3>
                 <button
@@ -594,7 +600,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       scalingMode: 'cover'
                     }
                   })}
-                  className={`text-[9px] font-semibold px-2 py-1 rounded-lg transition-all ${localEnhancements.virtualBackground?.enabled ? 'bg-accent text-white ' : 'bg-white/5 text-white/30'}`}
+                  className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-lg transition-all ${localEnhancements.virtualBackground?.enabled ? 'bg-accent text-white ' : 'bg-white/[0.07] text-white/75 border border-white/15'}`}
                 >
                   {localEnhancements.virtualBackground?.enabled ? 'Active' : 'Enable'}
                 </button>
@@ -611,7 +617,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       <button
                         key={t.id}
                         onClick={() => setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, type: t.id as any } })}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[9px] font-semibold transition-all ${ localEnhancements.virtualBackground?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[12px] font-semibold transition-all ${ localEnhancements.virtualBackground?.type === t.id ? 'bg-white/20 text-white' : 'text-white/55 hover:text-white' }`}
                       >
                         <t.icon size={12} />
                         {t.label}
@@ -655,7 +661,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         type="text"
                         value={localEnhancements.virtualBackground?.value || '#000000'}
                         onChange={e => setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, value: e.target.value } })}
-                        className="flex-1 bg-transparent border-0 text-[11px] font-mono text-white/60 focus:text-white outline-none"
+                        className="flex-1 bg-transparent border-0 text-[13px] font-mono text-white/80 focus:text-white outline-none"
                       />
                     </div>
                   )}
@@ -675,7 +681,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                   {localEnhancements.virtualBackground?.type === 'image' && (
                     <div className="space-y-4 pt-4 border-t border-white/5">
-                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Scaling Mode</label>
+                      <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Scaling Mode</label>
                       <div className="flex bg-white/5 p-1 rounded-xl">
                         {[
                           { id: 'cover', label: 'Cover' },
@@ -685,7 +691,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                           <button
                             key={m.id}
                             onClick={() => setLocalEnhancements({ ...localEnhancements, virtualBackground: { ...localEnhancements.virtualBackground, scalingMode: m.id as any } })}
-                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-semibold transition-all ${ localEnhancements.virtualBackground?.scalingMode === m.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
+                            className={`flex-1 py-2.5 rounded-lg text-[12px] font-semibold transition-all ${ localEnhancements.virtualBackground?.scalingMode === m.id ? 'bg-white/20 text-white' : 'text-white/55 hover:text-white' }`}
                           >
                             {m.label}
                           </button>
@@ -699,13 +705,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Source Framing */}
             <div className="space-y-6">
-              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                <IconSquare size={12} className="text-accent" />
+              <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                <IconSquare size={17} className="text-accent" />
                 Source Framing
               </h3>
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <label className="text-[9px] font-semibold text-white/40 tracking-tight">Application Scope</label>
+                  <label className="text-[13px] font-semibold text-white/80 tracking-tight">Application Scope</label>
                   <div className="flex bg-white/5 p-1 rounded-lg">
                     {[
                       { id: 'both', label: 'All' },
@@ -715,10 +721,10 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                       <button
                         key={s.id}
                         onClick={() => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({ ...localEnhancements, shape: { ...curr, scope: s.id } })
                         }}
-                        className={`px-2 py-1 rounded-md text-[8px] font-semibold transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scope : 'both') === s.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
+                        className={`px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scope : 'both') === s.id ? 'bg-white/20 text-white' : 'text-white/55 hover:text-white' }`}
                       >
                         {s.label}
                       </button>
@@ -730,7 +736,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   {[
                     { id: 'none', icon: IconBan, label: 'None' },
                     { id: 'circle', icon: IconCircle, label: 'Circle' },
-                    { id: 'rect', icon: IconSquare, label: 'Square' },
+                    { id: 'square', icon: IconSquare, label: 'Square' },
                     { id: 'star', icon: IconStar, label: 'Star' },
                     { id: 'heart', icon: IconHeart, label: 'Heart' },
                     { id: 'diamond', icon: IconDiamond, label: 'Diamond' },
@@ -739,16 +745,19 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                     <button
                       key={s.id}
                       onClick={() => {
-                        const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                        const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                         const wasUnset = !curr.type || curr.type === 'none' || curr.type === 'rect'
-                        const pickingRealShape = s.id !== 'none' && s.id !== 'rect'
+                        const pickingRealShape = s.id !== 'none'
                         const nextScope = wasUnset && pickingRealShape && aspectContext ? aspectContext : curr.scope
-                        setLocalEnhancements({ ...localEnhancements, shape: { ...curr, type: s.id, scope: nextScope } })
+                        const nextShape = s.id === 'none'
+                          ? { ...curr, type: 'none', x: 50, y: 50, scale: 100, captureX: 50, captureY: 50, scope: nextScope }
+                          : { ...curr, type: s.id, scope: nextScope }
+                        setLocalEnhancements({ ...localEnhancements, shape: clampShape(nextShape) })
                       }}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape) === s.id ? 'bg-accent/20 border-accent text-accent' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white' }`}
+                      className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${ (typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape) === s.id ? 'bg-accent/20 border-accent text-accent' : 'bg-white/5 border-white/10 text-white/55 hover:bg-white/10 hover:text-white' }`}
                     >
-                      <s.icon size={16} />
-                      <span className="text-[8px] font-semibold mt-1 tracking-tighter">{s.label}</span>
+                      <s.icon size={22} />
+                      <span className="text-[11px] font-semibold mt-1.5 tracking-tight">{s.label}</span>
                     </button>
                   ))}
                 </div>
@@ -757,29 +766,43 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   {(() => {
                     const shapeType = typeof localEnhancements.shape === 'object' ? localEnhancements.shape.type : localEnhancements.shape
                     const isHeart = shapeType === 'heart'
+                    const hasCutDepth = shapeType === 'heart' || shapeType === 'star'
                     return (
-                      <EnhancementSlider
-                        label="Mask Scale" icon={IconMaximize}
-                        value={typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scale : 100}
-                        min={10}
-                        max={isHeart ? 250 : 100}
-                        def={100}
-                        onChange={v => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
-                          setLocalEnhancements({ ...localEnhancements, shape: { ...curr, scale: v } })
-                        }}
-                      />
+                      <div className="space-y-4">
+                        <EnhancementSlider
+                          label="Mask Scale" icon={IconMaximize}
+                          value={typeof localEnhancements.shape === 'object' ? localEnhancements.shape.scale : 100}
+                          min={10}
+                          max={isHeart ? 250 : 100}
+                          def={100}
+                          onChange={v => {
+                            updateShape({ scale: v })
+                          }}
+                        />
+                        {hasCutDepth && (
+                          <EnhancementSlider
+                            label="Cut Depth" icon={IconSparkles}
+                            value={typeof localEnhancements.shape === 'object' ? (localEnhancements.shape.cutDepth ?? (shapeType === 'heart' ? 12 : 35)) : (shapeType === 'heart' ? 12 : 35)}
+                            min={0}
+                            max={100}
+                            def={shapeType === 'heart' ? 12 : 35}
+                            onChange={v => {
+                              updateShape({ cutDepth: v })
+                            }}
+                          />
+                        )}
+                      </div>
                     )
                   })()}
 
                   <div className="space-y-4 pt-2 border-t border-white/5">
-                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Capture Point (Pan/Zoom)</label>
+                    <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Capture Point (Pan/Zoom)</label>
                     <div className="grid grid-cols-2 gap-4">
                       <EnhancementSlider
                         label="Capture X" icon={IconArrowsMove}
                         value={typeof localEnhancements.shape === 'object' ? (localEnhancements.shape.captureX ?? 50) : 50} min={0} max={100} def={50}
                         onChange={v => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({ ...localEnhancements, shape: { ...curr, captureX: v } })
                         }}
                       />
@@ -787,7 +810,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                         label="Capture Y" icon={IconArrowsMove}
                         value={typeof localEnhancements.shape === 'object' ? (localEnhancements.shape.captureY ?? 50) : 50} min={0} max={100} def={50}
                         onChange={v => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({ ...localEnhancements, shape: { ...curr, captureY: v } })
                         }}
                       />
@@ -795,47 +818,48 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                   </div>
 
                   <div className="space-y-4 pt-2 border-t border-white/5">
-                    <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Mask Position</label>
+                    <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Mask Position</label>
                     <div className="grid grid-cols-2 gap-4">
                       <EnhancementSlider
                         label="Mask X" icon={IconX}
                         value={typeof localEnhancements.shape === 'object' ? localEnhancements.shape.x : 50} min={0} max={100} def={50}
                         onChange={v => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
-                          setLocalEnhancements({ ...localEnhancements, shape: { ...curr, x: v } })
+                          updateShape({ x: v })
                         }}
                       />
                       <EnhancementSlider
                         label="Mask Y" icon={IconX}
                         value={typeof localEnhancements.shape === 'object' ? localEnhancements.shape.y : 50} min={0} max={100} def={50}
                         onChange={v => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
-                          setLocalEnhancements({ ...localEnhancements, shape: { ...curr, y: v } })
+                          updateShape({ y: v })
                         }}
                       />
                     </div>
                   </div>
                   <div className="space-y-4 pt-4 border-t border-white/5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Shape Border</label>
+                      <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Mask Border</label>
                       <button
                         onClick={() => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({
                             ...localEnhancements,
                             shape: {
                               ...curr,
                               border: {
                                 enabled: !curr.border?.enabled,
-                                type: curr.border?.type || 'chroma',
-                                thickness: curr.border?.thickness || 4,
+                                type: curr.border?.type || 'cyber',
+                                thickness: curr.border?.thickness || 6,
                                 opacity: curr.border?.opacity ?? 100,
-                                color: curr.border?.color || '#ffffff'
+                                color: curr.border?.color || '#ffffff',
+                                color1: curr.border?.color1 || '#19c8ff',
+                                color2: curr.border?.color2 || '#d035f1',
+                                speed: curr.border?.speed ?? 6
                               }
                             }
                           })
                         }}
-                        className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
+                        className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/[0.07] text-white/75 border border-white/15' }`}
                       >
                         {(typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) ? 'Active' : 'Enable'}
                       </button>
@@ -843,11 +867,13 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                     {(typeof localEnhancements.shape === 'object' && localEnhancements.shape.border?.enabled) && (
                       <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                        <div className="flex bg-white/5 p-1 rounded-xl">
+                        <div className="grid grid-cols-2 gap-1 bg-white/5 p-1 rounded-xl">
                           {[
                             { id: 'chroma', label: 'Chroma' },
                             { id: 'cyber', label: 'Cyber' },
+                            { id: 'gob-the-stopper', label: 'Gob' },
                             { id: 'solid', label: 'Solid' },
+                            { id: 'custom', label: 'Custom' },
                           ].map(t => (
                             <button
                               key={t.id}
@@ -855,7 +881,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                                 const curr = localEnhancements.shape as any
                                 setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, type: t.id } } })
                               }}
-                              className={`flex-1 py-1.5 rounded-lg text-[8px] font-semibold transition-all ${ localEnhancements.shape?.border?.type === t.id ? 'bg-white/20 text-white' : 'text-white/20 hover:text-white/40' }`}
+                              className={`py-2.5 rounded-lg text-[12px] font-semibold transition-all ${ localEnhancements.shape?.border?.type === t.id ? 'bg-white/20 text-white' : 'text-white/55 hover:text-white' }`}
                             >
                               {t.label}
                             </button>
@@ -864,12 +890,32 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                         <EnhancementSlider
                           label="Thickness" icon={IconMaximize}
-                          value={localEnhancements.shape?.border?.thickness || 4} min={1} max={20} def={4}
+                          value={localEnhancements.shape?.border?.thickness || 6} min={1} max={28} def={6}
                           onChange={v => {
                             const curr = localEnhancements.shape as any
                             setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, thickness: v } } })
                           }}
                         />
+
+                        <EnhancementSlider
+                          label="Opacity" icon={IconContrast}
+                          value={localEnhancements.shape?.border?.opacity ?? 100} min={0} max={100} def={100}
+                          onChange={v => {
+                            const curr = localEnhancements.shape as any
+                            setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, opacity: v } } })
+                          }}
+                        />
+
+                        {localEnhancements.shape?.border?.type !== 'solid' && (
+                          <EnhancementSlider
+                            label="Flow Speed" icon={IconSparkles}
+                            value={localEnhancements.shape?.border?.speed ?? 6} min={1} max={20} def={6}
+                            onChange={v => {
+                              const curr = localEnhancements.shape as any
+                              setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, speed: v } } })
+                            }}
+                          />
+                        )}
 
                         {localEnhancements.shape?.border?.type === 'solid' && (
                           <div className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/5">
@@ -889,8 +935,31 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                                 const curr = localEnhancements.shape as any
                                 setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, color: e.target.value } } })
                               }}
-                              className="flex-1 bg-transparent border-0 text-[10px] font-mono text-white/60 focus:text-white outline-none"
+                              className="flex-1 bg-transparent border-0 text-[13px] font-mono text-white/80 focus:text-white outline-none"
                             />
+                          </div>
+                        )}
+
+                        {localEnhancements.shape?.border?.type === 'custom' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { key: 'color1', label: 'Color A', fallback: '#19c8ff' },
+                              { key: 'color2', label: 'Color B', fallback: '#d035f1' },
+                            ].map(item => (
+                              <div key={item.key} className="flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
+                                <input
+                                  type="color"
+                                  value={(localEnhancements.shape?.border as any)?.[item.key] || item.fallback}
+                                  onChange={e => {
+                                    const curr = localEnhancements.shape as any
+                                    setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, [item.key]: e.target.value } } })
+                                  }}
+                                  className="w-6 h-6 rounded-md border-0 bg-transparent cursor-pointer"
+                                  aria-label={item.label}
+                                />
+                                <span className="text-[9px] font-semibold text-white/40">{item.label}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
 
@@ -901,7 +970,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                               const curr = localEnhancements.shape as any
                               setLocalEnhancements({ ...localEnhancements, shape: { ...curr, border: { ...curr.border, audioReactive: !curr.border?.audioReactive, reactivity: curr.border?.reactivity ?? 100 } } })
                             }}
-                            className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ localEnhancements.shape?.border?.audioReactive ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
+                            className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-md transition-all ${ localEnhancements.shape?.border?.audioReactive ? 'bg-accent/20 text-accent' : 'bg-white/[0.07] text-white/75 border border-white/15' }`}
                           >
                             {localEnhancements.shape?.border?.audioReactive ? 'Active' : 'Off'}
                           </button>
@@ -925,10 +994,10 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
                   <div className="space-y-4 pt-4 border-t border-white/5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] font-semibold text-white/40 tracking-tight block">Drop Shadow</label>
+                      <label className="text-[13px] font-semibold text-white/80 tracking-tight block">Drop Shadow</label>
                       <button
                         onClick={() => {
-                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'rect', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
+                          const curr = typeof localEnhancements.shape === 'object' ? localEnhancements.shape : { type: localEnhancements.shape || 'none', x: 50, y: 50, scale: 100, scope: 'both', captureX: 50, captureY: 50 }
                           setLocalEnhancements({
                             ...localEnhancements,
                             shape: {
@@ -943,7 +1012,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                             }
                           })
                         }}
-                        className={`text-[8px] font-semibold px-2 py-1 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/30' }`}
+                        className={`text-[12px] font-semibold px-3.5 py-1.5 rounded-md transition-all ${ (typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'bg-accent/20 text-accent' : 'bg-white/[0.07] text-white/75 border border-white/15' }`}
                       >
                         {(typeof localEnhancements.shape === 'object' && localEnhancements.shape.shadow?.enabled) ? 'Active' : 'Enable'}
                       </button>
@@ -968,7 +1037,7 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
                               const curr = localEnhancements.shape as any
                               setLocalEnhancements({ ...localEnhancements, shape: { ...curr, shadow: { ...curr.shadow, color: e.target.value } } })
                             }}
-                            className="flex-1 bg-transparent border-0 text-[10px] font-mono text-white/60 focus:text-white outline-none"
+                            className="flex-1 bg-transparent border-0 text-[13px] font-mono text-white/80 focus:text-white outline-none"
                           />
                         </div>
 
@@ -1014,8 +1083,8 @@ export function EnhancementModal({ open, onClose, layer, onUpdate, videoRefs, as
 
             {/* Style Presets */}
             <div className="space-y-4 pb-4">
-              <h3 className="text-[10px] font-medium tracking-normal text-white/50 flex items-center gap-2">
-                <IconColorSwatch size={12} className="text-accent" />
+              <h3 className="text-[14px] font-semibold tracking-tight text-white/85 flex items-center gap-2.5">
+                <IconColorSwatch size={17} className="text-accent" />
                 Style Presets
               </h3>
               <div className="grid grid-cols-2 gap-2">

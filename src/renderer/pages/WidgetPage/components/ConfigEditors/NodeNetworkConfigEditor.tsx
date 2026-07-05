@@ -33,7 +33,7 @@ export function NodeNetworkConfigEditor({
             onChange={(v) => update('nodeCount', v)}
             min={10}
             max={200}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
         <Field label="Max connection distance">
@@ -42,7 +42,7 @@ export function NodeNetworkConfigEditor({
             onChange={(v) => update('maxDistance', v)}
             min={50}
             max={500}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>
@@ -56,7 +56,7 @@ export function NodeNetworkConfigEditor({
             step={0.05}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>
@@ -75,7 +75,7 @@ export function NodeNetworkConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>

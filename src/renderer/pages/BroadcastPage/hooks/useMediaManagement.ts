@@ -22,6 +22,15 @@ interface MediaManagementOptions {
   addAudioSource: (id: string, config: any) => void
   removeAudioSource: (id: string) => void
   audioSources: any[]
+  activeAspectRatios?: readonly ('16:9' | '9:16')[]
+}
+
+function layerShouldHaveMixerTrack(layer: StudioLayer): boolean {
+  if (layer.type !== 'camera' && layer.type !== 'display' && layer.type !== 'audio') return false
+  if (layer.config.audioMixerHidden) return false
+  if (layer.config.audioDeviceId === 'none') return false
+  if (layer.type === 'display' && layer.config.captureAudio !== true) return false
+  return true
 }
 
 export function useMediaManagement(options: MediaManagementOptions) {
@@ -35,10 +44,10 @@ export function useMediaManagement(options: MediaManagementOptions) {
   const lastMediaSignatures = useRef<Record<string, string>>({})
   const sessionDisplaySourceIds = useRef(new Set<string>())
   const lastMediaInitTimes = useRef<Record<string, number>>({})
-  const retryTimers = useRef<Record<string, ReturnType<typeof window.setTimeout>>>({})
+  const retryTimers = useRef<Record<string, any>>({})
   const activeSceneRef = useRef(activeScene)
   const layerAudioSignature = activeScene.layers
-    .map(layer => `${layer.id}:${layer.name}:${layer.type}:${layer.config.deviceId || ''}:${layer.config.audioDeviceId || ''}:${layer.config.audioMixerHidden || ''}`)
+    .map(layer => `${layer.id}:${layer.name}:${layer.type}:${layer.config.deviceId || ''}:${layer.config.audioDeviceId || ''}:${layer.config.audioMixerHidden || ''}:${layer.config.captureAudio || ''}`)
     .join('|')
 
   useEffect(() => {
@@ -70,9 +79,11 @@ export function useMediaManagement(options: MediaManagementOptions) {
     pendingMedia.current.add(layerId)
     lastMediaInitTimes.current[layerId] = now
     const cleanupFns: Array<() => void> = []
+    // Declared outside the try so the catch block can also stop the stream's
+    // tracks on failure.
+    let stream: MediaStream | null = null
 
     try {
-      let stream: MediaStream | null = null
 
       if (type === 'display' || (type === 'audio' && layer.config.audioOnlyDisplayCapture)) {
         let effectiveSourceId = String(layer.config.desktopSourceId || '')
@@ -80,8 +91,8 @@ export function useMediaManagement(options: MediaManagementOptions) {
 
         if (desktopSourceName) {
           const sources = await window.api.studio.getDesktopSources()
-          let match = sources.find(s => s.name === desktopSourceName) || 
-                      sources.find(s => s.name.toLowerCase().includes(desktopSourceName.toLowerCase()))
+          let match = sources.find((s: any) => s.name === desktopSourceName) ||
+                      sources.find((s: any) => s.name.toLowerCase().includes(desktopSourceName.toLowerCase()))
           
           if (!match && desktopSourceName.toLowerCase().includes('spotify') && window.api?.studio?.findSpotifySource) {
             match = await window.api.studio.findSpotifySource()
@@ -127,7 +138,7 @@ export function useMediaManagement(options: MediaManagementOptions) {
         } as any)
         
         if (type === 'audio' && layer.config.audioOnlyDisplayCapture) {
-          stream.getVideoTracks().forEach(track => { track.stop(); stream.removeTrack(track) })
+          stream!.getVideoTracks().forEach((track: MediaStreamTrack) => { track.stop(); stream!.removeTrack(track) })
         }
       } else {
         const constraints = type === 'camera'
@@ -170,12 +181,26 @@ export function useMediaManagement(options: MediaManagementOptions) {
       if (!stream) throw new Error(`No media stream returned for ${layer.name || type}`)
       const outputStream = (type === 'camera' || type === 'display') && layer.config.stabilize !== false
         ? createStabilizedCameraStream(stream, { width: canvasWidth, height: canvasHeight, fps: 30 }, layer.name)
-        : { stream, cleanup: () => stream.getTracks().forEach(t => t.stop()) }
+        : { stream, cleanup: () => stream!.getTracks().forEach((t: MediaStreamTrack) => t.stop()) }
 
       cleanupFns.push(outputStream.cleanup)
       el.srcObject = outputStream.stream
       el.autoplay = true
       el.muted = true 
+
+      // Critical: Chromium throttles or pauses video decoding if the element isn't in the DOM
+      // or if it's deemed invisible (opacity 0 or 0.01). We must append it and make it opaque but hidden.
+      Object.assign(el.style, {
+        position: 'absolute',
+        width: '1px',
+        height: '1px',
+        opacity: '1',
+        zIndex: '-9999',
+        pointerEvents: 'none'
+      })
+      document.body.appendChild(el)
+      cleanupFns.push(() => { if (el.parentNode) el.parentNode.removeChild(el) })
+
       await el.play().catch(e => console.error(`Failed to play ${type} stream`, e))
       
       const managed = el as ManagedMediaElement
@@ -273,11 +298,12 @@ export function useMediaManagement(options: MediaManagementOptions) {
   useEffect(() => {
     if (!activeScene) return
     activeScene.layers.forEach(layer => {
-      if ((layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio') && !layer.config.audioMixerHidden) {
+      const isMediaLayer = layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio'
+      if (layerShouldHaveMixerTrack(layer)) {
         const existing = audioSources.find(s => s.id === layer.id)
         if (!existing) {
           addAudioSource(layer.id, {
-            id: layer.id, name: layer.name || `Audio: ${layer.type}`, volume: 0.8, muted: false, monitoring: false,
+            id: layer.id, name: layer.name || `Audio: ${layer.type}`, volume: 1.0, muted: false, monitoring: false,
             type: layer.type === 'audio' ? (layer.config.audioOnlyDisplayCapture ? 'system' : 'mic') : 'layer',
             channelMode: (layer.type === 'camera' || (layer.type === 'audio' && layer.config.audioOnlyDisplayCapture)) ? 'stereo' : 'mono',
             deviceId: layer.type === 'camera' ? resolveCameraAudioDeviceId(layer, devices) : layer.config.deviceId
@@ -302,6 +328,10 @@ export function useMediaManagement(options: MediaManagementOptions) {
           if (Object.keys(updates).length > 0) {
             addAudioSource(layer.id, updates)
           }
+        }
+      } else if (isMediaLayer) {
+        if (audioSources.some(s => s.id === layer.id)) {
+          removeAudioSource(layer.id)
         }
       }
     })

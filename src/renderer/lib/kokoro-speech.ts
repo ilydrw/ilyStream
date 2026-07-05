@@ -1,6 +1,6 @@
 import type { VoiceProfile } from '../../main/tts/voice-profiles'
 import { DEFAULT_KOKORO_VOICE, KOKORO_MODEL_ID, isKokoroVoiceId } from '../../shared/tts-providers'
-import { applyVoiceEffects, getDynamicPitchAndRate } from './audio-effects'
+import { applyVoiceEffects, getDynamicPitchAndRate, getEnabledProfileEffectId } from './audio-effects'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { audioEngine } from '../utils/audio-engine'
 import ortWasmMjsUrl from '../../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs?url'
@@ -263,31 +263,26 @@ async function playKokoroAudio(
   // Fetch current settings for modifiers
   const settingsRaw = await window.api.settings.getAll()
   const settings = resolveAppSettings(settingsRaw)
+  const profileEffectId = getEnabledProfileEffectId(profile.effects)
 
   // Apply pitch/rate shift
-  const { pitch, rate } = getDynamicPitchAndRate(
+  const { rate } = getDynamicPitchAndRate(
     audio.text || '', // We need to store text in RenderedAudio or pass it down
     settings.voiceModifiers,
-    1.0,
+    1,
     1.0
   )
   
-  source.playbackRate.value = rate * pitch // In Kokoro/BufferSource, pitch is achieved via playbackRate if not using a pitch shifter node
+  source.playbackRate.value = rate
 
   let lastNode: AudioNode = source
 
-  // Apply Web Audio filters (Radio Filter, etc.)
-  // We prioritize the effects defined in the profile (e.g. for the AI co-host)
-  const effectiveModifiers = {
-    ...settings.voiceModifiers,
-    ...(profile.effects ? {
-      radioFilter: profile.effects.some(e => e.type === 'robot' && (e as any).enabled !== false),
-      speedRamping: profile.effects.some(e => e.type === 'pitch-shift' && (e as any).enabled !== false),
-      pitchShifting: profile.effects.some(e => e.type === 'pitch-shift') ? 'high' : settings.voiceModifiers.pitchShifting
-    } : {})
+  // Apply global filters first, then one explicit profile effect if configured.
+  // Profile effects must not rewrite global speed/pitch modifier state.
+  lastNode = applyVoiceEffects(context, lastNode, settings.voiceModifiers)
+  if (profileEffectId) {
+    lastNode = applyVoiceEffects(context, lastNode, { id: profileEffectId, enabled: true })
   }
-
-  lastNode = applyVoiceEffects(context, lastNode, effectiveModifiers)
 
   lastNode.connect(gain)
   

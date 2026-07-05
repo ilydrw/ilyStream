@@ -315,12 +315,13 @@ export const DEFAULT_LEADERBOARD_CONFIG: LeaderboardConfig = {
 }
 
 export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
-  maxItems: 75,
+  maxItems: 5,
+  position: 'top-left',
   opacity: 1.0,
   scale: 1.0,
   backgroundOpacity: 0.65,
   blur: 40,
-  aspectRatio: 'auto',
+  aspectRatio: 'tiktok',
   fontFamily: 'Inter',
   borderRadius: 12,
   glassIntensity: 0.5,
@@ -330,7 +331,7 @@ export const DEFAULT_CHAT_UNIFIED_CONFIG: ChatUnifiedConfig = {
 
 export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
   title: 'Top Likers',
-  maxAvatars: 12,
+  maxAvatars: 3,
   showTotal: true,
   showHeader: true,
   showRankNumbers: true,
@@ -349,5 +350,12 @@ export const DEFAULT_LIKES_TRACKER_CONFIG: LikesTrackerConfig = {
   borderRadius: 20,
   glassIntensity: 0.5,
   animationStyle: 'zoom',
-  animationDuration: 800
+  animationDuration: 800,
+  // Periodic all-time cycling defaults off: swapping the title every few
+  // minutes can read as "the live leaderboard stopped."
+  lifetimeGlimpseEnabled: false,
+  streamWindowMinutes: 4,
+  lifetimeWindowMinutes: 1,
+  lifetimeTitle: 'All-Time Top Likers',
+  showPulsingHeart: true
 }

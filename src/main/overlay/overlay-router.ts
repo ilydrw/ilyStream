@@ -1,16 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 import { existsSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { readFile, mkdir, stat, writeFile } from 'fs/promises'
 import { join, extname } from 'path'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
+import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
+import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from '../lib/ssrf-guard'
 import { buildDeckHtml } from './templates/deck'
 import { buildCompanionHtml } from './templates/companion'
 import {
   buildOverlayDirectoryHtml,
   generateOverlayHtml,
   getDefaultWidgetConfig,
+  injectOverlayRuntimeBootstrap,
   WIDGET_ALIAS_MAP
 } from './widget-renderers'
 import type { Widget, WidgetType } from '../../shared/widgets'
@@ -72,6 +75,7 @@ export class OverlayRouter {
   private dualVerticalClients = new Set<ServerResponse>()
   private dualVerticalLastFrame: Buffer | null = null
   private deckCsrfToken = randomBytes(32).toString('base64url')
+  private avatarCacheDir = join(app.getPath('userData'), 'avatar_cache')
 
   constructor(
     private getDb: () => Database | null,
@@ -89,7 +93,9 @@ export class OverlayRouter {
     private getObsStatus: () => any,
     private getViewerCounts: () => Record<string, number>,
     private handleStreamEvent: (event: any) => void,
-    private emitDeckAction: (action: { type: string; payload?: unknown }) => void
+    private emitDeckAction: (action: { type: string; payload?: unknown }) => void,
+    private getStatsService: () => any = () => null,
+    private getLeaderboard: () => Array<{ username: string; score: number }> = () => []
   ) {}
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -155,6 +161,11 @@ export class OverlayRouter {
       return
     }
 
+    if (pathname.startsWith('/avatar/')) {
+      await this.handleAvatarRequest(pathname, request, response)
+      return
+    }
+
     if (pathname === '/test/like') {
       if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
         this.writeJson(response, { error: 'Unauthorized' }, 401, request)
@@ -208,11 +219,53 @@ export class OverlayRouter {
       '/overlay/chat/state': this.chat.getHistory(),
       '/overlay/goals/state': this.goals.getState(),
       '/overlay/now-playing/state': this.nowPlaying.getState(),
-      '/overlay/state/latest-gifter': this.getLatestGifter()
+      '/overlay/state/latest-gifter': this.getLatestGifter(),
+      '/overlay/likes/state': this.likes.getSnapshot(),
+      '/overlay/likes/lifetime': this.getLikesLifetimeState(url),
+      '/overlay/leaderboard/state': this.getLeaderboardState()
     }
 
-    if (stateMap[pathname]) {
+    // Use `in`, not truthiness: a legitimately falsy state value (e.g. a null
+    // latest-gifter) must still return JSON, not fall through to the widget
+    // HTML catch-all below.
+    if (pathname in stateMap) {
       this.writeJson(response, stateMap[pathname], 200, request)
+      return
+    }
+
+    // HTTP polling fallback for browser sources (e.g. TikTok Live Studio) whose
+    // embedded Chromium drops or blocks SSE. Mirrors the SSE stream: the initial
+    // poll (after<=0) returns the current snapshot; later polls return only the
+    // events recorded since the client's cursor.
+    if (pathname === '/overlay/events/poll') {
+      const channel = this.parseOverlayChannel(url.searchParams.get('channel') || 'chat')
+      if (!channel) {
+        this.writeJson(response, { error: 'Invalid overlay channel' }, 400, request)
+        return
+      }
+
+      const afterRaw = Number(url.searchParams.get('after') || 0)
+      const after = Number.isFinite(afterRaw) ? Math.max(0, Math.floor(afterRaw)) : 0
+      const limitRaw = Number(url.searchParams.get('limit') || 80)
+      const limit = Number.isFinite(limitRaw) ? limitRaw : 80
+
+      const snapshot = this.computeChannelSnapshot(channel)
+      if (after <= 0 && snapshot !== null && snapshot !== undefined) {
+        // Full snapshot represents current state; skip incremental history so
+        // the initial render isn't duplicated by already-reflected events.
+        this.writeJson(
+          response,
+          { events: [{ id: 0, data: { type: 'snapshot', payload: snapshot } }], cursor: this.sse.getLastEventId(channel) },
+          200,
+          request
+        )
+        return
+      }
+
+      const since = this.sse.getEventsSince(channel, after, limit)
+      const events = since.map((entry) => ({ id: entry.id, data: entry.payload }))
+      const cursor = events.length ? events[events.length - 1].id : after
+      this.writeJson(response, { events, cursor }, 200, request)
       return
     }
 
@@ -224,16 +277,8 @@ export class OverlayRouter {
       }
       this.sse.attachClient(channel, request, response)
 
-      const snapshot = (channel === 'chat' || channel === 'chat-unified') ? this.chat.getHistory() :
-                      channel === 'alerts' ? [] :
-                      channel === 'goals' ? this.goals.getState() :
-                      channel === 'likes' ? this.likes.getSnapshot() :
-                      channel === 'latest-gifter' ? this.getLatestGifter() :
-                      channel === 'now-playing' ? this.nowPlaying.getState() :
-                      null
-
+      const snapshot = this.computeChannelSnapshot(channel)
       const snapshotPayload = { type: 'snapshot', payload: snapshot }
-      console.log(`[overlay] SSE Snapshot for channel ${channel}:`, JSON.stringify(snapshotPayload))
       response.write(`data: ${JSON.stringify(snapshotPayload)}\n\n`)
       return
     }
@@ -298,12 +343,72 @@ export class OverlayRouter {
     return this.dualVerticalClients.size
   }
 
+  /**
+   * Current state payload for a channel's initial snapshot, shared by the SSE
+   * stream and the /overlay/events/poll fallback. Returns null for channels
+   * that have no snapshot (they only receive live broadcast events).
+   */
+  private computeChannelSnapshot(channel: OverlayChannel): any {
+    return (channel === 'chat' || channel === 'chat-unified') ? this.chat.getHistory() :
+      channel === 'alerts' ? [] :
+      channel === 'goals' ? this.goals.getState() :
+      channel === 'likes' ? this.likes.getSnapshot() :
+      channel === 'leaderboard' ? this.getLeaderboardState() :
+      channel === 'latest-gifter' ? this.getLatestGifter() :
+      channel === 'now-playing' ? this.nowPlaying.getState() :
+      null
+  }
+
+  /**
+   * Current leaderboard array for hydration. Prefers the most recent broadcast
+   * (which the economy service emits on every update) and falls back to the
+   * economy snapshot when nothing has been broadcast yet.
+   */
+  private getLeaderboardState(): Array<{ username: string; score: number }> {
+    const last = this.sse.getLastPayload('leaderboard') as { data?: unknown } | null
+    if (Array.isArray(last?.data)) return last!.data as Array<{ username: string; score: number }>
+    const snapshot = this.getLeaderboard()
+    return Array.isArray(snapshot) ? snapshot : []
+  }
+
+  private getLikesLifetimeState(url: URL): { totalLikes: number; users: Array<{ displayName: string; profilePictureUrl: string | null; count: number }> } {
+    const limitRaw = Number(url.searchParams.get('limit') || 10)
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.floor(limitRaw))) : 10
+    const statsService = this.getStatsService?.()
+
+    if (!statsService?.getTopIdentities || !statsService?.getGlobalStats) {
+      return { totalLikes: 0, users: [] }
+    }
+
+    const globalStats = statsService.getGlobalStats()
+    const identities = statsService.getTopIdentities({
+      sortBy: 'totalLikes',
+      platform: 'all',
+      limit,
+      offset: 0
+    })
+
+    return {
+      totalLikes: Math.max(0, Math.floor(Number(globalStats?.totalLikes) || 0)),
+      users: Array.isArray(identities)
+        ? identities
+            .filter((identity: any) => Number(identity?.totalLikes) > 0)
+            .slice(0, limit)
+            .map((identity: any) => ({
+              displayName: String(identity.displayName || identity.primaryUsername || 'Viewer'),
+              profilePictureUrl: identity.profilePictureUrl || null,
+              count: Math.max(0, Math.floor(Number(identity.totalLikes) || 0))
+            }))
+        : []
+    }
+  }
+
   private getLatestGifter(): any {
     const db = this.getDb()
     if (!db) return null
     try {
       const saved = db.getSetting('last_gifter_v1')
-      return saved ? JSON.parse(saved) : null
+      return typeof saved === 'string' && saved ? JSON.parse(saved) : null
     } catch {
       return null
     }
@@ -382,7 +487,12 @@ export class OverlayRouter {
     const configRaw = url.searchParams.get('config')
     let configOverride: any = null
     if (configRaw) {
-      try { configOverride = JSON.parse(Buffer.from(configRaw, 'base64').toString('utf8')) } catch {}
+      // Accept both base64url and legacy raw base64. Legacy URLs put '+' and
+      // '/' straight into the query string, and URL parsing turns '+' into a
+      // space — silently dropping the whole config override in OBS. Undo that
+      // mangling before decoding.
+      const normalized = configRaw.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/')
+      try { configOverride = JSON.parse(Buffer.from(normalized, 'base64').toString('utf8')) } catch {}
     }
 
     const applyOverride = (widget: Widget | undefined): Widget | undefined => {
@@ -415,7 +525,9 @@ export class OverlayRouter {
         deckActions: db?.getAllDeckActions() || []
       })
       if (html) {
-        this.writeHtml(response, html)
+        // Browser sources get the SSE-with-polling-fallback runtime; the editor
+        // preview uses its own bootstrap and is served elsewhere.
+        this.writeHtml(response, isPreview ? html : injectOverlayRuntimeBootstrap(html))
         return true
       }
     }
@@ -485,13 +597,20 @@ export class OverlayRouter {
     return ALLOWED_OVERLAY_CHANNELS.has(channel) ? channel : null
   }
 
-  private writeCorsHeaders(response: ServerResponse, statusCode: number, contentType = 'application/json', request?: IncomingMessage): void {
+  private writeCorsHeaders(
+    response: ServerResponse,
+    statusCode: number,
+    contentType = 'application/json',
+    request?: IncomingMessage,
+    extraHeaders?: Record<string, string>
+  ): void {
     response.writeHead(statusCode, {
       'Content-Type': contentType,
       ...this.corsHeaders(request),
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-ilyStream-Deck-Token',
-      'Access-Control-Max-Age': '86400'
+      'Access-Control-Max-Age': '86400',
+      ...(extraHeaders || {})
     })
   }
 
@@ -512,7 +631,15 @@ export class OverlayRouter {
   }
 
   private writeHtml(response: ServerResponse, html: string, statusCode = 200, request?: IncomingMessage): void {
-    this.writeCorsHeaders(response, statusCode, 'text/html; charset=utf-8', request)
+    // Overlay widget pages are dynamic and updated with the app. Without an
+    // explicit no-cache, OBS/TikTok Live Studio's embedded Chromium caches the
+    // page indefinitely and keeps rendering a stale (possibly broken) build even
+    // after the app is updated — the classic "works in a browser, blank in OBS".
+    this.writeCorsHeaders(response, statusCode, 'text/html; charset=utf-8', request, {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0'
+    })
     response.end(html)
   }
 
@@ -561,5 +688,89 @@ export class OverlayRouter {
       })
       request.on('error', reject)
     })
+  }
+
+  private async handleAvatarRequest(pathname: string, request: IncomingMessage, response: ServerResponse) {
+    const base64Url = pathname.replace('/avatar/', '')
+    if (!base64Url) {
+      this.writeJson(response, { error: 'Missing avatar hash' }, 400, request)
+      return
+    }
+
+    try {
+      let b64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+      while (b64.length % 4) {
+        b64 += '='
+      }
+      const decodedUrl = Buffer.from(b64, 'base64').toString('utf-8')
+      if (!decodedUrl.startsWith('http')) {
+        this.writeJson(response, { error: 'Invalid URL' }, 400, request)
+        return
+      }
+
+      // Block SSRF: this route is reachable from the LAN, so reject any target
+      // that is (or resolves to) a private/loopback/link-local address.
+      try {
+        await assertSafePublicHttpUrl(decodedUrl)
+      } catch (err) {
+        console.warn('[OverlayRouter] Blocked avatar URL:', err instanceof Error ? err.message : err)
+        this.writeJson(response, { error: 'Blocked URL' }, 400, request)
+        return
+      }
+
+      const hash = createHash('sha256').update(decodedUrl).digest('hex')
+      const cachePath = join(this.avatarCacheDir, hash)
+
+      try {
+        await mkdir(this.avatarCacheDir, { recursive: true })
+      } catch (e) {
+        // Ignore
+      }
+
+      try {
+        const fileStats = await stat(cachePath)
+        if (fileStats.isFile()) {
+          const data = await readFile(cachePath)
+          this.writeCorsHeaders(response, 200, 'image/jpeg', request)
+          response.end(data)
+          return
+        }
+      } catch {
+        // Does not exist
+      }
+
+      const res = await fetch(decodedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.tiktok.com/'
+        }
+      })
+
+      if (!res.ok) {
+        this.writeJson(response, { error: 'Failed to fetch avatar' }, res.status, request)
+        return
+      }
+
+      const contentType = res.headers.get('Content-Type') || 'image/jpeg'
+      if (!contentType.toLowerCase().startsWith('image/')) {
+        this.writeJson(response, { error: 'Not an image' }, 415, request)
+        return
+      }
+      const arrayBuffer = await res.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      if (buffer.byteLength > MAX_AVATAR_BYTES) {
+        this.writeJson(response, { error: 'Avatar too large' }, 413, request)
+        return
+      }
+
+      writeFile(cachePath, buffer).catch(err => console.error('[OverlayRouter] Failed to cache avatar', err))
+
+      this.writeCorsHeaders(response, 200, contentType, request)
+      response.setHeader('Cache-Control', 'public, max-age=31536000')
+      response.end(buffer)
+    } catch (err) {
+      console.error('[OverlayRouter] Avatar proxy error:', err)
+      this.writeJson(response, { error: 'Internal server error' }, 500, request)
+    }
   }
 }

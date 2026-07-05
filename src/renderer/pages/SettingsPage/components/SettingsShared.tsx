@@ -1,5 +1,4 @@
-import React, { ReactNode, useState } from 'react'
-import { IconCheck, IconCopy } from '../../../components/ui/icons'
+import React, { ReactNode } from 'react'
 import type { OBSRuntimeStatus } from '../../../../shared/obs'
 import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 
@@ -94,43 +93,6 @@ export function RuntimeValue({ label, value }: { label: string; value: string })
     <div className="flex items-center justify-between text-xs font-medium">
       <span className="text-white/20 tracking-tight">{label}</span>
       <span className="text-white/60 font-mono truncate ml-4">{value}</span>
-    </div>
-  )
-}
-
-export function RuntimeLink({
-  label,
-  href,
-  fallback
-}: {
-  label: string
-  href?: string
-  fallback: string
-}) {
-  const target = href ?? fallback
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(target).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold tracking-tight text-white/20 mb-1">{label}</p>
-        <p className="text-sm text-accent font-mono truncate hover:underline cursor-pointer" onClick={() => window.open(target, '_blank')}>
-          {target}
-        </p>
-      </div>
-      <button
-        onClick={handleCopy}
-        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${copied ? 'bg-success/20 text-success' : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40'}`}
-      >
-        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-      </button>
     </div>
   )
 }

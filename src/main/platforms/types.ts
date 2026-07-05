@@ -1,17 +1,22 @@
 // Unified event types - all platform connectors map to these
 
-export type Platform =
-  | 'tiktok'
-  | 'twitch'
-  | 'youtube'
-  | 'kick'
-  | 'x'
-  | 'discord'
-  | 'facebook'
-  | 'instagram'
-  | 'restream'
-  | 'linkedin'
-  | 'telegram'
+/** Platforms with live chat/event connectors. */
+export const STREAM_PLATFORMS = ['tiktok', 'twitch', 'youtube', 'kick'] as const
+export type StreamPlatform = (typeof STREAM_PLATFORMS)[number]
+
+/** Every platform the app knows about, including social/presence-only ones. */
+export const ALL_PLATFORMS = [
+  ...STREAM_PLATFORMS,
+  'x',
+  'discord',
+  'facebook',
+  'instagram',
+  'restream',
+  'linkedin',
+  'telegram'
+] as const
+
+export type Platform = (typeof ALL_PLATFORMS)[number]
 
 export type EventType =
   | 'chat'
@@ -36,6 +41,7 @@ export interface UserInfo {
   isVip: boolean
   isFollower?: boolean
   isFanClubMember?: boolean
+  isSuperFan?: boolean
   isTeamMember?: boolean
   badges: Badge[]
 }
@@ -62,6 +68,8 @@ export interface StreamEvent {
   timestamp: Date
   type: EventType
   raw: unknown
+  /** True when this is our own outbound relay message echoing back from a platform chat. */
+  chatRelayEcho?: boolean
 }
 
 // --- Specific events ---
@@ -130,6 +138,13 @@ export interface JoinEvent extends StreamEvent {
 export interface ViewerCountEvent extends StreamEvent {
   type: 'viewer-count'
   count: number
+  /**
+   * Identifiable viewers currently in the room (e.g. TikTok's top-viewers
+   * roster), surfaced so the "in stream" list can show people who are present
+   * but haven't chatted/reacted. Not every viewer — platforms only expose a
+   * subset by name.
+   */
+  viewers?: UserInfo[]
 }
 
 export interface FollowerCountEvent extends StreamEvent {
@@ -208,18 +223,34 @@ export interface TwitchConfig extends PlatformConfig {
 
 export interface YouTubeConfig extends PlatformConfig {
   platform: 'youtube'
-  apiKey: string
+  /** Optional when using OAuth (access token or refresh-token flow) instead. */
+  apiKey?: string
+  clientId?: string
+  clientSecret?: string
   channelId?: string
   liveChatId?: string
   accessToken?: string
   refreshToken?: string
   streamKey?: string
+  /**
+   * Escape hatch: skip the quota-free InnerTube chat reader and poll the Data
+   * API directly (the pre-InnerTube behavior).
+   */
+  disableInnertube?: boolean
 }
 
 export interface KickConfig extends PlatformConfig {
   platform: 'kick'
   channelName: string
+  clientId?: string
+  clientSecret?: string
+  broadcasterUserId?: string
+  streamUrl?: string
   streamKey?: string
+  webhookPort?: number | string
+  webhookPath?: string
+  webhookPublicUrl?: string
+  legacySocket?: boolean
 }
 
 export interface XConfig extends PlatformConfig {

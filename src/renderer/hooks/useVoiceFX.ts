@@ -15,7 +15,10 @@ const SILENT_METER: MeterState = {
   isClipping: false
 }
 
-const MIC_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+// `latency` is a Chromium-only constraint that isn't in the standard lib types.
+type ChromiumMediaTrackConstraints = MediaTrackConstraints & { latency?: ConstrainDouble }
+
+const MIC_AUDIO_CONSTRAINTS: ChromiumMediaTrackConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
   autoGainControl: false,
@@ -238,7 +241,7 @@ const createLiveVoiceEffect = (context: AudioContext, input: AudioNode, effectId
   }
 }
 
-const readAnalyserLevel = (analyser: AnalyserNode, buffer: Float32Array) => {
+const readAnalyserLevel = (analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer>) => {
   analyser.getFloatTimeDomainData(buffer)
 
   let sumSquares = 0
@@ -282,8 +285,8 @@ export function useVoiceFX() {
   const masterGainRef = useRef<GainNode | null>(null)
   const inputAnalyserRef = useRef<AnalyserNode | null>(null)
   const outputAnalyserRef = useRef<AnalyserNode | null>(null)
-  const inputBufferRef = useRef<Float32Array | null>(null)
-  const outputBufferRef = useRef<Float32Array | null>(null)
+  const inputBufferRef = useRef<Float32Array<ArrayBuffer> | null>(null)
+  const outputBufferRef = useRef<Float32Array<ArrayBuffer> | null>(null)
   const meterFrameRef = useRef<number | null>(null)
   const lastMeterUpdateRef = useRef(0)
   const streamRef = useRef<MediaStream | null>(null)

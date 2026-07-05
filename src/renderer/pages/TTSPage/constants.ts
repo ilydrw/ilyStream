@@ -6,10 +6,23 @@ export type VoiceRoutingKey =
   | 'ttsChatVoiceProfileId'
   | 'ttsSubscriptionVoiceProfileId'
 
-export const voiceRoutingFields: Array<{ key: VoiceRoutingKey; label: string; hint: string }> = [
-  { key: 'ttsChatVoiceProfileId', label: 'Chat', hint: 'Normal chat messages' },
+export type TtsRoutingTarget = 'chatVoiceProfileId' | 'subscriptionVoiceProfileId'
+
+export const voiceRoutingFields: Array<{
+  key: VoiceRoutingKey
+  target: TtsRoutingTarget
+  label: string
+  hint: string
+}> = [
+  {
+    key: 'ttsChatVoiceProfileId',
+    target: 'chatVoiceProfileId',
+    label: 'Chat',
+    hint: 'Normal chat messages'
+  },
   {
     key: 'ttsSubscriptionVoiceProfileId',
+    target: 'subscriptionVoiceProfileId',
     label: 'Subs',
     hint: 'Subscription callouts'
   }

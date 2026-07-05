@@ -18,7 +18,7 @@ interface StudioStore extends StudioState {
   setSelectedLayer: (id: string | null) => void
   setSelectedAudioSource: (id: string | null) => void
   setAspectRatio: (ratio: '16:9' | '9:16') => void
-  addScene: (name: string) => void
+  addScene: (name: string, layoutMode?: string) => void
   removeScene: (id: string) => void
   renameScene: (id: string, name: string) => void
   duplicateScene: (id: string) => void
@@ -117,12 +117,22 @@ function requiredDefaultAudioSources(): AudioSource[] {
 
 const syncChannel = new BroadcastChannel('ilystream-studio-sync')
 
-const debouncedStorage = {
-  getItem: (name: string) => localStorage.getItem(name),
-  setItem: (name: string, value: string) => {
-    localStorage.setItem(name, value)
+// Coalesce the storm of setState writes during a drag/resize/rotate (updateLayer
+// fires on every mouse-move frame) into a single trailing write. Previously this
+// object — despite its name — did NO debouncing: every frame ran a synchronous
+// localStorage.setItem AND a synchronous SQLite write over IPC, stuttering the
+// canvas while dragging a source live on air.
+const PERSIST_DEBOUNCE_MS = 400
+const pendingWrites = new Map<string, string>()
+let persistTimer: ReturnType<typeof setTimeout> | null = null
 
-    // Also persist to SQLite database via IPC
+function flushPendingWrites(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  for (const [name, value] of pendingWrites) {
+    localStorage.setItem(name, value)
     try {
       const parsed = JSON.parse(value)
       if (parsed.state && window.api?.studio?.saveState) {
@@ -131,10 +141,29 @@ const debouncedStorage = {
     } catch (err) {
       console.error('[StudioStore] Failed to parse state for DB persistence', err)
     }
+  }
+  pendingWrites.clear()
+}
+
+const debouncedStorage = {
+  // Serve a not-yet-flushed value so any read stays consistent with the latest set.
+  getItem: (name: string) => pendingWrites.get(name) ?? localStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    pendingWrites.set(name, value)
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = setTimeout(flushPendingWrites, PERSIST_DEBOUNCE_MS)
   },
   removeItem: (name: string) => {
+    pendingWrites.delete(name)
     localStorage.removeItem(name)
   },
+}
+
+// Never lose the final edit: flush synchronously when the window goes away.
+if (typeof window !== 'undefined') {
+  const flushOnExit = () => { if (persistTimer) flushPendingWrites() }
+  window.addEventListener('beforeunload', flushOnExit)
+  window.addEventListener('pagehide', flushOnExit)
 }
 
 export const useStudioStore = create<StudioStore>()(
@@ -267,10 +296,10 @@ export const useStudioStore = create<StudioStore>()(
         set({ aspectRatio: ratio, canvasWidth: width, canvasHeight: height })
       },
 
-      addScene: (name) => {
+      addScene: (name, layoutMode) => {
         const { saveHistory, scenes, activeSceneId } = get()
         saveHistory()
-        const newScene: StudioScene = { id: crypto.randomUUID(), name, layers: [] }
+        const newScene: StudioScene = { id: crypto.randomUUID(), name, layers: [], layoutMode }
         set({ scenes: [...scenes, newScene], activeSceneId: activeSceneId || newScene.id })
       },
 

@@ -1,3 +1,15 @@
+export type RecordingVideoCodec = 'h264' | 'h265'
+export type RecordingVideoEncoder =
+  | 'auto'
+  | 'libx264'
+  | 'h264_nvenc'
+  | 'h264_amf'
+  | 'h264_qsv'
+  | 'libx265'
+  | 'hevc_nvenc'
+  | 'hevc_amf'
+  | 'hevc_qsv'
+
 export interface StreamConfig {
   outputId?: string
   outputName?: string
@@ -23,11 +35,29 @@ export interface RecordingConfig {
   audioSampleRate?: number
   // Advanced
   container?: 'mkv' | 'mp4' | 'flv' | 'mov'
-  encoder?: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+  codec?: RecordingVideoCodec
+  encoder?: RecordingVideoEncoder
   crf?: number // 0-51, lower is better. Default depends on encoder.
   audioBitrate?: number // kbps, e.g. 192, 320
 }
 
+
+export type StreamOutputState = 'live' | 'reconnecting' | 'error'
+
+/** Runtime status of one multistream destination (one ffmpeg session). */
+export interface StreamOutputStatus {
+  id: string
+  name: string
+  state: StreamOutputState
+  startedAt: number
+  retries: number
+  droppedVideoChunks: number
+  droppedAudioChunks: number
+  /** True while the output is actively dropping video/audio faster than a small
+   * threshold — the UI can show a "degraded / dropping frames" warning. */
+  degraded: boolean
+  lastError?: string
+}
 
 export interface VideoFramePayload {
   outputId?: string

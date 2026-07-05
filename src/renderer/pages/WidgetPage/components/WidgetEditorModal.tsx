@@ -1,10 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { IconRefresh } from '../../../components/ui/icons'
 import { type Widget } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
 import { WidgetThemeSection } from './ConfigEditors/WidgetThemeSection'
 import { Modal } from '../../../components/ui/Modal'
 import { buildWidgetPreviewUrl, getWidgetPreviewFrame } from '../widget-customization'
+import { usePreviewViewportScale } from './usePreviewViewportScale'
+
+// postMessage protocol with the iframe bootstrap (see widget-renderers.ts).
+const PREVIEW_READY_MSG = 'ilystream:preview-ready'
+const PREVIEW_HTML_MSG = 'ilystream:preview-html'
+
+// Throttle draft-driven preview renders. The preview uses the full widget HTML
+// renderer so what the user sees before Apply matches the saved browser source.
+const PREVIEW_THROTTLE_MS = 50
 
 export function WidgetEditorModal({
   widget,
@@ -20,20 +29,136 @@ export function WidgetEditorModal({
   const [draft, setDraft] = useState<Widget>(widget)
   const [previewOverride, setPreviewOverride] = useState<Widget | null>(null)
   const [saving, setSaving] = useState(false)
-  const [previewKey, setPreviewKey] = useState(0)
-  const previewWidget = previewOverride ?? draft
-  const previewFrame = getWidgetPreviewFrame(previewWidget.config)
+  // Iframe identity. Bumping this remounts the iframe (full reload — used for
+  // the Refresh button and after Save in case the saved state diverged).
+  const [iframeKey, setIframeKey] = useState(0)
 
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const iframeReadyRef = useRef(false)
+  const pendingWidgetRef = useRef<Widget | null>(null)
+  const throttleTimerRef = useRef<number | null>(null)
+  const lastSentAtRef = useRef(0)
+  const renderRequestSeqRef = useRef(0)
+
+  const previewWidget = previewOverride ?? draft
+  const previewFrame = getWidgetPreviewFrame(previewWidget)
+  const {
+    containerRef: previewViewportRef,
+    viewportStyle: previewViewportStyle
+  } = usePreviewViewportScale(previewFrame)
+
+  // URL is stable for the lifetime of this widget+port pairing. The iframe
+  // only reloads when the user explicitly hits Refresh (which bumps iframeKey).
+  const previewUrl = useMemo(
+    () => buildWidgetPreviewUrl(previewWidget, overlayPort),
+    [previewWidget.id, overlayPort]
+  )
+
+  const renderAndPostPreviewHtml = useCallback(async (
+    target: Widget,
+    shouldPost: () => boolean = () => true
+  ) => {
+    if (!iframeReadyRef.current) return
+    const iframe = iframeRef.current
+    if (!iframe || !iframe.contentWindow) return
+
+    const requestSeq = ++renderRequestSeqRef.current
+
+    try {
+      const html = await window.api.widgets.renderPreview(target)
+      if (!html) return
+      if (requestSeq !== renderRequestSeqRef.current) return
+      if (!shouldPost()) return
+      const currentIframe = iframeRef.current
+      if (currentIframe !== iframe || !currentIframe.contentWindow) return
+      currentIframe.contentWindow.postMessage({ type: PREVIEW_HTML_MSG, html }, '*')
+    } catch (err) {
+      console.error('Failed to render widget preview', err)
+    }
+  }, [])
+
+  // Push the current draft into the iframe. Throttled to coalesce typing bursts.
+  // Always render full draft HTML so the preview is an exact pre-Apply view,
+  // not a best-effort subset of CSS variables supported by individual widgets.
+  const pushPreview = useCallback((target: Widget) => {
+    pendingWidgetRef.current = target
+
+    const send = async () => {
+      throttleTimerRef.current = null
+      const next = pendingWidgetRef.current
+      if (!next) return
+      pendingWidgetRef.current = null
+      lastSentAtRef.current = Date.now()
+
+      if (!iframeReadyRef.current) return
+      const iframe = iframeRef.current
+      if (!iframe || !iframe.contentWindow) return
+
+      await renderAndPostPreviewHtml(next, () => pendingWidgetRef.current === null)
+    }
+
+    const elapsed = Date.now() - lastSentAtRef.current
+    if (elapsed >= PREVIEW_THROTTLE_MS) {
+      // Past the throttle window — send on the next tick so React state has
+      // settled before we serialize the widget.
+      if (throttleTimerRef.current !== null) {
+        window.clearTimeout(throttleTimerRef.current)
+      }
+      throttleTimerRef.current = window.setTimeout(send, 0)
+    } else if (throttleTimerRef.current === null) {
+      throttleTimerRef.current = window.setTimeout(send, PREVIEW_THROTTLE_MS - elapsed)
+    }
+  }, [renderAndPostPreviewHtml])
+
+  // Reset draft when switching widgets (e.g. after Save → onSave passes us a
+  // fresh widget object) and force a fresh iframe load.
   useEffect(() => {
     setDraft(widget)
     setPreviewOverride(null)
+    iframeReadyRef.current = false
+    pendingWidgetRef.current = null
+    renderRequestSeqRef.current += 1
+    setIframeKey((k) => k + 1)
   }, [widget.id])
 
-  const debouncedConfig = useDebouncedValue(previewWidget.config, 400)
+  // Listen for iframe READY and immediately push the current unsaved draft.
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return
+      if (event.data?.type === PREVIEW_READY_MSG) {
+        iframeReadyRef.current = true
+        void renderAndPostPreviewHtml(previewWidget)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [renderAndPostPreviewHtml, previewWidget])
 
-  const previewUrl = useMemo(() => {
-    return buildWidgetPreviewUrl(previewWidget, overlayPort, debouncedConfig)
-  }, [overlayPort, previewWidget.id, debouncedConfig])
+  // Push fresh HTML when anything the overlay HTML depends on changes. We
+  // deliberately key off (type, config) rather than the widget object so
+  // typing in the Name field — which doesn't appear in the overlay — doesn't
+  // trigger an IPC round-trip + DOM swap for every keystroke.
+  const previewSignal = useMemo(
+    () => JSON.stringify({ t: previewWidget.type, c: previewWidget.config }),
+    [previewWidget.type, previewWidget.config]
+  )
+
+  useEffect(() => {
+    if (!iframeReadyRef.current) return
+    pushPreview(previewWidget)
+    // previewWidget is intentionally not in deps — previewSignal already
+    // captures the parts of it that affect rendering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewSignal, pushPreview])
+
+  // Clean up timers.
+  useEffect(() => {
+    return () => {
+      if (throttleTimerRef.current !== null) {
+        window.clearTimeout(throttleTimerRef.current)
+      }
+    }
+  }, [])
 
   const handleDraftChange = (next: Widget) => {
     setDraft(next)
@@ -42,14 +167,19 @@ export function WidgetEditorModal({
 
   const handlePreviewOverride = (next: Widget) => {
     setPreviewOverride(next)
-    setPreviewKey((k) => k + 1)
+  }
+
+  const handleRefresh = () => {
+    iframeReadyRef.current = false
+    pendingWidgetRef.current = null
+    renderRequestSeqRef.current += 1
+    setIframeKey((k) => k + 1)
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
       await onSave(draft)
-      setPreviewKey((k) => k + 1)
     } finally {
       setSaving(false)
     }
@@ -87,12 +217,16 @@ export function WidgetEditorModal({
         {/* Preview */}
         <div className="bg-[#050505] flex flex-col min-h-0 relative">
           <div className="absolute top-4 right-4 z-context flex items-center gap-2">
+            <div className="h-10 px-3 rounded-lg bg-black/60 border border-white/10 text-[11px] font-semibold text-white/55 flex items-center">
+              Live preview
+            </div>
             <button
-              onClick={() => setPreviewKey((k) => k + 1)}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-accent/30 text-white/40 hover:text-white transition-all cursor-pointer"
+              onClick={handleRefresh}
+              className="w-10 h-10 grid place-items-center rounded-lg bg-white/5 border border-white/10 hover:border-accent/40 text-white/60 hover:text-white transition-all cursor-pointer"
               title="Reload preview"
+              aria-label="Reload preview"
             >
-              <IconRefresh size={16} />
+              <IconRefresh size={18} />
             </button>
           </div>
 
@@ -106,6 +240,7 @@ export function WidgetEditorModal({
                 }
               >
                 <div
+                  ref={previewViewportRef}
                   className="absolute inset-0 rounded-md overflow-hidden border border-white/10"
                   style={{
                     backgroundColor: '#07080b',
@@ -116,11 +251,17 @@ export function WidgetEditorModal({
                   }}
                 >
                   <iframe
-                    key={previewKey}
+                    key={iframeKey}
+                    ref={iframeRef}
                     src={previewUrl}
                     title="Widget preview"
-                    className="w-full h-full"
-                    style={{ border: 'none', background: 'transparent' }}
+                    className="absolute left-0 top-0"
+                    style={{
+                      ...previewViewportStyle,
+                      border: 'none',
+                      background: 'transparent',
+                      pointerEvents: 'none'
+                    }}
                   />
                 </div>
 
@@ -142,31 +283,23 @@ export function WidgetEditorModal({
             )}
           </div>
 
-          <div className="p-6 border-t border-white/5 flex items-center justify-end gap-3 bg-black/40">
-            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-semibold text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer">
+          <div className="px-6 py-4 border-t border-white/5 flex items-center justify-end gap-3 bg-black/40">
+            <button
+              onClick={onClose}
+              className="h-11 px-6 rounded-lg text-[13px] font-semibold text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+            >
               Discard
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-8 py-2.5 rounded-xl bg-accent text-white text-xs font-semibold tracking-normal hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="h-11 px-7 rounded-lg bg-accent text-[#0a0b0e] text-[13px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:brightness-110 active:brightness-95"
             >
-              {saving ? 'Saving...' : 'Apply Changes'}
+              {saving ? 'Saving…' : 'Apply changes'}
             </button>
           </div>
         </div>
       </div>
     </Modal>
   )
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debouncedValue, setDebouncedValue] = useState(value)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs)
-    return () => window.clearTimeout(timer)
-  }, [value, delayMs])
-
-  return debouncedValue
 }

@@ -1,6 +1,6 @@
 import type { ReactNode, SVGProps } from 'react'
 
-interface ChromeIconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
+interface ChromeIconProps extends Omit<SVGProps<SVGSVGElement>, 'children' | 'stroke'> {
   size?: number
   stroke?: number
 }

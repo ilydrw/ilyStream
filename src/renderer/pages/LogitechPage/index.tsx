@@ -2,24 +2,16 @@ import React from 'react'
 import { IconCpu, IconRadio, IconActivity, IconMouse } from '@tabler/icons-react'
 import { IconRefresh } from '../../components/ui/icons'
 import { LogitechIcon } from '../../components/ui/LogitechIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function LogitechPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <LogitechIcon size={48} />
-          </div>
-          <div>
-            <h1>Logitech G-Series</h1>
-            <p className="app-page-intro">
-              Integrate your Logitech G peripherals. Synchronize LIGHTSYNC RGB with your stream highlights, 
-              cooldowns, and viewer interactions via Logitech G-Hub.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Logitech G-Series"
+        description="Synchronize LIGHTSYNC RGB with stream highlights, cooldowns, and viewer interactions."
+        iconNode={<LogitechIcon size={24} />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric 

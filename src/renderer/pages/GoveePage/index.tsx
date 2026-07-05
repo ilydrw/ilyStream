@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react'
-import { IconCpu, IconRadio, IconActivity, IconUnlink, IconAlertCircle, IconLoader2, IconBulb } from '@tabler/icons-react'
+import { IconCpu, IconRadio, IconActivity, IconUnlink, IconAlertCircle, IconLoader2, IconBulb, IconBluetooth, IconTrash } from '@tabler/icons-react'
 import { IconExternalLink, IconRefresh, IconCircleCheck, IconCheck } from '../../components/ui/icons'
 import { GoveeIcon } from '../../components/ui/GoveeIcon'
 import { toast } from '../../components/ui/Toast'
+import { PageHeader } from '../../components/layout/PageHeader'
+import {
+  isGoveeBleSupported,
+  pairGoveeBleDevice,
+  reconnectKnownGoveeBleDevices,
+  subscribeGoveeBleRuntime
+} from '../../lib/govee-ble-runtime'
+import type {
+  GoveeBleDevicePickerItem,
+  GoveeBleDeviceRecord,
+  GoveeBleProtocol
+} from '../../../shared/govee-ble'
 
 export default function GoveePage() {
   const [apiKey, setApiKey] = useState('')
@@ -13,22 +25,33 @@ export default function GoveePage() {
     deviceCount: number
     cloudDeviceCount?: number
     lanDeviceCount?: number
+    bleDeviceCount?: number
+    bleConnectedCount?: number
     selectedDeviceIds?: string[]
+    lastCloudError?: string | null
   }>({
     isConnected: false,
     apiKey: null,
     deviceCount: 0,
     cloudDeviceCount: 0,
     lanDeviceCount: 0,
+    bleDeviceCount: 0,
+    bleConnectedCount: 0,
     selectedDeviceIds: []
   })
   const [devices, setDevices] = useState<any[]>([])
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
   const [isLoadingDevices, setIsLoadingDevices] = useState(false)
+  const [bleDevices, setBleDevices] = useState<GoveeBleDeviceRecord[]>([])
+  const [bleCandidates, setBleCandidates] = useState<GoveeBleDevicePickerItem[]>([])
+  const [isPairingBle, setIsPairingBle] = useState(false)
+  const [isReconnectingBle, setIsReconnectingBle] = useState(false)
+  const [bleError, setBleError] = useState<string | null>(null)
   const [goveeSettings, setGoveeSettings] = useState({
     flashOnFollow: false,
     flashOnGift: false
   })
+  const hasCloudAccount = Boolean(status.apiKey)
 
   useEffect(() => {
     if (!window.api?.govee) {
@@ -42,6 +65,7 @@ export default function GoveePage() {
       setSelectedDeviceIds(nextStatus.selectedDeviceIds || [])
     })
     window.api.govee.getDevices().then(setDevices)
+    loadBleDevices()
 
     const updateSettings = () => {
       setGoveeSettings({
@@ -55,18 +79,33 @@ export default function GoveePage() {
     const unsubscribeStatus = window.api.on('govee:status-changed', (newStatus: any) => {
       setStatus(newStatus)
       setSelectedDeviceIds(newStatus.selectedDeviceIds || [])
-      if (newStatus.isConnected) {
+      if (newStatus.isConnected || newStatus.bleDeviceCount > 0) {
         refreshDevices()
+        loadBleDevices()
       }
     })
 
     const unsubscribeSettings = window.api.on('settings:changed', updateSettings)
+    const unsubscribeBlePicker = window.api.on('govee:ble-device-list', (items: GoveeBleDevicePickerItem[]) => {
+      setBleCandidates(items)
+    })
+    const unsubscribeBleRuntime = subscribeGoveeBleRuntime(() => {
+      loadBleDevices()
+      refreshDevices()
+    })
 
     return () => {
       unsubscribeStatus()
       unsubscribeSettings()
+      unsubscribeBlePicker()
+      unsubscribeBleRuntime()
     }
   }, [])
+
+  const loadBleDevices = async () => {
+    const list = await window.api.govee?.getBleDevices?.()
+    setBleDevices(list || [])
+  }
 
   const handleLink = async () => {
     if (!apiKey) return
@@ -104,6 +143,63 @@ export default function GoveePage() {
     }
   }
 
+  const handlePairBle = async (acceptAllDevices = false) => {
+    setBleError(null)
+    setBleCandidates([])
+    if (!isGoveeBleSupported()) {
+      const message = 'Web Bluetooth is not available in this app session. Restart ilyStream and make sure Bluetooth is enabled in Windows.'
+      setBleError(message)
+      toast.error(message)
+      return
+    }
+
+    setIsPairingBle(true)
+    try {
+      const record = await pairGoveeBleDevice({ acceptAllDevices, protocol: 'auto' })
+      toast.success(`Paired ${record.deviceName}`)
+      await loadBleDevices()
+      await refreshDevices()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (!/cancel/i.test(message)) {
+        setBleError(message)
+        toast.error(message)
+      }
+    } finally {
+      setIsPairingBle(false)
+      setBleCandidates([])
+    }
+  }
+
+  const handleReconnectBle = async () => {
+    setBleError(null)
+    setIsReconnectingBle(true)
+    try {
+      const connected = await reconnectKnownGoveeBleDevices()
+      toast.success(connected.length ? `Reconnected ${connected.length} Bluetooth device${connected.length === 1 ? '' : 's'}.` : 'No remembered Bluetooth devices were available.')
+      await loadBleDevices()
+      await refreshDevices()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setBleError(message)
+      toast.error(message)
+    } finally {
+      setIsReconnectingBle(false)
+    }
+  }
+
+  const handleRemoveBle = async (deviceId: string) => {
+    await window.api.govee?.removeBleDevice?.(deviceId)
+    await loadBleDevices()
+    await refreshDevices()
+  }
+
+  const handleBleProtocol = async (deviceId: string, protocol: GoveeBleProtocol) => {
+    await window.api.govee?.setBleDeviceProtocol?.(deviceId, protocol)
+    await loadBleDevices()
+    await refreshDevices()
+  }
+
   const toggleDeviceSelection = async (device: any) => {
     const normalized = normalizeGoveeDeviceId(device.device)
     const selected = selectedDeviceIds.some((id) => normalizeGoveeDeviceId(id) === normalized)
@@ -121,31 +217,26 @@ export default function GoveePage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <GoveeIcon size={48} />
-          </div>
-          <div>
-            <h1>Govee Home</h1>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Govee Home"
+        description="Connect Govee cloud, LAN, and Bluetooth lights for stream alerts."
+        iconNode={<GoveeIcon size={24} />}
+      />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Metric
           icon={status.isConnected ? <IconCircleCheck size={20} /> : <IconRadio size={20} />}
           label="API Status"
-          value={status.isConnected ? 'CONNECTED' : 'NOT LINKED'}
-          sub={status.isConnected ? `Linked: ${status.apiKey}` : "Cloud Connection Idle"}
-          accent={status.isConnected ? 'text-emerald-400' : 'text-danger'}
+          value={hasCloudAccount ? 'CONNECTED' : 'NOT LINKED'}
+          sub={hasCloudAccount ? 'Cloud API key saved' : "Cloud Connection Idle"}
+          accent={hasCloudAccount ? 'text-emerald-400' : 'text-danger'}
         />
         <Metric
           icon={<GoveeIcon size={26} />}
           label="Active Devices"
           value={status.deviceCount.toString()}
-          sub={`Cloud ${status.cloudDeviceCount || 0} / LAN ${status.lanDeviceCount || 0}`}
+          sub={`Cloud ${status.cloudDeviceCount || 0} / LAN ${status.lanDeviceCount || 0} / BLE ${status.bleDeviceCount || 0}`}
           accent="text-accent"
         />
         <Metric
@@ -180,7 +271,7 @@ export default function GoveePage() {
                   <h2>API Authentication</h2>
                 </div>
               </div>
-              {status.isConnected && (
+              {hasCloudAccount && (
                 <button
                   onClick={handleDisconnect}
                   className="p-2 rounded-lg bg-white/5 text-white/20 hover:text-danger hover:bg-danger/10 transition-all"
@@ -192,7 +283,7 @@ export default function GoveePage() {
             </div>
 
             <div className="p-8 space-y-6 bg-white/[0.01]">
-              {!status.isConnected ? (
+              {!hasCloudAccount ? (
                 <>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-tight text-white/30">Govee API Key</label>
@@ -237,6 +328,11 @@ export default function GoveePage() {
                   <p className="text-xs text-white/40 mb-6 max-w-[200px]">
                     Your Govee account is synchronized. LAN discovery runs during refresh.
                   </p>
+                  {status.lastCloudError && (
+                    <p className="text-[10px] text-danger/80 mb-4 max-w-[260px] leading-relaxed">
+                      Last cloud refresh failed: {status.lastCloudError}
+                    </p>
+                  )}
                   <div className="w-full h-px bg-white/5 mb-6" />
                   <button
                     onClick={refreshDevices}
@@ -244,6 +340,119 @@ export default function GoveePage() {
                   >
                     Sync Devices
                   </button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="app-section-card glass">
+            <div className="app-section-head">
+              <div className="flex items-center gap-4">
+                <IconBluetooth size={24} className="text-blue-400" />
+                <div>
+                  <h2>Bluetooth Strips</h2>
+                  <p>Pair Bluetooth-only Govee strips for local alert control.</p>
+                </div>
+              </div>
+              <div className="px-3 py-1 rounded-full bg-blue-400/10 text-blue-300 text-[9px] font-semibold tracking-tight">
+                {status.bleConnectedCount || 0}/{status.bleDeviceCount || 0} ready
+              </div>
+            </div>
+
+            <div className="p-8 space-y-6 bg-white/[0.01]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  onClick={() => handlePairBle(false)}
+                  disabled={isPairingBle}
+                  className="app-button-primary !h-11 text-[10px] font-semibold tracking-tight disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {isPairingBle ? 'Pairing...' : 'Pair Govee BLE'}
+                </button>
+                <button
+                  onClick={() => handlePairBle(true)}
+                  disabled={isPairingBle}
+                  className="app-button-secondary !h-11 text-[10px] font-semibold tracking-tight disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Broad Scan
+                </button>
+                <button
+                  onClick={handleReconnectBle}
+                  disabled={isReconnectingBle}
+                  className="app-button-secondary !h-11 text-[10px] font-semibold tracking-tight disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {isReconnectingBle ? 'Reconnecting...' : 'Reconnect'}
+                </button>
+              </div>
+
+              <p className="text-[11px] text-white/35 leading-relaxed">
+                Put the strip close to your PC, make sure Windows Bluetooth is on, and keep the Govee phone app closed while pairing. Use Broad Scan if the model name does not start with Govee or H61.
+              </p>
+
+              {bleCandidates.length > 0 && (
+                <div className="rounded-lg border border-blue-400/20 bg-blue-400/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold text-blue-300 tracking-tight">Choose Bluetooth device</p>
+                    <button
+                      onClick={() => window.api.govee.cancelBleSelection?.()}
+                      className="text-[10px] font-semibold text-white/30 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {bleCandidates.map((candidate) => (
+                    <button
+                      key={candidate.deviceId}
+                      onClick={() => window.api.govee.selectBleDevice?.(candidate.deviceId)}
+                      className="w-full p-3 rounded-md bg-black/20 border border-white/5 hover:border-blue-400/40 text-left transition-colors"
+                    >
+                      <span className="block text-xs font-semibold text-white">{candidate.deviceName}</span>
+                      <span className="block text-[9px] font-mono text-white/25 mt-1">{candidate.deviceId}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {bleError && (
+                <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-[11px] font-semibold text-danger leading-relaxed">
+                  {bleError}
+                </div>
+              )}
+
+              {bleDevices.length > 0 && (
+                <div className="space-y-3">
+                  {bleDevices.map((device) => (
+                    <div key={device.device} className="rounded-lg border border-white/5 bg-white/[0.025] p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{device.deviceName}</p>
+                          <p className="text-[10px] text-white/25 font-mono truncate">{device.model} / {device.device}</p>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveBle(device.device)}
+                          title="Forget Bluetooth strip"
+                          className="p-2 rounded-lg bg-white/5 text-white/25 hover:text-danger hover:bg-danger/10 transition-colors"
+                        >
+                          <IconTrash size={14} />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`h-2 w-2 rounded-full ${device.connected ? 'bg-emerald-400' : 'bg-white/20'}`} />
+                        <span className="text-[10px] font-semibold text-white/35">
+                          {device.connected ? 'Connected this session' : device.lastError || 'Remembered'}
+                        </span>
+                      </div>
+                      <select
+                        value={device.protocol}
+                        onChange={(event) => handleBleProtocol(device.device, event.target.value as GoveeBleProtocol)}
+                        className="app-input !h-10 text-[11px]"
+                      >
+                        <option value="auto">Auto fallback</option>
+                        <option value="basic-rgb">Basic RGB</option>
+                        <option value="segments-15">15-segment strip</option>
+                        <option value="h617-segments">H617 segmented</option>
+                      </select>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -340,10 +549,10 @@ export default function GoveePage() {
             </div>
 
             <div className="flex-1 p-8 bg-white/[0.01]">
-              {!status.isConnected ? (
+              {!status.isConnected && devices.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 rounded-lg">
                   <GoveeIcon size={64} className="mb-4 opacity-10" />
-                  <p className="text-sm font-medium">Link your Govee account to manage devices.</p>
+                  <p className="text-sm font-medium">Link your cloud account or pair a Bluetooth strip.</p>
                 </div>
               ) : devices.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center text-white/10 border border-dashed border-white/5 rounded-lg">

@@ -2,21 +2,16 @@ import React from 'react'
 import { IconWorld, IconSend, IconActivity, IconLock } from '@tabler/icons-react'
 import { IconExternalLink } from '../../components/ui/icons'
 import { TelegramIcon } from '../../components/ui/TelegramIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function TelegramPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <TelegramIcon size={48} className="text-[#24A1DE]" />
-            <h1>Telegram Live</h1>
-          </div>
-          <p className="app-page-intro">
-            Stream to your Telegram Channels and Groups. Reach your core community with secure, high-quality video broadcasts.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Telegram Live"
+        description="Stream to Telegram channels and groups with secure, high-quality broadcasts."
+        iconNode={<TelegramIcon size={24} className="text-[#24A1DE]" />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 

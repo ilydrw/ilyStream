@@ -11,7 +11,19 @@ export function registerWidgetHandlers(
     db.saveWidget(widget)
     overlayServer.broadcastWidgetUpdate(widget.type, widget.id)
   })
-  ipcMain.handle('widgets:delete', (_event, id) => db.deleteWidget(id))
+  ipcMain.handle('widgets:delete', (_event, id) => {
+    db.deleteWidget(id)
+    if (db.getAllWidgets().length === 0) {
+      overlayServer.resetWidgetRuntimeState()
+    }
+  })
+
+  // Render a widget's preview HTML for the live editor. The renderer pushes the
+  // result into the iframe via postMessage so config changes apply without
+  // reloading the page.
+  ipcMain.handle('widgets:render-preview', (_event, widget) => {
+    return overlayServer.renderWidgetPreview(widget)
+  })
   
   ipcMain.on('overlay:notify-speech-state', (_event, isSpeaking, isAI) => {
     overlayServer.broadcastSpeechState(isSpeaking, isAI)

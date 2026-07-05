@@ -8,13 +8,12 @@ import type { PlatformManager } from '../platforms/platform-manager'
 import type { SpotifySongRequest, SpotifyStatus, SpotifyTrack } from '../../shared/spotify-types'
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
 import { resolveAppSettings } from '../../shared/app-settings'
+import { classifySpotifyCommand } from '../../shared/chat-command-intent'
 import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
 import { SpotifyApiError, SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
 import { SpotifyMapper } from './mappers/spotify-mapper'
 import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
 
-const SONG_REQUEST_COMMANDS = new Set(['!sr', '!songrequest', '!play', '.play', '/play'])
-const SKIP_COMMANDS = new Set(['!skip', '!voteskip', '.skip', '/skip'])
 const RESTORE_RETRY_DELAY_MS = 30_000
 const POLL_INTERVAL_MS = 5_000
 const QUEUE_REFRESH_INTERVAL_MS = 15_000
@@ -37,6 +36,7 @@ export class SpotifyService extends EventEmitter {
   private profile: SpotifyUserProfile | null = null
   private requestQueue: SpotifySongRequest[] = []
   private skipVotes = new Set<string>()
+  private skipVoteTrackId: string | null = null
   private pollTimer: NodeJS.Timeout | null = null
   private currentNowPlaying: NowPlayingPayload = { ...EMPTY_NOW_PLAYING }
   private client = new SpotifyClient()
@@ -203,7 +203,7 @@ export class SpotifyService extends EventEmitter {
     if (command.type === 'skip') {
       if (!settings.spotifySongRequestsEnabled || !settings.spotifySkipEnabled) return true
       if (!(await this.ensureReadyForCommand())) return true
-      await this.skip()
+      await this.handleSkipVote(chat, settings.spotifyVotesRequired)
       return true
     }
 
@@ -250,6 +250,11 @@ export class SpotifyService extends EventEmitter {
     } catch (e) {
       console.error('[Spotify] SR failed:', e)
       this.lastError = `Song request failed: ${this.getErrorMessage(e)}`
+      if (e instanceof SpotifyApiError && e.status === 404) {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'no-device' }
+      } else if (e instanceof SpotifyApiError && e.status === 403) {
+        this.currentNowPlaying = { ...EMPTY_NOW_PLAYING, status: 'forbidden' }
+      }
       this.emit('status', this.getStatus())
       this.emitNowPlaying()
       return null
@@ -257,15 +262,9 @@ export class SpotifyService extends EventEmitter {
   }
 
   private parseChatCommand(message: string): SpotifyChatCommand {
-    const trimmed = message.trim()
-    const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/)
-    if (!match) return { type: 'none' }
-
-    const command = match[1].toLowerCase()
-    const argument = (match[2] ?? '').trim()
-
-    if (SONG_REQUEST_COMMANDS.has(command)) return { type: 'song-request', query: argument }
-    if (SKIP_COMMANDS.has(command)) return { type: 'skip' }
+    const intent = classifySpotifyCommand(message)
+    if (intent.kind === 'song-request') return { type: 'song-request', query: intent.query }
+    if (intent.kind === 'skip') return { type: 'skip' }
     return { type: 'none' }
   }
 
@@ -287,11 +286,35 @@ export class SpotifyService extends EventEmitter {
     try {
       await this.client.skip()
       this.skipVotes.clear()
+      this.skipVoteTrackId = null
+      this.lastError = null
+      this.emit('status', this.getStatus())
     } catch (e) {
       console.error('[Spotify] Skip failed:', e)
       this.lastError = `Skip failed: ${this.getErrorMessage(e)}`
       this.emit('status', this.getStatus())
     }
+  }
+
+  private async handleSkipVote(chat: ChatEvent, votesRequiredValue: unknown): Promise<void> {
+    const votesRequired = Math.max(1, Math.min(100, Math.round(Number(votesRequiredValue) || 1)))
+    const trackId = this.currentNowPlaying.trackId || 'active-playback'
+
+    if (this.skipVoteTrackId !== trackId) {
+      this.skipVotes.clear()
+      this.skipVoteTrackId = trackId
+    }
+
+    const voter = `${chat.platform}:${String(chat.user.id || chat.user.username || chat.id).toLowerCase()}`
+    this.skipVotes.add(voter)
+
+    if (this.skipVotes.size >= votesRequired) {
+      await this.skip()
+      return
+    }
+
+    this.lastError = `Skip vote ${this.skipVotes.size}/${votesRequired}`
+    this.emit('status', this.getStatus())
   }
 
   async pause(): Promise<void> {

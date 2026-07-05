@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type LogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug'
 
 export interface LogEntry {
-  id: number
+  id: string
   timestamp: number
   level: LogLevel
   source: string 
@@ -18,6 +18,12 @@ interface LogStore {
 }
 
 const MAX_ENTRIES = 2000
+let logEntrySequence = 0
+
+function createLogEntryId(timestamp: number): string {
+  logEntrySequence = (logEntrySequence + 1) % Number.MAX_SAFE_INTEGER
+  return `log-${timestamp.toString(36)}-${logEntrySequence.toString(36)}`
+}
 
 function detectSourceAndCategory(text: string): { source: string; category: string } {
   let source = 'app'
@@ -73,10 +79,11 @@ export const useLogStore = create<LogStore>((set) => ({
     const text = entry.args
     const { source, category } = detectSourceAndCategory(text)
     
+    const timestamp = Date.now()
     const fullEntry: LogEntry = {
       ...entry,
-      id: Date.now() + Math.random(),
-      timestamp: Date.now(),
+      id: createLogEntryId(timestamp),
+      timestamp,
       source,
       category
     }

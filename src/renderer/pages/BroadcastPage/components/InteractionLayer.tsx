@@ -1,6 +1,7 @@
 import {IconRotateClockwise2} from '@tabler/icons-react'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 import type { HandleDir } from './CanvasEditor.types'
+import { resolveShapeMaskBounds } from './CanvasEditor.utils'
 
 interface InteractionLayerProps {
   layers: StudioLayer[]
@@ -14,12 +15,28 @@ interface InteractionLayerProps {
   onAutoCrop: (layer: StudioLayer) => void
   isCropping: (layerId: string) => boolean
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer, aspectRatio: '16:9' | '9:16') => void
+  onDoubleClick?: (layer: StudioLayer) => void
   highlightedLayerId?: string | null
 }
 
 const HANDLE_CURSORS: Record<HandleDir, string> = {
   nw: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', se: 'nwse-resize',
   n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize'
+}
+
+function resolveLayerMaskBounds(layer: StudioLayer, aspectRatio: '16:9' | '9:16', width: number, height: number) {
+  const rawShape = layer.enhancements?.shape
+  if (!rawShape) return null
+
+  const shape = typeof rawShape === 'object'
+    ? rawShape
+    : { type: rawShape, x: 50, y: 50, scale: 100, scope: 'both' as const }
+
+  if (!shape.type || shape.type === 'none' || shape.type === 'rect') return null
+  const scope = typeof shape === 'object' ? shape.scope || 'both' : 'both'
+  if (scope !== 'both' && scope !== aspectRatio) return null
+
+  return resolveShapeMaskBounds(shape, width, height)
 }
 
 export function InteractionLayer(props: InteractionLayerProps) {
@@ -36,26 +53,39 @@ export function InteractionLayer(props: InteractionLayerProps) {
         const isSelected = selectedLayerId === layer.id
         const isLocked = Boolean(layout.locked)
         const cropping = isCropping(layer.id)
+        const maskBounds = resolveLayerMaskBounds(layer, props.aspectRatio, layout.width, layout.height)
+        const interactionBounds = maskBounds
+          ? {
+              x: layout.x + maskBounds.x,
+              y: layout.y + maskBounds.y,
+              width: maskBounds.width,
+              height: maskBounds.height
+            }
+          : layout
 
         return (
           <div
             key={layer.id}
             onMouseDown={(e) => onMouseDown(e, layer, props.aspectRatio)}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              props.onDoubleClick?.(layer)
+            }}
             onContextMenu={(e) => {
               e.preventDefault()
               e.stopPropagation()
               onContextMenu?.(e, layer, props.aspectRatio)
             }}
-            className={`absolute pointer-events-auto transition-shadow duration-300 ${isLocked ? 'cursor-default' : 'cursor-move'} ${
+            className={`absolute pointer-events-auto transition-shadow duration-150 ${isLocked ? 'cursor-default' : 'cursor-move'} ${
               isSelected || layer.id === props.highlightedLayerId
-                ? `${isLocked ? 'ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(251,191,36,0.22)]' : cropping ? 'ring-[6px] ring-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.7)]' : 'ring-[6px] ring-[#d035f1] shadow-[0_0_50px_rgba(208,53,241,0.8)]'} z-10`
+                ? `${isLocked ? 'ring-2 ring-amber-400/80' : cropping ? 'ring-2 ring-emerald-500' : 'ring-2 ring-[#d035f1]'} z-10`
                 : 'hover:ring-2 hover:ring-white/40'
             }`}
             style={{
-              left: `${layout.x}px`,
-              top: `${layout.y}px`,
-              width: `${layout.width}px`,
-              height: `${layout.height}px`,
+              left: `${interactionBounds.x}px`,
+              top: `${interactionBounds.y}px`,
+              width: `${interactionBounds.width}px`,
+              height: `${interactionBounds.height}px`,
               transform: `rotate(${Number(layout.rotation || 0)}deg)`,
               transformOrigin: 'center center'
             }}
@@ -91,16 +121,16 @@ export function InteractionLayer(props: InteractionLayerProps) {
                 <div
                   className="absolute flex items-center gap-1 z-20"
                   style={{
-                    bottom: layout.y < 40 ? 'auto' : '100%',
-                    top: layout.y < 40 ? '100%' : 'auto',
-                    left: layout.x < 120 ? '0' : (layout.x + layout.width > canvasWidth - 120 ? 'auto' : '50%'),
-                    right: layout.x + layout.width > canvasWidth - 120 ? '0' : 'auto',
-                    transform: `${layout.y < 40 ? 'translateY(8px)' : 'translateY(-8px)'} ${layout.x < 120 || layout.x + layout.width > canvasWidth - 120 ? 'translateX(0)' : 'translateX(-50%)'}`,
+                    bottom: interactionBounds.y < 40 ? 'auto' : '100%',
+                    top: interactionBounds.y < 40 ? '100%' : 'auto',
+                    left: interactionBounds.x < 120 ? '0' : (interactionBounds.x + interactionBounds.width > canvasWidth - 120 ? 'auto' : '50%'),
+                    right: interactionBounds.x + interactionBounds.width > canvasWidth - 120 ? '0' : 'auto',
+                    transform: `${interactionBounds.y < 40 ? 'translateY(8px)' : 'translateY(-8px)'} ${interactionBounds.x < 120 || interactionBounds.x + interactionBounds.width > canvasWidth - 120 ? 'translateX(0)' : 'translateX(-50%)'}`,
                     maxWidth: '300px',
                     width: 'max-content'
                   }}
                 >
-                  <div className={`px-2 py-1 ${cropping ? 'bg-emerald-500' : 'bg-accent'} text-white text-[9px] font-semibold rounded tracking-tight shadow-lg whitespace-nowrap`}>
+                  <div className={`px-3 py-1.5 ${cropping ? 'bg-emerald-500' : 'bg-accent'} text-white text-[12px] font-bold rounded-md tracking-tight shadow-lg whitespace-nowrap`}>
                     {isLocked ? `Locked: ${layer.name}` : cropping ? `Cropping: ${layer.name}` : layer.name}
                   </div>
                   {!isLocked && (layer.type === 'widget' || layer.type === 'browser' || layer.type === 'image') && (

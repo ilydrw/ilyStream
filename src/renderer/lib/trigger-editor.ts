@@ -41,6 +41,7 @@ export const ACTION_TYPE_OPTIONS: Array<{ value: Action['type']; label: string }
   { value: 'obs_set_scene', label: 'OBS: Set Scene' },
   { value: 'obs_set_source_visibility', label: 'OBS: Set Source Visibility' },
   { value: 'obs_toggle_source_visibility', label: 'OBS: Toggle Source Visibility' },
+  { value: 'obs_save_replay_buffer', label: 'OBS: Save Replay Buffer' },
   { value: 'http_webhook', label: 'HTTP Webhook' },
   { value: 'send_chat', label: 'Send Host Chat' },
   { value: 'run_command', label: 'Run Command' },
@@ -98,7 +99,7 @@ export function createDefaultAction(type: Action['type'] = 'tts'): Action {
     case 'show_alert':
       return {
         type: 'show_alert',
-        template: '<strong>{username}</strong> triggered an alert!',
+        template: '{username} triggered an alert!',
         durationMs: 5000,
         animationIn: 'wave',
         animationOut: 'dissolve',
@@ -135,6 +136,10 @@ export function createDefaultAction(type: Action['type'] = 'tts'): Action {
         type: 'obs_toggle_source_visibility',
         sceneName: '',
         sourceName: ''
+      }
+    case 'obs_save_replay_buffer':
+      return {
+        type: 'obs_save_replay_buffer'
       }
     case 'run_command':
       return {
@@ -355,6 +360,8 @@ export function describeAction(action: Action): string {
       return `${action.visible ? 'Show' : 'Hide'} ${action.sourceName || '(set source)'} in ${action.sceneName || '(set scene)'}`
     case 'obs_toggle_source_visibility':
       return `Toggle ${action.sourceName || '(set source)'} in ${action.sceneName || '(set scene)'}`
+    case 'obs_save_replay_buffer':
+      return 'OBS: Save replay buffer'
     case 'run_command':
       return `Run "${action.command || 'command'}"`
     case 'ai_respond':

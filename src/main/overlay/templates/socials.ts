@@ -24,7 +24,10 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
   const blur = glassIntensity * 45
   const borderRadius = cfg.borderRadius ?? 20
   const fontFamily = cfg.fontFamily || 'Outfit'
-  const bgRgba = isPreview ? 'transparent' : hexToRgba(cfg.backgroundColor, bgOpacity)
+  // Render the configured background in preview too so the bg color and
+  // glass-intensity sliders show what they'll actually do on stream. The
+  // editor's checkerboard backdrop reads through any real transparency.
+  const bgRgba = hexToRgba(cfg.backgroundColor, bgOpacity)
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] || OVERLAY_POSITION_MAP['bottom-left']
 
   const platformIcons: Record<string, string> = {
@@ -34,7 +37,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
     instagram: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/></svg>`,
     discord: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037 19.736 19.736 0 0 0-4.885 1.515.069.069 0 0 0-.032.027C.533 9.048-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.947 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>`,
     twitch: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>`,
-    kick: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 4.5V2.25H14.25V0H6V24H14.25V21.75H16.5V19.5H18.75V17.25H21V11.25H18.75V9H16.5V6.75H14.25V17.25H12V6.75H14.25V4.5H16.5Z"/></svg>`,
+    kick: `<svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M37 .036h164.448v113.621h54.71v-56.82h54.731V.036h164.448v170.777h-54.73v56.82h-54.711v56.8h54.71v56.82h54.73V512.03H310.89v-56.82h-54.73v-56.8h-54.711v113.62H37z"/></svg>`,
   }
 
   return `<!DOCTYPE html>
@@ -319,6 +322,30 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       let currentIndex = 0;
       let progressAnimation;
 
+      function wait(ms) {
+        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+      }
+
+      function runElementAnimation(element, keyframes, options) {
+        if (element && typeof element.animate === 'function') {
+          return element.animate(keyframes, options);
+        }
+
+        var finalFrame = keyframes && keyframes.length ? keyframes[keyframes.length - 1] : null;
+        if (element && finalFrame) {
+          for (var key in finalFrame) {
+            if (Object.prototype.hasOwnProperty.call(finalFrame, key)) {
+              element.style[key] = finalFrame[key];
+            }
+          }
+        }
+
+        return {
+          finished: wait(options && options.duration ? options.duration : 0),
+          cancel: function() {}
+        };
+      }
+
       function renderAccount(index) {
         const acc = ACCOUNTS[index];
         if (!acc) return;
@@ -352,7 +379,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
           slide: [{ transform: 'translate3d(0, 0, 0)', opacity: 1 }, { transform: 'translate3d(-20px, 0, 0)', opacity: 0 }]
         }[ANIMATION_TYPE] || exitKeyframes.roll;
 
-        const exitAnim = elContent.animate(exitKeyframes, {
+        const exitAnim = runElementAnimation(elContent, exitKeyframes, {
           duration: 400,
           easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
           fill: 'forwards'
@@ -372,13 +399,13 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
           slide: [{ transform: 'translate3d(20px, 0, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }]
         }[ANIMATION_TYPE] || enterKeyframes.roll;
 
-        elContent.animate(enterKeyframes, {
+        runElementAnimation(elContent, enterKeyframes, {
           duration: 500,
           easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
           fill: 'forwards'
         });
 
-        progressAnimation = elProgress.animate([
+        progressAnimation = runElementAnimation(elProgress, [
           { width: '0%', opacity: 0.5 },
           { width: '100%', opacity: 1 }
         ], {
@@ -393,7 +420,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       elContent.style.opacity = '1';
 
       if (ACCOUNTS.length > 1) {
-        progressAnimation = elProgress.animate([
+        progressAnimation = runElementAnimation(elProgress, [
           { width: '0%', opacity: 0.5 },
           { width: '100%', opacity: 1 }
         ], {

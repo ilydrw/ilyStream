@@ -2,21 +2,16 @@ import React from 'react'
 import { IconWorld, IconShield, IconActivity, IconUsers } from '@tabler/icons-react'
 import { IconExternalLink } from '../../components/ui/icons'
 import { LinkedinIcon } from '../../components/ui/LinkedinIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function LinkedinPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <LinkedinIcon size={48} className="text-[#0A66C2]" />
-            <h1>LinkedIn Live</h1>
-          </div>
-          <p className="app-page-intro">
-            Professional broadcasting. Stream your workshops, coding sessions, and interviews directly to your professional network.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="LinkedIn Live"
+        description="Stream workshops, coding sessions, and interviews to your professional network."
+        iconNode={<LinkedinIcon size={24} className="text-[#0A66C2]" />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 

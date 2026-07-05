@@ -3,6 +3,12 @@ import { OverlayServer } from './overlay-server'
 import { DeviceApi } from './device-api'
 import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
 
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '')
+  }
+}))
+
 let overlayServer: OverlayServer | null = null
 
 afterEach(async () => {
@@ -13,11 +19,20 @@ afterEach(async () => {
 })
 
 describe('OverlayServer', () => {
+  it('binds the LAN when started with the paired-device opt-in', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0, { preferLan: true })
+    expect(status.running).toBe(true)
+    expect(status.listenHost).toBe('0.0.0.0')
+  })
+
   it('serves local overlay health and chat state endpoints', async () => {
     overlayServer = new OverlayServer()
     const status = await overlayServer.start(0)
 
     expect(status.running).toBe(true)
+    // Secure by default: bind loopback, not the whole LAN.
+    expect(status.listenHost).toBe('127.0.0.1')
     expect(status.healthUrl).toBeTruthy()
     expect(status.chatUrl).toBeTruthy()
     expect(status.goalsUrl).toBeTruthy()
@@ -108,14 +123,142 @@ describe('OverlayServer', () => {
       })
     )
 
+    const likesStateResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/likes/state`)
+    const likesState = await likesStateResponse.json()
+    expect(likesState).toEqual(
+      expect.objectContaining({
+        totalLikes: 25,
+        users: expect.arrayContaining([
+          expect.objectContaining({
+            displayName: 'Fan',
+            count: 25
+          })
+        ])
+      })
+    )
+
+    overlayServer.setStatsService({
+      getGlobalStats: vi.fn(() => ({ totalLikes: 1234 })),
+      getTopIdentities: vi.fn(() => [
+        {
+          displayName: 'Lifetime Fan',
+          primaryUsername: 'lifetime_fan',
+          profilePictureUrl: 'https://example.com/avatar.png',
+          totalLikes: 900
+        },
+        {
+          displayName: 'Quiet Viewer',
+          primaryUsername: 'quiet',
+          profilePictureUrl: null,
+          totalLikes: 0
+        }
+      ])
+    })
+
+    const lifetimeResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/likes/lifetime?limit=5`)
+    const lifetimeState = await lifetimeResponse.json()
+    expect(lifetimeState).toEqual({
+      totalLikes: 1234,
+      users: [
+        {
+          displayName: 'Lifetime Fan',
+          profilePictureUrl: 'https://example.com/avatar.png',
+          count: 900
+        }
+      ]
+    })
+
     const likesController = new AbortController()
     const likesResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=likes`, {
       signal: likesController.signal
     })
     const likesStream = await readStreamUntil(likesResponse, '"snapshot"', likesController)
-    expect(likesStream).toContain('"totalLikes":400')
+    expect(likesStream).toContain('"totalLikes":25')
     expect(likesStream).toContain('"displayName":"Fan"')
     expect(likesStream).toContain('"count":25')
+
+    overlayServer.broadcast('leaderboard', {
+      type: 'update',
+      data: [{ username: 'Fan', score: 25 }]
+    })
+
+    const leaderboardStateResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/leaderboard/state`)
+    const leaderboardState = await leaderboardStateResponse.json()
+    expect(leaderboardState).toEqual([
+      expect.objectContaining({ username: 'Fan', score: 25 })
+    ])
+
+    const leaderboardController = new AbortController()
+    const leaderboardResponse = await fetch(`http://127.0.0.1:${status.port}/overlay/events?channel=leaderboard`, {
+      signal: leaderboardController.signal
+    })
+    const leaderboardStream = await readStreamUntil(leaderboardResponse, '"score":25', leaderboardController)
+    expect(leaderboardStream).toContain('"type":"snapshot"')
+    expect(leaderboardStream).toContain('"username":"Fan"')
+  })
+
+  it('clears widget runtime state for a fresh widget set', async () => {
+    overlayServer = new OverlayServer()
+    const economyService = {
+      resetLikeathon: vi.fn(),
+      getLeaderboardSnapshot: vi.fn(() => [{ username: 'Economy Fan', score: 99 }])
+    }
+    overlayServer.setEconomyService(economyService)
+    const status = await overlayServer.start(0)
+
+    overlayServer.handleStreamEvent({
+      id: 'chat-reset-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T10:00:00.000Z'),
+      type: 'chat',
+      raw: {},
+      message: 'before reset',
+      emotes: [],
+      user: {
+        id: 'viewer-1',
+        username: 'viewer',
+        displayName: 'Viewer',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    })
+    overlayServer.handleStreamEvent({
+      id: 'like-reset-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T10:05:00.000Z'),
+      type: 'like',
+      raw: {},
+      likeCount: 12,
+      totalLikes: 1012,
+      user: {
+        id: 'fan-1',
+        username: 'fan',
+        displayName: 'Fan',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    })
+    overlayServer.broadcast('leaderboard', {
+      type: 'update',
+      data: [{ username: 'Fan', score: 12 }]
+    })
+
+    overlayServer.resetWidgetRuntimeState()
+
+    await expect(fetch(`http://127.0.0.1:${status.port}/overlay/chat/state`).then((r) => r.json())).resolves.toEqual([])
+    await expect(fetch(`http://127.0.0.1:${status.port}/overlay/likes/state`).then((r) => r.json())).resolves.toEqual({
+      totalLikes: 0,
+      users: []
+    })
+    await expect(fetch(`http://127.0.0.1:${status.port}/overlay/leaderboard/state`).then((r) => r.json())).resolves.toEqual([])
+    await expect(fetch(`http://127.0.0.1:${status.port}/overlay/goals/state`).then((r) => r.json())).resolves.toEqual(
+      expect.objectContaining({ totalLikes: 0, totalGiftCount: 0 })
+    )
+    expect(economyService.resetLikeathon).toHaveBeenCalledTimes(1)
   })
 
   it('allows DeskThing clients from a LAN origin to preflight the device API', async () => {
@@ -134,6 +277,36 @@ describe('OverlayServer', () => {
     expect(response.status).toBe(204)
     expect(response.headers.get('access-control-allow-origin')).toBe('*')
     expect(response.headers.get('access-control-allow-headers')).toContain('Authorization')
+  })
+
+  it('can restart a loopback-only server for DeskThing LAN pairing', async () => {
+    const originalHost = process.env.ILYSTREAM_OVERLAY_HOST
+    process.env.ILYSTREAM_OVERLAY_HOST = '127.0.0.1'
+
+    try {
+      overlayServer = new OverlayServer()
+      const loopbackStatus = await overlayServer.start(0)
+      expect(loopbackStatus.listenHost).toBe('127.0.0.1')
+      expect(loopbackStatus.deviceHosts).toEqual([`127.0.0.1:${loopbackStatus.port}`])
+
+      const lanStatus = await overlayServer.ensureLanAccess()
+      expect(lanStatus.listenHost).toBe('0.0.0.0')
+      expect(lanStatus.deviceHosts).toContain(`127.0.0.1:${lanStatus.port}`)
+
+      const healthResponse = await fetch(`http://127.0.0.1:${lanStatus.port}/overlay/health`)
+      await expect(healthResponse.json()).resolves.toEqual(
+        expect.objectContaining({
+          running: true,
+          listenHost: '0.0.0.0'
+        })
+      )
+    } finally {
+      if (originalHost === undefined) {
+        delete process.env.ILYSTREAM_OVERLAY_HOST
+      } else {
+        process.env.ILYSTREAM_OVERLAY_HOST = originalHost
+      }
+    }
   })
 
   it('returns CORS headers on DeskThing pair and SSE responses', async () => {
@@ -203,6 +376,65 @@ describe('OverlayServer', () => {
     expect(eventsStream).toContain('"message":"deskthing hello"')
   })
 
+  it('serves overlay runtime and polling fallback events for browser-source clients', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    const widgetResponse = await fetch(`${base}/overlay/chat`)
+    const widgetHtml = await widgetResponse.text()
+    expect(widgetHtml).toContain('ilystream-overlay-runtime')
+    expect(widgetHtml).toContain('/overlay/events/poll')
+
+    overlayServer.handleStreamEvent({
+      id: 'chat-poll-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T12:00:00.000Z'),
+      type: 'chat',
+      raw: {},
+      message: 'poll me',
+      emotes: [],
+      user: {
+        id: 'poll-user',
+        username: 'poll_viewer',
+        displayName: 'Poll Viewer',
+        isModerator: false,
+        isSubscriber: false,
+        isVip: false,
+        badges: []
+      }
+    })
+
+    const chatPollResponse = await fetch(`${base}/overlay/events/poll?channel=chat&after=0`)
+    const chatPoll = await chatPollResponse.json() as any
+    expect(chatPoll.events).toEqual([
+      expect.objectContaining({
+        id: 0,
+        data: expect.objectContaining({
+          type: 'snapshot',
+          payload: expect.arrayContaining([
+            expect.objectContaining({
+              displayName: 'Poll Viewer',
+              message: 'poll me'
+            })
+          ])
+        })
+      })
+    ])
+    expect(chatPoll.cursor).toBeGreaterThan(0)
+
+    overlayServer.broadcast('screen-border', { type: 'reload', id: 'border-widget' })
+
+    const borderPollResponse = await fetch(`${base}/overlay/events/poll?channel=screen-border&after=0`)
+    const borderPoll = await borderPollResponse.json() as any
+    expect(borderPoll.events).toEqual([
+      expect.objectContaining({
+        id: expect.any(Number),
+        data: expect.objectContaining({ type: 'reload', id: 'border-widget' })
+      })
+    ])
+  })
+
   it('does not send in-progress TikTok gift combos to particle widgets', () => {
     overlayServer = new OverlayServer()
     const broadcast = vi.fn()
@@ -261,7 +493,7 @@ async function readStreamUntil(response: Response, needle: string, controller: A
     for (let i = 0; i < 5 && !text.includes(needle); i++) {
       const result = await Promise.race([
         reader.read(),
-        new Promise<ReadableStreamReadResult<Uint8Array>>((resolve) => {
+        new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve) => {
           setTimeout(() => resolve({ done: true, value: undefined }), 1000)
         })
       ])

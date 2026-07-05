@@ -500,6 +500,13 @@ export function ActionFields({
         </div>
       )
 
+    case 'obs_save_replay_buffer':
+      return (
+        <p className="text-xs text-muted p-2">
+          Saves the current OBS replay buffer clip. Requires the replay buffer to be running in OBS — no extra configuration needed.
+        </p>
+      )
+
     default:
       return <div className="text-danger p-2 text-xs">Unknown Action Type: {(action as any).type}</div>
   }

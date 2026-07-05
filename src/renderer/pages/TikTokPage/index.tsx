@@ -1,10 +1,12 @@
-import { IconAlertCircle, IconBrowser, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi } from '@tabler/icons-react'
+import { IconAlertCircle, IconBrowser, IconChartBar, IconHeart, IconLayout, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi } from '@tabler/icons-react'
 import { IconCircleCheck, IconPlayerPlay } from '../../components/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
 import { getPlatformCapability, getPlatformConfig } from '../../lib/platform-configs'
 import type { TikTokSenderStatus } from '../../../main/platforms/tiktok/tiktok-chat-sender'
+import type { OverlayRuntimeStatus } from '../../../shared/overlay'
+import type { PlatformStats, UserStat } from '../../../shared/stats'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -41,25 +43,43 @@ export default function TikTokPage() {
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
   const [senderStatus, setSenderStatus] = useState<TikTokSenderStatus>(DEFAULT_SENDER_STATUS)
   const [senderTest, setSenderTest] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; message?: string }>({ state: 'idle' })
+  const [overlayStatus, setOverlayStatus] = useState<OverlayRuntimeStatus | null>(null)
+  const [likeHealth, setLikeHealth] = useState<{ count: number; lastAt: number | null; lastUser: string | null }>({
+    count: 0,
+    lastAt: null,
+    lastUser: null
+  })
+  const [likeTest, setLikeTest] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; message?: string }>({ state: 'idle' })
+  const [captureState, setCaptureState] = useState<{ state: 'idle' | 'capturing' | 'done' | 'failed'; message?: string }>({ state: 'idle' })
+  const [automations, setAutomations] = useState<{ autoOpenSender: boolean }>({
+    autoOpenSender: false
+  })
+  const [tiktokStats, setTiktokStats] = useState<PlatformStats | null>(null)
+  const [topGifters, setTopGifters] = useState<UserStat[]>([])
 
   const status = statuses[PLATFORM_ID] || 'disconnected'
   const error = errors[PLATFORM_ID] || null
   const viewers = viewerCounts[PLATFORM_ID] || 0
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
+  const reconnect = reconnectInfo[PLATFORM_ID]
+  // "Waiting to go live": reachable but the host isn't streaming yet. The
+  // connector keeps retrying, so this is a calm state, not an error.
+  const isWaiting = isConnecting && Boolean(reconnect?.reason)
+  const waitingReason = isWaiting ? reconnect?.reason : null
 
   useEffect(() => {
     if (!window.api?.platform) return
 
     window.api.platform.getConfigs().then((configs) => {
       const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
-      if (platformConfig) setConfig(platformConfig)
+      if (platformConfig) setConfig(platformConfig as unknown as Record<string, string>)
     })
 
     const updateCaps = () => {
       window.api.platform.getChatCapabilities().then((caps) => {
         const capability = getPlatformCapability(caps, PLATFORM_ID)
-        if (capability) setCanSend(capability)
+        if (capability) setCanSend({ canSend: capability.canSend, reason: capability.reason ?? '' })
       })
       window.api.platform.tiktok?.getSenderStatus?.().then((status: TikTokSenderStatus) => {
         setSenderStatus({ ...DEFAULT_SENDER_STATUS, ...status })
@@ -71,10 +91,80 @@ export default function TikTokPage() {
     return () => clearInterval(interval)
   }, [status])
 
+  useEffect(() => {
+    if (!window.api?.overlay) return
+
+    const loadOverlayStatus = () => {
+      void window.api.overlay.getStatus().then((status: OverlayRuntimeStatus) => {
+        setOverlayStatus(status)
+      })
+    }
+
+    loadOverlayStatus()
+    const interval = window.setInterval(loadOverlayStatus, 3000)
+    const unsubscribe = window.api.on('overlay:status-changed', (status: unknown) => {
+      setOverlayStatus(status as OverlayRuntimeStatus)
+    })
+
+    return () => {
+      window.clearInterval(interval)
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.api?.on?.('event:stream', (event: any) => {
+      if (event?.platform !== PLATFORM_ID || event?.type !== 'like') return
+      const amount = Math.max(1, Math.floor(Number(event.likeCount) || 1))
+      const reportedTotal = !event.raw?.simulated && Number.isFinite(Number(event.totalLikes)) && Number(event.totalLikes) > 0
+        ? Math.floor(Number(event.totalLikes))
+        : 0
+      setLikeHealth((prev) => ({
+        count: reportedTotal > 0 ? Math.max(prev.count + amount, reportedTotal) : prev.count + amount,
+        lastAt: Date.now(),
+        lastUser: event.user?.displayName || event.user?.username || 'TikTok viewer'
+      }))
+    })
+
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    window.api.platform.tiktok?.getAutomations?.().then((next) => {
+      setAutomations({ autoOpenSender: Boolean(next?.autoOpenSender) })
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!window.api?.stats) return
+
+    const loadStats = () => {
+      window.api.stats.getGlobal().then((global: any) => {
+        setTiktokStats(global?.byPlatform?.tiktok ?? null)
+      }).catch(() => {})
+      window.api.stats
+        .getTopUsers({ sortBy: 'totalGiftValueCents', platform: PLATFORM_ID, limit: 5 })
+        .then((users: UserStat[]) => setTopGifters(users.filter((u) => u.totalGiftValueCents > 0)))
+        .catch(() => {})
+    }
+
+    loadStats()
+    const interval = window.setInterval(loadStats, 5000)
+    return () => window.clearInterval(interval)
+  }, [])
+
   const platformEvents = useMemo(
     () => recentEvents.filter((event) => event.platform === PLATFORM_ID).slice(0, 15),
     [recentEvents]
   )
+  const leaderboardClients = overlayStatus?.leaderboardClientCount || 0
+  const likesTrackerClients = overlayStatus?.likesClientCount || 0
+  const overlayRunning = Boolean(overlayStatus?.running)
+  const likeHealthLabel = likeHealth.lastAt
+    ? `${likeHealth.count.toLocaleString()} likes, last from ${likeHealth.lastUser}`
+    : 'No like events this session'
   const senderChecks = [
     { label: 'Window', ok: senderStatus.isWindowOpen },
     { label: 'TikTok', ok: senderStatus.isOnTikTok },
@@ -120,9 +210,9 @@ export default function TikTokPage() {
     if (!window.api?.platform) return
     try {
       await window.api.platform.connect({
+        ...config,
         platform: PLATFORM_ID,
-        enabled: true,
-        ...config
+        enabled: true
       })
     } catch (err) {
       console.error('Failed to connect:', err)
@@ -136,6 +226,45 @@ export default function TikTokPage() {
 
   const updateField = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleCaptureCredentials = async () => {
+    if (!window.api?.platform?.tiktok?.captureCredentials) return
+    setCaptureState({ state: 'capturing' })
+    try {
+      const creds = await window.api.platform.tiktok.captureCredentials()
+      if (!creds?.sessionId) {
+        setCaptureState({
+          state: 'failed',
+          message: creds?.loggedIn === false
+            ? 'Open the sender window and log in to TikTok first.'
+            : 'Could not read the session cookie. Make sure you are logged in.'
+        })
+        return
+      }
+      setConfig((prev) => ({
+        ...prev,
+        sessionId: creds.sessionId as string,
+        ...(creds.ttTargetIdc ? { ttTargetIdc: creds.ttTargetIdc } : {})
+      }))
+      setCaptureState({
+        state: 'done',
+        message: creds.ttTargetIdc ? 'Captured Session ID and data-center.' : 'Captured Session ID.'
+      })
+    } catch (err: any) {
+      setCaptureState({ state: 'failed', message: err?.message || 'Capture failed.' })
+    }
+  }
+
+  const toggleAutomation = async (key: 'autoOpenSender') => {
+    const next = !automations[key]
+    setAutomations((prev) => ({ ...prev, [key]: next }))
+    try {
+      await window.api.platform.tiktok?.setAutomation?.(key, next)
+    } catch {
+      // Revert on failure so the toggle reflects persisted state.
+      setAutomations((prev) => ({ ...prev, [key]: !next }))
+    }
   }
 
   const handleOpenSender = async () => {
@@ -167,13 +296,31 @@ export default function TikTokPage() {
     }
   }
 
+  const handleTestLike = async () => {
+    if (!window.api?.events?.simulate) return
+    setLikeTest({ state: 'sending' })
+    try {
+      await window.api.events.simulate({
+        platform: PLATFORM_ID,
+        type: 'like',
+        username: 'leaderboard_test',
+        displayName: 'Leaderboard Test',
+        likeCount: 25,
+        totalLikes: 100000000,
+        suppressSound: true
+      })
+      setLikeTest({ state: 'sent', message: 'Test like sent through the widget pipeline.' })
+    } catch (err: any) {
+      setLikeTest({ state: 'failed', message: err?.message || 'Could not send the test like.' })
+    }
+  }
+
   return (
     <div className="app-page">
       <PlatformPageHeader 
         platformId={PLATFORM_ID}
         title="TikTok Integration"
         description="Connect your TikTok Live stream to IlyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
-        icon={<IconWifi size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -182,16 +329,16 @@ export default function TikTokPage() {
           label="TikTok Viewers" 
           value={(viewers || 0).toLocaleString()} 
         />
-        <Metric 
-          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
-          label="Connection State" 
-          value={isConnected ? 'Active' : isConnecting ? 'Linking' : 'Offline'} 
-          tone={isConnected ? 'neutral' : 'neutral'}
+        <Metric
+          icon={<IconRadio size={20} className={isConnected ? 'text-success' : isWaiting ? 'text-info' : 'text-white/20'} />}
+          label="Connection State"
+          value={isConnected ? 'Active' : isWaiting ? 'Waiting to go live' : isConnecting ? 'Linking' : 'Offline'}
+          tone="neutral"
         />
-        <Metric 
-          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
-          label="Service Health" 
-          value={error ? 'Error' : isConnected ? 'Optimal' : 'Standby'} 
+        <Metric
+          icon={<IconWifi size={20} className={error ? 'text-danger' : isWaiting ? 'text-info' : 'text-white/20'} />}
+          label="Service Health"
+          value={error ? 'Error' : isWaiting ? 'Waiting' : isConnected ? 'Optimal' : 'Standby'}
           tone={error ? 'danger' : 'neutral'}
         />
       </div>
@@ -223,7 +370,38 @@ export default function TikTokPage() {
               ))}
             </div>
 
-            {error && (
+            {/* Auto-fill sending credentials from the logged-in sender session */}
+            <div className="flex flex-col gap-2 border-t border-white/5 px-8 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold text-white/60">Sending credentials</p>
+                <p className={`mt-1 text-[11px] font-semibold ${
+                  captureState.state === 'failed' ? 'text-danger/80' : captureState.state === 'done' ? 'text-success/80' : 'text-white/30'
+                }`}>
+                  {captureState.message || 'Pull Session ID & data-center from the logged-in sender window — no manual cookies.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCaptureCredentials}
+                disabled={captureState.state === 'capturing' || isConnected || isConnecting}
+                className="app-button-secondary !h-10 !px-5 text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                title={senderStatus.isLoggedIn ? 'Capture from the sender session' : 'Open the sender window and log in first'}
+              >
+                {captureState.state === 'capturing' ? 'Capturing…' : 'Capture from sender'}
+              </button>
+            </div>
+
+            {isWaiting && (
+              <div className="flex items-start gap-3 px-8 py-4 bg-info/10 border-y border-info/20">
+                <IconRadio size={16} className="mt-0.5 shrink-0 text-info animate-pulse" />
+                <p className="text-xs font-semibold text-info/90 leading-relaxed">
+                  {waitingReason}
+                  {reconnect?.attempt ? <span className="text-info/50"> · checking again (attempt {reconnect.attempt})</span> : null}
+                </p>
+              </div>
+            )}
+
+            {error && !isWaiting && (
               <div className="px-8 py-4 bg-danger/10 border-y border-danger/20">
                 <p className="text-xs font-semibold text-danger leading-relaxed">{error}</p>
               </div>
@@ -240,13 +418,13 @@ export default function TikTokPage() {
                     onClick={handleDisconnect}
                     className="app-button-secondary !h-10 !px-6 text-sm font-semibold"
                   >
-                    Cancel
+                    {isWaiting ? 'Stop waiting' : 'Cancel'}
                   </button>
                   <button
                     disabled
                     className="app-button-primary !h-10 !px-8 text-sm font-semibold opacity-50 cursor-not-allowed"
                   >
-                    Establishing...
+                    {isWaiting ? 'Waiting to go live…' : 'Establishing...'}
                   </button>
                 </div>
               ) : (
@@ -260,19 +438,70 @@ export default function TikTokPage() {
             </div>
           </section>
 
+          <section className="app-section-card glass">
+            <div className="app-section-head">
+              <div>
+                <h2>Go-Live Helpers</h2>
+                <p>Prepare the tools you control when TikTok detects you've gone live.</p>
+              </div>
+            </div>
+            <div className="flex flex-col divide-y divide-white/5">
+              <AutomationToggle
+                label="Auto-open host chat sender"
+                detail="Opens the sender window when you go live so outbound chat is ready."
+                checked={automations.autoOpenSender}
+                onChange={() => toggleAutomation('autoOpenSender')}
+              />
+            </div>
+          </section>
+
+          <section className="app-section-card glass overflow-hidden">
+            <div className="app-section-head">
+              <div>
+                <h2>Live Stats</h2>
+                <p>TikTok gifting, growth, and engagement totals.</p>
+              </div>
+              <IconChartBar size={16} className="text-tiktok/60" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 p-8">
+              <StatCell label="Gift value" value={formatUsd(tiktokStats?.totalGiftValueCents)} />
+              <StatCell label="Gifts" value={(tiktokStats?.totalGifts ?? 0).toLocaleString()} />
+              <StatCell label="Followers" value={tiktokStats?.followerCount != null ? tiktokStats.followerCount.toLocaleString() : '—'} />
+              <StatCell label="New follows" value={(tiktokStats?.totalFollows ?? 0).toLocaleString()} />
+              <StatCell label="Shares" value={(tiktokStats?.totalShares ?? 0).toLocaleString()} />
+              <StatCell label="Likes" value={(tiktokStats?.totalLikes ?? 0).toLocaleString()} />
+            </div>
+            {topGifters.length > 0 && (
+              <div className="border-t border-white/5 px-8 py-5">
+                <p className="text-xs font-semibold text-white/60 mb-3">Top gifters</p>
+                <div className="flex flex-col gap-2">
+                  {topGifters.map((gifter, index) => (
+                    <div key={gifter.username} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-4 text-[10px] font-mono text-white/30">{index + 1}</span>
+                        <span className="truncate text-sm text-white/70">{gifter.displayName || gifter.username}</span>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-tiktok">{formatUsd(gifter.totalGiftValueCents)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
           <section className="app-section-card glass overflow-hidden">
             <div className="app-section-head">
               <div>
                 <h2>Diagnostics</h2>
-                <p>Technical heartbeat for the TikTok node.</p>
+                <p>Connect, test, live status, errors, and widget delivery.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8">
               <DiagnosticLine
                 icon={<IconRadio size={16} />}
                 label="Inbound Data Stream"
-                value={isConnected ? 'Healthy / Receiving' : status.toUpperCase()}
-                tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
+                value={isConnected ? 'Healthy / Receiving' : isWaiting ? 'Waiting to go live' : status.toUpperCase()}
+                tone={isConnected ? 'good' : isWaiting ? 'muted' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine
                 icon={<IconSend size={16} />}
@@ -280,6 +509,47 @@ export default function TikTokPage() {
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
               />
+              <DiagnosticLine
+                icon={<IconHeart size={16} />}
+                label="Like Events"
+                value={likeHealthLabel}
+                tone={likeHealth.lastAt ? 'good' : isConnected ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconLayout size={16} />}
+                label="Likes Tracker Source"
+                value={overlayRunning ? `${likesTrackerClients} attached` : 'Overlay server offline'}
+                tone={overlayRunning && likesTrackerClients > 0 ? 'good' : overlayRunning ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconChartBar size={16} />}
+                label="Leaderboard Source"
+                value={overlayRunning ? `${leaderboardClients} attached` : 'Overlay server offline'}
+                tone={overlayRunning && leaderboardClients > 0 ? 'good' : overlayRunning ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconAlertCircle size={16} />}
+                label="Recent Errors"
+                value={error || overlayStatus?.lastError || 'None'}
+                tone={error || overlayStatus?.lastError ? 'bad' : 'good'}
+              />
+            </div>
+            <div className="flex flex-col gap-3 border-t border-white/5 px-8 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold text-white/60">Widget pipeline test</p>
+                <p className={`mt-1 text-[11px] font-semibold ${likeTest.state === 'failed' ? 'text-danger/80' : 'text-white/30'}`}>
+                  {likeTest.message || 'Sends a local TikTok like through the same event path as the live connector.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleTestLike}
+                disabled={likeTest.state === 'sending'}
+                className="app-button-secondary !h-10 !px-5 text-xs font-semibold disabled:opacity-40"
+              >
+                {likeTest.state === 'sending' ? <IconAlertCircle size={15} /> : <IconHeart size={15} />}
+                Send Test Like
+              </button>
             </div>
           </section>
 
@@ -431,3 +701,50 @@ export default function TikTokPage() {
   )
 }
 
+function AutomationToggle({
+  label,
+  detail,
+  checked,
+  onChange
+}: {
+  label: string
+  detail: string
+  checked: boolean
+  onChange: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      role="switch"
+      aria-checked={checked}
+      className="flex items-center justify-between gap-4 px-8 py-4 text-left transition-colors hover:bg-white/[0.02]"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-white/80">{label}</p>
+        <p className="mt-0.5 text-[11px] font-semibold text-white/30">{detail}</p>
+      </div>
+      <span
+        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? 'bg-tiktok' : 'bg-white/10'}`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
+        />
+      </span>
+    </button>
+  )
+}
+
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-tight text-white/30">{label}</span>
+      <span className="text-lg font-semibold text-white/90">{value}</span>
+    </div>
+  )
+}
+
+function formatUsd(cents: number | null | undefined): string {
+  if (!cents || cents <= 0) return '$0'
+  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}

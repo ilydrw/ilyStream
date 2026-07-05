@@ -2,7 +2,7 @@ import type { AppSettings, AppTheme } from '../../shared/app-settings'
 
 type AppearanceSettings = AppSettings['ui']
 
-const THEME_PALETTES: Record<AppTheme, {
+interface ThemePalette {
   background: string
   card: string
   border: string
@@ -12,17 +12,19 @@ const THEME_PALETTES: Record<AppTheme, {
   primaryHsl: [number, number, number]
   secondaryHsl: [number, number, number]
   iconGradient: [string, string, string]
-}> = {
+}
+
+const THEME_PALETTES: Record<Exclude<AppTheme, 'custom'>, ThemePalette> = {
   dark: {
-    background: '#0a0a0c',
-    card: '#121216',
-    border: '#1e1e24',
-    muted: '#71717a',
-    secondary: '#18181b',
+    background: '#141518',
+    card: '#1d1f23',
+    border: '#363a42',
+    muted: '#9aa0a6',
+    secondary: '#24262b',
     accent: '#19c8ff',
     primaryHsl: [194, 100, 55],
     secondaryHsl: [289, 88, 58],
-    iconGradient: ['#FA03D6', '#8849EB', '#19C7FF']
+    iconGradient: ['#D035F1', '#7A8CFF', '#19C8FF']
   },
   midnight: {
     background: '#030305',
@@ -81,12 +83,43 @@ const THEME_PALETTES: Record<AppTheme, {
   }
 }
 
+/**
+ * Derive a full palette from the two colors the user picks for the custom
+ * theme: a base background and a secondary. Cards, borders, and muted text
+ * are progressively lightened steps of the background so any base tone works.
+ */
+function buildCustomPalette(settings: AppearanceSettings): ThemePalette {
+  const background = /^#[0-9a-f]{6}$/i.test(settings.customBackground) ? settings.customBackground : '#0b0d12'
+  const secondary = /^#[0-9a-f]{6}$/i.test(settings.customSecondary) ? settings.customSecondary : '#d035f1'
+  const accent = /^#[0-9a-f]{6}$/i.test(settings.accentColor) ? settings.accentColor : '#19c8ff'
+
+  return {
+    background,
+    card: lightenHex(background, 0.45),
+    border: lightenHex(background, 1.4),
+    muted: mixHex(background, '#9aa0a6', 0.75),
+    secondary: lightenHex(background, 0.25),
+    accent,
+    primaryHsl: hexToHsl(accent),
+    secondaryHsl: hexToHsl(secondary),
+    iconGradient: [secondary, mixHex(secondary, accent, 0.5), accent]
+  }
+}
+
 export function applyAppAppearance(settings: AppearanceSettings): void {
   const root = document.documentElement
-  const palette = THEME_PALETTES[settings.theme] ?? THEME_PALETTES.dark
+  const palette = settings.theme === 'custom'
+    ? buildCustomPalette(settings)
+    : THEME_PALETTES[settings.theme] ?? THEME_PALETTES.dark
   const accent = /^#[0-9a-f]{6}$/i.test(settings.accentColor) ? settings.accentColor : palette.accent
   const accentRgb = hexToRgb(accent)
-  
+
+  // Global interface zoom. Chromium's non-standard `zoom` scales layout,
+  // which works with the px-based styles used throughout the app (rem
+  // scaling would miss them).
+  const uiScale = Number.isFinite(settings.uiScale) ? Math.min(1.3, Math.max(0.8, settings.uiScale)) : 1
+  ;(root.style as CSSStyleDeclaration & { zoom: string }).zoom = uiScale === 1 ? '' : String(uiScale)
+
   const gradientEnd = settings.theme === 'joker' ? palette.secondary : lightenHex(accent, 0.15)
   const gradient = `linear-gradient(135deg, ${accent}, ${gradientEnd})`
 
@@ -136,8 +169,37 @@ function hexToRgb(hex: string): string {
 }
 
 function lightenHex(hex: string, amount: number): string {
-  const r = Math.min(255, Math.floor(parseInt(hex.slice(1, 3), 16) * (1 + amount)))
-  const g = Math.min(255, Math.floor(parseInt(hex.slice(3, 5), 16) * (1 + amount)))
-  const b = Math.min(255, Math.floor(parseInt(hex.slice(5, 7), 16) * (1 + amount)))
+  // Additive floor keeps near-black backgrounds from staying pinned at black
+  // when multiplied (0 * anything = 0).
+  const floor = Math.round(18 * amount)
+  const r = Math.min(255, Math.floor(parseInt(hex.slice(1, 3), 16) * (1 + amount)) + floor)
+  const g = Math.min(255, Math.floor(parseInt(hex.slice(3, 5), 16) * (1 + amount)) + floor)
+  const b = Math.min(255, Math.floor(parseInt(hex.slice(5, 7), 16) * (1 + amount)) + floor)
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+function mixHex(a: string, b: string, weightB: number): string {
+  const mix = (i: number) => {
+    const va = parseInt(a.slice(i, i + 2), 16)
+    const vb = parseInt(b.slice(i, i + 2), 16)
+    return Math.round(va * (1 - weightB) + vb * weightB)
+  }
+  return `#${[1, 3, 5].map(i => mix(i).toString(16).padStart(2, '0')).join('')}`
+}
+
+function hexToHsl(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (max === min) return [0, 0, Math.round(l * 100)]
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h = 0
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+  else if (max === g) h = ((b - r) / d + 2) / 6
+  else h = ((r - g) / d + 4) / 6
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)]
 }

@@ -12,6 +12,14 @@ export interface SoundFile {
   emoji?: string
 }
 
+/**
+ * Sound libraries are separate per purpose: soundboard deck ('board'), alert
+ * sounds ('alerts'), and per-viewer join sounds ('join').
+ */
+export type SoundCategory = 'alerts' | 'board' | 'join'
+
+const SOUND_CATEGORIES: SoundCategory[] = ['alerts', 'board', 'join']
+
 export class SoundboardService extends EventEmitter {
   private soundsDir: string
   private db: Database
@@ -22,22 +30,19 @@ export class SoundboardService extends EventEmitter {
     this.soundsDir = join(app.getPath('userData'), 'sounds')
 
     // Ensure category subdirectories exist
-    const categories = ['alerts', 'board']
-    categories.forEach(cat => {
+    SOUND_CATEGORIES.forEach(cat => {
       const p = join(this.soundsDir, cat)
       if (!existsSync(p)) mkdirSync(p, { recursive: true })
     })
   }
 
-  getAllSounds(category?: 'alerts' | 'board'): SoundFile[] {
+  getAllSounds(category?: SoundCategory): SoundFile[] {
     const targetDir = category ? join(this.soundsDir, category) : this.soundsDir
     if (!existsSync(targetDir)) return []
 
     // If no category, we need to scan subdirectories
     if (!category) {
-      const alerts = this.getAllSounds('alerts')
-      const board = this.getAllSounds('board')
-      return [...alerts, ...board]
+      return SOUND_CATEGORIES.flatMap((cat) => this.getAllSounds(cat))
     }
 
     const files = readdirSync(targetDir)
@@ -56,7 +61,7 @@ export class SoundboardService extends EventEmitter {
       })
   }
 
-  uploadSound(sourcePath: string, category: 'alerts' | 'board' = 'board'): SoundFile {
+  uploadSound(sourcePath: string, category: SoundCategory = 'board'): SoundFile {
     const fileName = basename(sourcePath)
     if (!/\.(mp3|wav)$/i.test(fileName)) {
       throw new Error('Only MP3 and WAV files are supported for event sounds.')
@@ -94,7 +99,7 @@ export class SoundboardService extends EventEmitter {
     const oldPath = this.getSoundPath(id)
     if (!oldPath || !existsSync(oldPath)) throw new Error('Sound not found')
 
-    const category = id.startsWith('alerts/') ? 'alerts' : 'board'
+    const category = SOUND_CATEGORIES.find((cat) => id.startsWith(`${cat}/`)) || 'board'
     const ext = id.split('.').pop() || 'mp3'
     let finalBaseName = newName
     if (!finalBaseName.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) {
@@ -164,29 +169,28 @@ export class SoundboardService extends EventEmitter {
       return existsSync(filePath) ? filePath : null
     }
 
-    const alertsPath = join(this.soundsDir, 'alerts', soundId.fileName)
-    if (existsSync(alertsPath)) return alertsPath
-
-    const boardPath = join(this.soundsDir, 'board', soundId.fileName)
-    if (existsSync(boardPath)) return boardPath
+    for (const category of SOUND_CATEGORIES) {
+      const candidatePath = join(this.soundsDir, category, soundId.fileName)
+      if (existsSync(candidatePath)) return candidatePath
+    }
 
     const legacyPath = join(this.soundsDir, soundId.fileName)
     return existsSync(legacyPath) ? legacyPath : null
   }
 }
 
-function normalizeSoundId(value: string): { category: 'alerts' | 'board' | null; fileName: string } | null {
+function normalizeSoundId(value: string): { category: SoundCategory | null; fileName: string } | null {
   if (typeof value !== 'string' || !value.trim()) return null
 
   const normalized = value.replace(/\\/g, '/')
   const parts = normalized.split('/').filter(Boolean)
-  let category: 'alerts' | 'board' | null = null
+  let category: SoundCategory | null = null
   let fileName = ''
 
   if (parts.length === 1) {
     fileName = parts[0]
-  } else if (parts.length === 2 && (parts[0] === 'alerts' || parts[0] === 'board')) {
-    category = parts[0]
+  } else if (parts.length === 2 && SOUND_CATEGORIES.includes(parts[0] as SoundCategory)) {
+    category = parts[0] as SoundCategory
     fileName = parts[1]
   } else {
     return null

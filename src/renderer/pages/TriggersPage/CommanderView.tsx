@@ -89,7 +89,7 @@ export function CommanderView() {
         {services.map((service) => (
           <div key={service.id} className="app-section-card glass flex flex-col items-start gap-4 hover:bg-white/[0.02] transition-all group !p-8">
             <div className={`flex items-center justify-center transition-all ${service.status === 'connected' ? 'text-accent' : 'text-white/20'}`}>
-              {React.cloneElement(service.icon as React.ReactElement, { size: 32 })}
+              {React.cloneElement(service.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
             </div>
             <div className="w-full">
               <div className="flex items-center justify-between mb-1">
@@ -267,7 +267,7 @@ function QuickActionButton({ icon, label, description, onClick }: {
       className="flex items-center gap-6 p-4 rounded-md bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-accent/30 transition-all text-left group"
     >
       <div className="text-white/40 group-hover:text-accent transition-all shrink-0">
-        {React.cloneElement(icon as React.ReactElement, { size: 24 })}
+        {React.cloneElement(icon as React.ReactElement<{ size?: number }>, { size: 24 })}
       </div>
       <div>
         <p className="text-xs font-semibold tracking-tight text-white mb-0.5">{label}</p>

@@ -184,3 +184,220 @@
   outline-offset: 2px;
   border-radius: var(--radius-xs);
 }
+
+/* ============================================================
+   Pro Console refresh tokens
+   Adapted from ilyStream Design System (3).zip.
+   ============================================================ */
+
+:root {
+  --bg-base: #0a0a0d;
+  --bg-deep: #06060a;
+  --bg-1: #0e0e12;
+  --bg-2: #14141a;
+  --bg-3: #1b1b22;
+
+  --mat-thin: rgba(255, 255, 255, 0.025);
+  --mat-regular: rgba(255, 255, 255, 0.04);
+  --mat-thick: rgba(255, 255, 255, 0.06);
+  --mat-chrome: rgba(20, 20, 26, 0.72);
+
+  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline-strong: rgba(255, 255, 255, 0.1);
+  --hairline-soft: rgba(255, 255, 255, 0.035);
+
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --inset-bottom: inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+  --inset-emboss: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 rgba(0, 0, 0, 0.34);
+  --shadow-pro-panel: 0 14px 36px rgba(0, 0, 0, 0.28), var(--inset-top);
+  --shadow-pro-float: 0 18px 58px rgba(0, 0, 0, 0.38), var(--inset-top);
+
+  --fg: #ffffff;
+  --fg-1: #ffffff;
+  --fg-2: rgba(255, 255, 255, 0.78);
+  --fg-3: rgba(255, 255, 255, 0.56);
+  --fg-4: rgba(255, 255, 255, 0.38);
+  --fg-5: rgba(255, 255, 255, 0.22);
+  --fg-6: rgba(255, 255, 255, 0.1);
+  --fg-7: rgba(255, 255, 255, 0.06);
+
+  --accent: var(--color-accent);
+  --accent-rgb: var(--color-accent-rgb);
+  --success: #34c759;
+  --warning: #ff9f0a;
+  --danger: #ff453a;
+  --live: #ff3b30;
+
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-2xl: 20px;
+
+  --h-topbar: 44px;
+  --h-rail: 60px;
+  --w-drawer: 240px;
+  --h-input: 30px;
+  --h-button: 30px;
+  --pad-page-x: 36px;
+  --pad-page-y: 28px;
+  --pad-panel: 16px;
+  --gap-grid: 16px;
+
+  --bg: var(--bg-base);
+  --bg-raised: var(--bg-1);
+  --bg-soft: var(--mat-thin);
+  --bg-elev: var(--mat-regular);
+  --bg-titlebar: var(--mat-chrome);
+  --bg-glass: var(--mat-thin);
+  --bg-glass-2: var(--mat-regular);
+
+  --line: var(--hairline);
+  --line-strong: var(--hairline-strong);
+  --line-soft: var(--hairline-soft);
+  --line-hairline: rgba(255, 255, 255, 0.025);
+
+  --color-background: var(--bg-base);
+  --color-foreground: var(--fg-1);
+  --color-card: var(--mat-thin);
+  --color-border: var(--hairline);
+  --color-muted: var(--fg-3);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+
+  --tr-display: 0;
+  --tr-tight: 0;
+  --tr-snug: 0;
+  --shadow-card: var(--shadow-pro-panel);
+}
+
+html[data-density="compact"] {
+  --h-input: 28px;
+  --h-button: 28px;
+  --pad-page-x: 28px;
+  --pad-page-y: 22px;
+  --pad-panel: 14px;
+  --gap-grid: 12px;
+}
+
+/* ============================================================
+   Google Gray refresh
+   Neutral graphite surfaces, crisp Material-style edges, and
+   restrained ilyStream cyan/magenta accents.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  --color-brand-cyan: #19c8ff;
+  --color-brand-magenta: #d035f1;
+  --color-brand-violet: #9b72f7;
+  --color-brand-cyan-rgb: 25, 200, 255;
+  --color-brand-magenta-rgb: 208, 53, 241;
+
+  --grad-brand: linear-gradient(135deg, #19c8ff 0%, #d035f1 100%);
+  --grad-brand-soft: linear-gradient(135deg, rgba(25, 200, 255, 0.14), rgba(208, 53, 241, 0.10));
+  --grad-brand-web: var(--grad-brand);
+  --brand-gradient: var(--grad-brand);
+
+  --bg-base: #141518;
+  --bg: #141518;
+  --bg-deep: #0e0f12;
+  --bg-1: #17191d;
+  --bg-2: #1d1f23;
+  --bg-3: #2c2f35;
+  --bg-raised: #1d1f23;
+  --bg-titlebar: rgba(23, 25, 29, 0.96);
+  --bg-soft: rgba(255, 255, 255, 0.035);
+  --bg-elev: rgba(255, 255, 255, 0.06);
+  --bg-glass: rgba(29, 31, 35, 0.84);
+  --bg-glass-2: rgba(36, 38, 43, 0.9);
+
+  --mat-thin: rgba(255, 255, 255, 0.035);
+  --mat-regular: rgba(255, 255, 255, 0.055);
+  --mat-thick: rgba(255, 255, 255, 0.085);
+  --mat-chrome: rgba(23, 25, 29, 0.94);
+
+  --fg: #f1f3f4;
+  --fg-1: #f1f3f4;
+  --fg-2: #e8eaed;
+  --fg-3: #bdc1c6;
+  --fg-4: #9aa0a6;
+  --fg-5: #80868b;
+  --fg-6: #5f6368;
+  --fg-7: #363a42;
+
+  --line: #363a42;
+  --line-strong: #4b515c;
+  --line-soft: rgba(232, 234, 237, 0.1);
+  --line-hairline: rgba(232, 234, 237, 0.065);
+  --hairline: #363a42;
+  --hairline-strong: #4b515c;
+  --hairline-soft: rgba(232, 234, 237, 0.1);
+
+  --color-accent: #19c8ff;
+  --color-accent-hover: #5bdcff;
+  --color-accent-rgb: 25, 200, 255;
+  --accent: var(--color-accent);
+  --accent-rgb: var(--color-accent-rgb);
+  --magenta: var(--color-brand-magenta);
+  --magenta-rgb: var(--color-brand-magenta-rgb);
+
+  --color-success: #81c995;
+  --color-warning: #fdd663;
+  --color-danger: #f28b82;
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+
+  --glass-bg: rgba(29, 31, 35, 0.76);
+  --glass-border: rgba(232, 234, 237, 0.1);
+  --glass-blur: blur(18px);
+  --topbar-blur: blur(18px);
+  --nav-blur: blur(18px) saturate(140%);
+
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --inset-bottom: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  --inset-emboss: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-pro-panel: 0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 28px rgba(0, 0, 0, 0.20), var(--inset-top);
+  --shadow-pro-float: 0 8px 24px rgba(0, 0, 0, 0.34), 0 24px 60px rgba(0, 0, 0, 0.26);
+  --shadow-accent: 0 0 0 1px rgba(25, 200, 255, 0.26), 0 8px 22px rgba(25, 200, 255, 0.12);
+
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 14px;
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+
+  --color-background: var(--bg-base);
+  --color-foreground: var(--fg-1);
+  --color-card: var(--bg-2);
+  --color-border: var(--line);
+  --color-muted: var(--fg-3);
+  --color-bg: var(--bg-base);
+  --color-bg-glass: var(--bg-glass);
+  --color-text-primary: var(--fg-1);
+  --color-text-secondary: var(--fg-3);
+}
+
+::selection {
+  background: rgba(25, 200, 255, 0.28);
+  color: #f8fbff;
+}

@@ -26,7 +26,7 @@ export function useChatLogic() {
   const statuses = useConnectionStore((s) => s.statuses);
 
   // Local UI state
-  const [capabilities, setCapabilities] = useState<Record<Platform, PlatformChatCapability>>(defaultCapabilities);
+  const [capabilities, setCapabilities] = useState<Partial<Record<Platform, PlatformChatCapability>>>(defaultCapabilities);
   const [composerText, setComposerText] = useState('');
   const [selectedTargets, setSelectedTargets] = useState<Platform[]>([]);
   const [relaySource, setRelaySource] = useState<ChatMessage | null>(null);
@@ -106,7 +106,14 @@ export function useChatLogic() {
   };
 
   const toggleTarget = (platform: Platform) => {
-    if (!capabilities[platform].canSend) return;
+    if (!capabilities[platform]?.canSend) {
+      setSendFeedback({
+        tone: 'warning',
+        text: `${platformLabel(platform)} is not ready for outbound chat: ${capabilities[platform]?.reason || 'Not connected'}`
+      });
+      return;
+    }
+    setSendFeedback(null);
     setSelectedTargets((curr) =>
       curr.includes(platform) ? curr.filter((p) => p !== platform) : [...curr, platform]
     );
@@ -166,7 +173,11 @@ export function useChatLogic() {
       () =>
         messages.filter((msg) => {
           if (platformFilter && msg.platform !== platformFilter) return false;
-          if (searchQuery && !msg.message.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase().trim();
+            const haystack = `${msg.message} ${msg.displayName} ${msg.username} ${msg.platform}`.toLowerCase();
+            if (!haystack.includes(query)) return false;
+          }
           return true;
         }),
       [messages, platformFilter, searchQuery]
@@ -185,4 +196,19 @@ export function useChatLogic() {
     toggleTarget,
     handleSend,
   };
+}
+
+function platformLabel(platform: Platform): string {
+  switch (platform) {
+    case 'tiktok':
+      return 'TikTok'
+    case 'twitch':
+      return 'Twitch'
+    case 'youtube':
+      return 'YouTube'
+    case 'kick':
+      return 'Kick'
+    default:
+      return platform
+  }
 }

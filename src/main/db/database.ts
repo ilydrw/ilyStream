@@ -18,6 +18,7 @@ import {
 import type { TikTokGiftInput, TikTokGiftRow } from './repositories/GiftsRepository'
 import { VoiceProfile } from '../tts/voice-profiles'
 import { TriggerRule } from '../triggers/trigger-types'
+import type { ViewerAccountInput, ViewerProfileInput } from '../../shared/stats'
 
 export type { TikTokGiftInput, TikTokGiftRow } from './repositories/GiftsRepository'
 
@@ -26,6 +27,7 @@ const EVENT_HISTORY_RETAIN_COUNT = 100_000
 export interface UserStatRow {
   username: string
   platform: string
+  platform_user_id: string | null
   display_name: string
   profile_picture_url: string | null
   total_likes: number
@@ -37,7 +39,15 @@ export interface UserStatRow {
   total_raids: number
   total_chats: number
   total_song_requests: number
+  total_cohost_calls: number
   is_fan_club_member: number
+  is_super_fan: number
+  is_moderator: number
+  moderator_badge_image_url: string | null
+  tiktok_fan_club_badge_image_url: string | null
+  tiktok_super_fan_badge_image_url: string | null
+  twitch_sub_badge_image_url: string | null
+  youtube_super_fan_badge_image_url: string | null
   profile_id: string | null
   first_seen_at: string
   last_seen_at: string
@@ -99,6 +109,32 @@ export class Database {
       }
     } catch (err) {
       console.error('[db] Stats rebuild failed:', err)
+    }
+
+    try {
+      // Bumped to v2: re-extract fan-club / super-fan / moderator flags from
+      // history so the improved TikTok detection is applied to existing tracked
+      // users (the v1 pass ran before that logic landed).
+      if (!this.getSetting('stats:audienceRoleBackfill:v2')) {
+        const changed = this.stats.backfillAudienceRolesFromHistory()
+        console.log(`[db] Backfilled audience role flags on ${changed} user stat rows.`)
+        this.setSetting('stats:audienceRoleBackfill:v2', 'true')
+      }
+    } catch (err) {
+      console.error('[db] Audience role backfill failed:', err)
+    }
+
+    try {
+      if (!this.getSetting('datafix:merge_dizzy_dork_v2')) {
+        const dizzyExists = this.db.prepare("SELECT 1 FROM user_stats WHERE platform = 'twitch' AND LOWER(username) = 'dizzy_dork'").get()
+        if (dizzyExists) {
+          console.log('[db] Running one-time merge: dizzy_dork -> snapandinu...')
+          this.stats.mergeRenamedAccount('twitch', 'dizzy_dork', 'snapandinu', { platformUserId: '1035697934' })
+        }
+        this.setSetting('datafix:merge_dizzy_dork_v2', 'true')
+      }
+    } catch (err) {
+      console.error('[db] One-time merge for dizzy_dork failed:', err)
     }
   }
 
@@ -319,8 +355,20 @@ export class Database {
   incrementGlobalStat(k: string, a: number) { this.stats.incrementGlobalStat(k, a) }
   getPlatformTotals(p: string) { return this.stats.getPlatformTotals(p) }
   getTopIdentities(o: any) { return this.stats.getTopIdentities(o) }
-  linkAccounts(p1: string, u1: string, p2: string, u2: string) { this.stats.linkAccounts(p1, u1, p2, u2) }
+  linkAccounts(p1: string, u1: string, p2: string, u2: string) { return this.stats.linkAccounts(p1, u1, p2, u2) }
   unlinkAccount(p: string, u: string) { this.stats.unlinkAccount(p, u) }
+  getViewerProfileId(
+    platform: string,
+    username: string,
+    identity?: { platformUserId?: string | null; displayName?: string | null }
+  ) {
+    return this.stats.getViewerProfileId(platform, username, identity)
+  }
+  getViewerProfiles(o?: { query?: string; limit?: number }) { return this.stats.getViewerProfiles(o) }
+  getViewerProfile(id: string) { return this.stats.getViewerProfile(id) }
+  createViewerProfile(input: ViewerProfileInput) { return this.stats.createViewerProfile(input) }
+  updateViewerProfile(id: string, patch: Partial<ViewerProfileInput>) { return this.stats.updateViewerProfile(id, patch) }
+  addViewerAccount(profileId: string, account: ViewerAccountInput) { return this.stats.addAccountToProfile(profileId, account) }
 
   // Gifts
   getTikTokGift(id: string) { return this.gifts.getTikTokGift(id) }

@@ -1,7 +1,17 @@
 import {IconCpu} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
-import { TTSAudiencePermission } from '../../../../shared/app-settings'
-import { commandPrefixOptions, audiencePermissionOptions } from '../constants'
+import { Select, type SelectOption } from '../../../components/ui/Select'
+import { DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE, TTSAudiencePermission, type AppSettings } from '../../../../shared/app-settings'
+import type { VoiceProfile } from '../../../../main/tts/voice-profiles'
+import { commandPrefixOptions, audiencePermissionOptions, voiceRoutingFields } from '../constants'
+
+const chatTemplateTokens = [
+  '{message}',
+  '{username}',
+  '{displayName}',
+  '{platform}',
+  '{mention}'
+]
 
 interface EngineLogicSidebarProps {
   ttsRequireCommand: boolean
@@ -9,6 +19,8 @@ interface EngineLogicSidebarProps {
   ttsAllowedRoles: TTSAudiencePermission[]
   ttsIgnoreEmotes: boolean
   ttsVolume: number
+  profiles: VoiceProfile[]
+  settings: AppSettings
   onSetRequireCommand: (v: boolean) => void
   onSelectCommandPrefix: (prefix: string) => void
   onToggleAudiencePermission: (permission: TTSAudiencePermission) => void
@@ -21,13 +33,29 @@ export function EngineLogicSidebar({
   ttsAllowedRoles,
   ttsIgnoreEmotes,
   ttsVolume,
+  profiles,
+  settings,
   onSetRequireCommand,
   onSelectCommandPrefix,
   onToggleAudiencePermission,
   onUpdateSetting
 }: EngineLogicSidebarProps) {
+  const defaultProfile = profiles.find((p) => p.isDefault) ?? profiles[0]
+  const chatMessageTemplate = settings.tts.chatMessageTemplate || DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE
+  const profileOptions: SelectOption[] = [
+    {
+      value: '',
+      label: defaultProfile ? `Default · ${defaultProfile.name}` : 'Default profile',
+      group: 'Default route'
+    },
+    ...profiles.map((profile) => ({
+      value: profile.id,
+      label: profile.name,
+      group: formatProvider(profile.provider)
+    }))
+  ]
   return (
-    <section className="app-section-card glass">
+    <section className="app-section-card glass overflow-visible">
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
@@ -41,6 +69,55 @@ export function EngineLogicSidebar({
       </div>
       <div className="app-section-content">
         <div className="flex flex-col gap-6">
+        {/* Voice Routing — assign profiles to event types */}
+        <div className="flex flex-col gap-3 pb-6 border-b border-white/[0.04]">
+          <label className="text-xs font-semibold tracking-tight text-white/40">Voice Routing</label>
+          <p className="text-xs text-white/40 leading-relaxed">
+            Pick which profile speaks each event. Default falls back to the profile marked default.
+          </p>
+          {voiceRoutingFields.map((field) => (
+            <div key={field.key} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-white/70">{field.label}</span>
+                <span className="text-[10px] text-white/30">{field.hint}</span>
+              </div>
+              <Select
+                value={settings.tts[field.target] ?? ''}
+                options={profileOptions}
+                onChange={(value) => void onUpdateSetting(field.key, value)}
+                buttonClassName="!h-10 !px-4 !text-xs"
+                searchable
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-3 pb-6 border-b border-white/[0.04]">
+          <label className="text-xs font-semibold tracking-tight text-white/40">Chat Speech Format</label>
+          <textarea
+            value={chatMessageTemplate}
+            onChange={(event) => onUpdateSetting('ttsChatMessageTemplate', event.currentTarget.value)}
+            placeholder={DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE}
+            rows={2}
+            className="app-textarea !min-h-[76px] !px-4 !py-3 !text-sm font-mono leading-relaxed resize-none"
+          />
+          <div className="flex flex-wrap gap-2">
+            {chatTemplateTokens.map((token) => (
+              <button
+                key={token}
+                type="button"
+                onClick={() => onUpdateSetting('ttsChatMessageTemplate', appendTemplateToken(chatMessageTemplate, token))}
+                className="h-8 rounded-md border border-white/5 bg-white/[0.03] px-2.5 font-mono text-[11px] font-semibold text-white/50 transition-colors hover:border-white/15 hover:text-white"
+              >
+                {token}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-white/35 leading-relaxed">
+            Example: <code className="font-mono text-white/65">{'{username} says {message}'}</code>
+          </p>
+        </div>
+
         {/* Implicit TTS row */}
         <div className="flex items-center justify-between gap-6">
           <div className="min-w-0">
@@ -144,4 +221,15 @@ export function EngineLogicSidebar({
     </div>
   </section>
   )
+}
+
+function appendTemplateToken(template: string, token: string): string {
+  const trimmed = template.trimEnd()
+  return trimmed ? `${trimmed} ${token}` : token
+}
+
+function formatProvider(provider?: string): string {
+  if (provider === 'elevenlabs') return 'ElevenLabs'
+  if (provider === 'kokoro') return 'Kokoro'
+  return 'System'
 }

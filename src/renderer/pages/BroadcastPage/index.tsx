@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconCast, IconSparkles, IconVideo, IconKeyboard } from '@tabler/icons-react'
+import { IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconCast, IconSparkles, IconVideo, IconKeyboard, IconCrop } from '@tabler/icons-react'
 import { IconPencil, IconCopy, IconTrash, IconX } from '../../components/ui/icons'
 
 import { useStudioStore } from '../../stores/studio-store'
@@ -25,6 +25,7 @@ import { RecordingSettingsModal } from './components/RecordingSettingsModal'
 
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
+import { CropModal } from './components/CropModal'
 import { usePageVisibility } from '../../hooks/usePageVisibility'
 import { toPlatformConfigMap } from '../../lib/platform-configs'
 
@@ -209,6 +210,7 @@ export default function BroadcastPage() {
   const [showSourceModal, setShowSourceModal] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenuState | null>(null)
   const [sceneContextMenu, setSceneContextMenu] = useState<{ x: number, y: number, sceneId: string } | null>(null)
+  const [cropTarget, setCropTarget] = useState<{ layer: StudioLayer; sceneId: string; aspectContext: '16:9' | '9:16' } | null>(null)
   const [captureInputFormat, setCaptureInputFormat] = useState<'h264' | 'mjpeg'>('h264')
   const [outputConfig, setOutputConfig] = useState({ fps: 30, bitrateKbps: 6000 })
   const [layoutInputFormats, setLayoutInputFormats] = useState<Record<BroadcastLayoutId, 'h264' | 'mjpeg'>>({ horizontal: 'h264', vertical: 'h264' })
@@ -285,6 +287,14 @@ export default function BroadcastPage() {
   const [showStingerConfig, setShowStingerConfig] = useState(false)
   const [showHotkeys, setShowHotkeys] = useState(false)
   const [showRecordingSettings, setShowRecordingSettings] = useState(false)
+  const visibleScenes = useMemo(() => {
+    return store.scenes.filter(s => {
+      if (!s.layoutMode) return true
+      if (broadcastLayoutMode === 'horizontal') return s.layoutMode === 'horizontal' || s.layoutMode === 'dual-horizontal' || s.layoutMode === 'dual'
+      if (broadcastLayoutMode === 'vertical') return s.layoutMode === 'vertical' || s.layoutMode === 'dual-portrait' || s.layoutMode === 'dual'
+      return true
+    })
+  }, [store.scenes, broadcastLayoutMode])
 
   const changeBroadcastLayoutMode = useCallback((mode: string) => {
     const nextMode = mode as BroadcastLayoutMode
@@ -292,6 +302,18 @@ export default function BroadcastPage() {
     setBroadcastLayoutMode(nextMode)
     setSelectionContext(nextAspectRatio)
     store.setAspectRatio(nextAspectRatio)
+
+    const isVisible = (s: typeof store.scenes[0]) => {
+      if (!s.layoutMode) return true
+      if (nextMode === 'horizontal') return s.layoutMode === 'horizontal' || s.layoutMode === 'dual-horizontal' || s.layoutMode === 'dual'
+      if (nextMode === 'vertical') return s.layoutMode === 'vertical' || s.layoutMode === 'dual-portrait' || s.layoutMode === 'dual'
+      return true
+    }
+    const currentVisible = isVisible(store.scenes.find(s => s.id === store.activeSceneId) || store.scenes[0])
+    if (!currentVisible) {
+      const nextVisible = store.scenes.find(isVisible)
+      if (nextVisible) store.setActiveScene(nextVisible.id)
+    }
   }, [store])
 
   const changeSelectionContext = useCallback((nextContext: ProjectorAspectRatio) => {
@@ -350,17 +372,25 @@ export default function BroadcastPage() {
     return outputs
   }, [activeLayoutAssignments, isStreaming, layoutInputFormats, outputConfig.fps, outputConfig.bitrateKbps, virtualCameraFeed, virtualCameraInfo, store.aspectRatio])
 
-  const { streamReady, forceRefreshMedia } = useMediaManagement({
-    activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
-    updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
-    removeAudioSource: store.removeAudioSource, audioSources: store.audioSources
-  })
-
   // Tracks aspect ratios currently being mirrored to projector windows so we
   // can force the matching output canvas to render on demand. Without this,
   // a 9:16 projector opened in horizontal-only mode would have no vertical
   // canvas to capture from.
   const [activeMirrorAspects, setActiveMirrorAspects] = useState({ horizontal: 0, vertical: 0 })
+
+  const activeMediaAspectRatios = useMemo<ProjectorAspectRatio[]>(() => {
+    const ratios = new Set<ProjectorAspectRatio>([store.aspectRatio])
+    if (activeMirrorAspects.horizontal > 0) ratios.add('16:9')
+    if (activeMirrorAspects.vertical > 0) ratios.add('9:16')
+    return Array.from(ratios)
+  }, [store.aspectRatio, activeMirrorAspects])
+
+  const { streamReady, forceRefreshMedia } = useMediaManagement({
+    activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
+    updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
+    removeAudioSource: store.removeAudioSource, audioSources: store.audioSources,
+    activeAspectRatios: activeMediaAspectRatios
+  })
 
   // Projector windows can't hold the cameras this window owns, so we mirror
   // our already-composed scene canvas to them as ImageBitmap frames. Unlike
@@ -925,10 +955,10 @@ export default function BroadcastPage() {
       <div className="flex-1 flex min-h-0 bg-black">
         {showLeftSidebar && (
           <SceneSidebar
-            scenes={store.scenes}
+            scenes={visibleScenes}
             activeSceneId={store.studioMode ? store.previewSceneId : store.activeSceneId}
             onSelectScene={store.setActiveScene}
-            onAddScene={store.addScene}
+            onAddScene={(name) => store.addScene(name, broadcastLayoutMode)}
             onRenameScene={store.renameScene}
             onDuplicateScene={store.duplicateScene}
             onRemoveScene={store.removeScene}
@@ -1091,6 +1121,15 @@ export default function BroadcastPage() {
         onUpdate={(id, u) => store.updateLayer(store.studioMode && previewScene.layers.find(l => l.id === id) ? previewScene.id : activeScene.id, id, u)}
         videoRefs={videoRefs}
         aspectContext={selectionContext}
+      />
+      <CropModal
+        open={!!cropTarget}
+        onClose={() => setCropTarget(null)}
+        layer={cropTarget?.layer ?? null}
+        sceneId={cropTarget?.sceneId ?? ''}
+        aspectContext={cropTarget?.aspectContext ?? '16:9'}
+        videoRefs={videoRefs}
+        onUpdate={(sceneId, layerId, updates) => store.updateLayer(sceneId, layerId, updates)}
       />
       <MultiViewModal
         open={showMultiView}
@@ -1290,6 +1329,16 @@ export default function BroadcastPage() {
               disabled: !(sourceContextMenu.layer.type === 'camera' || sourceContextMenu.layer.type === 'display' || sourceContextMenu.layer.type === 'image'),
               onClick: () => {
                 store.setShowEnhancementModal(true, sourceContextMenu.layer?.id || null)
+              }
+            }] : []),
+            ...(sourceContextMenu.layer.type !== 'audio' ? [{
+              id: 'crop',
+              label: 'Crop',
+              icon: <IconCrop size={18} />,
+              disabled: !(sourceContextMenu.layer.type === 'camera' || sourceContextMenu.layer.type === 'display' || sourceContextMenu.layer.type === 'image'),
+              onClick: () => {
+                const layer = sourceContextMenu.layer!
+                setCropTarget({ layer, sceneId: sourceContextMenu.sceneId, aspectContext: sourceContextMenu.aspectRatio })
               }
             }] : []),
             ...(sourceContextMenu.layer.type !== 'audio' ? [{

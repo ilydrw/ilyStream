@@ -9,7 +9,7 @@ interface OutboundSidebarProps {
   composerText: string
   selectedTargets: Platform[]
   relaySource: ChatMessage | null
-  capabilities: Record<Platform, PlatformChatCapability>
+  capabilities: Partial<Record<Platform, PlatformChatCapability>>
   isSending: boolean
   sendFeedback: { tone: 'success' | 'warning' | 'error'; text: string } | null
   onComposerTextChange: (text: string) => void
@@ -61,14 +61,16 @@ export function OutboundSidebar({
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(capabilities) as Platform[]).map((p) => {
               const cap = capabilities[p]
+              if (!cap) return null
               const selected = selectedTargets.includes(p)
+              const unavailable = !cap.canSend
               return (
                 <button
                   key={`target-${p}`}
                   onClick={() => onToggleTarget(p)}
-                  disabled={!cap.canSend}
                   title={cap.canSend ? `Send to ${PLATFORM_LABELS[p]}` : cap.reason}
-                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-semibold transition-all ${ selected ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90' } disabled:opacity-30 disabled:cursor-not-allowed`}
+                  aria-disabled={unavailable}
+                  className={`flex items-center gap-2 h-12 px-4 rounded-xl border text-sm font-semibold transition-all ${ selected ? 'bg-accent/10 border-accent/30 text-accent' : unavailable ? 'bg-white/[0.015] border-white/5 text-white/30 hover:border-warning/25 hover:text-warning/80' : 'bg-white/[0.03] border-white/5 text-white/60 hover:border-white/10 hover:text-white/90' }`}
                 >
                   <PlatformLogo platform={p} size={14} />
                   {PLATFORM_LABELS[p]}

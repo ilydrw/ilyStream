@@ -8,7 +8,6 @@ describe('AlertManager', () => {
 
     manager.pushAlert({
       id: 'alert-1',
-      template: 'Alert',
       audioUrl: 'alerts/alert.mp3',
       audioVolume: 0.75,
       durationMs: 5000,
@@ -38,7 +37,6 @@ describe('AlertManager', () => {
 
     manager.pushAlert({
       id: 'alert-2',
-      template: 'Alert',
       audioUrl: 'alert.wav',
       durationMs: 5000,
       animationIn: 'fade',
@@ -57,8 +55,43 @@ describe('AlertManager', () => {
 
     manager.pushAlert({
       id: 'alert-3',
-      template: 'Alert',
       imageUrl: 'gift-icon.png',
+      durationMs: 5000,
+      animationIn: 'fade',
+      animationOut: 'fade'
+    }, 'tiktok')
+
+    expect(manager.getHistory()[0]).toEqual(
+      expect.objectContaining({
+        imageUrl: '/assets/gift-icon.png'
+      })
+    )
+  })
+
+  it('rewrites asset protocol image URLs to overlay-served asset URLs', () => {
+    const manager = new AlertManager({ broadcast: vi.fn() } as any)
+
+    manager.pushAlert({
+      id: 'alert-asset-url',
+      imageUrl: 'asset:///app/gift%20icon.png',
+      durationMs: 5000,
+      animationIn: 'fade',
+      animationOut: 'fade'
+    }, 'tiktok')
+
+    expect(manager.getHistory()[0]).toEqual(
+      expect.objectContaining({
+        imageUrl: '/assets/gift%20icon.png'
+      })
+    )
+  })
+
+  it('rewrites preview-style asset image URLs to overlay-served asset URLs', () => {
+    const manager = new AlertManager({ broadcast: vi.fn() } as any)
+
+    manager.pushAlert({
+      id: 'alert-preview-url',
+      imageUrl: 'asset://image/gift-icon.png',
       durationMs: 5000,
       animationIn: 'fade',
       animationOut: 'fade'
@@ -76,7 +109,6 @@ describe('AlertManager', () => {
 
     manager.pushAlert({
       id: 'alert-4',
-      template: 'Alert',
       imageUrl: 'https://cdn.example.com/avatar.png',
       durationMs: 5000,
       animationIn: 'fade',

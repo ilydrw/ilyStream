@@ -2,6 +2,75 @@
   min-width: 0;
 }
 
+.tts-voice-editor {
+  min-width: 0;
+}
+
+.tts-voice-editor-head {
+  min-height: 74px;
+}
+
+.tts-voice-editor-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.tts-voice-editor-actions {
+  flex: 0 0 auto;
+}
+
+.tts-voice-editor-content {
+  padding: 22px 24px 24px;
+}
+
+.tts-voice-editor-grid {
+  align-items: start;
+}
+
+.tts-voice-editor-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.tts-profile-id-input {
+  max-width: 260px;
+}
+
+.tts-provider-tile {
+  min-width: 0;
+}
+
+.tts-provider-tile span,
+.tts-provider-tile small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tts-tuning-panel {
+  border-radius: 8px;
+}
+
+.tts-preview-inline {
+  max-width: 720px;
+}
+
+@media (max-width: 960px) {
+  .tts-voice-editor-head {
+    align-items: stretch;
+  }
+
+  .tts-voice-editor-actions {
+    justify-content: flex-start;
+  }
+
+  .tts-profile-id-input {
+    max-width: none;
+  }
+}
+
 .tts-editor-body {
   display: flex;
   flex-direction: column;

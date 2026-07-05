@@ -3,7 +3,8 @@ import {
   StreamingService,
   type StreamConfig,
   type RecordingConfig,
-  type VideoFramePayload
+  type VideoFramePayload,
+  type AudioFramePayload
 } from '../../services/streaming-service'
 import type { VirtualCameraService } from '../../services/virtual-camera-service'
 
@@ -24,6 +25,15 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
 
   ipcMain.handle('streaming:get-status', () => {
     return streamingService.getStreamStatus()
+  })
+
+  ipcMain.handle('streaming:get-outputs', () => {
+    return streamingService.getOutputsStatus()
+  })
+
+  ipcMain.handle('streaming:stop-output', (_event, outputId: string) => {
+    streamingService.stopStreamOutput(outputId)
+    return { success: true }
   })
 
   // Recording Handlers
@@ -65,7 +75,7 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     streamingService.feedVideoFrame(frameData)
   })
 
-  ipcMain.on('streaming:feed-audio', (_event, audioData: Buffer) => {
+  ipcMain.on('streaming:feed-audio', (_event, audioData: Buffer | AudioFramePayload) => {
     streamingService.feedAudioFrame(audioData)
   })
 }

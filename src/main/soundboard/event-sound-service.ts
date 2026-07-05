@@ -1,23 +1,33 @@
 import type { AppSettings } from '../../shared/app-settings'
-import type { AnyStreamEvent, JoinEvent } from '../platforms/types'
+import type { AnyStreamEvent, GiftEvent, JoinEvent } from '../platforms/types'
 import type { SoundboardService } from './soundboard-service'
 import type { OverlayServer } from '../overlay/overlay-server'
 import type { AlertRule } from '../../shared/alert-rules'
+import { LowValueGiftCooldown } from '../../shared/gift-alert-protection'
 
 type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
 const GIFT_ALERT_AGGREGATION_MS = 150
 const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
 
+export type ViewerProfileResolver = (
+  platform: string,
+  username: string,
+  identity?: { platformUserId?: string | null; displayName?: string | null }
+) => string | null
+
 export class EventSoundService {
   private settings: AppSettings | null = null
   private recentSuperfanJoinUsers = new Map<string, number>()
   private recentRuleHits = new Map<string, number>()
-  private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: AnyStreamEvent }>()
+  private recentJoinSoundHits = new Map<string, number>()
+  private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: GiftEvent }>()
+  private lowValueGiftAlertCooldown = new LowValueGiftCooldown()
 
   constructor(
     private readonly soundboardService: Pick<SoundboardService, 'playSound' | 'stopAll'>,
-    private readonly overlayServer: Pick<OverlayServer, 'pushAlert' | 'getStatus'>
+    private readonly overlayServer: Pick<OverlayServer, 'pushAlert' | 'getStatus'>,
+    private readonly resolveViewerProfileId: ViewerProfileResolver = () => null
   ) {}
 
   applySettings(settings: AppSettings): void {
@@ -50,6 +60,9 @@ export class EventSoundService {
         return
 
       case 'join':
+        // Personal join sounds fire independently of the superfan alert — a
+        // viewer can have both.
+        this.handleViewerJoinSound(event)
         if (this.shouldTreatJoinAsSuperfan(event)) {
           this.handleAlert('Superfan', event)
           return
@@ -60,7 +73,7 @@ export class EventSoundService {
     this.handleRuleAlerts(event)
   }
 
-  private aggregateGift(event: any): void {
+  private aggregateGift(event: GiftEvent): void {
     if (!this.settings) return
     if (event.isCombo) return
 
@@ -72,6 +85,22 @@ export class EventSoundService {
       clearTimeout(existing.timer)
       existing.count += (event.giftCount || 1)
       existing.lastEvent = event
+
+      const runTimer = () => {
+        const final = this.giftAggregationTimers.get(giftKey)
+        if (final) {
+          this.giftAggregationTimers.delete(giftKey)
+          const aggregatedEvent = {
+            ...final.lastEvent,
+            giftCount: final.count,
+            isCombo: false,
+            // Sum up monetary value if available
+            monetaryValue: (final.lastEvent.monetaryValue || 0) * (final.count / (final.lastEvent.giftCount || 1))
+          }
+          this.handleAlert('Gift', aggregatedEvent as any)
+        }
+      }
+      existing.timer = setTimeout(runTimer, GIFT_ALERT_AGGREGATION_MS)
     } else {
       this.giftAggregationTimers.set(giftKey, {
         count: event.giftCount || 1,
@@ -101,6 +130,8 @@ export class EventSoundService {
       this.handleRuleAlerts(event)
       return
     }
+
+    if (this.shouldSuppressLowValueGiftAlert(event)) return
 
     const soundEnabled = this.settings[`eventSound${kind}Enabled`]
     const soundId = this.settings[`eventSound${kind}SoundId`]
@@ -159,6 +190,7 @@ export class EventSoundService {
 
   private handleRuleAlerts(event: AnyStreamEvent): void {
     if (!this.settings?.alertRules?.length) return
+    if (this.shouldSuppressLowValueGiftAlert(event)) return
 
     const rules = [...this.settings.alertRules]
       .filter(rule => this.matchesRule(rule, event))
@@ -178,6 +210,7 @@ export class EventSoundService {
 
     for (const rule of rules) {
       this.handleRuleAlert(rule, event)
+      break
     }
   }
 
@@ -245,7 +278,12 @@ export class EventSoundService {
     // soundboard path) when no overlay client is connected — otherwise the
     // streamer would hear every alert twice (once from the renderer, once
     // from the overlay browser source).
-    if (hasSound && !this.hasOverlayAudioSink()) {
+    //
+    // Exception: if the streamer turned on "local monitoring", always play in
+    // the app too. That's for people who DON'T monitor their OBS browser-source
+    // audio and were otherwise hearing nothing once the overlay connected.
+    const localMonitoring = Boolean(this.settings.alertSoundLocalMonitoring)
+    if (hasSound && (localMonitoring || !this.hasOverlayAudioSink())) {
       this.soundboardService.playSound(rule.soundId, rule.soundVolume)
     }
 
@@ -270,6 +308,12 @@ export class EventSoundService {
     this.overlayServer.pushAlert(
       {
         id: `${event.id}:${rule.id}`,
+        // Rule-based alerts render with the rule's own styling (border,
+        // background, colors, layout, template). We intentionally do NOT apply
+        // the hardcoded "clean" variant here — that ignored the rule's
+        // borderColor/backgroundColor and made the editor's Style controls
+        // do nothing for gift/follow/sub alerts.
+        eventType: event.type,
         template: text,
         imageUrl: hasImage ? imageUrl : '',
         durationMs: rule.durationMs,
@@ -301,6 +345,14 @@ export class EventSoundService {
     } catch {
       return false
     }
+  }
+
+  private shouldSuppressLowValueGiftAlert(event: AnyStreamEvent): boolean {
+    const shouldSuppress = this.lowValueGiftAlertCooldown.shouldSuppress(event)
+    if (shouldSuppress) {
+      console.log('[event-sound] Suppressed low-value TikTok gift alert during anti-spam cooldown.')
+    }
+    return shouldSuppress
   }
 
   private resolveRuleImageUrl(rule: AlertRule, event: AnyStreamEvent): string {
@@ -347,7 +399,7 @@ export class EventSoundService {
 
     text = text.replace(/{platform}/g, event.platform)
     text = text.replace(/{eventType}/g, event.type)
-    text = text.replace(/{message}/g, 'message' in event ? event.message : '')
+    text = text.replace(/{message}/g, 'message' in event ? (event.message ?? '') : '')
     text = text.replace(/{viewerCount}/g, 'viewerCount' in event ? String(event.viewerCount) : '')
     text = text.replace(/{likeCount}/g, 'likeCount' in event ? String(event.likeCount) : '')
     text = text.replace(/{totalLikes}/g, 'totalLikes' in event ? String(event.totalLikes) : '')
@@ -366,6 +418,55 @@ export class EventSoundService {
     }
 
     return text
+  }
+
+  /**
+   * Plays a viewer's personal join sound, if one is configured on their viewer
+   * profile (or as a raw platform+username rule). Cooldown is per rule+viewer
+   * so a rejoin during the same stream doesn't spam the sound.
+   */
+  private handleViewerJoinSound(event: JoinEvent): void {
+    const rules = this.settings?.viewerJoinSounds
+    if (!rules?.length) return
+
+    const username = normalizeJoinUsername(event.user.username)
+    if (!username) return
+
+    const viewerProfileId = this.resolveViewerProfileId(event.platform, event.user.username, {
+      platformUserId: event.user.id,
+      displayName: event.user.displayName
+    })
+
+    const rule = rules.find((candidate) => {
+      if (!candidate.enabled || !candidate.soundId) return false
+      if (candidate.viewerProfileId) {
+        return Boolean(viewerProfileId) && candidate.viewerProfileId === viewerProfileId
+      }
+      if (candidate.platform !== 'all' && candidate.platform !== event.platform) return false
+      return normalizeJoinUsername(candidate.username) === username
+    })
+    if (!rule) return
+
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    const cooldownMs = rule.cooldownMinutes * 60_000
+    const hitKey = `${rule.id}:${viewerProfileId || `${event.platform}:${username}`}`
+    if (cooldownMs > 0 && !isSimulated) {
+      const previous = this.recentJoinSoundHits.get(hitKey)
+      if (previous && Date.now() - previous < cooldownMs) return
+    }
+
+    console.log(`[event-sound] Playing join sound for ${event.user.username} (rule ${rule.id})`)
+    this.soundboardService.playSound(rule.soundId, rule.volume)
+
+    if (!isSimulated) {
+      this.recentJoinSoundHits.set(hitKey, Date.now())
+      if (this.recentJoinSoundHits.size > 1000) {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000
+        for (const [key, ts] of this.recentJoinSoundHits) {
+          if (ts < cutoff) this.recentJoinSoundHits.delete(key)
+        }
+      }
+    }
   }
 
   private shouldTreatJoinAsSuperfan(event: JoinEvent): boolean {
@@ -391,79 +492,52 @@ export class EventSoundService {
   }
 
   private withLegacyAlertRouteValues(settings: AppSettings): AppSettings {
-    const alertRules = (settings.alertRules || []).map(rule => {
+    const alertRules = ((settings.alertRules || []) as AlertRule[]).map(rule => {
       if (rule.id === 'default-gifts') {
+        // Sound/image/text plumbing still honours the legacy flat settings for
+        // backward-compat with migrated users. But VISUAL STYLE (border, colors,
+        // layout, animation, sizing) now comes straight from the rule — the
+        // Alerts editor is the only thing that sets those, so overriding them
+        // here silently discarded every style edit (e.g. a 'gradient' border
+        // reverting to the old default).
+        const routeHasImageAsset = Boolean(rule.imageAssetId)
         return {
           ...rule,
           soundEnabled: settings.eventSoundGiftEnabled,
           soundId: settings.eventSoundGiftSoundId || rule.soundId,
           soundVolume: settings.eventSoundGiftVolume,
-          imageEnabled: settings.eventImageGiftEnabled,
-          imageAssetId: settings.eventImageGiftAssetId || rule.imageAssetId,
+          imageEnabled: routeHasImageAsset ? rule.imageEnabled : settings.eventImageGiftEnabled,
+          imageAssetId: rule.imageAssetId || settings.eventImageGiftAssetId,
           textEnabled: settings.eventTextGiftEnabled,
-          textTemplate: settings.eventTextGiftTemplate || rule.textTemplate,
-          textColor: settings.eventTextGiftColor,
-          backgroundColor: settings.eventTextGiftBackgroundColor,
-          borderColor: settings.eventTextGiftBorderColor,
-          fontSize: settings.eventTextGiftFontSize,
-          layout: settings.eventAlertGiftLayout,
-          animationIn: settings.eventAlertGiftAnimationIn,
-          animationOut: settings.eventAlertGiftAnimationOut,
-          durationMs: settings.eventAlertGiftDurationMs,
-          fontWeight: settings.eventAlertGiftFontWeight,
-          textShadow: settings.eventAlertGiftTextShadow,
-          imageTop: settings.eventAlertGiftImageTop,
-          imageLeft: settings.eventAlertGiftImageLeft
+          textTemplate: settings.eventTextGiftTemplate || rule.textTemplate
         }
       }
 
       if (rule.id === 'default-follows') {
+        const routeHasImageAsset = Boolean(rule.imageAssetId)
         return {
           ...rule,
           soundEnabled: settings.eventSoundFollowEnabled,
           soundId: settings.eventSoundFollowSoundId || rule.soundId,
           soundVolume: settings.eventSoundFollowVolume,
-          imageEnabled: settings.eventImageFollowEnabled,
-          imageAssetId: settings.eventImageFollowAssetId || rule.imageAssetId,
+          imageEnabled: routeHasImageAsset ? rule.imageEnabled : settings.eventImageFollowEnabled,
+          imageAssetId: rule.imageAssetId || settings.eventImageFollowAssetId,
           textEnabled: settings.eventTextFollowEnabled,
-          textTemplate: settings.eventTextFollowTemplate || rule.textTemplate,
-          textColor: settings.eventTextFollowColor,
-          backgroundColor: settings.eventTextFollowBackgroundColor,
-          borderColor: settings.eventTextFollowBorderColor,
-          fontSize: settings.eventTextFollowFontSize,
-          layout: settings.eventAlertFollowLayout,
-          animationIn: settings.eventAlertFollowAnimationIn,
-          animationOut: settings.eventAlertFollowAnimationOut,
-          durationMs: settings.eventAlertFollowDurationMs,
-          fontWeight: settings.eventAlertFollowFontWeight,
-          textShadow: settings.eventAlertFollowTextShadow,
-          imageTop: settings.eventAlertFollowImageTop,
-          imageLeft: settings.eventAlertFollowImageLeft
+          textTemplate: settings.eventTextFollowTemplate || rule.textTemplate
         }
       }
 
       if (rule.id === 'default-subs') {
+        const routeHasImageAsset = Boolean(rule.imageAssetId)
         return {
           ...rule,
           soundEnabled: settings.eventSoundSuperfanEnabled,
           soundId: settings.eventSoundSuperfanSoundId || rule.soundId,
           soundVolume: settings.eventSoundSuperfanVolume,
-          imageEnabled: settings.eventImageSuperfanEnabled,
-          imageAssetId: settings.eventImageSuperfanAssetId || rule.imageAssetId,
+          imageEnabled: routeHasImageAsset ? rule.imageEnabled : settings.eventImageSuperfanEnabled,
+          imageAssetId: rule.imageAssetId || settings.eventImageSuperfanAssetId,
           textEnabled: settings.eventTextSuperfanEnabled,
-          textTemplate: settings.eventTextSuperfanTemplate || rule.textTemplate,
-          textColor: settings.eventTextSuperfanColor,
-          backgroundColor: settings.eventTextSuperfanBackgroundColor,
-          borderColor: settings.eventTextSuperfanBorderColor,
-          fontSize: settings.eventTextSuperfanFontSize,
-          layout: settings.eventAlertSuperfanLayout,
-          animationIn: settings.eventAlertSuperfanAnimationIn,
-          animationOut: settings.eventAlertSuperfanAnimationOut,
-          durationMs: settings.eventAlertSuperfanDurationMs,
-          fontWeight: settings.eventAlertSuperfanFontWeight,
-          textShadow: settings.eventAlertSuperfanTextShadow,
-          imageTop: settings.eventAlertSuperfanImageTop,
-          imageLeft: settings.eventAlertSuperfanImageLeft
+          textTemplate: settings.eventTextSuperfanTemplate || rule.textTemplate
         }
       }
 
@@ -472,6 +546,51 @@ export class EventSoundService {
 
     return { ...settings, alertRules }
   }
+
+  private getProfessionalAlertDetails(event: AnyStreamEvent): any {
+    const isGift = event.type === 'gift'
+    const isFollow = event.type === 'follow'
+    const isSub = event.type === 'subscription' || (event.type === 'join' && this.shouldTreatJoinAsSuperfan(event as any))
+
+    let eyebrow = ''
+    let subtitle = ''
+    let variant = ''
+    let accentColor = '#38bdf8'
+
+    if (event.platform === 'tiktok') {
+      if (isGift) {
+        eyebrow = 'Gift received'
+        subtitle = `sent ${event.giftCount || 1}x ${event.giftName}`
+        variant = 'clean-gift'
+        accentColor = '#f7c948'
+      } else if (isFollow) {
+        eyebrow = 'New follower'
+        subtitle = 'started following'
+        variant = 'clean-follow'
+        accentColor = '#38bdf8'
+      } else if (isSub) {
+        eyebrow = 'New subscriber'
+        subtitle = 'joined the community'
+        variant = 'clean-superfan'
+        accentColor = '#e879f9'
+      }
+      return {
+        eventType: event.type,
+        variant,
+        eyebrow,
+        headline: 'user' in event ? event.user.displayName : '',
+        subtitle,
+        meta: 'TikTok',
+        accentColor
+      }
+    }
+
+    return {}
+  }
+}
+
+function normalizeJoinUsername(value: string): string {
+  return String(value || '').trim().toLowerCase().replace(/^@+/, '')
 }
 
 function escapeHtml(value: string): string {

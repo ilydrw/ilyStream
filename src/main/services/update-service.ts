@@ -100,3 +100,16 @@ export function disposeAutoUpdates(): void {
 export function installUpdate(): void {
   autoUpdater.quitAndInstall()
 }
+
+/** Manual "Check for updates" from Settings. No-op in development builds. */
+export async function checkForUpdatesNow(): Promise<{ ok: boolean; message?: string }> {
+  if (!app.isPackaged) {
+    return { ok: false, message: 'Updates are disabled in development builds.' }
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) }
+  }
+}

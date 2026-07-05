@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { BaseConnector, formatConnectorErrorMessage } from '../base-connector'
+import { BaseConnector, ConnectorOfflineError, formatConnectorErrorMessage } from '../base-connector'
 import {
   Platform,
   TikTokConfig,
@@ -10,12 +10,14 @@ import { Database } from '../../db/database'
 import { TikTokChatSender } from './tiktok-chat-sender'
 import { TikTokMapper } from '../mappers/tiktok-mapper'
 import { isTikTokLikeSystemPayload } from '../../../shared/chat-event-filter'
+import { validateTikTokSenderMessage, type TikTokCapturedCredentials } from './tiktok-chat-sender'
 
 export class TikTokConnector extends BaseConnector {
   readonly platform: Platform = 'tiktok'
   private connection: any = null
   private connectionToken = 0
   private mapper = new TikTokMapper()
+  private activeConfig: TikTokConfig | null = null
 
   constructor(private db: Database, private chatSender: TikTokChatSender) {
     super()
@@ -30,6 +32,7 @@ export class TikTokConnector extends BaseConnector {
 
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const tiktokConfig = config as TikTokConfig
+    this.activeConfig = tiktokConfig
     const username = tiktokConfig.username.replace(/^@/, '')
 
     const { WebcastPushConnection } = await import('tiktok-live-connector')
@@ -78,10 +81,19 @@ export class TikTokConnector extends BaseConnector {
         if (isFatalTikTokConnectionErrorMessage(errMsg)) {
           break // Don't try other candidates if it's a fatal error (like invalid user)
         }
+        // Note: a "not online" result still tries the remaining candidates —
+        // room-info lookups are flaky, so another mode may connect a live host.
       }
     }
 
     if (lastError) {
+      // The host simply isn't live yet — a normal waiting state, not an error.
+      // Surface it as such so the UI shows "waiting to go live" and keeps retrying.
+      if (isTikTokOfflineErrorMessage(formatConnectorErrorMessage(lastError))) {
+        throw new ConnectorOfflineError(
+          "You're not live yet — ilyStream will connect automatically when your TikTok stream starts."
+        )
+      }
       throw lastError
     }
     throw new Error('TikTok connection failed')
@@ -91,18 +103,79 @@ export class TikTokConnector extends BaseConnector {
 
   override getChatCapability(): PlatformChatCapability {
     const senderStatus = this.chatSender?.getStatus()
+    if (this.connection && this.getConfiguredSendCredentials()) {
+      return { platform: 'tiktok', canSend: true }
+    }
+
     return senderStatus?.isChatReady
       ? { platform: 'tiktok', canSend: true }
       : {
           platform: 'tiktok',
           canSend: false,
-          reason: senderStatus?.statusMessage || 'Open the TikTok host chat sender'
+          reason: this.connection
+            ? 'Add TikTok host session cookies or open the host chat sender'
+            : senderStatus?.statusMessage || 'Open the TikTok host chat sender'
         }
   }
 
   override async sendChatMessage(text: string): Promise<void> {
+    const validation = validateTikTokSenderMessage(text)
+    if (!validation.ok) throw new Error(validation.error || 'TikTok chat message is invalid')
+
+    const apiError = await this.trySendViaWebcast(validation.text)
+    if (!apiError) return
+
     if (await this.chatSender.sendMessage(text)) return
-    throw new Error(this.chatSender.getStatus().lastError || 'TikTok chat sending failed')
+
+    const senderError = this.chatSender.getStatus().lastError
+    throw new Error(senderError || apiError || 'TikTok chat sending failed')
+  }
+
+  private async trySendViaWebcast(text: string): Promise<string | null> {
+    if (!this.connection?.sendMessage) {
+      return 'TikTok live connector is not connected'
+    }
+
+    const credentials = await this.getBestSendCredentials()
+    if (!credentials.sessionId || !credentials.ttTargetIdc) {
+      return 'TikTok host session cookies are missing'
+    }
+
+    try {
+      await this.connection.sendMessage(text, {
+        sessionId: credentials.sessionId,
+        ttTargetIdc: credentials.ttTargetIdc
+      })
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async getBestSendCredentials(): Promise<TikTokCapturedCredentials> {
+    const configured = this.getConfiguredSendCredentials()
+    if (configured) return configured
+
+    const captured = await this.chatSender.captureAuthCredentials()
+    if (captured.sessionId && captured.ttTargetIdc) {
+      if (this.activeConfig) {
+        this.activeConfig = {
+          ...this.activeConfig,
+          sessionId: captured.sessionId,
+          ttTargetIdc: captured.ttTargetIdc
+        }
+      }
+      return captured
+    }
+
+    return captured
+  }
+
+  private getConfiguredSendCredentials(): TikTokCapturedCredentials | null {
+    const sessionId = this.activeConfig?.sessionId?.trim() || null
+    const ttTargetIdc = this.activeConfig?.ttTargetIdc?.trim() || null
+    if (!sessionId || !ttTargetIdc) return null
+    return { sessionId, ttTargetIdc, loggedIn: true }
   }
 
   private setupEventListeners(connection: any): void {
@@ -112,6 +185,10 @@ export class TikTokConnector extends BaseConnector {
         return
       }
       this.emitEvent(this.mapper.mapChat(data))
+    })
+
+    connection.on('emote', (data: any) => {
+      this.emitEvent(this.mapper.mapEmote(data))
     })
 
     connection.on('gift', (data: any) => {
@@ -190,6 +267,26 @@ export function buildTikTokConnectionOptionCandidates(config: TikTokConfig) {
 export function isFatalTikTokConnectionErrorMessage(msg: string): boolean {
   const fatalStrings = ['User not found', 'Invalid username', 'user does not exist']
   return fatalStrings.some(s => msg.toLowerCase().includes(s.toLowerCase()))
+}
+
+/**
+ * Distinguishes "the host isn't currently live" (a normal waiting state) from a
+ * real connection failure. tiktok-live-connector reports this as
+ * "The requested user isn't online :(".
+ */
+export function isTikTokOfflineErrorMessage(msg: string): boolean {
+  const offlineStrings = [
+    "isn't online",
+    'is not online',
+    'not online',
+    'offline',
+    'not currently live',
+    'no longer live',
+    'stream ended',
+    'streamEnd'
+  ]
+  const normalized = msg.toLowerCase()
+  return offlineStrings.some(s => normalized.includes(s.toLowerCase()))
 }
 
 export function isTikTokFollowSocialPayload(payload: any): boolean {

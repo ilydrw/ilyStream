@@ -63,8 +63,34 @@ export class BrowserSourceService {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true
-      },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ilyStream/1.0.0'
+      }
+    })
+    window.webContents.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ilyStream/1.0.0'
+    )
+
+    window.webContents.setWindowOpenHandler(({ url }) => {
+      sendToRenderer(owner, 'browser-source:error', {
+        id: config.id,
+        message: `Blocked browser source popup: ${url}`
+      })
+      return { action: 'deny' }
+    })
+    window.webContents.on('will-navigate', (event, url) => {
+      if (resolveSafeBrowserSourceUrl(url)) return
+      event.preventDefault()
+      sendToRenderer(owner, 'browser-source:error', {
+        id: config.id,
+        message: `Blocked browser source navigation: ${url}`
+      })
+    })
+    window.webContents.on('will-redirect', (event, url) => {
+      if (resolveSafeBrowserSourceUrl(url)) return
+      event.preventDefault()
+      sendToRenderer(owner, 'browser-source:error', {
+        id: config.id,
+        message: `Blocked browser source redirect: ${url}`
+      })
     })
 
     window.webContents.setFrameRate(fps)

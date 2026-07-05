@@ -1,10 +1,16 @@
 import type { StudioLayer } from '../../../../shared/studio'
-import type { BrowserFrameSurface, CachedMediaFrame, Crop } from './CanvasEditor.types'
+import type { BrowserFrameSurface, CachedMediaFrame, Crop, HandleDir } from './CanvasEditor.types'
 
 export const BROWSER_SOURCE_CAPTURE_MAX_EDGE = 1920
 export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
 export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
 export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 60
+const LIKES_TRACKER_CAPTURE_MIN_WIDTH = 400
+const LIKES_TRACKER_CAPTURE_MIN_HEIGHT = 280
+const LEADERBOARD_CAPTURE_MIN_WIDTH = 440
+const LEADERBOARD_CAPTURE_MIN_HEIGHT = 640
+const CHAT_WIDGET_CAPTURE_MIN_WIDTH = 1080
+const CHAT_WIDGET_CAPTURE_MIN_HEIGHT = 1920
 
 export type SourceFitMode = 'contain' | 'cover' | 'stretch'
 
@@ -13,6 +19,67 @@ export interface SourceRect {
   y: number
   width: number
   height: number
+}
+
+function resetMediaFrameContext(ctx: CanvasRenderingContext2D): void {
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.filter = 'none'
+  ctx.shadowBlur = 0
+  ctx.shadowColor = 'rgba(0, 0, 0, 0)'
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 0
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+}
+
+export function normalizeGridSize(value: number): number {
+  const next = Math.round(Number(value))
+  if (!Number.isFinite(next)) return 20
+  return Math.max(1, next)
+}
+
+export function snapToGridValue(value: number, gridSize: number): number {
+  const normalizedGridSize = normalizeGridSize(gridSize)
+  return Math.round(value / normalizedGridSize) * normalizedGridSize
+}
+
+export function snapPointToGrid(x: number, y: number, gridSize: number): { x: number; y: number } {
+  return {
+    x: snapToGridValue(x, gridSize),
+    y: snapToGridValue(y, gridSize)
+  }
+}
+
+export function snapResizeRectToGrid(rect: SourceRect, handle: HandleDir, gridSize: number, minSize = 10): SourceRect {
+  const right = rect.x + rect.width
+  const bottom = rect.y + rect.height
+  const safeMinSize = Math.max(1, minSize)
+  let x = rect.x
+  let y = rect.y
+  let width = rect.width
+  let height = rect.height
+
+  if (handle.includes('w')) {
+    const snappedX = snapToGridValue(x, gridSize)
+    x = Math.min(snappedX, right - safeMinSize)
+    width = right - x
+  } else if (handle.includes('e')) {
+    const snappedRight = snapToGridValue(right, gridSize)
+    width = Math.max(safeMinSize, snappedRight - x)
+  }
+
+  if (handle.includes('n')) {
+    const snappedY = snapToGridValue(y, gridSize)
+    y = Math.min(snappedY, bottom - safeMinSize)
+    height = bottom - y
+  } else if (handle.includes('s')) {
+    const snappedBottom = snapToGridValue(bottom, gridSize)
+    height = Math.max(safeMinSize, snappedBottom - y)
+  }
+
+  return { x, y, width, height }
 }
 
 export function resolveSourceFitMode(layer: StudioLayer): SourceFitMode {
@@ -181,6 +248,7 @@ export function drawAndCacheMediaFrame(
   const shouldRefreshCache = !cached.lastUpdateAt || frameCount % refreshInterval === 0
 
   if (shouldRefreshCache) {
+    resetMediaFrameContext(cached.ctx)
     cached.ctx.clearRect(0, 0, width, height)
     drawVideoFrame(cached.ctx, video, { x: 0, y: 0, width, height }, crop, fitMode)
     cached.lastUpdateAt = performance.now()
@@ -307,7 +375,12 @@ export function resolveImageSource(assetPath?: string): string {
 export function resolveBrowserSourceUrl(layer: StudioLayer, overlayPort: number): string {
   if (layer.type === 'widget') {
     if (!layer.config?.widgetId) return ''
+    // base64url: raw '+' in a query string decodes as a space server-side,
+    // which silently corrupted the config override for OBS browser sources.
     const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(layer.config || {}))))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
     return `http://127.0.0.1:${overlayPort}/overlay/${layer.config.widgetId}?config=${encodedConfig}`
   }
 
@@ -334,8 +407,8 @@ export function getBrowserFrameSurface(
 
 
 export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number, height: number): { width: number; height: number; fps: number } {
-  const sourceWidth = Math.max(16, Math.round(width || 1280))
-  const sourceHeight = Math.max(16, Math.round(height || 720))
+  const sourceWidth = Math.max(16, tiktokWidgetCaptureMinWidth(layer), Math.round(width || 1280))
+  const sourceHeight = Math.max(16, tiktokWidgetCaptureMinHeight(layer), Math.round(height || 720))
   const edgeScale = Math.min(BROWSER_SOURCE_CAPTURE_MAX_EDGE / sourceWidth, BROWSER_SOURCE_CAPTURE_MAX_EDGE / sourceHeight)
   const pixelScale = Math.sqrt(BROWSER_SOURCE_CAPTURE_MAX_PIXELS / (sourceWidth * sourceHeight))
   const scale = Math.min(1, edgeScale, pixelScale)
@@ -345,6 +418,57 @@ export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number,
     height: Math.max(16, Math.round(sourceHeight * scale)),
     fps: clampBrowserSourceFps(layer.config?.fps)
   }
+}
+
+function tiktokWidgetCaptureMinWidth(layer: StudioLayer): number {
+  if (isChatWidgetLayer(layer)) return CHAT_WIDGET_CAPTURE_MIN_WIDTH
+  if (isLikesTrackerWidgetLayer(layer)) return LIKES_TRACKER_CAPTURE_MIN_WIDTH
+  if (isLeaderboardWidgetLayer(layer)) return LEADERBOARD_CAPTURE_MIN_WIDTH
+  return 0
+}
+
+function tiktokWidgetCaptureMinHeight(layer: StudioLayer): number {
+  if (isChatWidgetLayer(layer)) return CHAT_WIDGET_CAPTURE_MIN_HEIGHT
+  if (isLikesTrackerWidgetLayer(layer)) return LIKES_TRACKER_CAPTURE_MIN_HEIGHT
+  if (isLeaderboardWidgetLayer(layer)) return LEADERBOARD_CAPTURE_MIN_HEIGHT
+  return 0
+}
+
+function isChatWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const widgetId = String(layer.config?.widgetId || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return (
+    widgetType === 'chat' ||
+    widgetType === 'chat-unified' ||
+    widgetId === 'chat' ||
+    widgetId === 'chat-unified' ||
+    widgetId === 'unified-chat' ||
+    name.includes('unified chat') ||
+    name.includes('chat widget') ||
+    name === 'chat'
+  )
+}
+
+function isLikesTrackerWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return widgetType === 'likes-tracker' || name.includes('like tracker') || name.includes('top likers')
+}
+
+function isLeaderboardWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const widgetId = String(layer.config?.widgetId || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return (
+    widgetType === 'leaderboard' ||
+    widgetId === 'leaderboard' ||
+    name.includes('leaderboard') ||
+    name.includes('likeathon')
+  )
 }
 
 export function clampBrowserSourceFps(value: unknown): number {
@@ -384,13 +508,16 @@ export function traceShapePath(
   r: number,
   w: number,
   h: number,
-  cornerRadius: number
+  cornerRadius: number,
+  cutDepth?: number
 ): void {
   ctx.beginPath()
   if (type === 'circle') {
     ctx.arc(x, y, r, 0, Math.PI * 2)
   } else if (type === 'star') {
-    const spikes = 5; const outerRadius = r; const innerRadius = r / 2.5
+    const spikes = 5; const outerRadius = r
+    const depth = Math.max(0, Math.min(100, cutDepth ?? 35))
+    const innerRadius = r * (0.72 - depth * 0.0035)
     let rot = Math.PI / 2 * 3; const step = Math.PI / spikes
     ctx.moveTo(x, y - outerRadius)
     for (let i = 0; i < spikes; i++) {
@@ -401,20 +528,216 @@ export function traceShapePath(
     }
     ctx.lineTo(x, y - outerRadius); ctx.closePath()
   } else if (type === 'heart') {
-    const d = r * 2.2; const hx = x; const hy = y - d / 4
-    ctx.moveTo(hx, hy + d / 4)
-    ctx.bezierCurveTo(hx, hy + d / 4, hx - d / 2, hy, hx - d / 2, hy - d / 4)
-    ctx.bezierCurveTo(hx - d / 2, hy - d / 2, hx, hy - d / 2, hx, hy - d / 4)
-    ctx.bezierCurveTo(hx, hy - d / 2, hx + d / 2, hy - d / 2, hx + d / 2, hy - d / 4)
-    ctx.bezierCurveTo(hx + d / 2, hy, hx, hy + d / 4, hx, hy + d / 4); ctx.closePath()
+    const heartW = r * 1.02
+    const heartH = r * 1.12
+    const depth = Math.max(0, Math.min(100, cutDepth ?? 12))
+    const notchY = y - heartH * (0.52 - depth * 0.0034)
+    ctx.moveTo(x, y + heartH * 0.5)
+    ctx.bezierCurveTo(x - heartW * 0.98, y - heartH * 0.02, x - heartW * 0.92, y - heartH * 0.54, x - heartW * 0.38, y - heartH * 0.54)
+    ctx.bezierCurveTo(x - heartW * 0.16, y - heartH * 0.54, x - heartW * 0.05, notchY, x, notchY)
+    ctx.bezierCurveTo(x + heartW * 0.05, notchY, x + heartW * 0.16, y - heartH * 0.54, x + heartW * 0.38, y - heartH * 0.54)
+    ctx.bezierCurveTo(x + heartW * 0.92, y - heartH * 0.54, x + heartW * 0.98, y - heartH * 0.02, x, y + heartH * 0.5)
+    ctx.closePath()
   } else if (type === 'hexagon') {
-    for (let i = 0; i < 6; i++) { ctx.lineTo(x + r * Math.cos(i * Math.PI / 3), y + r * Math.sin(i * Math.PI / 3)) }; ctx.closePath()
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 3
+      const px = x + r * Math.cos(a)
+      const py = y + r * Math.sin(a)
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
   } else if (type === 'diamond') {
-    ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath()
+    ctx.moveTo(x - r * 0.42, y - r * 0.72)
+    ctx.lineTo(x + r * 0.42, y - r * 0.72)
+    ctx.lineTo(x + r * 0.92, y - r * 0.12)
+    ctx.lineTo(x, y + r)
+    ctx.lineTo(x - r * 0.92, y - r * 0.12)
+    ctx.closePath()
+  } else if (type === 'square') {
+    const size = Math.min(w, h)
+    const rx = x - size / 2; const ry = y - size / 2
+    if ((ctx as any).roundRect) (ctx as any).roundRect(rx, ry, size, size, cornerRadius)
+    else ctx.rect(rx, ry, size, size)
   } else {
     const rx = x - w / 2; const ry = y - h / 2
     if ((ctx as any).roundRect) (ctx as any).roundRect(rx, ry, w, h, cornerRadius)
     else ctx.rect(rx, ry, w, h)
+  }
+}
+
+export function shapeMaskExtents(type: string, r: number, w: number, h: number): { left: number; right: number; top: number; bottom: number } {
+  if (type === 'heart') {
+    const heartW = r * 1.02
+    const heartH = r * 1.12
+    return {
+      left: heartW * 0.98,
+      right: heartW * 0.98,
+      top: heartH * 0.54,
+      bottom: heartH * 0.5
+    }
+  }
+
+  if (type === 'square') {
+    const size = Math.min(w, h)
+    return { left: size / 2, right: size / 2, top: size / 2, bottom: size / 2 }
+  }
+
+  if (type === 'rect' || type === 'none') {
+    return { left: w / 2, right: w / 2, top: h / 2, bottom: h / 2 }
+  }
+
+  if (type === 'diamond') {
+    return { left: r * 0.92, right: r * 0.92, top: r * 0.72, bottom: r }
+  }
+
+  return { left: r, right: r, top: r, bottom: r }
+}
+
+export function clampShapeMaskTransform<T extends { type?: string; x?: number; y?: number; scale?: number }>(
+  shape: T,
+  sourceWidth: number,
+  sourceHeight: number
+): T & { x: number; y: number; scale: number } {
+  const type = shape.type || 'none'
+  const minScale = 10
+  const requestedScale = Number.isFinite(shape.scale) ? Number(shape.scale) : 100
+  let scale = Math.max(minScale, Math.min(250, requestedScale))
+
+  const extentsForScale = (nextScale: number) => {
+    const w = (nextScale / 100) * sourceWidth
+    const h = (nextScale / 100) * sourceHeight
+    return shapeMaskExtents(type, Math.min(w, h) / 2, w, h)
+  }
+
+  const padding = Math.max(4, Math.min(sourceWidth, sourceHeight) * 0.012)
+  const withPadding = (extents: { left: number; right: number; top: number; bottom: number }) => ({
+    left: extents.left + padding,
+    right: extents.right + padding,
+    top: extents.top + padding,
+    bottom: extents.bottom + padding
+  })
+
+  let extents = withPadding(extentsForScale(scale))
+  const fitScale = Math.min(
+    1,
+    sourceWidth / Math.max(1, extents.left + extents.right),
+    sourceHeight / Math.max(1, extents.top + extents.bottom)
+  )
+  if (fitScale < 1) {
+    scale = Math.max(minScale, scale * fitScale)
+    extents = withPadding(extentsForScale(scale))
+  }
+
+  const minX = (extents.left / sourceWidth) * 100
+  const maxX = 100 - (extents.right / sourceWidth) * 100
+  const minY = (extents.top / sourceHeight) * 100
+  const maxY = 100 - (extents.bottom / sourceHeight) * 100
+  const requestedX = Number.isFinite(shape.x) ? Number(shape.x) : 50
+  const requestedY = Number.isFinite(shape.y) ? Number(shape.y) : 50
+
+  return {
+    ...shape,
+    x: minX <= maxX ? Math.max(minX, Math.min(maxX, requestedX)) : 50,
+    y: minY <= maxY ? Math.max(minY, Math.min(maxY, requestedY)) : 50,
+    scale
+  }
+}
+
+export function resolveShapeMaskBounds(
+  shape: { type?: string; x?: number; y?: number; scale?: number },
+  sourceWidth: number,
+  sourceHeight: number
+): { x: number; y: number; width: number; height: number } | null {
+  const shapeObj = clampShapeMaskTransform(shape, sourceWidth, sourceHeight)
+  const type = shapeObj.type || 'none'
+  if (type === 'none' || type === 'rect') return null
+
+  const sw = (shapeObj.scale / 100) * sourceWidth
+  const sh = (shapeObj.scale / 100) * sourceHeight
+  const r = Math.min(sw, sh) / 2
+  const extents = shapeMaskExtents(type, r, sw, sh)
+  const centerX = (shapeObj.x / 100) * sourceWidth
+  const centerY = (shapeObj.y / 100) * sourceHeight
+
+  return {
+    x: centerX - extents.left,
+    y: centerY - extents.top,
+    width: extents.left + extents.right,
+    height: extents.top + extents.bottom
+  }
+}
+
+export interface ShapeBorderStrokeConfig {
+  type?: 'chroma' | 'cyber' | 'gob-the-stopper' | 'solid' | 'custom' | string
+  thickness?: number
+  color?: string
+  color1?: string
+  color2?: string
+  opacity?: number
+  speed?: number
+  audioReactive?: boolean
+  reactivity?: number
+}
+
+export function applyShapeBorderStroke(
+  ctx: CanvasRenderingContext2D,
+  border: ShapeBorderStrokeConfig,
+  bounds: { x: number; y: number; r: number },
+  options: { thicknessScale?: number } = {}
+): void {
+  const vol = (window as any).__masterVolume || 0
+  const sensitivity = (border.reactivity ?? 100) / 100
+  const reactiveScale = border.audioReactive ? 1 + (vol * 1.5 * sensitivity) : 1
+  const thicknessScale = options.thicknessScale ?? 1
+  const speed = Math.max(1, border.speed ?? 6)
+  const phase = (performance.now() / (speed * 1000)) * 360
+  const { x, y, r } = bounds
+
+  ctx.lineWidth = Math.max(1, border.thickness || 4) * thicknessScale * reactiveScale
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  ctx.globalAlpha = Math.min(1, ((border.opacity ?? 100) / 100) * (border.audioReactive ? 0.8 + vol * 0.4 : 1))
+
+  if (border.type === 'chroma') {
+    const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r)
+    grad.addColorStop(0, `hsl(${phase % 360}, 100%, 50%)`)
+    grad.addColorStop(0.33, `hsl(${(phase + 120) % 360}, 100%, 50%)`)
+    grad.addColorStop(0.66, `hsl(${(phase + 240) % 360}, 100%, 50%)`)
+    grad.addColorStop(1, `hsl(${(phase + 360) % 360}, 100%, 50%)`)
+    ctx.strokeStyle = grad
+    ctx.shadowBlur = 16 * reactiveScale
+    ctx.shadowColor = `hsl(${phase % 360}, 100%, 50%)`
+  } else if (border.type === 'cyber') {
+    const grad = ctx.createLinearGradient(x - r, y, x + r, y)
+    grad.addColorStop(0, '#19c8ff')
+    grad.addColorStop(0.5, '#00ffff')
+    grad.addColorStop(1, '#d035f1')
+    ctx.strokeStyle = grad
+    ctx.shadowBlur = 20 * reactiveScale
+    ctx.shadowColor = '#d035f1'
+  } else if (border.type === 'gob-the-stopper') {
+    const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r)
+    grad.addColorStop(0, '#b6ff00')
+    grad.addColorStop(0.28, '#f7ffe8')
+    grad.addColorStop(0.5, '#050505')
+    grad.addColorStop(0.72, '#ce1126')
+    grad.addColorStop(1, '#b6ff00')
+    ctx.strokeStyle = grad
+    ctx.shadowBlur = 18 * reactiveScale
+    ctx.shadowColor = '#b6ff00'
+  } else if (border.type === 'custom') {
+    const color1 = border.color1 || '#19c8ff'
+    const color2 = border.color2 || '#d035f1'
+    const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r)
+    grad.addColorStop(0, color1)
+    grad.addColorStop(0.5, color2)
+    grad.addColorStop(1, color1)
+    ctx.strokeStyle = grad
+    ctx.shadowBlur = 16 * reactiveScale
+    ctx.shadowColor = color2
+  } else {
+    ctx.strokeStyle = border.color || '#ffffff'
   }
 }
 

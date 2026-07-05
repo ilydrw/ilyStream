@@ -19,6 +19,7 @@ import type { WindowsSettingsTarget } from '../system/windows-settings'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { OBSRuntimeStatus } from '../../shared/obs'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
+import type { XPostResult, XStatus } from '../../shared/x-types'
 import type { NowPlayingPayload } from '../../shared/widgets'
 import type {
   EventLabDeviceBroadcast,
@@ -26,12 +27,14 @@ import type {
   EventLabSimulationPayload
 } from '../../shared/event-lab'
 import type { AutomationRunReceipt } from '../../shared/automation-receipts'
+import type { KickEventSubscriptionResult } from '../platforms/kick/kick-api'
 
 // --- Renderer -> Main (invoke/handle) ---
 
 export interface IpcInvokeChannels {
   // Platform management
   'platform:connect': (config: AnyPlatformConfig) => Promise<void>
+  'platform:save-config': (config: AnyPlatformConfig) => Promise<void>
   'platform:disconnect': (platform: Platform) => Promise<void>
   'platform:get-statuses': () => Promise<Record<Platform, ConnectionStatus>>
   'platform:get-errors': () => Promise<Record<Platform, string | null>>
@@ -42,6 +45,16 @@ export interface IpcInvokeChannels {
     text: string
   }) => Promise<PlatformChatSendResult[]>
   'platform:restore-connections': () => Promise<void>
+  'youtube:begin-auth': (payload: {
+    clientId?: string
+    clientSecret?: string
+  }) => Promise<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string }>
+  'kick:subscribe-events': (payload: {
+    clientId: string
+    clientSecret: string
+    broadcasterUserId?: string | number
+    channelName?: string
+  }) => Promise<KickEventSubscriptionResult>
   'event:simulate': (payload: EventLabSimulationPayload) => Promise<AnyStreamEvent>
 
   // TTS controls
@@ -82,6 +95,7 @@ export interface IpcInvokeChannels {
   'window:minimize': () => void
   'window:maximize': () => void
   'window:close': () => void
+  'system:copy-to-clipboard': (text: string) => boolean
   'system:open-windows-settings': (target: WindowsSettingsTarget) => Promise<void>
 
   // Spotify
@@ -92,6 +106,14 @@ export interface IpcInvokeChannels {
   'spotify:remove-from-queue': (requestId: string) => void
   'spotify:clear-queue': () => void
   'spotify:skip': () => Promise<void>
+
+  // X (Twitter)
+  'x:connect': (clientId: string) => Promise<XStatus>
+  'x:disconnect': () => void
+  'x:get-status': () => XStatus
+  'x:get-template': () => string
+  'x:set-template': (text: string) => void
+  'x:post': (text: string) => Promise<XPostResult>
 
   // Hue
   'hue:discover-bridges': () => Promise<HueBridge[]>
@@ -123,7 +145,7 @@ export interface IpcEventChannels {
   'automation:run-receipt': AutomationRunReceipt
   'platform:status-change': { platform: Platform; status: ConnectionStatus }
   'platform:error': { platform: Platform; message: string; code?: string }
-  'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number }
+  'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number; reason?: string }
   'settings:changed': AppSettings
   'obs:status-changed': OBSRuntimeStatus
   'voice:changed': VoiceProfile[]
@@ -147,4 +169,5 @@ export interface IpcEventChannels {
   'spotify:status-changed': SpotifyStatus
   'spotify:queue-update': SpotifySongRequest[]
   'spotify:now-playing': NowPlayingPayload
+  'x:status-changed': XStatus
 }

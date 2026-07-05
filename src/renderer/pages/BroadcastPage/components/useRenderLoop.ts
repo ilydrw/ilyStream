@@ -5,6 +5,7 @@ import {
   croppedSourceRect,
   drawFittedSource,
   drawMediaFallback,
+  resolveImageSource,
   resolveSourceFitMode,
   traceShapePath,
   wrapCanvasText
@@ -96,12 +97,19 @@ export function useRenderLoop(options: RenderLoopOptions) {
   const stingerVideoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
-    if (stingerSettings.path) {
-      const v = document.createElement('video')
-      v.src = `file://${stingerSettings.path}`
-      v.preload = 'auto'
-      v.muted = true
-      stingerVideoRef.current = v
+    if (!stingerSettings.path) return
+    const v = document.createElement('video')
+    v.src = `file://${stingerSettings.path}`
+    v.preload = 'auto'
+    v.muted = true
+    stingerVideoRef.current = v
+    // Release the previous element's decoded media instead of orphaning it on
+    // every path change / unmount (each held a file:// source forever).
+    return () => {
+      try { v.pause() } catch {}
+      v.removeAttribute('src')
+      try { v.load() } catch {}
+      if (stingerVideoRef.current === v) stingerVideoRef.current = null
     }
   }, [stingerSettings.path])
 
@@ -186,6 +194,22 @@ export function useRenderLoop(options: RenderLoopOptions) {
           const vb = e.virtualBackground
           const isVbEnabled = vb?.enabled
 
+          // OBS-style image mask: load (and cache) the mask image; content is
+          // staged offscreen and the mask cuts its alpha before compositing.
+          const imageMask = e.imageMask
+          let maskImage: HTMLImageElement | null = null
+          if (imageMask?.enabled && imageMask.assetPath) {
+            const cacheKey = `mask-${imageMask.assetPath}`
+            let cached = imageCache.current[cacheKey]
+            if (!cached) {
+              cached = new Image()
+              cached.src = resolveImageSource(imageMask.assetPath)
+              imageCache.current[cacheKey] = cached
+            }
+            if (cached.complete && cached.naturalWidth > 0) maskImage = cached
+          }
+          const hasImageMask = Boolean(maskImage)
+
           let drawTarget: CanvasRenderingContext2D = targetCtx
           let drawX = dl.x - cx
           let drawY = dl.y - cy
@@ -257,7 +281,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
             targetCtx.restore()
           }
 
-          if (hasChromaKey) {
+          if (hasChromaKey || hasImageMask) {
             if (!chromaCanvasRef.current) chromaCanvasRef.current = document.createElement('canvas')
             const cc = chromaCanvasRef.current
             cc.width = dl.width
@@ -271,7 +295,9 @@ export function useRenderLoop(options: RenderLoopOptions) {
           }
 
           if (l.type === 'camera' || l.type === 'display') {
-            if (video && video.readyState >= 2 && video.videoWidth > 0) {
+            const vWidth = video ? (video.videoWidth || Number(l.config.captureWidth) || 1920) : 0
+            const vHeight = video ? (video.videoHeight || Number(l.config.captureHeight) || 1080) : 0
+            if (video && video.readyState >= 2 && vWidth > 0) {
               const maskResult = isVbEnabled && isCamera ? segmentationService.getMask(l.id) : null
 
               if (maskResult && maskResult.mask) {
@@ -286,7 +312,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
                   drawFittedSource(
                     cCtx,
                     video,
-                    croppedSourceRect(video.videoWidth, video.videoHeight, layout.crop),
+                    croppedSourceRect(vWidth, vHeight, layout.crop),
                     { x: 0, y: 0, width: dl.width, height: dl.height },
                     fitMode
                   )
@@ -306,7 +332,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
                 drawFittedSource(
                   drawTarget,
                   video,
-                  croppedSourceRect(video.videoWidth, video.videoHeight, layout.crop),
+                  croppedSourceRect(vWidth, vHeight, layout.crop),
                   { x: drawX, y: drawY, width: dl.width, height: dl.height },
                   fitMode
                 )
@@ -385,6 +411,16 @@ export function useRenderLoop(options: RenderLoopOptions) {
               }
             }
             cCtx.putImageData(imgData, 0, 0)
+          }
+
+          if (hasImageMask && maskImage && drawTarget !== targetCtx) {
+            const cCtx = drawTarget as CanvasRenderingContext2D
+            cCtx.globalCompositeOperation = 'destination-in'
+            cCtx.drawImage(maskImage, 0, 0, dl.width, dl.height)
+            cCtx.globalCompositeOperation = 'source-over'
+          }
+
+          if ((hasChromaKey || hasImageMask) && drawTarget !== targetCtx) {
             targetCtx.drawImage(chromaCanvasRef.current!, dl.x - cx, dl.y - cy)
           }
         }
@@ -430,7 +466,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
           const r = Math.min(sw, sh) / 2
           const radius = (e.cornerRadius || 0) * (Math.min(sw, sh) / 200)
 
-          const shapePath = () => traceShapePath(targetCtx, shape, sx, sy, r, sw, sh, radius)
+          const shapePath = () => traceShapePath(targetCtx, shape, sx, sy, r, sw, sh, radius, shapeObj.cutDepth)
 
           // Pass 1: Content (Clipped)
           targetCtx.save()
@@ -467,7 +503,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
               const hue = (performance.now() / 50) % 60
               const color = `hsl(${180 + hue}, 100%, 50%)`
               targetCtx.strokeStyle = color
-              targetCtx.shadowBlur = 15 + (vol * 40)
+              targetCtx.shadowBlur = b.audioReactive ? 15 + (vol * 40) : 15
               targetCtx.shadowColor = color
               targetCtx.stroke()
               // Inner Glow

@@ -1,8 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'http'
-import { SSE_PING_INTERVAL_MS, type OverlayChannel, type SseClient } from './types'
+import { SSE_EVENT_HISTORY_LIMIT, SSE_PING_INTERVAL_MS, type OverlayChannel, type SseClient } from './types'
+
+export interface SseEventHistoryEntry {
+  id: number
+  payload: unknown
+  at: number
+}
 
 export class SSEManager {
   private channels = new Map<OverlayChannel, Set<SseClient>>()
+  private lastPayloads = new Map<OverlayChannel, unknown>()
+  private histories = new Map<OverlayChannel, SseEventHistoryEntry[]>()
+  private eventSequence = 0
   private pingTimer: NodeJS.Timeout | null = null
   private onCountsChanged?: () => void
   private onBroadcast?: (channel: OverlayChannel, payload: unknown, clientCount: number) => void
@@ -15,11 +24,17 @@ export class SSEManager {
     this.onBroadcast = onBroadcast
   }
 
-  attachClient(channel: OverlayChannel, request: IncomingMessage, response: ServerResponse): void {
+  attachClient(
+    channel: OverlayChannel,
+    request: IncomingMessage,
+    response: ServerResponse,
+    headers: Record<string, string> = {}
+  ): void {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive'
+      Connection: 'keep-alive',
+      ...headers
     })
 
     response.write(': connected\n\n')
@@ -39,6 +54,13 @@ export class SSEManager {
     const clients = this.channels.get(channel)
     const clientCount = clients?.size || 0
     const serialized = serializeSsePayload(payload)
+    const eventId = ++this.eventSequence
+    this.lastPayloads.set(channel, serialized.payload)
+    this.recordHistory(channel, {
+      id: eventId,
+      payload: serialized.payload,
+      at: Date.now()
+    })
 
     try {
       this.onBroadcast?.(channel, serialized.payload, clientCount)
@@ -48,7 +70,7 @@ export class SSEManager {
 
     if (!clients) return
 
-    const data = `data: ${serialized.json}\n\n`
+    const data = `id: ${eventId}\ndata: ${serialized.json}\n\n`
     for (const client of [...clients]) {
       try {
         client.write(data)
@@ -107,8 +129,37 @@ export class SSEManager {
     this.onCountsChanged?.()
   }
 
+  clearState(channels?: OverlayChannel[]): void {
+    if (!channels) {
+      this.lastPayloads.clear()
+      this.histories.clear()
+      return
+    }
+
+    for (const channel of channels) {
+      this.lastPayloads.delete(channel)
+      this.histories.delete(channel)
+    }
+  }
+
   getClientCount(channel: OverlayChannel): number {
     return this.channels.get(channel)?.size || 0
+  }
+
+  getLastPayload(channel: OverlayChannel): unknown {
+    return this.lastPayloads.get(channel) ?? null
+  }
+
+  getLastEventId(channel: OverlayChannel): number {
+    const history = this.histories.get(channel)
+    return history?.[history.length - 1]?.id ?? 0
+  }
+
+  getEventsSince(channel: OverlayChannel, afterId: number, limit = 50): SseEventHistoryEntry[] {
+    const safeAfterId = Number.isFinite(afterId) ? Math.max(0, Math.floor(afterId)) : 0
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(120, Math.floor(limit))) : 50
+    const history = this.histories.get(channel) || []
+    return history.filter((entry) => entry.id > safeAfterId).slice(-safeLimit)
   }
 
   private getOrCreateChannel(channel: OverlayChannel): Set<SseClient> {
@@ -118,6 +169,15 @@ export class SSEManager {
       this.channels.set(channel, clients)
     }
     return clients
+  }
+
+  private recordHistory(channel: OverlayChannel, entry: SseEventHistoryEntry): void {
+    const history = this.histories.get(channel) || []
+    history.push(entry)
+    if (history.length > SSE_EVENT_HISTORY_LIMIT) {
+      history.splice(0, history.length - SSE_EVENT_HISTORY_LIMIT)
+    }
+    this.histories.set(channel, history)
   }
 }
 

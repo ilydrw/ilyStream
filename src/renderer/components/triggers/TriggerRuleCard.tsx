@@ -6,7 +6,7 @@ import {
   describeCondition
 } from '../../lib/trigger-editor'
 
-const platformBadgeStyles: Record<Platform, string> = {
+const platformBadgeStyles: Partial<Record<Platform, string>> = {
   tiktok: 'bg-tiktok/15 text-tiktok border border-tiktok/30',
   twitch: 'bg-twitch/15 text-twitch border border-twitch/30',
   youtube: 'bg-youtube/15 text-youtube border border-youtube/30',
@@ -48,7 +48,7 @@ export function TriggerRuleCard({
               {trigger.platforms.map((platform) => (
                 <span
                   key={platform}
-                  className={`text-[9px] font-semibold tracking-tight px-2 py-0.5 rounded border ${platformBadgeStyles[platform]}`}
+                  className={`text-[9px] font-semibold tracking-tight px-2 py-0.5 rounded border ${platformBadgeStyles[platform] ?? 'bg-white/5 text-white/60 border border-white/10'}`}
                 >
                   {PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform}
                 </span>
@@ -97,7 +97,11 @@ export function TriggerRuleCard({
 function SummaryGroup({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-xl border border-white/5 bg-black/20 p-4">
-      <p className="app-eyebrow text-[9px] text-white/20 mb-3">{title}</p>
+      {/* `app-eyebrow` was being applied here but is globally `display: none
+          !important` in components.css (per an earlier user request to suppress
+          page-header eyebrows), which silently hid this group title. The
+          Tailwind utilities below carry the intended micro-label styling. */}
+      <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/30 mb-3">{title}</p>
       <div className="space-y-2">
         {items.length === 0 ? (
           <p className="text-xs text-white/20 italic">No configuration detected</p>

@@ -1,8 +1,8 @@
 import React from 'react'
-import type { TriggerRule } from '../../../../main/triggers/trigger-types'
-import type { VoiceProfile } from '../../../../main/tts/voice-profiles'
-import type { SoundFile } from '../../../hooks/useSoundboard'
-import type { AssetFile } from '../../../hooks/useAssets'
+import type { TriggerRule } from '../../../main/triggers/trigger-types'
+import type { VoiceProfile } from '../../../main/tts/voice-profiles'
+import type { SoundFile } from '../../hooks/useSoundboard'
+import type { AssetFile } from '../../hooks/useAssets'
 import {
   ACTION_TYPE_OPTIONS,
   CONDITION_TYPE_OPTIONS,

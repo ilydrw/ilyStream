@@ -22,6 +22,7 @@ import { registerDeviceHandlers } from './handlers/device-handlers'
 import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 import { registerLightingHandlers } from './handlers/lighting-handlers'
+import { registerRazerHandlers } from './handlers/razer-handlers'
 import { sendToRenderer } from './safe-send'
 
 export function registerIpcHandlers(
@@ -130,7 +131,7 @@ export function registerIpcHandlers(
   registerStudioHandlers(db, overlayServer, services.browserSourceService)
   registerStatsHandlers(services.statsService)
   registerDeviceHandlers(services.deviceApi)
-  registerGoveeHandlers(services.goveeService)
+  registerGoveeHandlers(window, services.goveeService)
   registerVirtualCameraHandlers(services)
   registerLightingHandlers(window, services.lightingManager)
 
@@ -168,4 +169,3 @@ export function registerIpcHandlers(
     })
   })
 }
-

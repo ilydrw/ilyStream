@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChatEvent, LikeEvent } from '../../platforms/types'
 import { ChatManager } from './chat-manager'
 
-function createChatEvent(): ChatEvent {
+function createChatEvent(overrides: Partial<ChatEvent> = {}): ChatEvent {
   return {
     id: 'chat-1',
     platform: 'tiktok',
@@ -19,7 +19,8 @@ function createChatEvent(): ChatEvent {
       isSubscriber: false,
       isVip: false,
       badges: []
-    }
+    },
+    ...overrides
   }
 }
 
@@ -81,5 +82,33 @@ describe('ChatManager', () => {
         payload: expect.objectContaining({ kind: 'chat' })
       })
     )
+  })
+
+  it('does not append duplicate chat events to chat feeds', () => {
+    const sse = { broadcast: vi.fn() }
+    const manager = new ChatManager(sse as any)
+
+    manager.handleEvent(createChatEvent({ id: 'chat-1' }))
+    manager.handleEvent(createChatEvent({ id: 'chat-1', message: 'same id replay' }))
+    manager.handleEvent(createChatEvent({
+      id: 'chat-2',
+      timestamp: new Date('2026-05-18T09:00:01.000Z')
+    }))
+
+    expect(manager.getHistory()).toHaveLength(1)
+    expect(sse.broadcast).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows repeated chat text outside the duplicate window', () => {
+    const sse = { broadcast: vi.fn() }
+    const manager = new ChatManager(sse as any)
+
+    manager.handleEvent(createChatEvent({ id: 'chat-1' }))
+    manager.handleEvent(createChatEvent({
+      id: 'chat-2',
+      timestamp: new Date('2026-05-18T09:00:03.000Z')
+    }))
+
+    expect(manager.getHistory()).toHaveLength(2)
   })
 })

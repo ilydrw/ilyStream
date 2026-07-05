@@ -15,6 +15,7 @@ import { KickConnector } from './kick/kick-connector'
 import { Database } from '../db/database'
 import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
 import { resolveAppSettings } from '../../shared/app-settings'
+import { LIKE_LOG_VERBOSE } from '../../shared/debug-flags'
 
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
@@ -39,7 +40,9 @@ export class PlatformManager extends EventEmitter {
       connector.setAutoReconnect(autoReconnect)
 
       connector.on('event', (event: AnyStreamEvent) => {
-        console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
+        if (event.type !== 'like' || LIKE_LOG_VERBOSE) {
+          console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
+        }
 
         if (event.type === 'viewer-count') {
           this.viewerCounts[event.platform] = (event as any).count
@@ -58,6 +61,7 @@ export class PlatformManager extends EventEmitter {
       })
 
       connector.on('token-refresh', (data: unknown) => {
+        this.persistRefreshedPlatformToken(data)
         this.emit('token-refresh', data)
       })
 
@@ -75,13 +79,47 @@ export class PlatformManager extends EventEmitter {
 
   async connect(config: AnyPlatformConfig): Promise<void> {
     const connector = this.connectors.get(config.platform)
-    if (!connector) throw new Error(`Unknown platform: ${config.platform}`)
+    if (!connector) {
+      // Social/presence platforms have no live connector yet. The config was
+      // already persisted by the IPC handler, so credentials are kept.
+      throw new Error(
+        `${config.platform} settings saved — live connection for this platform is coming soon.`
+      )
+    }
     await connector.connect(config)
+  }
+
+  private persistRefreshedPlatformToken(data: unknown): void {
+    if (!data || typeof data !== 'object') return
+
+    const token = data as {
+      platform?: Platform
+      accessToken?: unknown
+      refreshToken?: unknown
+    }
+    if (!token.platform || typeof token.accessToken !== 'string' || token.accessToken.trim().length === 0) {
+      return
+    }
+
+    const existing = this.db.getPlatformConfig(token.platform)
+    if (!existing) return
+
+    const nextConfig = { ...existing } as AnyPlatformConfig & {
+      accessToken?: string
+      refreshToken?: string
+    }
+    nextConfig.accessToken = token.accessToken
+    if (typeof token.refreshToken === 'string' && token.refreshToken.trim().length > 0) {
+      nextConfig.refreshToken = token.refreshToken
+    }
+
+    this.db.savePlatformConfig(nextConfig)
   }
 
   async disconnect(platform: Platform): Promise<void> {
     const connector = this.connectors.get(platform)
-    if (!connector) throw new Error(`Unknown platform: ${platform}`)
+    // Platforms without live connectors have nothing to tear down.
+    if (!connector) return
     await connector.disconnect()
   }
 
@@ -112,8 +150,8 @@ export class PlatformManager extends EventEmitter {
     return errors
   }
 
-  getChatCapabilities(): Record<Platform, PlatformChatCapability> {
-    const caps = {} as Record<Platform, PlatformChatCapability>
+  getChatCapabilities(): Partial<Record<Platform, PlatformChatCapability>> {
+    const caps: Partial<Record<Platform, PlatformChatCapability>> = {}
     for (const [platform, connector] of this.connectors) {
       caps[platform] = connector.getChatCapability()
     }

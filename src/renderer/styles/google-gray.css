@@ -1,0 +1,957 @@
+/* ============================================================
+   ilyStream Google Gray interface refresh
+   Imported last so shared page components, older TTS styles, and
+   utility-heavy screens settle into one neutral gray surface system.
+   ============================================================ */
+
+:root {
+  --google-gray-bg: #141518;
+  --google-gray-shell: #17191d;
+  --google-gray-surface: #1d1f23;
+  --google-gray-surface-2: #24262b;
+  --google-gray-surface-3: #2c2f35;
+  --google-gray-line: #363a42;
+  --google-gray-line-soft: rgba(232, 234, 237, 0.1);
+  --google-gray-text: #f1f3f4;
+  --google-gray-muted: #bdc1c6;
+  --google-gray-subtle: #8f959d;
+  --icon-gradient-from: #d035f1;
+  --icon-gradient-via: #7a8cff;
+  --icon-gradient-to: #19c8ff;
+}
+
+.tracking-tighter,
+.tracking-tight,
+.tracking-wide,
+.tracking-wider,
+.tracking-widest {
+  letter-spacing: 0 !important;
+}
+
+.glass,
+.glass-panel,
+.app-section-card,
+.app-section-card.glass,
+.spotify-panel,
+.tts-editor-panel,
+.tts-library-card,
+.tts-profile-card,
+.tts-user-voice-card,
+.tts-special-table,
+.tts-meter-card,
+.dashboard-hero-panel,
+.dashboard-chart-panel,
+.dashboard-metric-card,
+.dashboard-setup-card,
+.dashboard-event-mix-panel,
+.broadcast-monitor-panel,
+.voice-fx-rack,
+.voice-fx-meter,
+.voice-fx-monitor {
+  border: 1px solid var(--google-gray-line) !important;
+  border-radius: 10px !important;
+  background: var(--google-gray-surface) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.14) !important;
+}
+
+.app-section-head,
+.spotify-panel-head,
+.tts-special-table-head,
+.broadcast-monitor-panel header {
+  border-color: var(--google-gray-line-soft) !important;
+  background: color-mix(in srgb, var(--google-gray-surface-2) 72%, transparent) !important;
+}
+
+.app-section-head h2,
+.app-setting-label,
+.spotify-panel-head h2,
+.voice-fx-rack__head h2,
+.voice-fx-monitor h2,
+.dashboard-setup-title,
+.dashboard-metric-card strong {
+  color: var(--google-gray-text) !important;
+  letter-spacing: 0 !important;
+}
+
+.app-section-head p,
+.app-setting-hint,
+.spotify-panel-head p,
+.voice-fx-rack__head p,
+.voice-fx-monitor p,
+.dashboard-setup-copy,
+.dashboard-metric-card em {
+  color: var(--google-gray-subtle) !important;
+  letter-spacing: 0 !important;
+}
+
+.app-button,
+.app-select,
+.app-input,
+.app-textarea,
+.voice-fx-input-pill,
+.tts-special-select,
+.pro-channel-button-row button {
+  border-color: var(--google-gray-line) !important;
+  border-radius: 8px !important;
+  background: var(--google-gray-surface-2) !important;
+  color: var(--google-gray-text) !important;
+  box-shadow: none !important;
+  letter-spacing: 0 !important;
+}
+
+.app-button:hover,
+.app-select:hover,
+.app-input:hover,
+.app-textarea:hover,
+.tts-special-select:hover,
+.pro-channel-button-row button:hover {
+  border-color: color-mix(in srgb, var(--google-gray-line) 68%, var(--color-accent)) !important;
+  background: var(--google-gray-surface-3) !important;
+  color: var(--google-gray-text) !important;
+}
+
+.pro-channel-button-row button.is-muted {
+  border-color: rgba(255, 95, 86, 0.38) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 95, 86, 0.18), rgba(255, 95, 86, 0.1)),
+    var(--google-gray-surface-2) !important;
+  color: #ffb6b0 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 95, 86, 0.18) !important;
+}
+
+.pro-channel-button-row button.is-solo {
+  border-color: rgba(25, 200, 255, 0.42) !important;
+  background:
+    linear-gradient(180deg, rgba(25, 200, 255, 0.2), rgba(25, 200, 255, 0.1)),
+    var(--google-gray-surface-2) !important;
+  color: var(--color-accent) !important;
+  box-shadow: inset 0 0 0 1px rgba(25, 200, 255, 0.2) !important;
+}
+
+.app-input:focus,
+.app-textarea:focus,
+.app-select:focus,
+.tts-special-select:focus {
+  border-color: rgba(25, 200, 255, 0.62) !important;
+  background: #24262b !important;
+  box-shadow: 0 0 0 3px rgba(25, 200, 255, 0.12) !important;
+}
+
+.app-input::placeholder,
+.app-textarea::placeholder {
+  color: #80868b !important;
+}
+
+.app-button-primary {
+  border: 1px solid rgba(25, 200, 255, 0.38) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(135deg, rgba(25, 200, 255, 0.94), rgba(208, 53, 241, 0.88)) !important;
+  color: #101114 !important;
+  box-shadow: 0 8px 20px rgba(25, 200, 255, 0.16), 0 8px 20px rgba(208, 53, 241, 0.10) !important;
+  letter-spacing: 0 !important;
+}
+
+.app-button-primary:hover {
+  filter: brightness(1.05) saturate(1.04) !important;
+}
+
+.text-accent,
+.app-page-title-icon {
+  color: var(--color-accent) !important;
+}
+
+.app-rail-item:not(.is-active) svg:not([class^='brand-icon-']):not(.youtube-icon),
+.app-drawer-item:not(.is-active) svg:not([class^='brand-icon-']):not(.youtube-icon) {
+  stroke: #9aa0a6 !important;
+  color: #9aa0a6 !important;
+  opacity: 0.88;
+}
+
+.app-rail-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon),
+.app-drawer-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon) {
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(25, 200, 255, 0.18));
+}
+
+.bg-accent,
+.app-range::-webkit-slider-thumb {
+  background: var(--color-accent) !important;
+}
+
+.app-range {
+  background: #363a42 !important;
+}
+
+.app-setting-row,
+.tts-voice-card,
+.tts-library-card,
+.tts-profile-card,
+.dashboard-stat-pill,
+.broadcast-source-row,
+.pro-channel-strip {
+  border-color: var(--google-gray-line) !important;
+  border-radius: 8px !important;
+  background: var(--google-gray-surface-2) !important;
+  color: var(--google-gray-text) !important;
+}
+
+.app-setting-row:hover,
+.tts-voice-card:hover,
+.tts-library-card:hover,
+.tts-profile-card:hover,
+.dashboard-setup-card:hover,
+.broadcast-source-row:hover,
+.pro-channel-strip:hover {
+  border-color: color-mix(in srgb, var(--google-gray-line) 62%, var(--color-accent)) !important;
+  background: var(--google-gray-surface-3) !important;
+}
+
+.tts-voice-card[data-active='true'],
+.tts-profile-card[data-active='true'],
+.broadcast-source-row.is-selected,
+.pro-channel-strip.is-selected {
+  border-color: rgba(25, 200, 255, 0.36) !important;
+  background:
+    linear-gradient(90deg, rgba(25, 200, 255, 0.12), rgba(208, 53, 241, 0.08)),
+    var(--google-gray-surface-2) !important;
+  box-shadow: 0 0 0 1px rgba(25, 200, 255, 0.08) !important;
+}
+
+.titlebar-no-drag[role="listbox"] {
+  border-color: var(--google-gray-line) !important;
+  border-radius: 8px !important;
+  background: var(--google-gray-surface) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34) !important;
+}
+
+.titlebar-no-drag[role="listbox"] [role="option"] {
+  color: var(--google-gray-muted) !important;
+}
+
+.titlebar-no-drag[role="listbox"] [role="option"]:hover,
+.titlebar-no-drag[role="listbox"] [data-active="true"] {
+  background: var(--google-gray-surface-3) !important;
+  color: var(--google-gray-text) !important;
+}
+
+.titlebar-no-drag[role="listbox"] [aria-selected="true"] {
+  background:
+    linear-gradient(90deg, rgba(25, 200, 255, 0.14), rgba(208, 53, 241, 0.08)),
+    var(--google-gray-surface-3) !important;
+  color: var(--google-gray-text) !important;
+}
+
+.app-sidebar-drawer .bg-background\/80,
+.bg-black\/10,
+.bg-black\/15,
+.bg-black\/20,
+.bg-black\/25,
+.bg-black\/40,
+.bg-white\/\[0\.01\],
+.bg-white\/\[0\.018\],
+.bg-white\/\[0\.02\],
+.bg-white\/\[0\.025\],
+.bg-white\/\[0\.03\],
+.bg-white\/\[0\.035\],
+.bg-white\/\[0\.04\] {
+  background-color: color-mix(in srgb, var(--google-gray-surface-2) 82%, transparent) !important;
+}
+
+.border-white\/5,
+.border-white\/10,
+.border-white\/\[0\.035\],
+.border-white\/\[0\.04\],
+.border-white\/\[0\.045\],
+.border-white\/\[0\.05\],
+.border-white\/\[0\.06\],
+.border-white\/\[0\.07\],
+.border-white\/\[0\.08\] {
+  border-color: var(--google-gray-line-soft) !important;
+}
+
+.shadow-\[0_0_18px_rgba\(var\(--accent-rgb\)\,0\.08\)\],
+.shadow-\[0_0_15px_rgba\(var\(--accent-rgb\)\,0\.5\)\] {
+  box-shadow: 0 0 0 1px rgba(25, 200, 255, 0.20), 0 8px 18px rgba(25, 200, 255, 0.08) !important;
+}
+
+.dashboard-hero-panel::after,
+.dashboard-metric-card::before {
+  background: linear-gradient(90deg, rgba(25, 200, 255, 0.36), rgba(208, 53, 241, 0.32)) !important;
+}
+
+.pro-meter-bar,
+.pro-pan-input {
+  background: #141518 !important;
+}
+
+.pro-pan-knob {
+  border-color: var(--google-gray-line) !important;
+  background: linear-gradient(180deg, #363a42, #141518) !important;
+}
+
+/* Navigation icon hardening */
+.app-rail-icon-wrapper,
+.app-drawer-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.app-rail-icon-wrapper svg,
+.app-drawer-icon-container svg {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.app-rail-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon),
+.app-drawer-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon) {
+  color: var(--color-accent) !important;
+  stroke: var(--color-accent) !important;
+}
+
+.app-rail-icon-wrapper [class^='brand-icon-'],
+.app-drawer-icon-container [class^='brand-icon-'],
+.app-rail-icon-wrapper .youtube-icon,
+.app-drawer-icon-container .youtube-icon {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.app-rail-icon-wrapper [class^='brand-icon-'] path,
+.app-drawer-icon-container [class^='brand-icon-'] path,
+.app-rail-icon-wrapper [class^='brand-icon-'] rect,
+.app-drawer-icon-container [class^='brand-icon-'] rect,
+.app-rail-icon-wrapper .youtube-icon path,
+.app-drawer-icon-container .youtube-icon path {
+  stroke: none !important;
+  filter: none !important;
+}
+
+.app-rail-icon-wrapper .brand-icon-yeelight path,
+.app-drawer-icon-container .brand-icon-yeelight path {
+  fill: none !important;
+  stroke: #df3336 !important;
+  stroke-width: 4 !important;
+}
+
+.app-rail-icon-wrapper img,
+.app-drawer-icon-container img {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.brand-icon-razer,
+.brand-icon-razer path {
+  fill: #44d62c !important;
+  opacity: 1 !important;
+  filter: none !important;
+  stroke: none !important;
+}
+
+.app-drawer-item .brand-icon-razer,
+.app-rail-item .brand-icon-razer {
+  min-width: 16px;
+  transform: scale(1.12);
+}
+
+/* Audience table cleanup */
+.stats-user-table-head {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1fr) minmax(420px, auto);
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 16px 20px !important;
+}
+
+.stats-user-table-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-user-table-controls {
+  display: grid;
+  width: min(100%, 740px);
+  grid-template-columns: minmax(220px, 1fr) minmax(128px, max-content) minmax(138px, max-content);
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
+}
+
+.stats-user-search,
+.stats-user-filter,
+.stats-user-sort {
+  height: 38px !important;
+  min-width: 0;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+.stats-user-search {
+  width: 100% !important;
+  padding-left: 34px !important;
+  padding-right: 12px !important;
+}
+
+.stats-user-filter {
+  width: 132px !important;
+}
+
+.stats-user-sort {
+  width: 148px !important;
+}
+
+.stats-user-table-scroll {
+  min-height: 400px;
+  overflow: auto;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--google-gray-bg) 72%, var(--google-gray-surface));
+}
+
+@media (max-width: 1320px) {
+  .stats-user-table-head {
+    grid-template-columns: 1fr !important;
+  }
+
+  .stats-user-table-controls {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 760px) {
+  .stats-user-table-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-user-filter,
+  .stats-user-sort {
+    width: 100% !important;
+  }
+}
+
+/* Settings health strip */
+.settings-health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.settings-health-item {
+  display: flex;
+  min-height: 62px;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 8px;
+  background: var(--google-gray-surface-2);
+  padding: 12px;
+  color: var(--google-gray-muted);
+}
+
+.settings-health-item.is-good {
+  border-color: rgba(129, 201, 149, 0.28);
+  background: linear-gradient(180deg, rgba(129, 201, 149, 0.075), rgba(129, 201, 149, 0.025)), var(--google-gray-surface-2);
+}
+
+.settings-health-item.is-bad {
+  border-color: rgba(242, 139, 130, 0.34);
+  background: linear-gradient(180deg, rgba(242, 139, 130, 0.075), rgba(242, 139, 130, 0.025)), var(--google-gray-surface-2);
+}
+
+.settings-health-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--google-gray-bg);
+  color: var(--color-accent);
+}
+
+.settings-health-item.is-good .settings-health-icon {
+  color: var(--color-success);
+}
+
+.settings-health-item.is-bad .settings-health-icon {
+  color: var(--color-danger);
+}
+
+.settings-health-item p {
+  margin: 0;
+  color: var(--google-gray-subtle);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.settings-health-item strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--google-gray-text);
+  font-size: 12px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .settings-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-health-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Razer Chroma page */
+.razer-page {
+  --razer-green: #44d62c;
+}
+
+.razer-title-icon {
+  color: var(--razer-green) !important;
+}
+
+.razer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.razer-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.razer-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.razer-metric {
+  display: flex;
+  min-height: 94px;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--google-gray-line);
+  border-radius: 10px;
+  background: var(--google-gray-surface);
+  padding: 18px;
+}
+
+.razer-metric-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--google-gray-surface-2);
+  color: var(--color-accent);
+}
+
+.razer-metric.is-good .razer-metric-icon {
+  color: var(--razer-green);
+}
+
+.razer-metric.is-bad .razer-metric-icon {
+  color: var(--color-danger);
+}
+
+.razer-metric span,
+.razer-device-row span,
+.razer-target span,
+.razer-help span,
+.razer-alert span {
+  color: var(--google-gray-subtle);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.razer-metric strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--google-gray-text);
+  font-size: 20px;
+  font-weight: 760;
+}
+
+.razer-metric em {
+  display: block;
+  margin-top: 3px;
+  color: var(--google-gray-subtle);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.razer-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(242, 139, 130, 0.32);
+  border-radius: 10px;
+  background: rgba(242, 139, 130, 0.06);
+  padding: 12px 14px;
+  color: var(--color-danger);
+}
+
+.razer-alert strong {
+  display: block;
+  color: var(--google-gray-text);
+  font-size: 12px;
+}
+
+.razer-panel {
+  overflow: hidden;
+}
+
+.razer-theme-panel {
+  margin-bottom: 18px;
+}
+
+.razer-section-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--google-gray-bg);
+  color: var(--color-accent);
+}
+
+.razer-theme-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.razer-theme-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.razer-theme-button {
+  height: 38px;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 8px;
+  background: var(--google-gray-surface-2);
+  color: var(--google-gray-muted);
+  font-size: 11px;
+  font-weight: 760;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.razer-theme-button:hover:not(:disabled) {
+  border-color: rgba(25, 200, 255, 0.36);
+  background: var(--google-gray-surface-3);
+  color: var(--google-gray-text);
+}
+
+.razer-theme-button.is-active {
+  border-color: rgba(68, 214, 44, 0.36);
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.12), rgba(25, 200, 255, 0.06)), var(--google-gray-surface-2);
+  color: var(--google-gray-text);
+}
+
+.razer-theme-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.razer-theme-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.razer-theme-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.razer-theme-field > span {
+  color: var(--google-gray-subtle);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.razer-theme-field.is-disabled {
+  opacity: 0.48;
+}
+
+.razer-color-control {
+  display: flex;
+  height: 38px;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--google-gray-line);
+  border-radius: 8px;
+  background: var(--google-gray-surface-2);
+  padding: 6px 9px 6px 7px;
+}
+
+.razer-color-control input {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+}
+
+.razer-color-control code {
+  overflow: hidden;
+  color: var(--google-gray-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.razer-device-grid {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.razer-device-row,
+.razer-target {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 8px;
+  background: var(--google-gray-surface-2);
+  padding: 12px;
+}
+
+.razer-device-icon,
+.razer-target > div {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--google-gray-bg);
+  color: var(--color-accent);
+}
+
+.razer-device-row strong {
+  display: block;
+  overflow: hidden;
+  color: var(--google-gray-text);
+  font-size: 13px;
+  font-weight: 740;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.razer-status-pill {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 999px;
+  margin-left: auto;
+  padding: 0 9px;
+  color: var(--google-gray-subtle);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.razer-status-pill.is-online {
+  border-color: rgba(68, 214, 44, 0.28);
+  background: rgba(68, 214, 44, 0.08);
+  color: var(--razer-green);
+}
+
+.razer-empty {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed var(--google-gray-line);
+  border-radius: 10px;
+  background: var(--google-gray-bg);
+  padding: 28px;
+  text-align: center;
+}
+
+.razer-empty strong,
+.razer-help strong {
+  color: var(--google-gray-text);
+  font-size: 13px;
+}
+
+.razer-empty span {
+  max-width: 520px;
+  color: var(--google-gray-subtle);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.razer-target-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.razer-target {
+  justify-content: space-between;
+}
+
+.razer-target.is-active {
+  border-color: rgba(68, 214, 44, 0.28);
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.08), rgba(25, 200, 255, 0.045)), var(--google-gray-surface-2);
+}
+
+.razer-target.is-active > div,
+.razer-target.is-active > svg {
+  color: var(--razer-green);
+}
+
+.razer-help {
+  display: grid;
+  gap: 6px;
+  margin: 0 14px 14px;
+  border: 1px solid var(--google-gray-line-soft);
+  border-radius: 8px;
+  background: var(--google-gray-bg);
+  padding: 12px;
+}
+
+@media (max-width: 980px) {
+  .razer-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .razer-theme-options,
+  .razer-theme-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .razer-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .razer-theme-options,
+  .razer-theme-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dashboard hero keeps the product accent treatment even in gray mode. */
+.app-page.dashboard-pro .dashboard-hero-panel {
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(25, 200, 255, 0.34) !important;
+  background: #1b1e24 !important;
+  box-shadow:
+    0 0 0 1px rgba(25, 200, 255, 0.08),
+    0 12px 30px rgba(25, 200, 255, 0.10),
+    0 12px 30px rgba(208, 53, 241, 0.08) !important;
+}
+
+.app-page.dashboard-pro .dashboard-hero-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(115deg, rgba(25, 200, 255, 0.42) 0%, rgba(42, 83, 133, 0.34) 44%, rgba(208, 53, 241, 0.40) 100%),
+    radial-gradient(circle at 8% 18%, rgba(25, 200, 255, 0.24), transparent 42%),
+    radial-gradient(circle at 94% 10%, rgba(208, 53, 241, 0.22), transparent 38%);
+  pointer-events: none;
+}
+
+.app-page.dashboard-pro .dashboard-hero-panel::after {
+  display: none;
+}
+
+.app-page.dashboard-pro .dashboard-hero-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-page.dashboard-pro .dashboard-chart-panel {
+  border-color: rgba(232, 234, 237, 0.10) !important;
+  background:
+    linear-gradient(180deg, rgba(20, 21, 24, 0.98), rgba(18, 19, 23, 0.96)),
+    var(--google-gray-bg) !important;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card::before {
+  display: none;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(135deg, rgba(25, 200, 255, 0.18), rgba(208, 53, 241, 0.16)),
+    radial-gradient(circle at 20% 0%, rgba(25, 200, 255, 0.16), transparent 42%);
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card:hover,
+.app-page.dashboard-pro .dashboard-metric-card:focus-within {
+  border-color: rgba(25, 200, 255, 0.38) !important;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card:hover::after,
+.app-page.dashboard-pro .dashboard-metric-card:focus-within::after {
+  opacity: 1;
+}
+
+.app-page.dashboard-pro .dashboard-metric-card > * {
+  position: relative;
+  z-index: 1;
+}

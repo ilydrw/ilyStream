@@ -2,21 +2,16 @@ import React from 'react'
 import { IconWorld, IconRocket, IconActivity, IconBolt } from '@tabler/icons-react'
 import { IconExternalLink } from '../../components/ui/icons'
 import { RestreamIcon } from '../../components/ui/RestreamIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function RestreamPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <RestreamIcon size={48} className="text-[#FF4C2F]" />
-            <h1>ReStream</h1>
-          </div>
-          <p className="app-page-intro">
-            The ultimate multi-streaming hub. Broadcast to 30+ platforms simultaneously and manage your cross-platform chat and alerts from a single dashboard.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="ReStream"
+        description="Broadcast to multiple platforms and manage cross-platform chat and alerts from one dashboard."
+        iconNode={<RestreamIcon size={24} className="text-[#FF4C2F]" />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 

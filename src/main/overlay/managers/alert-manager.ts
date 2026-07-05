@@ -30,13 +30,8 @@ export class AlertManager extends EventEmitter {
       }
     }
 
-    if (
-      finalPayload.imageUrl &&
-      !finalPayload.imageUrl.startsWith('http') &&
-      !finalPayload.imageUrl.startsWith('data:') &&
-      !finalPayload.imageUrl.startsWith('/')
-    ) {
-      finalPayload.imageUrl = `/assets/${finalPayload.imageUrl}`
+    if (finalPayload.imageUrl) {
+      finalPayload.imageUrl = normalizeAlertImageUrl(finalPayload.imageUrl)
     }
 
     const alertItem = createOverlayAlertItem(finalPayload as any, platform)
@@ -47,5 +42,44 @@ export class AlertManager extends EventEmitter {
 
   clearHistory(): void {
     this.history = []
+  }
+}
+
+function normalizeAlertImageUrl(imageUrl: string): string {
+  const trimmed = imageUrl.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:)/i.test(trimmed) || trimmed.startsWith('/')) return trimmed
+
+  const assetId = extractAssetId(trimmed)
+  if (!assetId) return trimmed
+
+  return `/assets/${encodeURIComponent(assetId)}`
+}
+
+function extractAssetId(value: string): string {
+  let candidate = value
+
+  if (candidate.startsWith('asset://')) {
+    try {
+      const url = new URL(candidate)
+      candidate = `${url.hostname}${url.pathname}`
+    } catch {
+      candidate = candidate.slice('asset://'.length)
+    }
+
+    candidate = candidate.replace(/^\/+/, '').replace(/\/+$/, '')
+    if (candidate.startsWith('app/')) candidate = candidate.slice(4)
+    if (candidate.startsWith('image/')) candidate = candidate.slice(6)
+  }
+
+  const assetId = candidate.split(/[\\/]+/).filter(Boolean).pop() || ''
+  return safeDecodeURIComponent(assetId)
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
   }
 }

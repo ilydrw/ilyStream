@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { TwitchConfig } from '../../main/platforms/types'
 import {
   getPlatformCapability,
   getPlatformConfig,
@@ -12,7 +13,7 @@ describe('platform config helpers', () => {
       { platform: 'kick', enabled: true, channelName: 'creator' }
     ])
 
-    expect(configs.twitch?.streamKey).toBe('key')
+    expect((configs.twitch as TwitchConfig | undefined)?.streamKey).toBe('key')
     expect(configs.kick?.enabled).toBe(true)
   })
 

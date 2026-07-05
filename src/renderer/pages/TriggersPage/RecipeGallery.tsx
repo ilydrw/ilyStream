@@ -184,9 +184,9 @@ export function RecipeGallery({
         </div>
       )}
 
-      <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
-        <div className="app-section-card glass !p-0 overflow-hidden">
-          <div className="app-section-head">
+      <section className="recipe-gallery-layout grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
+        <div className="recipe-gallery-panel app-section-card glass !p-0 overflow-hidden">
+          <div className="recipe-gallery-head app-section-head">
             <div className="flex items-center gap-4">
               <div className="text-accent">
                 <IconTemplate size={30} />
@@ -196,12 +196,12 @@ export function RecipeGallery({
                 <p>Install proven event setups, customize them, then test the exact route in Event Lab.</p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="recipe-gallery-filters flex flex-wrap items-center gap-2">
               {categories.map((category) => (
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`h-9 px-3 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ selectedCategory === category ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white' }`}
+                  className={`recipe-gallery-filter h-9 px-3 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ selectedCategory === category ? 'border-[#d035f1]/50 bg-[#d035f1]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white' }`}
                 >
                   {category}
                 </button>
@@ -209,7 +209,7 @@ export function RecipeGallery({
             </div>
           </div>
 
-          <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="recipe-gallery-grid p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
             {recipes.map((recipe) => (
               <RecipeCard
                 key={recipe.id}
@@ -232,7 +232,7 @@ export function RecipeGallery({
           </div>
         </div>
 
-        <aside className="app-section-card glass !p-0 overflow-hidden">
+        <aside className="recipe-gallery-preview app-section-card glass !p-0 overflow-hidden">
           <div className="app-section-head">
             <div>
               <p className="text-[10px] font-semibold tracking-normal text-white/30">Visual Builder</p>
@@ -244,7 +244,7 @@ export function RecipeGallery({
           </div>
 
           <div className="p-5 space-y-5">
-            <div className={`rounded-xl border p-4 ${ACCENT_STYLES[selectedRecipe.accent]}`}>
+            <div className={`recipe-preview-summary rounded-xl border p-4 ${ACCENT_STYLES[selectedRecipe.accent]}`}>
               <p className="text-[10px] font-semibold tracking-normal opacity-70">{selectedRecipe.category}</p>
               <p className="mt-2 text-sm font-semibold text-white">{selectedRecipe.summary}</p>
               <p className="mt-2 text-xs text-white/45 leading-relaxed">{selectedRecipe.outcome}</p>
@@ -438,32 +438,32 @@ function RecipeCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 transition-all ${ selected ? 'border-[#d035f1]/45 bg-[#d035f1]/10' : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]' }`}
+      className={`recipe-card rounded-xl border p-4 transition-all ${ selected ? 'border-[#d035f1]/45 bg-[#d035f1]/10' : 'border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]' }`}
       onMouseEnter={onSelect}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="recipe-card-body min-w-0">
+          <div className="recipe-card-eyebrow flex items-center gap-2 flex-wrap">
             <span className={`rounded-md border px-2 py-1 text-[9px] font-semibold tracking-normal ${ACCENT_STYLES[recipe.accent]}`}>
               {recipe.category}
             </span>
             <span className="text-[9px] font-semibold tracking-normal text-white/25">{recipe.difficulty}</span>
             {installed && <span className="text-[9px] font-semibold tracking-normal text-success">Installed</span>}
           </div>
-          <h3 className="mt-3 text-base font-semibold text-white tracking-tight">{recipe.name}</h3>
-          <p className="mt-2 text-xs text-white/42 leading-relaxed">{recipe.summary}</p>
+          <h3 className="recipe-card-title mt-3 text-base font-semibold text-white tracking-tight">{recipe.name}</h3>
+          <p className="recipe-card-summary mt-2 text-xs text-white/42 leading-relaxed">{recipe.summary}</p>
         </div>
         <button
           onClick={onTest}
           disabled={busy}
-          className="h-9 w-9 rounded-lg border border-white/10 bg-black/25 flex items-center justify-center text-white/45 hover:text-white hover:border-[#d035f1]/50 transition-all disabled:opacity-30 shrink-0"
+          className="recipe-card-test h-9 w-9 rounded-lg border border-white/10 bg-black/25 flex items-center justify-center text-white/45 hover:text-white hover:border-[#d035f1]/50 transition-all disabled:opacity-30 shrink-0"
           title="Test recipe"
         >
           <IconPlayerPlay size={14} />
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
+      <div className="recipe-card-tags mt-4 flex flex-wrap gap-1.5">
         {recipe.tags.map((tag) => (
           <span key={tag} className="rounded-md bg-black/25 border border-white/[0.06] px-2 py-1 text-[9px] font-semibold text-white/28">
             {tag}
@@ -471,7 +471,7 @@ function RecipeCard({
         ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="recipe-card-actions grid grid-cols-2 gap-2">
         <button
           onClick={onInstall}
           disabled={busy}

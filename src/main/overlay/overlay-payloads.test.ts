@@ -75,7 +75,13 @@ describe('overlay payload helpers', () => {
   it('sanitizes alert html before it reaches the overlay', () => {
     expect(
       sanitizeOverlayHtml('<div onclick="hack()">Hi<script>alert(1)</script><a href="javascript:evil()">Go</a></div>')
-    ).toBe('&lt;div onclick=&quot;hack()&quot;&gt;Hi&lt;script&gt;alert(1)&lt;/script&gt;&lt;a href=&quot;javascript:evil()&quot;&gt;Go&lt;/a&gt;&lt;/div&gt;')
+    ).toBe('Hi Go')
+  })
+
+  it('turns legacy styled alert templates into readable alert text', () => {
+    expect(
+      sanitizeOverlayHtml('<div style="color:#FFD700">SUPER FAN DETECTED</div><div>Welcome back, <strong>@ilydrw</strong>!</div>')
+    ).toBe('SUPER FAN DETECTED<br />Welcome back, @ilydrw!')
   })
 
   it('preserves line breaks as the only alert html tag', () => {
@@ -200,7 +206,7 @@ describe('overlay payload helpers', () => {
       expect.objectContaining({
         platform: 'tiktok',
         durationMs: 30000,
-        html: '&lt;strong&gt;Hi&lt;/strong&gt;'
+        html: 'Hi'
       })
     )
   })
@@ -219,6 +225,37 @@ describe('overlay payload helpers', () => {
     ).toEqual(
       expect.objectContaining({
         html: 'Test User is now following!'
+      })
+    )
+  })
+
+  it('preserves structured clean alert metadata', () => {
+    expect(
+      createOverlayAlertItem(
+        {
+          template: 'Alice sent Rose',
+          eventType: 'gift',
+          variant: 'clean-gift',
+          eyebrow: 'Gift received',
+          headline: 'Alice',
+          subtitle: 'sent Rose',
+          meta: 'TikTok',
+          accentColor: '#f7c948',
+          durationMs: 4200,
+          animationIn: 'slide',
+          animationOut: 'fade'
+        },
+        'tiktok'
+      )
+    ).toEqual(
+      expect.objectContaining({
+        eventType: 'gift',
+        variant: 'clean-gift',
+        eyebrow: 'Gift received',
+        headline: 'Alice',
+        subtitle: 'sent Rose',
+        meta: 'TikTok',
+        accentColor: '#f7c948'
       })
     )
   })

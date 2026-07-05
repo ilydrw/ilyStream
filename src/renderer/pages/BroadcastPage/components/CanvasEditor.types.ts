@@ -56,6 +56,8 @@ export interface CanvasEditorProps {
   forceHorizontalCanvas?: boolean
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
+  /** Double-click on a source — used to jump straight into widget editing. */
+  onLayerDoubleClick?: (layer: StudioLayer) => void
 }
 
 export type HandleDir = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'

@@ -1,10 +1,11 @@
 import { IconUnlink, IconMessage, IconSwords } from '@tabler/icons-react'
 import { IconTrash, IconLink as LinkIcon } from '../../../components/ui/icons'
-import type { UserIdentity, UserStat } from '../../../shared/stats'
-import type { Platform } from '../../../main/platforms/types'
+import type { UserIdentity, UserStat } from '../../../../shared/stats'
+import type { Platform } from '../../../../main/platforms/types'
 import { Avatar } from '../../../components/ui/Avatar'
 import { TikTokHeartIcon } from '../../../components/ui/TikTokHeartIcon'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
+import { sortPlatformsByDisplayOrder } from '../../../lib/platform-order'
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -62,7 +63,7 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
           </div>
           <div className="text-white/40 text-xs flex items-center gap-2 mt-1">
             <div className="flex items-center -space-x-1">
-              {identity.allPlatforms.map(p => (
+              {sortPlatformsByDisplayOrder(identity.allPlatforms).map(p => (
                 <div key={p} className="p-0.5 bg-black/40 rounded-full border border-white/10">
                   <PlatformLogo platform={p} size={10} />
                 </div>
@@ -81,6 +82,8 @@ export function UserDetailSidebar({ identity, onClose, onStartLink, onUnlink }: 
         <MetricBox label="Gifts" value={identity.totalGifts} color="text-yellow-300" />
         <MetricBox label="Subs" value={identity.totalSubscriptions} color="text-purple-400" />
         <MetricBox label="Songs" value={identity.totalSongRequests} color="text-green-400" />
+        <MetricBox label="Chats" value={identity.totalChats} color="text-white/60" />
+        <MetricBox label="AI Calls" value={identity.totalCohostCalls || 0} color="text-red-400" />
       </div>
 
       <h3 className="text-[10px] font-medium tracking-normal text-white/20 mb-4 px-1">Linked Accounts</h3>

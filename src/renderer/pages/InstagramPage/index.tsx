@@ -1,21 +1,16 @@
 import React from 'react'
 import {IconWorld, IconBrandInstagram as Insta, IconActivity, IconHeart, IconCamera} from '@tabler/icons-react'
 import { InstagramIcon } from '../../components/ui/InstagramIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function InstagramPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <InstagramIcon size={48} className="text-pink-500" />
-            <h1>Instagram Live</h1>
-          </div>
-          <p className="app-page-intro">
-            Reach your mobile audience. Broadcast vertically and interact with your Instagram followers in real-time.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Instagram Live"
+        description="Reach your mobile audience and interact with followers in real time."
+        iconNode={<InstagramIcon size={24} className="text-pink-500" />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 

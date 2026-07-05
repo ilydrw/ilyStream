@@ -20,18 +20,34 @@ const THEME_OPTIONS: Array<{
   { value: 'midnight', label: 'Midnight', hint: 'Cool blue focus mode.', accent: '#60a5fa', secondary: '#7c3aed' },
   { value: 'aurora', label: 'Aurora', hint: 'Teal and green live energy.', accent: '#2dd4bf', secondary: '#22c55e' },
   { value: 'ember', label: 'Ember', hint: 'Warm alert-ready contrast.', accent: '#fb923c', secondary: '#f43f5e' },
-  { value: 'joker', label: 'Why So Serious?', hint: 'High-contrast chaos for the bold.', accent: '#1ddd33', secondary: '#ab5dce' }
+  { value: 'light', label: 'Daylight', hint: 'Bright control surface for lit rooms.', accent: '#0ea5e9', secondary: '#a855f7' },
+  { value: 'joker', label: 'Why So Serious?', hint: 'High-contrast chaos for the bold.', accent: '#1ddd33', secondary: '#ab5dce' },
+  { value: 'custom', label: 'Custom', hint: 'Build your own palette from scratch.', accent: '#19c8ff', secondary: '#d035f1' }
 ]
 
 const ACCENT_OPTIONS = ['#19c8ff', '#a78bfa', '#2dd4bf', '#22c55e', '#fb923c', '#f43f5e']
+const UI_SCALE_OPTIONS = [
+  { value: 0.85, label: '85%' },
+  { value: 0.95, label: '95%' },
+  { value: 1, label: '100%' },
+  { value: 1.1, label: '110%' },
+  { value: 1.2, label: '120%' }
+]
 
 export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: PersonalizationSectionProps) {
   const setTheme = (option: (typeof THEME_OPTIONS)[number]) => {
+    if (option.value === 'custom') {
+      // Keep whatever accent the user already has — custom means "your colors".
+      onUpdate('theme', 'custom')
+      return
+    }
     onUpdateMany({
       theme: option.value,
       accentColor: option.accent
     })
   }
+
+  const customPreview = `linear-gradient(135deg, ${settings.ui.customBackground || '#0b0d12'}, ${settings.ui.customSecondary || '#d035f1'})`
 
   return (
     <section className="app-section-card glass">
@@ -64,7 +80,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                 >
                   <div
                     className="mb-4 h-16 rounded-lg border border-white/10"
-                    style={{ background: `linear-gradient(135deg, ${option.accent}, ${option.secondary})` }}
+                    style={{ background: option.value === 'custom' ? customPreview : `linear-gradient(135deg, ${option.accent}, ${option.secondary})` }}
                   />
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
@@ -77,6 +93,29 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
               )
             })}
           </div>
+
+          {settings.theme === 'custom' && (
+            <>
+              <SettingRow label="Base Background" hint="The darkest surface color — cards, borders, and hover states are derived from it.">
+                <input
+                  type="color"
+                  value={settings.ui.customBackground || '#0b0d12'}
+                  onChange={(event) => onUpdate('customThemeBackground', event.target.value)}
+                  className="h-9 w-20 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+                  title="Custom background color"
+                />
+              </SettingRow>
+              <SettingRow label="Secondary Color" hint="Used in gradients and icon accents alongside your accent color.">
+                <input
+                  type="color"
+                  value={settings.ui.customSecondary || '#d035f1'}
+                  onChange={(event) => onUpdate('customThemeSecondary', event.target.value)}
+                  className="h-9 w-20 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+                  title="Custom secondary color"
+                />
+              </SettingRow>
+            </>
+          )}
 
           <SettingRow label="Accent Color" hint="Choose the color used for active states, meters, glows, and primary actions.">
             <div className="flex flex-wrap justify-end gap-2">
@@ -96,6 +135,20 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                 className="h-9 w-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
                 title="Custom accent color"
               />
+            </div>
+          </SettingRow>
+
+          <SettingRow label="Interface Scale" hint="Zoom the entire app — useful on high-DPI or small laptop screens.">
+            <div className="grid grid-cols-5 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+              {UI_SCALE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onUpdate('uiScale', option.value)}
+                  className={`h-10 px-3 text-xs font-semibold tracking-tight transition-all ${ Math.abs((settings.ui.uiScale || 1) - option.value) < 0.01 ? 'bg-white text-black' : 'text-white/35 hover:bg-white/5 hover:text-white/60' }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </SettingRow>
 

@@ -3,6 +3,7 @@ import { IconCpu, IconRadio, IconDeviceDesktop, IconBulb, IconKeyboard } from '@
 import { IconPlus, IconRefresh, IconExternalLink } from '../../components/ui/icons'
 import { motion } from 'framer-motion'
 import { ElgatoIcon } from '../../components/ui/ElgatoIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 function Metric({ icon, label, value, sub, accent = 'text-accent' }: { icon: any; label: string; value: string; sub: string; accent?: string }) {
   return (
@@ -34,20 +35,11 @@ export default function ElgatoPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <ElgatoIcon size={48} />
-          </div>
-          <div>
-            <h1>Elgato Ecosystem</h1>
-            <p className="app-page-intro">
-              Manage your Stream Deck, Key Lights, and Prompter.
-              Create unified studio scenes and automate your production hardware.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Elgato Ecosystem"
+        description="Manage Stream Deck, Key Lights, Prompter, and production hardware automation."
+        iconNode={<ElgatoIcon size={24} />}
+      />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">

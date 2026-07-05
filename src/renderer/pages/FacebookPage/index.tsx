@@ -2,22 +2,16 @@ import React from 'react'
 import { IconWorld, IconShield, IconActivity, IconShare } from '@tabler/icons-react'
 import { IconExternalLink } from '../../components/ui/icons'
 import { FacebookIcon } from '../../components/ui/FacebookIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function FacebookPage() {
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <FacebookIcon size={48} className="text-[#1877F2]" />
-            <h1>Facebook Gaming</h1>
-          </div>
-          <p className="app-page-intro">
-            Connect your Facebook Page or Gaming Creator profile. 
-            Stream directly to your followers and manage your community interactions.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Facebook Gaming"
+        description="Connect your Facebook Page or Gaming Creator profile and manage community interactions."
+        iconNode={<FacebookIcon size={24} className="text-[#1877F2]" />}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         <Metric 

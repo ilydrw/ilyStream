@@ -14,10 +14,17 @@ import { AlertManager } from './managers/alert-manager'
 import { GoalManager } from './managers/goal-manager'
 import { NowPlayingManager } from './managers/now-playing-manager'
 import { LikesTracker } from './managers/likes-tracker'
-import { DEFAULT_PORT } from './types'
+import { DEFAULT_PORT, type OverlayChannel } from './types'
 import { shouldBroadcastParticleEvent } from './overlay-payloads'
+import { renderWidgetPreviewHtml } from './widget-renderers'
+import type { Widget } from '../../shared/widgets'
 
-const DEFAULT_LISTEN_HOST = '0.0.0.0'
+// Secure by default: bind to loopback so the overlay/state/deck/device endpoints
+// are NOT exposed to the whole LAN unless the user opts in. LAN access is enabled
+// explicitly when a device is paired (ensureLanAccess) or, at startup, when paired
+// devices already exist (see ServiceRegistry). Power users can still override via
+// ILYSTREAM_OVERLAY_HOST.
+const DEFAULT_LISTEN_HOST = '127.0.0.1'
 const ALLOWED_LISTEN_HOSTS = new Set(['0.0.0.0', '127.0.0.1', 'localhost', '::1', '::'])
 
 function resolveListenHost(): string {
@@ -30,14 +37,36 @@ function resolveListenHost(): string {
 
 function getLanIPv4Addresses(): string[] {
   const addresses = new Set<string>()
-  for (const entries of Object.values(networkInterfaces())) {
+  for (const [name, entries] of Object.entries(networkInterfaces())) {
+    if (isVirtualNetworkInterface(name)) continue
+
     for (const entry of entries || []) {
-      if (entry.family === 'IPv4' && !entry.internal) {
+      if (entry.family === 'IPv4' && !entry.internal && isUsableLanIPv4(entry.address)) {
         addresses.add(entry.address)
       }
     }
   }
   return [...addresses]
+}
+
+function isUsableLanIPv4(address: string): boolean {
+  if (
+    address.startsWith('127.') ||
+    address.startsWith('169.254.') ||
+    address === '0.0.0.0'
+  ) {
+    return false
+  }
+
+  return (
+    address.startsWith('10.') ||
+    address.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(address)
+  )
+}
+
+function isVirtualNetworkInterface(name: string): boolean {
+  return /\b(vmware|virtualbox|vbox|hyper-v|vethernet|docker|wsl|loopback)\b/i.test(name)
 }
 
 function isWildcardHost(host: string): boolean {
@@ -60,8 +89,11 @@ export class OverlayServer extends EventEmitter {
   private obsService: any | null = null
   private platformManager: any | null = null
   private soundboardService: any | null = null
+  private statsService: any | null = null
+  private economyService: any | null = null
   private server: Server | null = null
   private listenHost = DEFAULT_LISTEN_HOST
+  private forceLanBinding = false
 
   private sse: SSEManager
   private router: OverlayRouter
@@ -130,7 +162,9 @@ export class OverlayServer extends EventEmitter {
       () => this.obsService?.getStatus() || null,
       () => this.platformManager?.getViewerCounts() || {},
       (event) => this.handleStreamEvent(event),
-      (action) => this.emit('deck-action', action)
+      (action) => this.emit('deck-action', action),
+      () => this.statsService,
+      () => this.economyService?.getLeaderboardSnapshot?.() || []
     )
   }
 
@@ -149,6 +183,23 @@ export class OverlayServer extends EventEmitter {
   }
   setObsService(obsService: any): void { this.obsService = obsService }
   setPlatformManager(platformManager: any): void { this.platformManager = platformManager }
+  setStatsService(statsService: any): void { this.statsService = statsService }
+  setEconomyService(economyService: any): void { this.economyService = economyService }
+
+  async ensureLanAccess(): Promise<OverlayRuntimeStatus> {
+    this.forceLanBinding = true
+    const port = this.status.port || this.status.requestedPort || DEFAULT_PORT
+
+    if (this.status.running && isWildcardHost(this.listenHost)) {
+      return this.getStatus()
+    }
+
+    return this.enqueue(async () => {
+      await this.stopInternal()
+      await this.startInternal(port)
+      return this.getStatus()
+    })
+  }
 
   getStatus(): OverlayRuntimeStatus {
     return {
@@ -162,14 +213,33 @@ export class OverlayServer extends EventEmitter {
       particleClientCount: this.sse.getClientCount('event-particles'),
       roseClientCount: this.sse.getClientCount('falling-roses'),
       likesClientCount: this.sse.getClientCount('likes'),
+      leaderboardClientCount: this.sse.getClientCount('leaderboard'),
       dualVerticalClientCount: this.router.getDualVerticalClientCount()
     }
   }
 
   getGoalState() { return this.goals.getState() }
 
-  start(port: number = DEFAULT_PORT): Promise<OverlayRuntimeStatus> {
+  /**
+   * Render a widget's preview HTML (with the preview-bootstrap script injected)
+   * using the same context the HTTP overlay route uses. The renderer-side
+   * WidgetEditorModal pushes the result over postMessage to the live iframe,
+   * which lets config tweaks apply in-place without reloading the page.
+   */
+  renderWidgetPreview(widget: Widget): string | null {
+    return renderWidgetPreviewHtml(widget, {
+      settings: this.db?.getAllSettings() || {},
+      boardSounds: this.soundboardService?.getAllSounds('board') || [],
+      deckActions: this.db?.getAllDeckActions() || []
+    })
+  }
+
+  start(port: number = DEFAULT_PORT, options?: { preferLan?: boolean }): Promise<OverlayRuntimeStatus> {
     return this.enqueue(async () => {
+      // Persisted LAN opt-in: if the user already has paired devices, keep LAN
+      // binding across restarts (otherwise DeskThing/Car Thing would be unable to
+      // reach the server after every launch until re-paired).
+      if (options?.preferLan) this.forceLanBinding = true
       await this.startInternal(port)
       return this.getStatus()
     })
@@ -206,7 +276,14 @@ export class OverlayServer extends EventEmitter {
   }
 
   broadcast(channel: any, payload: any): void {
-    console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
+    // Skip the per-broadcast log for leaderboard/deck — those are emitted in
+    // tight bursts by the like pipeline and JSON.stringify on the full
+    // leaderboard payload is the most expensive per-like log we have.
+    const payloadType = (payload as any)?.type
+    const isHotChannel = channel === 'leaderboard' || channel === 'deck' || payloadType === 'leaderboard'
+    if (!isHotChannel) {
+      console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
+    }
     this.sse.broadcast(channel, payload)
   }
 
@@ -301,10 +378,29 @@ export class OverlayServer extends EventEmitter {
       'follower-goal': 'follower-goal', 'socials': 'socials', 'screen-border': 'screen-border',
       'event-particles': 'event-particles', 'gift-overlays': 'event-particles',
       'falling-roses': 'falling-roses', 'particles': 'particles', 'discord-promo': 'discord-promo',
-      'node-network': 'node-network', 'latest-gifter': 'latest-gifter', 'physics': 'physics', 'deck': 'deck'
+      'node-network': 'node-network', 'latest-gifter': 'latest-gifter', 'physics': 'physics',
+      'leaderboard': 'leaderboard', 'deck': 'deck'
     }
     const channel = channelMap[type]
     if (channel) this.sse.broadcast(channel, { type: 'reload', id })
+  }
+
+  resetWidgetRuntimeState(): void {
+    const resetChannels: OverlayChannel[] = ['chat', 'chat-unified', 'alerts', 'goals', 'likes', 'leaderboard']
+
+    this.chat.clearHistory()
+    this.alerts.clearHistory()
+    this.goals.reset()
+    this.likes.reset()
+    this.economyService?.resetLikeathon?.()
+    this.sse.clearState(resetChannels)
+
+    this.sse.broadcast('chat', { type: 'snapshot', payload: [] })
+    this.sse.broadcast('chat-unified', { type: 'snapshot', payload: [] })
+    this.sse.broadcast('alerts', { type: 'snapshot', payload: [] })
+    this.sse.broadcast('goals', { type: 'snapshot', payload: this.goals.getState() })
+    this.sse.broadcast('likes', { type: 'snapshot', payload: this.likes.getSnapshot() })
+    this.sse.broadcast('leaderboard', { type: 'update', data: [] })
   }
 
   setDualVerticalFrame(frame: Buffer): void {
@@ -328,7 +424,7 @@ export class OverlayServer extends EventEmitter {
   private async startInternal(port: number): Promise<void> {
     this.status.requestedPort = port
     try {
-      this.listenHost = resolveListenHost()
+      this.listenHost = this.forceLanBinding ? '0.0.0.0' : resolveListenHost()
       this.server = createServer((req, res) => this.router.handleRequest(req, res))
       await new Promise<void>((resolve, reject) => {
         this.server?.listen(port, this.listenHost, () => resolve())
@@ -379,7 +475,9 @@ export class OverlayServer extends EventEmitter {
     this.status.devicePairUrl = devicePairUrls[0] || null
     this.status.devicePairUrls = devicePairUrls
     this.status.startedAt = this.status.startedAt || new Date().toISOString()
-    const base = `http://127.0.0.1:${port}`
+    const localHost = formatHostPort('127.0.0.1', port)
+    const overlayHost = deviceHosts.includes(localHost) ? localHost : (deviceHosts[0] || localHost)
+    const base = `http://${overlayHost}`
     this.status.chatUrl = `${base}/overlay/chat.html`
     this.status.alertsUrl = `${base}/overlay/alerts.html`
     this.status.goalsUrl = `${base}/overlay/goals.html`

@@ -5,6 +5,7 @@ import { useSoundboard, SoundFile } from '../../hooks/useSoundboard'
 import { useDeckActions, DeckAction } from '../../hooks/useDeckActions'
 import { EmojiPickerModal } from '../../components/ui/EmojiPickerModal'
 import { motion, AnimatePresence } from 'framer-motion'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function SoundboardPage() {
   const { sounds, playSound, stopAllSounds, uploadSound, deleteSound, refreshSounds } = useSoundboard('board')
@@ -120,21 +121,12 @@ export default function SoundboardPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <IconSoundboard size={20} className="text-accent" />
-          </div>
-          <div>
-            <h1>Audio Deck</h1>
-            <p className="app-page-intro">
-              Manage and trigger instant audio effects and system actions.
-              Customize your layout for physical stream deck integration.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
+      <PageHeader
+        title="Audio Deck"
+        description="Manage instant audio effects, system actions, and stream deck layouts."
+        icon={IconSoundboard}
+        actions={
+          <>
           <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-md">
             <button
               onClick={() => setActiveTab('sounds')}
@@ -167,8 +159,9 @@ export default function SoundboardPage() {
               STOP ALL
             </button>
           )}
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-12 gap-8 mt-12">
         {/* Main IconGridDots Area */}

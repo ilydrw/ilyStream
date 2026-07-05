@@ -15,7 +15,7 @@ import {
   type HandleDir
 } from './CanvasEditor.types'
 
-import { resolveImageSource } from './CanvasEditor.utils'
+import { normalizeGridSize, resolveImageSource, snapPointToGrid, snapResizeRectToGrid } from './CanvasEditor.utils'
 import { useBroadcastAudio } from './useBroadcastAudio'
 import { useVideoEncoder } from './useVideoEncoder'
 
@@ -27,6 +27,32 @@ import { CanvasStatusBar } from './CanvasStatusBar'
 import { useRenderLoop } from './useRenderLoop'
 import { useBrowserSources } from './useBrowserSources'
 
+function CanvasGridOverlay({ gridSize }: { gridSize: number }) {
+  const normalizedGridSize = normalizeGridSize(gridSize)
+  const majorGridSize = normalizedGridSize * 5
+
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        backgroundImage: [
+          'linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)',
+          'linear-gradient(to right, rgba(208,53,241,0.18) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(208,53,241,0.18) 1px, transparent 1px)'
+        ].join(', '),
+        backgroundSize: [
+          `${normalizedGridSize}px ${normalizedGridSize}px`,
+          `${normalizedGridSize}px ${normalizedGridSize}px`,
+          `${majorGridSize}px ${majorGridSize}px`,
+          `${majorGridSize}px ${majorGridSize}px`
+        ].join(', '),
+        opacity: 0.38
+      }}
+    />
+  )
+}
+
 export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((props, ref) => {
   const {
     activeScene, isStreaming, isRecording, captureInputFormat,
@@ -34,7 +60,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
     dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
     forceVerticalCanvas = false, forceHorizontalCanvas = false,
-    onContextMenu, onSelectionContextChange
+    onContextMenu, onSelectionContextChange, onLayerDoubleClick
   } = props
 
   const canvasWidth = useStudioStore(s => s.canvasWidth)
@@ -48,6 +74,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const undo = useStudioStore(s => s.undo)
   const redo = useStudioStore(s => s.redo)
   const snapToGrid = useStudioStore(s => s.snapToGrid)
+  const toggleSnapToGrid = useStudioStore(s => s.toggleSnapToGrid)
+  const setGridSize = useStudioStore(s => s.setGridSize)
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -60,6 +88,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
   const [activeGuides, setActiveGuides] = useState<{ type: 'v' | 'h', pos: number, targetId?: string }[]>([])
   const gridSize = useStudioStore(s => s.gridSize)
+  const safeGridSize = useMemo(() => normalizeGridSize(gridSize), [gridSize])
   const previewSceneId = useStudioStore(s => s.previewSceneId)
   const activeSceneId = useStudioStore(s => s.activeSceneId)
   const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
@@ -234,7 +263,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       return
     }
     if (e.button !== 0) return
-    onSelectionContextChange(interactionAspectRatio)
+    onSelectionContextChange?.(interactionAspectRatio)
     const layout = resolveLayerLayout(layer, interactionAspectRatio)
     if (layout.locked) return
     e.stopPropagation(); setSelectedLayer(layer.id); saveHistory()
@@ -243,7 +272,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   const handleResizeStart = (e: React.MouseEvent, layer: StudioLayer, handle: HandleDir, interactionAspectRatio: '16:9' | '9:16') => {
     e.stopPropagation()
-    onSelectionContextChange(interactionAspectRatio)
+    onSelectionContextChange?.(interactionAspectRatio)
     const layout = resolveLayerLayout(layer, interactionAspectRatio)
     if (layout.locked) return
     saveHistory()
@@ -252,7 +281,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   const handleRotateStart = (e: React.MouseEvent, layer: StudioLayer, interactionAspectRatio: '16:9' | '9:16') => {
     e.stopPropagation()
-    onSelectionContextChange(interactionAspectRatio)
+    onSelectionContextChange?.(interactionAspectRatio)
     setSelectedLayer(layer.id); saveHistory()
     const layout = resolveLayerLayout(layer, interactionAspectRatio)
     const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect()
@@ -313,7 +342,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   ) => {
     e.preventDefault()
     e.stopPropagation()
-    onSelectionContextChange(interactionAspectRatio)
+    onSelectionContextChange?.(interactionAspectRatio)
     onContextMenu?.(e, layer, interactionAspectRatio)
   }
 
@@ -398,11 +427,20 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         let newX = d.origX + (e.clientX - d.startX) / scaleRef.current
         let newY = d.origY + (e.clientY - d.startY) / scaleRef.current
 
-        if (snapToGrid) {
-          const snap = getSnappingResult(newX, newY, d.width, d.height, d.id)
-          newX = snap.x
-          newY = snap.y
-          setActiveGuides(snap.guides)
+        // OBS-style: edge/center/source snapping is always on; holding Ctrl
+        // temporarily disables all snapping. Grid snap only when enabled.
+        if (!e.ctrlKey) {
+          if (snapToGrid) {
+            const gridSnap = snapPointToGrid(newX, newY, safeGridSize)
+            newX = gridSnap.x
+            newY = gridSnap.y
+            setActiveGuides([])
+          } else {
+            const snap = getSnappingResult(newX, newY, d.width, d.height, d.id)
+            newX = snap.x
+            newY = snap.y
+            setActiveGuides(snap.guides)
+          }
         } else {
           setActiveGuides([])
         }
@@ -426,35 +464,50 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         let finalW = r.handle.includes('e') ? Math.max(10, r.origW + dx) : (r.handle.includes('w') ? Math.max(10, r.origW - dx) : r.origW)
         let finalH = r.handle.includes('s') ? Math.max(10, r.origH + dy) : (r.handle.includes('n') ? Math.max(10, r.origH - dy) : r.origH)
 
-        // 1. Snapping (Apply to the raw dragged edge)
-        if (snapToGrid) {
-          const threshold = 48 / scaleRef.current
-          const guides: { type: 'v' | 'h', pos: number, targetId?: string }[] = []
-          const targetsX = [{ pos: 0 }, { pos: curCanvasW / 2 }, { pos: curCanvasW }]
-          const targetsY = [{ pos: 0 }, { pos: curCanvasH / 2 }, { pos: curCanvasH }]
-          activeScene.layers.forEach(l => {
-            if (l.id === r.id) return
-            const layout = resolveLayerLayout(l, isPortrait ? '9:16' : '16:9')
-            if (!layout.visible) return
-            targetsX.push({ pos: layout.x, targetId: l.id }, { pos: layout.x + layout.width / 2, targetId: l.id }, { pos: layout.x + layout.width, targetId: l.id })
-            targetsY.push({ pos: layout.y, targetId: l.id }, { pos: layout.y + layout.height / 2, targetId: l.id }, { pos: layout.y + layout.height, targetId: l.id })
-          })
+        // 1. Snapping (Apply to the raw dragged edge). Grid snapping uses the
+        // configured grid size directly; alignment guides are only used when
+        // grid snapping is off so they cannot override the user's grid choice.
+        if (!e.ctrlKey) {
+          if (snapToGrid) {
+            const gridSnap = snapResizeRectToGrid(
+              { x: finalX, y: finalY, width: finalW, height: finalH },
+              r.handle,
+              safeGridSize
+            )
+            finalX = gridSnap.x
+            finalY = gridSnap.y
+            finalW = gridSnap.width
+            finalH = gridSnap.height
+            setActiveGuides([])
+          } else {
+            const threshold = 48 / scaleRef.current
+            const guides: { type: 'v' | 'h', pos: number, targetId?: string }[] = []
+            const targetsX: { pos: number, targetId?: string }[] = [{ pos: 0 }, { pos: curCanvasW / 2 }, { pos: curCanvasW }]
+            const targetsY: { pos: number, targetId?: string }[] = [{ pos: 0 }, { pos: curCanvasH / 2 }, { pos: curCanvasH }]
+            activeScene.layers.forEach(l => {
+              if (l.id === r.id) return
+              const layout = resolveLayerLayout(l, isPortrait ? '9:16' : '16:9')
+              if (!layout.visible) return
+              targetsX.push({ pos: layout.x, targetId: l.id }, { pos: layout.x + layout.width / 2, targetId: l.id }, { pos: layout.x + layout.width, targetId: l.id })
+              targetsY.push({ pos: layout.y, targetId: l.id }, { pos: layout.y + layout.height / 2, targetId: l.id }, { pos: layout.y + layout.height, targetId: l.id })
+            })
 
-          if (r.handle.includes('e')) {
-            const edge = r.origX + r.origW + dx
-            for (const t of targetsX) if (Math.abs(edge - t.pos) < threshold) { finalW = t.pos - r.origX; guides.push({ type: 'v', pos: t.pos, targetId: t.targetId }); break }
-          } else if (r.handle.includes('w')) {
-            const edge = r.origX + dx
-            for (const t of targetsX) if (Math.abs(edge - t.pos) < threshold) { finalX = t.pos; finalW = r.origX + r.origW - t.pos; guides.push({ type: 'v', pos: t.pos, targetId: t.targetId }); break }
+            if (r.handle.includes('e')) {
+              const edge = r.origX + r.origW + dx
+              for (const t of targetsX) if (Math.abs(edge - t.pos) < threshold) { finalW = t.pos - r.origX; guides.push({ type: 'v', pos: t.pos, targetId: t.targetId }); break }
+            } else if (r.handle.includes('w')) {
+              const edge = r.origX + dx
+              for (const t of targetsX) if (Math.abs(edge - t.pos) < threshold) { finalX = t.pos; finalW = r.origX + r.origW - t.pos; guides.push({ type: 'v', pos: t.pos, targetId: t.targetId }); break }
+            }
+            if (r.handle.includes('s')) {
+              const edge = r.origY + r.origH + dy
+              for (const t of targetsY) if (Math.abs(edge - t.pos) < threshold) { finalH = t.pos - r.origY; guides.push({ type: 'h', pos: t.pos, targetId: t.targetId }); break }
+            } else if (r.handle.includes('n')) {
+              const edge = r.origY + dy
+              for (const t of targetsY) if (Math.abs(edge - t.pos) < threshold) { finalY = t.pos; finalH = r.origY + r.origH - t.pos; guides.push({ type: 'h', pos: t.pos, targetId: t.targetId }); break }
+            }
+            setActiveGuides(guides)
           }
-          if (r.handle.includes('s')) {
-            const edge = r.origY + r.origH + dy
-            for (const t of targetsY) if (Math.abs(edge - t.pos) < threshold) { finalH = t.pos - r.origY; guides.push({ type: 'h', pos: t.pos, targetId: t.targetId }); break }
-          } else if (r.handle.includes('n')) {
-            const edge = r.origY + dy
-            for (const t of targetsY) if (Math.abs(edge - t.pos) < threshold) { finalY = t.pos; finalH = r.origY + r.origH - t.pos; guides.push({ type: 'h', pos: t.pos, targetId: t.targetId }); break }
-          }
-          setActiveGuides(guides)
         } else {
           setActiveGuides([])
         }
@@ -483,6 +536,18 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
             if (r.handle.includes('w')) finalX = r.origX + r.origW - finalW
             if (r.handle.includes('n')) finalY = r.origY + r.origH - finalH
           }
+        }
+
+        if (!e.ctrlKey && snapToGrid) {
+          const gridSnap = snapResizeRectToGrid(
+            { x: finalX, y: finalY, width: finalW, height: finalH },
+            r.handle,
+            safeGridSize
+          )
+          finalX = gridSnap.x
+          finalY = gridSnap.y
+          finalW = gridSnap.width
+          finalH = gridSnap.height
         }
 
         // 3. Update all properties
@@ -517,7 +582,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [activeScene.id, activeScene.layers, updateLayer, isPanning, selectionContext, aspectRatio, snapToGrid])
+  }, [activeScene.id, activeScene.layers, updateLayer, isPanning, selectionContext, aspectRatio, snapToGrid, safeGridSize])
 
   const resetView = () => {
     setZoom(1)
@@ -532,7 +597,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   return (
     <div className="relative flex-1 flex flex-col bg-black/40 overflow-hidden" ref={wrapperRef}>
-      <CanvasToolbar canvasWidth={canvasWidth} canvasHeight={canvasHeight} isFullscreen={false} onToggleFullscreen={() => {}} onResetView={resetView} />
+      <CanvasToolbar
+        canvasWidth={canvasWidth}
+        canvasHeight={canvasHeight}
+        isFullscreen={false}
+        snapToGrid={snapToGrid}
+        gridSize={safeGridSize}
+        onToggleFullscreen={() => {}}
+        onResetView={resetView}
+        onToggleSnapToGrid={toggleSnapToGrid}
+        onGridSizeChange={setGridSize}
+      />
       <div
         ref={viewportRef}
         onMouseDown={handleCanvasMouseDown}
@@ -562,7 +637,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   onContextMenu={(e) => handleEditorContextMenu(e, null, aspectRatio)}
                 >
                 <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="block w-full h-full" />
-                <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} />
+                {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
+                <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} codec={outputCodec} />
                 <InteractionLayer
                   layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null}
                   aspectRatio={aspectRatio} canvasWidth={canvasWidth}
@@ -570,13 +646,14 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   resolve={(l) => resolveLayerLayout(l, aspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
                   onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
                   onContextMenu={handleEditorContextMenu}
+                  onDoubleClick={onLayerDoubleClick}
                 />
 
                 {/* Static Center Guides while interacting */}
                 {(dragRef.current || resizeRef.current) && selectionContext === aspectRatio && (
-                  <div className="absolute inset-0 pointer-events-none opacity-20">
-                    <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white" />
-                    <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white" />
+                  <div className="absolute inset-0 pointer-events-none opacity-[0.15]">
+                    <div className="absolute top-1/2 left-0 w-full h-px bg-white/70" />
+                    <div className="absolute left-1/2 top-0 h-full w-px bg-white/70" />
                   </div>
                 )}
 
@@ -585,13 +662,14 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     {activeGuides.map((g, i) => (
                       <div
                         key={i}
-                        className="absolute bg-white ring-2 ring-accent z-context"
+                        className="absolute z-context"
                         style={{
                           left: g.type === 'v' ? `${g.pos}px` : 0,
                           top: g.type === 'h' ? `${g.pos}px` : 0,
-                          width: g.type === 'v' ? '6px' : '100%',
-                          height: g.type === 'h' ? '6px' : '100%',
-                          transform: g.type === 'v' ? 'translateX(-50%)' : 'translateY(-50%)'
+                          width: g.type === 'v' ? '1px' : '100%',
+                          height: g.type === 'h' ? '1px' : '100%',
+                          transform: g.type === 'v' ? 'translateX(-50%)' : 'translateY(-50%)',
+                          backgroundColor: 'rgba(139, 223, 255, 0.78)'
                         }}
                       />
                     ))}
@@ -615,6 +693,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     height={secondaryNativeH}
                     className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover: border border-white/5"
                   />
+                  {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
                   <InteractionLayer
                     layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
                     aspectRatio={secondaryPreviewAspectRatio} canvasWidth={secondaryNativeW}
@@ -626,9 +705,9 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
                   {/* Static Center Guides while interacting */}
                   {(dragRef.current || resizeRef.current) && selectionContext === secondaryPreviewAspectRatio && (
-                    <div className="absolute inset-0 pointer-events-none opacity-20">
-                      <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white" />
-                      <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white" />
+                    <div className="absolute inset-0 pointer-events-none opacity-[0.15]">
+                      <div className="absolute top-1/2 left-0 w-full h-px bg-white/70" />
+                      <div className="absolute left-1/2 top-0 h-full w-px bg-white/70" />
                     </div>
                   )}
 
@@ -637,13 +716,14 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                       {activeGuides.map((g, i) => (
                         <div
                           key={i}
-                          className="absolute bg-accent z-context"
+                          className="absolute z-context"
                           style={{
                             left: g.type === 'v' ? `${g.pos}px` : 0,
                             top: g.type === 'h' ? `${g.pos}px` : 0,
-                            width: g.type === 'v' ? '6px' : '100%',
-                            height: g.type === 'h' ? '6px' : '100%',
-                            transform: g.type === 'v' ? 'translateX(-50%)' : 'translateY(-50%)'
+                            width: g.type === 'v' ? '1px' : '100%',
+                            height: g.type === 'h' ? '1px' : '100%',
+                            transform: g.type === 'v' ? 'translateX(-50%)' : 'translateY(-50%)',
+                            backgroundColor: 'rgba(139, 223, 255, 0.78)'
                           }}
                         />
                       ))}

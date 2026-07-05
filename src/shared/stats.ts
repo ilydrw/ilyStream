@@ -6,12 +6,13 @@
  * separate breakdown by platform.
  */
 
-import type { Platform } from '../main/platforms/types'
+import { ALL_PLATFORMS, type Platform } from '../main/platforms/types'
 
 /** Per-user, per-platform lifetime totals. */
 export interface UserStat {
   username: string
   platform: Platform
+  platformUserId?: string | null
   displayName: string
   profilePictureUrl: string | null
   totalLikes: number
@@ -23,10 +24,22 @@ export interface UserStat {
   totalRaids: number
   totalChats: number
   totalSongRequests: number
+  totalCohostCalls: number
   isFanClubMember?: boolean
+  isSuperFan?: boolean
+  isModerator?: boolean
+  badgeImageUrls?: AudienceBadgeImageUrls
   profileId: string | null
   firstSeenAt: string
   lastSeenAt: string
+}
+
+export interface AudienceBadgeImageUrls {
+  moderator: string | null
+  tiktokFanClub: string | null
+  tiktokSuperFan: string | null
+  twitchSub: string | null
+  youtubeSuperFan: string | null
 }
 
 /** 
@@ -38,6 +51,7 @@ export interface UserIdentity {
   displayName: string
   profilePictureUrl: string | null
   primaryPlatform: Platform
+  primaryUsername?: string | null
   allPlatforms: Platform[]
   totalLikes: number
   totalGifts: number
@@ -48,9 +62,21 @@ export interface UserIdentity {
   totalRaids: number
   totalChats: number
   totalSongRequests: number
+  totalCohostCalls: number
   isFanClubMember: boolean
+  isSuperFan: boolean
+  isModerator: boolean
+  firstSeenAt: string
   lastSeenAt: string
   accounts: UserStat[]
+  /**
+   * Overall audience RANK (1 = best). Combines this identity's position across
+   * every engagement/contribution category into one leaderboard standing — see
+   * StatsRepository.attachOverallRanks. Present when the table is sorted by, or
+   * needs to display, the overall ranking; undefined otherwise.
+   */
+  overallRank?: number
+  ranks?: Partial<Record<UserStatSortKey, number>>
 }
 
 /** Lifetime totals across all users and platforms. */
@@ -64,6 +90,7 @@ export interface GlobalStats {
   totalRaids: number
   totalChats: number
   totalSongRequests: number
+  totalCohostCalls: number
   peakViewerCount: number
   uniqueUserCount: number
   /** ISO timestamp of the most recent counted event. */
@@ -82,9 +109,16 @@ export interface PlatformStats {
   totalRaids: number
   totalChats: number
   totalSongRequests: number
+  totalCohostCalls: number
   uniqueUserCount: number
   /** Authoritative current follower count from the platform's API. null = not yet synced. */
   followerCount: number | null
+  /**
+   * True when the follower count is maintained manually by the streamer
+   * (e.g. TikTok, which exposes no follower API). When set, live follow
+   * events nudge the count up and the streamer can re-enter it anytime.
+   */
+  followerCountIsManual: boolean
   /** Growth delta over the last 24 hours, or null if we don't have a snapshot that old. */
   followerDelta24h: number | null
   followerDelta7d: number | null
@@ -99,7 +133,48 @@ export interface FollowerSnapshot {
   followerCount: number
 }
 
+export interface ViewerAccount {
+  profileId: string
+  platform: Platform
+  username: string
+  platformUserId: string | null
+  displayName: string
+  profilePictureUrl: string | null
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+export interface ViewerAccountInput {
+  platform: Platform
+  username: string
+  platformUserId?: string | null
+  displayName?: string
+  profilePictureUrl?: string | null
+}
+
+export interface ViewerProfile {
+  id: string
+  displayName: string
+  profilePictureUrl: string | null
+  notes: string
+  primaryPlatform: Platform | null
+  primaryUsername: string | null
+  createdAt: string
+  updatedAt: string
+  accounts: ViewerAccount[]
+}
+
+export interface ViewerProfileInput {
+  displayName?: string
+  profilePictureUrl?: string | null
+  notes?: string
+  primaryPlatform?: Platform | null
+  primaryUsername?: string | null
+  accounts?: ViewerAccountInput[]
+}
+
 export type UserStatSortKey =
+  | 'overall'
   | 'totalLikes'
   | 'totalGifts'
   | 'totalGiftValueCents'
@@ -109,6 +184,7 @@ export type UserStatSortKey =
   | 'totalRaids'
   | 'totalChats'
   | 'totalSongRequests'
+  | 'totalCohostCalls'
   | 'lastSeenAt'
 
 export interface GetTopUsersOptions {
@@ -130,8 +206,10 @@ export const EMPTY_PLATFORM_STATS: PlatformStats = {
   totalRaids: 0,
   totalChats: 0,
   totalSongRequests: 0,
+  totalCohostCalls: 0,
   uniqueUserCount: 0,
   followerCount: null,
+  followerCountIsManual: false,
   followerDelta24h: null,
   followerDelta7d: null,
   followerDelta30d: null,
@@ -148,13 +226,18 @@ export const EMPTY_GLOBAL_STATS: GlobalStats = {
   totalRaids: 0,
   totalChats: 0,
   totalSongRequests: 0,
+  totalCohostCalls: 0,
   peakViewerCount: 0,
   uniqueUserCount: 0,
   lastUpdatedAt: null,
-  byPlatform: {
-    tiktok: { ...EMPTY_PLATFORM_STATS },
-    twitch: { ...EMPTY_PLATFORM_STATS },
-    youtube: { ...EMPTY_PLATFORM_STATS },
-    kick: { ...EMPTY_PLATFORM_STATS }
-  }
+  byPlatform: Object.fromEntries(
+    ALL_PLATFORMS.map((platform) => [platform, { ...EMPTY_PLATFORM_STATS }])
+  ) as Record<Platform, PlatformStats>
+}
+
+/** Fresh all-zero per-platform stats map covering every known platform. */
+export function createEmptyPlatformStatsMap(): Record<Platform, PlatformStats> {
+  return Object.fromEntries(
+    ALL_PLATFORMS.map((platform) => [platform, { ...EMPTY_PLATFORM_STATS }])
+  ) as Record<Platform, PlatformStats>
 }

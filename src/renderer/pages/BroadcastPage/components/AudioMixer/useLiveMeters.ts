@@ -30,6 +30,11 @@ export function useLiveMeters(
   useEffect(() => {
     let disposed = false
     let frameId = 0
+    // Device-open failures back off instead of retrying every poll tick — a
+    // busy/unplugged device otherwise turns the 1s poll into a getUserMedia
+    // storm that stalls Media Foundation (and with it the whole capture path).
+    const micFailureBackoffUntil = new Map<string, number>()
+    const MIC_FAILURE_BACKOFF_MS = 20_000
 
     const ensureNode = async (source: AudioSource) => {
       let stream: MediaStream | null = null
@@ -53,6 +58,7 @@ export function useLiveMeters(
           } else {
             if (!source.deviceId) return
             if (pendingMics.current.has(source.id)) return
+            if ((micFailureBackoffUntil.get(source.id) ?? 0) > Date.now()) return
             pendingMics.current.add(source.id)
 
             try {
@@ -75,7 +81,8 @@ export function useLiveMeters(
               })
               micStreams.current[source.id] = stream
             } catch (err) {
-              console.error('[AudioMixer] Failed to get standalone mic stream:', err)
+              micFailureBackoffUntil.set(source.id, Date.now() + MIC_FAILURE_BACKOFF_MS)
+              console.error(`[AudioMixer] Failed to get standalone mic stream (retrying in ${MIC_FAILURE_BACKOFF_MS / 1000}s):`, err)
             } finally {
               pendingMics.current.delete(source.id)
             }

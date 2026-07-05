@@ -25,7 +25,7 @@ export function DesignSystemSection({
             value={config.fontFamily || 'Inter'}
             onChange={(v) => onUpdate('fontFamily', v)}
             placeholder="Outfit"
-            className="!h-9 !text-xs"
+            className=""
           />
         </Field>
         <Field label="Corner Radius" hint="Rounded corners (px)">
@@ -34,7 +34,7 @@ export function DesignSystemSection({
             onChange={(v) => onUpdate('borderRadius', v)}
             min={0}
             max={50}
-            className="!h-9 !text-xs"
+            className=""
           />
         </Field>
       </div>
@@ -48,7 +48,7 @@ export function DesignSystemSection({
             step="0.1"
             value={config.glassIntensity ?? 0.5}
             onChange={(e) => onUpdate('glassIntensity', parseFloat(e.target.value))}
-            className="flex-1 accent-[#d035f1]"
+            className="flex-1 accent-[#19c8ff]"
           />
           <span className="text-[10px] font-mono text-white/50 w-6">
             {Math.round((config.glassIntensity ?? 0.5) * 100)}%
@@ -81,7 +81,7 @@ export function DesignSystemSection({
                 step="50"
                 value={config.animationDuration ?? 800}
                 onChange={(e) => onUpdate('animationDuration', parseInt(e.target.value))}
-                className="flex-1 accent-[#d035f1]"
+                className="flex-1 accent-[#19c8ff]"
               />
               <span className="text-[10px] font-mono text-white/50 w-10 text-right">
                 {config.animationDuration ?? 800}ms

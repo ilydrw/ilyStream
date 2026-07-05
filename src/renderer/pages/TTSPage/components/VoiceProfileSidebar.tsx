@@ -1,5 +1,5 @@
 import { IconPlus } from '../../../components/ui/icons'
-import { VoiceProfile } from '../../../main/tts/voice-profiles'
+import { VoiceProfile } from '../../../../main/tts/voice-profiles'
 
 interface VoiceProfileSidebarProps {
   profiles: VoiceProfile[]

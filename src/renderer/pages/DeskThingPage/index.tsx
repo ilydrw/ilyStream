@@ -5,6 +5,7 @@ import type { PairCode, PairedDevice } from '../../../shared/device-api'
 import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { DeskThingIcon } from '../../components/ui/DeskThingIcon'
 import { CarThingIcon } from '../../components/ui/CarThingIcon'
+import { PageHeader } from '../../components/layout/PageHeader'
 
 export default function DeskThingPage() {
   const [devices, setDevices] = useState<PairedDevice[]>([])
@@ -72,15 +73,16 @@ export default function DeskThingPage() {
     }
     try {
       const code = await window.api.device.startPair()
+      await loadOverlayInfo()
       setPair(code as PairCode)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start pairing')
     }
   }
 
-  const revokeDevice = async (token: string) => {
+  const revokeDevice = async (id: string) => {
     if (!window.api?.device) return
-    await window.api.device.revoke(token)
+    await window.api.device.revoke(id)
     await loadDevices()
   }
 
@@ -108,26 +110,17 @@ export default function DeskThingPage() {
 
   return (
     <div className="app-page">
-      <header className="app-page-header">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center justify-center">
-            <DeskThingIcon size={48} />
-          </div>
-          <div>
-            <h1>ilyStream Service</h1>
-            <p className="app-page-intro">
-              Turn a Spotify Car Thing (or any LAN device running the DeskThing client) into a
-              tactile soundboard and stream-deck remote for ilyStream.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title="ilyStream Service"
+        description="Turn a Car Thing or DeskThing client into a tactile soundboard and stream-deck remote."
+        iconNode={<DeskThingIcon size={24} />}
+        actions={
           <div className="hidden sm:flex flex-col items-end px-3">
             <span className="text-[10px] font-semibold tracking-tight text-white/20">Paired</span>
             <span className="text-2xl font-semibold tabular-nums text-white">{devices.length}</span>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* What this enables */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -263,7 +256,7 @@ export default function DeskThingPage() {
             <ul className="divide-y divide-white/[0.02]">
               {devices.map((device) => (
                 <li
-                  key={device.token}
+                  key={device.id}
                   className="flex items-center gap-12 px-12 py-10 hover:bg-white/[0.01] transition-all group"
                 >
                   <div className="text-white/10 group-hover:text-white/40 transition-all shrink-0">
@@ -274,7 +267,7 @@ export default function DeskThingPage() {
                     <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
                       <div className="flex items-center gap-2.5 text-[11px] font-semibold tracking-tight text-white/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                        ID: {device.token.slice(-8)}
+                        ID: {device.tokenSuffix}
                       </div>
                       <div className="flex items-center gap-2.5 text-[11px] font-semibold tracking-tight text-white/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-white/10" />
@@ -289,7 +282,7 @@ export default function DeskThingPage() {
                     </div>
                   </div>
                   <button
-                    onClick={() => revokeDevice(device.token)}
+                    onClick={() => revokeDevice(device.id)}
                     className="w-12 h-12 rounded-md flex items-center justify-center bg-white/5 text-white/30 hover:bg-danger/20 hover:text-danger transition-all opacity-0 group-hover:opacity-100"
                     title="Revoke device"
                   >

@@ -15,6 +15,7 @@ const FIELDS = [
   { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'Twitch app client ID' },
   { key: 'clientSecret', label: 'Client secret', type: 'password', placeholder: 'Client secret' },
   { key: 'accessToken', label: 'Access token', type: 'password', placeholder: 'OAuth access token' },
+  { key: 'refreshToken', label: 'Refresh token', type: 'password', placeholder: 'OAuth refresh token (optional)' },
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'Twitch stream key' }
 ]
 
@@ -36,12 +37,12 @@ export default function TwitchPage() {
   useEffect(() => {
     window.api.platform.getConfigs().then((configs) => {
       const platformConfig = getPlatformConfig(configs, PLATFORM_ID)
-      if (platformConfig) setConfig(platformConfig)
+      if (platformConfig) setConfig(platformConfig as unknown as Record<string, string>)
     })
 
     window.api.platform.getChatCapabilities().then((caps) => {
       const capability = getPlatformCapability(caps, PLATFORM_ID)
-      if (capability) setCanSend(capability)
+      if (capability) setCanSend({ canSend: capability.canSend, reason: capability.reason ?? '' })
     })
   }, [status])
 
@@ -53,9 +54,9 @@ export default function TwitchPage() {
   const handleConnect = async () => {
     try {
       await window.api.platform.connect({
+        ...config,
         platform: PLATFORM_ID,
-        enabled: true,
-        ...config
+        enabled: true
       })
     } catch (err) {
       console.error('Failed to connect:', err)
@@ -76,7 +77,6 @@ export default function TwitchPage() {
         platformId={PLATFORM_ID}
         title="Twitch Integration"
         description="Link your Twitch channel for IRC chat processing, subscription alerts, and live stream telemetry."
-        icon={<IconWifi size={14} />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
@@ -223,4 +223,3 @@ export default function TwitchPage() {
     </div>
   )
 }
-

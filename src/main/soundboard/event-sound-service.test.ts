@@ -1,15 +1,33 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_APP_SETTINGS, resolveAppSettings } from '../../shared/app-settings'
+import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { FollowEvent, GiftEvent, JoinEvent, SubscriptionEvent, UserInfo } from '../platforms/types'
 import { EventSoundService } from './event-sound-service'
+
+function makeOverlayStatus(alertClientCount: number): OverlayRuntimeStatus {
+  return {
+    running: true,
+    port: 3000,
+    requestedPort: 3000,
+    lastError: null,
+    startedAt: null,
+    chatUrl: null,
+    alertsUrl: null,
+    goalsUrl: null,
+    healthUrl: null,
+    chatClientCount: 0,
+    alertClientCount,
+    goalClientCount: 0
+  }
+}
 
 describe('EventSoundService', () => {
   it('routes alert audio to the overlay when an overlay client is connected', () => {
     vi.useFakeTimers()
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -37,10 +55,10 @@ describe('EventSoundService', () => {
 
   it('falls back to the renderer when no overlay client is connected', () => {
     vi.useFakeTimers()
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 0 }))
+      getStatus: vi.fn(() => makeOverlayStatus(0))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -63,10 +81,10 @@ describe('EventSoundService', () => {
 
   it('ignores in-progress gift combo updates and fires only the final gift', () => {
     vi.useFakeTimers()
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 0 }))
+      getStatus: vi.fn(() => makeOverlayStatus(0))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -95,10 +113,10 @@ describe('EventSoundService', () => {
 
   it('does not hold final gift alerts for the old half-second debounce', () => {
     vi.useFakeTimers()
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 0 }))
+      getStatus: vi.fn(() => makeOverlayStatus(0))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -126,7 +144,7 @@ describe('EventSoundService', () => {
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -151,10 +169,10 @@ describe('EventSoundService', () => {
   })
 
   it('routes the configured follow sound to the overlay (not the renderer) for follow events', () => {
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -174,10 +192,10 @@ describe('EventSoundService', () => {
   })
 
   it('does not play missing or disabled event sounds', () => {
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -195,10 +213,10 @@ describe('EventSoundService', () => {
   })
 
   it('can suppress sound for local alert previews while still pushing visuals', () => {
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -224,10 +242,10 @@ describe('EventSoundService', () => {
   })
 
   it('routes superfan alert sounds for subscription events to the overlay', () => {
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -253,10 +271,10 @@ describe('EventSoundService', () => {
   })
 
   it('treats fan club join events as superfan alerts without repeating immediately', () => {
-    const soundboard = { playSound: vi.fn() }
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -281,7 +299,7 @@ describe('EventSoundService', () => {
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -321,7 +339,7 @@ describe('EventSoundService', () => {
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
       pushAlert: vi.fn(),
-      getStatus: vi.fn(() => ({ alertClientCount: 1 }))
+      getStatus: vi.fn(() => makeOverlayStatus(1))
     }
     const service = new EventSoundService(soundboard, overlayServer)
 
@@ -355,6 +373,291 @@ describe('EventSoundService', () => {
       expect.objectContaining({ template: 'Alice raided with 42 viewers' }),
       'kick'
     )
+  })
+
+  it('fires only the highest-priority matching alert route for one event', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings({
+      ...DEFAULT_APP_SETTINGS,
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          id: 'low-follow-route',
+          name: 'Low follow route',
+          priority: 10,
+          textTemplate: 'Low priority follow'
+        },
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          id: 'high-follow-route',
+          name: 'High follow route',
+          priority: 200,
+          textTemplate: 'High priority follow'
+        }
+      ]
+    })
+
+    service.processEvent(makeFollowEvent())
+
+    expect(overlayServer.pushAlert).toHaveBeenCalledTimes(1)
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'follow-1:high-follow-route',
+        template: 'High priority follow'
+      }),
+      'tiktok'
+    )
+  })
+
+  it('renders default gift and follow alerts with their rule styling (no hardcoded variant)', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({}))
+      service.processEvent(makeFollowEvent())
+      service.processEvent({ ...makeGiftEvent(), giftCount: 3 })
+      vi.advanceTimersByTime(200)
+
+      // Alerts must carry the rule's own styling (border, template) and NOT be
+      // overridden by a hardcoded "clean" variant — otherwise the editor's
+      // Style controls (border colour, etc.) do nothing.
+      const followCall = overlayServer.pushAlert.mock.calls.find((c: any[]) => c[0].eventType === 'follow')
+      expect(followCall).toBeTruthy()
+      expect(followCall![0].variant).toBeUndefined()
+      expect(followCall![0].borderColor).toBe('rgba(56, 189, 248, 0.24)')
+      expect(followCall![0].template).toContain('Alice')
+
+      const giftCall = overlayServer.pushAlert.mock.calls.find((c: any[]) => c[0].eventType === 'gift')
+      expect(giftCall).toBeTruthy()
+      expect(giftCall![0].variant).toBeUndefined()
+      expect(giftCall![0].borderColor).toBe('rgba(247, 201, 72, 0.26)')
+      expect(giftCall![0].template).toContain('Rose')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('globally suppresses repeated low-value TikTok gift alerts', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        alertRules: [{
+          ...DEFAULT_APP_SETTINGS.alertRules[0],
+          cooldownMs: 0,
+          soundEnabled: true,
+          soundId: 'gift.mp3'
+        }]
+      }))
+
+      service.processEvent({ ...makeGiftEvent(), id: 'cheap-1', user: { ...makeUser(), id: 'alice', username: 'alice' } })
+      vi.advanceTimersByTime(200)
+      service.processEvent({ ...makeGiftEvent(), id: 'cheap-2', user: { ...makeUser(), id: 'bob', username: 'bob' } })
+      vi.advanceTimersByTime(200)
+
+      expect(overlayServer.pushAlert).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(10_000)
+      service.processEvent({ ...makeGiftEvent(), id: 'cheap-3', user: { ...makeUser(), id: 'cara', username: 'cara' } })
+      vi.advanceTimersByTime(200)
+
+      expect(overlayServer.pushAlert).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not suppress higher-value TikTok gifts during the low-value gift cooldown', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        alertRules: [{
+          ...DEFAULT_APP_SETTINGS.alertRules[0],
+          cooldownMs: 0,
+          soundEnabled: true,
+          soundId: 'gift.mp3'
+        }]
+      }))
+
+      service.processEvent(makeGiftEvent())
+      vi.advanceTimersByTime(200)
+      service.processEvent({ ...makeGiftEvent(), id: 'gift-big', giftName: 'Galaxy', giftId: 'galaxy', monetaryValue: 500 })
+      vi.advanceTimersByTime(200)
+
+      expect(overlayServer.pushAlert).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('prefers a route-selected gift image over stale legacy gift image settings', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        eventImageGiftEnabled: false,
+        eventImageGiftAssetId: 'legacy-gift.png',
+        alertRules: [
+          {
+            ...DEFAULT_APP_SETTINGS.alertRules[0],
+            imageEnabled: true,
+            imageAssetId: 'route-gift.png'
+          }
+        ]
+      }))
+
+      service.processEvent(makeGiftEvent())
+      vi.advanceTimersByTime(200)
+
+      expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          imageUrl: 'route-gift.png'
+        }),
+        'tiktok'
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps legacy gift image fallback when a route has no selected image', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        eventImageGiftEnabled: true,
+        eventImageGiftAssetId: 'legacy-gift.png',
+        alertRules: [
+          {
+            ...DEFAULT_APP_SETTINGS.alertRules[0],
+            imageAssetId: ''
+          }
+        ]
+      }))
+
+      service.processEvent(makeGiftEvent())
+      vi.advanceTimersByTime(200)
+
+      expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          imageUrl: 'legacy-gift.png'
+        }),
+        'tiktok'
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('plays a viewer profile join sound and honors its cooldown', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(0))
+    }
+    const resolver = vi.fn((platform: string, username: string) =>
+      platform === 'tiktok' && username === 'alice' ? 'viewer-alice' : null
+    )
+    const service = new EventSoundService(soundboard, overlayServer, resolver)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        viewerJoinSounds: [{
+          id: 'rule-1',
+          viewerProfileId: 'viewer-alice',
+          platform: 'all',
+          username: '',
+          soundId: 'join/airhorn.mp3',
+          volume: 0.8,
+          cooldownMinutes: 15,
+          enabled: true
+        }]
+      }))
+
+      const joinEvent = { ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } }
+      service.processEvent(joinEvent)
+      expect(soundboard.playSound).toHaveBeenCalledWith('join/airhorn.mp3', 0.8)
+
+      // A rejoin inside the cooldown window stays silent.
+      service.processEvent(joinEvent)
+      expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+
+      // After the cooldown it fires again.
+      vi.advanceTimersByTime(16 * 60_000)
+      service.processEvent(joinEvent)
+      expect(soundboard.playSound).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('matches username-scoped join sounds without a viewer profile', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(0))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings(resolveAppSettings({
+      ...DEFAULT_APP_SETTINGS,
+      viewerJoinSounds: [{
+        id: 'rule-2',
+        viewerProfileId: '',
+        platform: 'tiktok',
+        username: '@Alice',
+        soundId: 'join/hello.mp3',
+        volume: 1,
+        cooldownMinutes: 0,
+        enabled: true
+      }]
+    }))
+
+    service.processEvent({ ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } })
+    expect(soundboard.playSound).toHaveBeenCalledWith('join/hello.mp3', 1)
   })
 })
 
@@ -407,7 +710,8 @@ function makeSubscriptionEvent(): SubscriptionEvent {
     user: makeUser(),
     tier: 'Superfan',
     months: 3,
-    isGift: false
+    isGift: false,
+    monetaryValue: 0
   }
 }
 

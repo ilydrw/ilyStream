@@ -79,6 +79,35 @@
   font-size: 13px;
 }
 
+.tts-tab-region {
+  container-type: inline-size;
+}
+
+.tts-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.tts-settings-layout > * {
+  min-width: 0;
+}
+
+@container (min-width: 1120px) {
+  .tts-settings-layout {
+    gap: 40px;
+  }
+
+  .tts-settings-layout--profiles {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  }
+
+  .tts-settings-layout--rules {
+    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1380px) {
   .tts-minimal-page {
     padding: 34px 30px 56px;
