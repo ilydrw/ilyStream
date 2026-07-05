@@ -1,5 +1,5 @@
-export const latestVersion = '0.0.22';
-export const deskThingVersion = '0.0.22';
+export const latestVersion = '0.0.23';
+export const deskThingVersion = '0.0.23';
 
 export const repoUrl = 'https://github.com/ilydrw/ilyStream';
 export const releaseUrl = `${repoUrl}/releases/tag/v${latestVersion}`;
