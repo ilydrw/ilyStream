@@ -1,5 +1,5 @@
 import { IconWindowMaximize, IconWindowMinimize, IconWindowClose } from '../ui/icons'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getNavigationItem } from './navigation'
 import { Logo } from '../ui/Logo'
@@ -10,6 +10,13 @@ export function Header() {
   const location = useLocation()
   const activeRoute = getNavigationItem(location.pathname)
   const Icon = activeRoute.icon
+  const [version, setVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.api?.system?.getAppInfo?.()
+      .then((info: { version?: string }) => setVersion(info.version ?? null))
+      .catch(() => {})
+  }, [])
 
   return (
     <header className="app-topbar titlebar-drag">
@@ -18,7 +25,7 @@ export function Header() {
           <Logo size={18} />
         </span>
         <span className="app-topbar-wordmark">ilyStream</span>
-        <span className="app-topbar-version ml-2">0.0.22</span>
+        {version && <span className="app-topbar-version ml-2">{version}</span>}
       </div>
 
       <div className="app-topbar-route" aria-live="polite">
@@ -28,7 +35,7 @@ export function Header() {
         <span>{activeRoute.label}</span>
       </div>
 
-      <div className="app-topbar-spacer">
+      <div className="app-topbar-spacer titlebar-no-drag">
         <UpdateBadge />
       </div>
 

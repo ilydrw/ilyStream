@@ -16,8 +16,9 @@ export function UpdateBadge() {
     return (
       <Tooltip content="Restart App to Apply Update" position="bottom">
         <button
+          type="button"
           onClick={handleInstall}
-          className="flex items-center gap-2 px-3 py-1.5 bg-accent text-black font-semibold text-[11px] tracking-wider rounded-lg hover:bg-accent-hover transition-all animate-pulse-subtle shadow-[0_0_20px_rgba(25,200,255,0.3)]"
+          className="titlebar-no-drag flex items-center gap-2 px-3 py-1.5 bg-accent text-black font-semibold text-[11px] tracking-wider rounded-lg hover:bg-accent-hover transition-all animate-pulse-subtle shadow-[0_0_20px_rgba(25,200,255,0.3)]"
         >
           <IconRefresh size={14} stroke={3} />
           Update Ready to Install
