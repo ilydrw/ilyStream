@@ -17,7 +17,8 @@ export class CoHostService {
     private aiService: AIService,
     private ttsEngine: TTSEngine,
     private chatRelayService: ChatRelayService,
-    private memoryService: MemoryService
+    private memoryService: MemoryService,
+    private statsService?: any
   ) {
     this.platformManager.on('event', (event) => {
       if (this.enabled && event.type === 'chat') {
@@ -59,6 +60,13 @@ export class CoHostService {
     if (!prompt) return
 
     this.lastResponseTime = now
+    if (this.statsService) {
+      try {
+        this.statsService.recordCohostCall(event.platform, event.user)
+      } catch (err) {
+        console.error('[CoHost] Failed to record stats:', err)
+      }
+    }
 
     try {
       // 4. Vector Memory Retrieval

@@ -158,7 +158,8 @@ export interface StudioState {
   }
   recordingSettings: {
     container: 'mkv' | 'mp4' | 'flv' | 'mov'
-    encoder: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+    codec: 'h264' | 'h265'
+    encoder: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv' | 'libx265' | 'hevc_nvenc' | 'hevc_amf' | 'hevc_qsv'
     crf: number
     audioBitrate: number
     bitrateKbps: number
@@ -217,10 +218,10 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   snapToGrid: false,
   gridSize: 20,
   audioSources: [
-    { id: 'desktop-audio', name: 'Desktop Audio', volume: 0.8, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, filters: [] },
-    { id: 'mic-audio', name: 'Mic/Aux', volume: 0.8, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, filters: [] },
-    { id: 'soundboard', name: 'Soundboard', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true },
-    { id: 'tts-audio', name: 'TTS (Neural)', volume: 0.8, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true }
+    { id: 'desktop-audio', name: 'Desktop Audio', volume: 1.0, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, filters: [] },
+    { id: 'mic-audio', name: 'Mic/Aux', volume: 1.0, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, filters: [] },
+    { id: 'soundboard', name: 'Soundboard', volume: 1.0, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true },
+    { id: 'tts-audio', name: 'TTS (Neural)', volume: 1.0, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true }
   ],
   stingerSettings: {
     path: '',
@@ -229,6 +230,7 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   },
   recordingSettings: {
     container: 'mkv',
+    codec: 'h264',
     encoder: 'auto',
     crf: 18,
     audioBitrate: 192,

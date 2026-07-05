@@ -189,18 +189,34 @@ export function buildParticleOverlayHtml(widget?: any, isPreview = false): strin
             }
         }
 
+        let burstQueue = 0;
+        let isBursting = false;
+
+        function processQueue() {
+            if (burstQueue <= 0) { isBursting = false; return; }
+            isBursting = true;
+            burstQueue--;
+            const burstCount = config.eventDriven ? config.count : 10;
+            for (let i = 0; i < burstCount; i++) {
+                setTimeout(() => {
+                    particles.push(createParticle(randomFloat(10, 90)));
+                }, i * 50);
+            }
+            setTimeout(processQueue, Math.max(2500, (burstCount * 50) + 1500));
+        }
+
+        function queueBurst() {
+            burstQueue++;
+            if (!isBursting) processQueue();
+        }
+
         function connectSSE() {
             var src = new EventSource('/overlay/events?channel=event-particles');
             src.onmessage = function(e) {
                 var msg = JSON.parse(e.data);
                 if (msg.type === 'reload') window.location.reload();
                 if (msg.type === 'event' && msg.payload.type === 'follow') {
-                    const burstCount = config.eventDriven ? config.count : 10;
-                    for (let i = 0; i < burstCount; i++) {
-                        setTimeout(() => {
-                            particles.push(createParticle(randomFloat(10, 90)));
-                        }, i * 50);
-                    }
+                    queueBurst();
                 }
             };
             src.onerror = function() {

@@ -9,7 +9,7 @@ import { app, powerSaveBlocker } from 'electron'
 const resolvedFfmpegPath = (ffmpegPath || 'ffmpeg').replace('app.asar', 'app.asar.unpacked')
 const RECORDING_CONTAINERS = new Set(['mkv', 'mp4', 'mov', 'flv'])
 
-import { StreamingEncoderResolver } from './streaming/encoder-resolver'
+import { resolveRecordingCodec, StreamingEncoderResolver } from './streaming/encoder-resolver'
 import type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
 export type { AudioFramePayload, RecordingConfig, StreamConfig, VideoFramePayload } from './streaming-types'
 import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
@@ -31,6 +31,7 @@ export class StreamingService extends EventEmitter {
   private encoderResolver = new StreamingEncoderResolver(resolvedFfmpegPath)
   private argsBuilder = new FFmpegArgsBuilder(this.encoderResolver)
 
+  private legacyStreamAudioEnabled = false
   private streamAudioEnabled = false
   private recordingAudioEnabled = false
 
@@ -42,9 +43,11 @@ export class StreamingService extends EventEmitter {
   private setupManagers() {
     this.streamManager.on('error', (err) => this.handleManagerError('stream', err))
     this.streamManager.on('close', (code, signal, summary) => {
-      this.isStreaming = false
+      this.legacyStreamAudioEnabled = false
+      this.updateStreamingState()
       this.checkPowerSave()
       this.stopSilentClockIfIdle()
+      this.releaseInputFormatIfIdle()
       this.pumper.stopWatchdog()
       this.emit('stopped')
       this.emitStatusChanged(code === 0 ? 'stopped' : 'error', code === 0 ? undefined : summary)
@@ -54,8 +57,10 @@ export class StreamingService extends EventEmitter {
     this.recordingManager.on('close', (code, signal, summary) => {
       this.isRecording = false
       this.activeRecordingPath = null
+      this.recordingAudioEnabled = false
       this.checkPowerSave()
       this.stopSilentClockIfIdle()
+      this.releaseInputFormatIfIdle()
       if (!this.isStreaming) this.pumper.stopWatchdog()
       this.emit('recording-stopped')
       this.emitStatusChanged(code === 0 ? 'recording-stopped' : 'error', code === 0 ? undefined : summary)
@@ -65,6 +70,17 @@ export class StreamingService extends EventEmitter {
   }
 
   private handleManagerError(kind: 'stream' | 'recording', error: Error) {
+    if (kind === 'stream') {
+      this.legacyStreamAudioEnabled = false
+      this.updateStreamingState()
+    } else {
+      this.isRecording = false
+      this.recordingAudioEnabled = false
+      this.activeRecordingPath = null
+    }
+    this.releaseInputFormatIfIdle()
+    this.checkPowerSave()
+    this.stopSilentClockIfIdle()
     this.emitStatusChanged('error', error.message)
   }
 
@@ -94,7 +110,7 @@ export class StreamingService extends EventEmitter {
     const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
     const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
     const inputFormat = config.inputFormat || 'mjpeg'
-    const bestEncoder = await this.encoderResolver.getBestEncoder()
+    const bestEncoder = await this.encoderResolver.getBestEncoder('h264')
     const audioFormat = config.audioFormat || 'silent'
 
     this.reserveInputFormat(inputFormat)
@@ -103,8 +119,9 @@ export class StreamingService extends EventEmitter {
     const redact = (val: string) => val.replaceAll(fullUrl, redactedFullUrl).replaceAll(config.streamKey, '[REDACTED]')
     console.log(`[Streaming] Starting ${inputFormat} stream to ${redactedFullUrl}`)
 
-    this.streamAudioEnabled = audioFormat === 'f32le'
-    this.streamManager.start(resolvedFfmpegPath, args, this.streamAudioEnabled, redact)
+    this.legacyStreamAudioEnabled = audioFormat === 'f32le'
+    this.streamAudioEnabled = this.computeStreamAudioEnabled()
+    this.streamManager.start(resolvedFfmpegPath, args, this.legacyStreamAudioEnabled, redact)
 
     if (inputFormat === 'mjpeg') {
       this.pumper.startVideoPump(config.fps, (frame) => {
@@ -121,7 +138,7 @@ export class StreamingService extends EventEmitter {
       this.pumper.startSilentClock((totalSamples) => this.emit('native-clock', { totalSamples }))
     }
 
-    this.isStreaming = true
+    this.updateStreamingState()
     this.emit('started')
     this.emitStatusChanged('started')
   }
@@ -131,10 +148,11 @@ export class StreamingService extends EventEmitter {
       for (const id of [...this.streamOutputs.keys()]) this.stopStreamOutput(id)
     }
     this.streamManager.stop()
-    this.isStreaming = false
-    this.streamAudioEnabled = false
+    this.legacyStreamAudioEnabled = false
+    this.updateStreamingState()
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
+    this.releaseInputFormatIfIdle()
     this.emit('stopped')
     this.emitStatusChanged('stopped')
   }
@@ -147,7 +165,8 @@ export class StreamingService extends EventEmitter {
     if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
 
     const inputFormat = config.inputFormat || 'mjpeg'
-    const bestEncoder = await this.encoderResolver.getBestEncoder()
+    const recordingCodec = resolveRecordingCodec(config)
+    const bestEncoder = await this.encoderResolver.getBestEncoder(recordingCodec)
     this.reserveInputFormat(inputFormat)
 
     const outputPath = this.createRecordingPath(config)
@@ -183,6 +202,7 @@ export class StreamingService extends EventEmitter {
     this.activeRecordingPath = null
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
+    this.releaseInputFormatIfIdle()
     if (!this.isStreaming) this.pumper.stopWatchdog()
     this.emit('recording-stopped')
     this.emitStatusChanged('recording-stopped')
@@ -249,7 +269,7 @@ export class StreamingService extends EventEmitter {
     const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
     const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
     const inputFormat = config.inputFormat || 'mjpeg'
-    const bestEncoder = await this.encoderResolver.getBestEncoder()
+    const bestEncoder = await this.encoderResolver.getBestEncoder('h264')
     const audioFormat = config.audioFormat || 'silent'
 
     this.reserveInputFormat(inputFormat)
@@ -269,6 +289,7 @@ export class StreamingService extends EventEmitter {
 
     session.on('error', (err) => {
       session.stop()
+      this.removeStreamOutput(id)
       this.emitStatusChanged('error', `${session.config.name}: ${err.message}`)
     })
 
@@ -282,8 +303,7 @@ export class StreamingService extends EventEmitter {
     })
 
     this.streamOutputs.set(id, session)
-    this.isStreaming = true
-    this.streamAudioEnabled = Array.from(this.streamOutputs.values()).some(s => s.config.audioEnabled) || this.streamAudioEnabled
+    this.updateStreamingState()
     this.emit('started')
     this.emitStatusChanged('started')
   }
@@ -298,8 +318,8 @@ export class StreamingService extends EventEmitter {
 
   private removeStreamOutput(id: string) {
     this.streamOutputs.delete(id)
-    this.isStreaming = this.streamOutputs.size > 0 || this.streamManager.getStats() !== '' // Rough check
-    // Logic for updating isStreaming is simplified here for brevity
+    this.updateStreamingState()
+    this.releaseInputFormatIfIdle()
     this.checkPowerSave()
   }
 
@@ -348,7 +368,7 @@ export class StreamingService extends EventEmitter {
 
   private createRecordingPath(config: RecordingConfig): string {
     const folder = this.getRecordingFolder()
-    const container = this.normalizeRecordingContainer(config.container)
+    const container = this.normalizeRecordingContainer(config.container, resolveRecordingCodec(config))
     const now = new Date()
     const stamp = [
       now.getFullYear(),
@@ -368,6 +388,22 @@ export class StreamingService extends EventEmitter {
     return candidate
   }
 
+  private updateStreamingState(): void {
+    this.isStreaming = this.streamManager.isRunning() || this.streamOutputs.size > 0
+    this.streamAudioEnabled = this.computeStreamAudioEnabled()
+  }
+
+  private computeStreamAudioEnabled(): boolean {
+    return this.legacyStreamAudioEnabled ||
+      Array.from(this.streamOutputs.values()).some(session => session.config.audioEnabled)
+  }
+
+  private releaseInputFormatIfIdle(): void {
+    if (!this.isStreaming && !this.isRecording) {
+      this.activeInputFormat = null
+    }
+  }
+
   private getRecordingFolder(): string {
     return join(app.getPath('videos'), 'ilyStream', 'Recordings')
   }
@@ -377,7 +413,8 @@ export class StreamingService extends EventEmitter {
     if (!existsSync(folder)) mkdirSync(folder, { recursive: true })
   }
 
-  private normalizeRecordingContainer(container?: string): 'mkv' | 'mp4' | 'mov' | 'flv' {
+  private normalizeRecordingContainer(container?: string, codec: 'h264' | 'h265' = 'h264'): 'mkv' | 'mp4' | 'mov' | 'flv' {
+    if (codec === 'h265' && container === 'flv') return 'mkv'
     return RECORDING_CONTAINERS.has(container || '') ? container as 'mkv' | 'mp4' | 'mov' | 'flv' : 'mkv'
   }
 }

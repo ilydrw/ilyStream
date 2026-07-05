@@ -8,13 +8,19 @@ import {
   type PlatformStats,
   type UserStat,
   type UserIdentity,
-  type UserStatSortKey
+  type UserStatSortKey,
+  type ViewerAccountInput,
+  type ViewerProfile,
+  type ViewerProfileInput
 } from '../../shared/stats'
 
 const PLATFORMS: Platform[] = ['tiktok', 'twitch', 'youtube', 'kick']
 
 /** Map the public sort keys to the underlying column names. */
 const SORT_COLUMN_BY_KEY: Record<UserStatSortKey, string> = {
+  // 'overall' is a synthetic composite ranking with no backing column — the
+  // repo recognises the sentinel and sorts by the computed score instead.
+  overall: 'overall',
   totalLikes: 'total_likes',
   totalGifts: 'total_gifts',
   totalGiftValueCents: 'total_gift_value_cents',
@@ -25,6 +31,91 @@ const SORT_COLUMN_BY_KEY: Record<UserStatSortKey, string> = {
   totalChats: 'total_chats',
   totalSongRequests: 'total_song_requests',
   lastSeenAt: 'last_seen_at'
+}
+
+function hasSuperFanBadge(event: AnyStreamEvent): boolean {
+  if (event.platform !== 'tiktok' && event.platform !== 'youtube') return false
+  if ((event as any).user?.isSuperFan) return true
+
+  const badges = ((event as any).user?.badges || []) as Array<{ id?: unknown; name?: unknown }>
+  return badges.some((badge) => {
+    const label = `${badge.id || ''} ${badge.name || ''}`.toLowerCase()
+    return label.includes('super fan') || label.includes('superfan')
+  })
+}
+
+function tiktokIdentity(event: AnyStreamEvent): any {
+  const raw = event.raw as any
+  return raw?.userIdentity || raw?.user?.userIdentity || raw?.userDetails?.userIdentity || null
+}
+
+function hasFanClubRole(event: AnyStreamEvent): boolean {
+  const user = (event as any).user || {}
+  const raw = event.raw as any
+  const badges = (user.badges || []) as Array<{ id?: unknown; name?: unknown }>
+  const hasFanClubBadge = badges.some((badge) => isFanClubBadgeLabel(badgeLabel(badge)))
+  if (event.platform === 'tiktok') {
+    return Boolean(
+      hasSuperFanBadge(event) ||
+      user.isFanClubMember ||
+      user.isSubscriber ||
+      raw?.isFanClubMember ||
+      raw?.isSubscriber ||
+      raw?.user?.isFanClubMember ||
+      raw?.user?.isSubscriber ||
+      raw?.userDetails?.isFanClubMember ||
+      raw?.userDetails?.isSubscriber ||
+      tiktokIdentity(event)?.isSubscriberOfAnchor ||
+      hasFanClubBadge
+    )
+  }
+
+  return Boolean(user.isFanClubMember || user.isSubscriber || hasFanClubBadge)
+}
+
+function badgeLabel(badge: { id?: unknown; name?: unknown }): string {
+  return `${badge.id || ''} ${badge.name || ''}`.toLowerCase()
+}
+
+function findBadgeImageUrl(event: AnyStreamEvent, matcher: (label: string) => boolean): string | null {
+  const badges = ((event as any).user?.badges || []) as Array<{ id?: unknown; name?: unknown; imageUrl?: unknown }>
+  const badge = badges.find((item) => matcher(badgeLabel(item)) && typeof item.imageUrl === 'string' && item.imageUrl.trim())
+  return typeof badge?.imageUrl === 'string' ? badge.imageUrl.trim() : null
+}
+
+function isFanClubBadgeLabel(label: string): boolean {
+  return (
+    label.includes('fan club') ||
+    label.includes('fanclub') ||
+    label.includes('subscriber') ||
+    label.includes('subscription') ||
+    label.includes('member')
+  )
+}
+
+function roleFields(event: AnyStreamEvent) {
+  const isSuperFan = hasSuperFanBadge(event)
+  const isFanClubMember = hasFanClubRole(event)
+  const platform = event.platform
+
+  return {
+    isFanClubMember,
+    isSuperFan,
+    isModerator: Boolean((event as any).user?.isModerator),
+    moderatorBadgeImageUrl: findBadgeImageUrl(event, (label) => label.includes('moderator') || label === 'mod'),
+    tiktokFanClubBadgeImageUrl: platform === 'tiktok'
+      ? findBadgeImageUrl(event, isFanClubBadgeLabel)
+      : null,
+    tiktokSuperFanBadgeImageUrl: platform === 'tiktok'
+      ? findBadgeImageUrl(event, (label) => label.includes('super fan') || label.includes('superfan'))
+      : null,
+    twitchSubBadgeImageUrl: platform === 'twitch'
+      ? findBadgeImageUrl(event, (label) => label.includes('subscriber'))
+      : null,
+    youtubeSuperFanBadgeImageUrl: platform === 'youtube'
+      ? findBadgeImageUrl(event, (label) => label.includes('super fan') || label.includes('superfan'))
+      : null
+  }
 }
 
 /**
@@ -52,7 +143,7 @@ export class StatsService {
         const amount = Math.max(1, Math.floor(event.likeCount || 1))
         this.upsertUser(event.user, platform, { 
           likes: amount,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalLikes', amount)
         if (typeof event.totalLikes === 'number') {
@@ -70,7 +161,7 @@ export class StatsService {
         this.upsertUser(event.user, platform, {
           gifts: count,
           giftValueCents: valueCents,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalGifts', count)
         this.db.stats.incrementGlobalStat('totalGiftValueCents', valueCents)
@@ -81,24 +172,33 @@ export class StatsService {
         this.upsertUser(event.user, platform, {
           subscriptions: 1,
           giftValueCents: valueCents,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalSubscriptions', 1)
         this.db.stats.incrementGlobalStat('totalGiftValueCents', valueCents)
         break
       }
       case 'follow': {
-        this.upsertUser(event.user, platform, { 
+        // A genuinely new follower (one we hadn't recorded before) nudges the
+        // manually-tracked follower count up by one. This is how we keep
+        // TikTok's number live, since TikTok exposes no follower API.
+        const handle = (event.user?.username || '').replace(/^@+/, '')
+        const existing = handle ? this.db.stats.getUserStat(platform, handle) : null
+        const wasAlreadyFollower = existing ? existing.total_follows > 0 : false
+        this.upsertUser(event.user, platform, {
           follows: 1,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
+        if (!wasAlreadyFollower && this.isManualFollowerTracking(platform)) {
+          this.db.stats.incrementPlatformFollowerCount(platform, 1)
+        }
         break
       }
       case 'share': {
         if (platform === 'twitch') break
         this.upsertUser(event.user, platform, { 
           shares: 1,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalShares', 1)
         break
@@ -106,7 +206,7 @@ export class StatsService {
       case 'raid': {
         this.upsertUser(event.user, platform, { 
           raids: 1,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalRaids', 1)
         break
@@ -114,7 +214,7 @@ export class StatsService {
       case 'chat': {
         this.upsertUser(event.user, platform, { 
           chats: 1,
-          isFanClubMember: event.user.isFanClubMember
+          ...roleFields(event)
         })
         this.db.stats.incrementGlobalStat('totalChats', 1)
         break
@@ -130,6 +230,8 @@ export class StatsService {
         // takes an hourly snapshot for growth deltas.
         if (typeof event.count === 'number' && event.count >= 0) {
           this.db.stats.setPlatformFollowerCount(platform, Math.floor(event.count))
+          // An authoritative API count supersedes manual tracking.
+          this.db.setSetting(`stats:followerManual:${platform}`, 'false')
         }
         return
       }
@@ -165,10 +267,31 @@ export class StatsService {
     this.db.setSetting('stats:lastUpdatedAt', new Date().toISOString())
   }
 
+  recordCohostCall(
+    platform: string,
+    user: {
+      username: string
+      displayName?: string
+      profilePictureUrl?: string | null
+    }
+  ): void {
+    if (user.username === 'local_alert_test') return
+
+    this.db.stats.incrementUserStats({
+      platform,
+      username: user.username,
+      displayName: user.displayName,
+      profilePictureUrl: user.profilePictureUrl ?? null,
+      cohostCalls: 1
+    })
+    this.db.stats.incrementGlobalStat('totalCohostCalls', 1)
+    this.db.setSetting('stats:lastUpdatedAt', new Date().toISOString())
+  }
+
   getGlobalStats(): GlobalStats {
     const counters = this.db.stats.getAllGlobalStats()
     const followerStatsByPlatform = this.db.stats.getPlatformFollowerStats()
-    const byPlatform: Record<Platform, PlatformStats> = {
+    const byPlatform: Partial<Record<Platform, PlatformStats>> = {
       tiktok: { ...EMPTY_PLATFORM_STATS },
       twitch: { ...EMPTY_PLATFORM_STATS },
       youtube: { ...EMPTY_PLATFORM_STATS },
@@ -181,6 +304,7 @@ export class StatsService {
         ...EMPTY_PLATFORM_STATS,
         ...totals,
         followerCount: followerInfo ? followerInfo.followerCount : null,
+        followerCountIsManual: this.isManualFollowerTracking(platform),
         followerDelta24h: followerInfo ? followerInfo.delta24h : null,
         followerDelta7d: followerInfo ? followerInfo.delta7d : null,
         followerDelta30d: followerInfo ? followerInfo.delta30d : null,
@@ -216,6 +340,22 @@ export class StatsService {
   setPlatformFollowerCount(platform: Platform, count: number): void {
     if (!Number.isFinite(count) || count < 0) return
     this.db.stats.setPlatformFollowerCount(platform, Math.floor(count))
+  }
+
+  /**
+   * Streamer-entered follower baseline for a platform with no follower API
+   * (primarily TikTok). Flags the platform as manually tracked so subsequent
+   * live follow events keep the number current, and lets the streamer correct
+   * it anytime (covering unfollows, which TikTok never reports).
+   */
+  setManualFollowerCount(platform: Platform, count: number): void {
+    if (!Number.isFinite(count) || count < 0) return
+    this.db.stats.setPlatformFollowerCount(platform, Math.floor(count))
+    this.db.setSetting(`stats:followerManual:${platform}`, 'true')
+  }
+
+  private isManualFollowerTracking(platform: string): boolean {
+    return this.db.getSetting(`stats:followerManual:${platform}`) === 'true'
   }
 
   getFollowerSnapshots(platform: Platform, sinceIso: string, limit = 720) {
@@ -255,12 +395,36 @@ export class StatsService {
     })
   }
 
-  linkAccounts(p1: Platform, u1: string, p2: Platform, u2: string): void {
-    this.db.linkAccounts(p1, u1, p2, u2)
+  getUserIdentity(id: string): UserIdentity | null {
+    return this.db.stats.getUserIdentity(id)
+  }
+
+  linkAccounts(p1: Platform, u1: string, p2: Platform, u2: string): ViewerProfile | null {
+    return this.db.linkAccounts(p1, u1, p2, u2)
   }
 
   unlinkAccount(platform: Platform, username: string): void {
     this.db.unlinkAccount(platform, username)
+  }
+
+  getViewerProfileId(platform: string, username: string): string | null {
+    return this.db.getViewerProfileId(platform, username)
+  }
+
+  getViewerProfiles(opts: { query?: string; limit?: number } = {}): ViewerProfile[] {
+    return this.db.getViewerProfiles(opts)
+  }
+
+  createViewerProfile(input: ViewerProfileInput): ViewerProfile {
+    return this.db.createViewerProfile(input)
+  }
+
+  updateViewerProfile(id: string, patch: Partial<ViewerProfileInput>): ViewerProfile | null {
+    return this.db.updateViewerProfile(id, patch)
+  }
+
+  addViewerAccount(profileId: string, account: ViewerAccountInput): ViewerProfile | null {
+    return this.db.addViewerAccount(profileId, account)
   }
 
   reset(): void {
@@ -280,8 +444,12 @@ export class StatsService {
     }
   }
 
+  getLinkSuggestions(profileId: string) {
+    return this.db.stats.getLinkSuggestions(profileId)
+  }
+
   private upsertUser(
-    user: { username: string; displayName?: string; profilePictureUrl?: string },
+    user: { id?: string; username: string; displayName?: string; profilePictureUrl?: string },
     platform: Platform,
     increments: {
       likes?: number
@@ -294,6 +462,13 @@ export class StatsService {
       chats?: number
       songRequests?: number
       isFanClubMember?: boolean
+      isSuperFan?: boolean
+      isModerator?: boolean
+      moderatorBadgeImageUrl?: string | null
+      tiktokFanClubBadgeImageUrl?: string | null
+      tiktokSuperFanBadgeImageUrl?: string | null
+      twitchSubBadgeImageUrl?: string | null
+      youtubeSuperFanBadgeImageUrl?: string | null
     }
   ): void {
     const username = (user?.username || '').trim()
@@ -302,9 +477,12 @@ export class StatsService {
     this.db.stats.incrementUserStats({
       username,
       platform,
+      platformUserId: user.id,
       displayName: user.displayName,
       profilePictureUrl: user.profilePictureUrl ?? null,
       isFanClubMember: (user as any).isFanClubMember,
+      isSuperFan: increments.isSuperFan,
+      isModerator: increments.isModerator,
       ...increments
     })
   }
@@ -314,6 +492,7 @@ function rowToUserStat(row: UserStatRow): UserStat {
   return {
     username: row.username,
     platform: row.platform as Platform,
+    platformUserId: row.platform_user_id,
     displayName: row.display_name || row.username,
     profilePictureUrl: row.profile_picture_url,
     totalLikes: row.total_likes,
@@ -326,6 +505,15 @@ function rowToUserStat(row: UserStatRow): UserStat {
     totalChats: row.total_chats,
     totalSongRequests: row.total_song_requests,
     isFanClubMember: row.is_fan_club_member === 1,
+    isSuperFan: row.is_super_fan === 1,
+    isModerator: row.is_moderator === 1,
+    badgeImageUrls: {
+      moderator: row.moderator_badge_image_url,
+      tiktokFanClub: row.tiktok_fan_club_badge_image_url,
+      tiktokSuperFan: row.tiktok_super_fan_badge_image_url,
+      twitchSub: row.twitch_sub_badge_image_url,
+      youtubeSuperFan: row.youtube_super_fan_badge_image_url
+    },
     profileId: row.profile_id,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at

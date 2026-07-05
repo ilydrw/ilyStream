@@ -41,16 +41,18 @@ export function Metric({
   icon: ReactNode
   label: string
   value: string
-  tone?: 'neutral' | 'danger'
+  tone?: 'neutral' | 'warning' | 'danger'
 }) {
+  const toneClass = tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : ''
+
   return (
     <div className="app-section-card glass !p-10 flex flex-col items-center justify-center text-center gap-6">
-      <div className={`flex items-center justify-center ${tone === 'danger' ? 'text-danger' : ''}`}>
+      <div className={`flex items-center justify-center ${toneClass}`}>
         {icon}
       </div>
       <div>
         <p className="text-[10px] font-semibold tracking-normal text-white/30 mb-2">{label}</p>
-        <p className={`text-3xl font-semibold font-mono ${tone === 'danger' ? 'text-danger' : 'text-white'}`}>{value}</p>
+        <p className={`text-3xl font-semibold font-mono ${toneClass || 'text-white'}`}>{value}</p>
       </div>
     </div>
   )

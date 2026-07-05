@@ -18,8 +18,13 @@ export function registerPlatformHandlers(
   tiktokChatSender: TikTokChatSender
 ) {
   ipcMain.handle('platform:connect', async (_event, config: AnyPlatformConfig) => {
-    await platformManager.connect(config)
     db.savePlatformConfig(config)
+    try {
+      await platformManager.connect(config)
+    } catch (err) {
+      db.setPlatformEnabled(config.platform, false)
+      throw err
+    }
   })
 
   ipcMain.handle('platform:disconnect', async (_event, platform: Platform) => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { BaseConnector } from '../base-connector'
+import { BaseConnector, ConnectorFatalError } from '../base-connector'
 import {
   Platform,
   YouTubeConfig,
@@ -22,11 +22,31 @@ export class YouTubeConnector extends BaseConnector {
   private isPolling = false
   private consecutiveErrors = 0
   private maxConsecutiveErrors = 10
+  private discoveryDisabled = false
+
+  private sessionConnectTime = 0
+  private processedMessageIds = new Set<string>()
+  private messageIdQueue: string[] = []
+
+  private trackMessageId(id: string): void {
+    if (this.processedMessageIds.has(id)) return
+    this.processedMessageIds.add(id)
+    this.messageIdQueue.push(id)
+    if (this.messageIdQueue.length > 2000) {
+      const oldest = this.messageIdQueue.shift()
+      if (oldest) {
+        this.processedMessageIds.delete(oldest)
+      }
+    }
+  }
 
   validateConfig(config: PlatformConfig): string | null {
     const c = config as YouTubeConfig
-    if (!c.apiKey || c.apiKey.trim().length === 0) {
-      return 'YouTube API key is required'
+    const hasApiKey = Boolean(c.apiKey?.trim())
+    const hasAccessToken = Boolean(c.accessToken?.trim())
+    const hasRefreshFlow = Boolean(c.refreshToken?.trim() && c.clientId?.trim() && c.clientSecret?.trim())
+    if (!hasApiKey && !hasAccessToken && !hasRefreshFlow) {
+      return 'YouTube API key, OAuth access token, or OAuth refresh token with client credentials is required'
     }
     return null
   }
@@ -38,19 +58,26 @@ export class YouTubeConnector extends BaseConnector {
     this.stopPolling()
     this.nextPageToken = undefined
     this.consecutiveErrors = 0
+    this.discoveryDisabled = false
+
+    if (this.sessionConnectTime === 0) {
+      this.sessionConnectTime = Date.now()
+    }
 
     const { google } = await import('googleapis')
 
-    this.youtube = google.youtube({
-      version: 'v3',
-      auth: ytConfig.apiKey
-    })
+    const accessToken = normalizeOptionalText(ytConfig.accessToken)
+    const refreshToken = normalizeOptionalText(ytConfig.refreshToken)
+    const clientId = normalizeOptionalText(ytConfig.clientId)
+    const clientSecret = normalizeOptionalText(ytConfig.clientSecret)
+    const canUseOAuth = Boolean(accessToken || (refreshToken && clientId && clientSecret))
 
-    if (ytConfig.accessToken) {
-      const oauthClient = new google.auth.OAuth2()
+    let oauthClient: any = null
+    if (canUseOAuth) {
+      oauthClient = new google.auth.OAuth2(clientId || undefined, clientSecret || undefined)
       oauthClient.setCredentials({
-        access_token: ytConfig.accessToken,
-        refresh_token: ytConfig.refreshToken
+        access_token: accessToken || undefined,
+        refresh_token: refreshToken || undefined
       })
 
       this.youtubeWrite = google.youtube({
@@ -61,8 +88,25 @@ export class YouTubeConnector extends BaseConnector {
       this.youtubeWrite = null
     }
 
+    this.youtube = google.youtube({
+      version: 'v3',
+      auth: oauthClient || ytConfig.apiKey
+    })
+
+    const providedLiveChatId = normalizeOptionalText(ytConfig.liveChatId)
+
     // Use provided liveChatId or discover from active broadcast
-    this.liveChatId = ytConfig.liveChatId || (await this.findActiveLiveChatId(ytConfig))
+    this.liveChatId = providedLiveChatId || (await this.findActiveLiveChatId(ytConfig))
+
+    if (!this.liveChatId) {
+      const input = normalizeOptionalText(ytConfig.channelId)
+      const isDirectVideo = input ? Boolean(parseYouTubeVideoId(input)) : false
+      if (!isDirectVideo) {
+        throw new ConnectorFatalError(
+          'Active YouTube broadcast not found for this channel. Make sure your stream is live, or paste the exact Live Video URL / Chat ID to connect.'
+        )
+      }
+    }
 
     // Start polling - it will handle auto-discovery if liveChatId is missing
     this.startPolling()
@@ -75,10 +119,21 @@ export class YouTubeConnector extends BaseConnector {
     this.liveChatId = null
     this.nextPageToken = undefined
     this.consecutiveErrors = 0
+    this.discoveryDisabled = false
+    this.sessionConnectTime = 0
+    this.processedMessageIds.clear()
+    this.messageIdQueue = []
   }
 
   private async findActiveLiveChatId(config: YouTubeConfig): Promise<string | null> {
     try {
+      const input = normalizeOptionalText(config.channelId)
+      const directVideoId = input ? parseYouTubeVideoId(input) : null
+
+      if (directVideoId) {
+        return await this.findVideoLiveChatId(directVideoId)
+      }
+
       const params: any = {
         part: ['snippet'],
         broadcastType: 'all'
@@ -96,51 +151,36 @@ export class YouTubeConnector extends BaseConnector {
           chatId = upcomingResponse.data.items?.[0]?.snippet?.liveChatId
         }
         
-        return chatId || null
-      } else if (config.channelId) {
-        let input = config.channelId.trim()
-        let videoId: string | null = null
+        if (chatId) return chatId
+      }
+
+      if (input) {
+        let channelInput = input
         let channelId: string | null = null
 
         // 1. Try to parse as a YouTube URL
         try {
-          if (input.includes('youtube.com/') || input.includes('youtu.be/')) {
-            const url = new URL(input.startsWith('http') ? input : `https://${input}`)
-            
-            if (url.searchParams.has('v')) {
-              videoId = url.searchParams.get('v')
-            } else if (url.hostname === 'youtu.be') {
-              videoId = url.pathname.slice(1)
-            }
-            
-            if (!videoId) {
-              if (url.pathname.startsWith('/channel/')) {
-                channelId = url.pathname.split('/')[2]
-              } else if (url.pathname.startsWith('/@')) {
-                input = url.pathname.split('/')[1]
-              }
+          if (channelInput.includes('youtube.com/')) {
+            const url = new URL(channelInput.startsWith('http') ? channelInput : `https://${channelInput}`)
+
+            if (url.pathname.startsWith('/channel/')) {
+              channelId = url.pathname.split('/')[2]
+            } else if (url.pathname.startsWith('/@')) {
+              channelInput = url.pathname.split('/')[1]
             }
           }
         } catch (e) {}
 
-        if (videoId) {
-          const videoRes = await this.youtube.videos.list({
-            part: ['liveStreamingDetails'],
-            id: [videoId]
-          })
-          return videoRes.data.items?.[0]?.liveStreamingDetails?.liveChatId || null
-        }
-
         if (!channelId) {
-          if (input.startsWith('@') || !input.startsWith('UC')) {
-            const handle = input.startsWith('@') ? input : `@${input}`
+          if (channelInput.startsWith('@') || !channelInput.startsWith('UC')) {
+            const handle = channelInput.startsWith('@') ? channelInput : `@${channelInput}`
             const channelRes = await this.youtube.channels.list({
               part: ['id'],
               forHandle: handle
             })
             channelId = channelRes.data.items?.[0]?.id || null
           } else {
-            channelId = input
+            channelId = channelInput
           }
         }
 
@@ -171,13 +211,35 @@ export class YouTubeConnector extends BaseConnector {
           id: [foundVideoId]
         })
 
-        return videoRes.data.items?.[0]?.liveStreamingDetails?.liveChatId || null
+        return this.readVideoLiveChatId(videoRes.data.items?.[0]) || null
       }
       return null
     } catch (error) {
       console.warn('[youtube] Discovery error:', error)
+      if (isYouTubeSearchQuotaExceeded(error)) {
+        this.discoveryDisabled = true
+        this.handleError(
+          new Error('YouTube Search quota is exhausted for this Google Cloud project. Paste the Live Chat ID or exact live video URL to connect without search discovery.'),
+          'discovery-quota',
+          false
+        )
+      }
       return null
     }
+  }
+
+  private readVideoLiveChatId(video: any): string | null {
+    const details = video?.liveStreamingDetails
+    return details?.activeLiveChatId || details?.liveChatId || null
+  }
+
+  private async findVideoLiveChatId(videoId: string): Promise<string | null> {
+    const videoRes = await this.youtube.videos.list({
+      part: ['liveStreamingDetails'],
+      id: [videoId]
+    })
+
+    return this.readVideoLiveChatId(videoRes.data.items?.[0]) || null
   }
 
   override getChatCapability(): PlatformChatCapability {
@@ -255,12 +317,30 @@ export class YouTubeConnector extends BaseConnector {
     try {
       // 1. If we don't have a liveChatId, try to find one
       if (!this.liveChatId && this.currentConfig) {
+        if (this.discoveryDisabled) {
+          this.isPolling = false
+          return
+        }
+
         const config = this.currentConfig as YouTubeConfig
+        const input = normalizeOptionalText(config.channelId)
+        const isDirectVideo = input ? Boolean(parseYouTubeVideoId(input)) : false
+        if (!isDirectVideo) {
+          // Prevent any search polling loops
+          this.isPolling = false
+          return
+        }
+
         this.liveChatId = await this.findActiveLiveChatId(config)
         
         if (!this.liveChatId) {
+          if (this.discoveryDisabled) {
+            this.isPolling = false
+            return
+          }
+
           // Still no stream? Wait and try again later
-          this.pollIntervalMs = 15_000 // Slow down discovery to save quota
+          this.pollIntervalMs = 30_000 // Slow down video discovery to 30s to save quota
           this.isPolling = false
           this.pollTimer = setTimeout(() => this.poll(), this.pollIntervalMs)
           return
@@ -284,8 +364,23 @@ export class YouTubeConnector extends BaseConnector {
       this.consecutiveErrors = 0
 
       for (const item of data.items || []) {
+        const publishedAtStr = item.snippet?.publishedAt
+        if (publishedAtStr) {
+          const publishedAt = new Date(publishedAtStr).getTime()
+          // Skip messages published before we first connected (with a 5s grace window)
+          if (publishedAt < this.sessionConnectTime - 5000) {
+            continue
+          }
+        }
+
         const event = this.mapMessage(item)
-        if (event) this.emitEvent(event)
+        if (event) {
+          if (this.processedMessageIds.has(event.id)) {
+            continue
+          }
+          this.trackMessageId(event.id)
+          this.emitEvent(event)
+        }
       }
     } catch (error: any) {
       this.consecutiveErrors++
@@ -296,7 +391,14 @@ export class YouTubeConnector extends BaseConnector {
       if (status === 401 || status === 403) {
         console.error(`[youtube] Auth/quota error (${status}): ${message}`)
         this.isPolling = false
-        this.handleError(error, 'poll-auth', false)
+
+        let customError = error
+        if (isYouTubeSearchQuotaExceeded(error)) {
+          customError = new Error(
+            'YouTube API quota exceeded. Please wait for the daily quota reset or check your Google Cloud Console project credentials.'
+          )
+        }
+        this.handleError(customError, 'poll-auth', false)
         return
       }
 
@@ -442,4 +544,54 @@ export class YouTubeConnector extends BaseConnector {
       ]
     }
   }
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function parseYouTubeVideoId(input: string): string | null {
+  if (/^[A-Za-z0-9_-]{11}$/.test(input)) return input
+
+  if (!input.includes('youtube.com/') && !input.includes('youtu.be/')) return null
+
+  try {
+    const url = new URL(input.startsWith('http') ? input : `https://${input}`)
+
+    if (url.hostname === 'youtu.be') {
+      return normalizeVideoId(url.pathname.slice(1))
+    }
+
+    const watchId = url.searchParams.get('v')
+    if (watchId) return normalizeVideoId(watchId)
+
+    const match = url.pathname.match(/^\/(?:live|shorts|embed)\/([^/?#]+)/)
+    return match ? normalizeVideoId(match[1]) : null
+  } catch {
+    return null
+  }
+}
+
+function normalizeVideoId(value: string | null | undefined): string | null {
+  if (!value) return null
+  const decoded = decodeURIComponent(value).trim()
+  return /^[A-Za-z0-9_-]{11}$/.test(decoded) ? decoded : null
+}
+
+function isYouTubeSearchQuotaExceeded(error: unknown): boolean {
+  const err = error as any
+  const status = err?.response?.status || err?.code
+  const reason = err?.response?.data?.error?.errors?.[0]?.reason || err?.errors?.[0]?.reason
+  const message = `${err?.message || ''} ${err?.response?.data?.error?.message || ''}`.toLowerCase()
+
+  return (
+    status === 403 &&
+    (reason === 'quotaExceeded' ||
+      reason === 'dailyLimitExceeded' ||
+      reason === 'rateLimitExceeded' ||
+      message.includes('quota exceeded') ||
+      message.includes('search queries per day'))
+  )
 }

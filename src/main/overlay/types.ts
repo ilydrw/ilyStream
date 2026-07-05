@@ -35,4 +35,5 @@ export interface LikesTrackerUser {
 export const CHAT_HISTORY_LIMIT = 80
 export const ALERT_HISTORY_LIMIT = 20
 export const SSE_PING_INTERVAL_MS = 15000
+export const SSE_EVENT_HISTORY_LIMIT = 120
 export const DEFAULT_PORT = 8899

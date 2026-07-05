@@ -6,6 +6,7 @@ import { VoiceProfileManager, VoiceProfile } from './voice-profiles'
 import { ChatEvent, SubscriptionEvent, AnyStreamEvent, UserInfo } from '../platforms/types'
 import {
   AppSettings,
+  DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE,
   DEFAULT_TTS_COMMAND_PREFIXES,
   TTSAudiencePermission,
   TTSUserVoiceOverride
@@ -16,6 +17,9 @@ export interface TTSRequest {
   text: string
   username: string
   platform: string
+  displayName?: string | null
+  platformUserId?: string | null
+  viewerProfileId?: string | null
   priority: TTSPriority
   voiceProfileId?: string
   eventType: string
@@ -32,6 +36,12 @@ interface VoiceResolution {
   voiceOverride?: VoiceProfile
 }
 
+type ViewerProfileResolver = (
+  platform: string,
+  username: string,
+  identity?: { platformUserId?: string | null; displayName?: string | null }
+) => string | null
+
 export class TTSEngine extends EventEmitter {
   private queue: TTSQueue
   private filter: TTSFilter
@@ -39,6 +49,12 @@ export class TTSEngine extends EventEmitter {
   private isPlaying = false
   private isPaused = false
   private currentItem: TTSQueueItem | null = null
+  /**
+   * Fail-safe so a single speech that never reports completion (renderer
+   * reloaded mid-speech, Kokoro hung, etc.) can't permanently wedge the queue
+   * with isPlaying stuck true.
+   */
+  private playbackWatchdog: ReturnType<typeof setTimeout> | null = null
   private enabled = true
   private chatVoiceProfileId = ''
   private subscriptionVoiceProfileId = ''
@@ -47,11 +63,15 @@ export class TTSEngine extends EventEmitter {
   private ignoreEmotes = true
   private globalVolume = 0.8
   private commandPrefixes = [...DEFAULT_TTS_COMMAND_PREFIXES]
+  private chatMessageTemplate = DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE
   private allowedRoles: TTSAudiencePermission[] = ['everyone']
   private userVoiceOverrides: TTSUserVoiceOverride[] = []
 
 
-  constructor() {
+  constructor(
+    private resolveViewerProfileId: ViewerProfileResolver = () => null,
+    private checkProfilePermission?: (profileId: string, permission: TTSAudiencePermission) => boolean
+  ) {
     super()
     this.queue = new TTSQueue()
     this.filter = new TTSFilter()
@@ -92,8 +112,10 @@ export class TTSEngine extends EventEmitter {
     // Priority 'urgent' (AI/Test) bypasses the global enabled check
     if (!this.enabled && request.priority !== 'urgent') return false
 
+    const viewerProfileId = request.viewerProfileId ?? this.resolveRequestViewerProfileId(request)
+
     // Per-user block: a disabled override entry means "no TTS for this user"
-    if (this.isUserBlocked(request.platform, request.username)) {
+    if (this.isUserBlocked(request.platform, request.username, viewerProfileId)) {
       console.log(`[TTS] Skipping: User ${request.username} is explicitly blocked in overrides.`)
       return false
     }
@@ -108,6 +130,7 @@ export class TTSEngine extends EventEmitter {
     const voiceResolution = this.resolveUserVoiceAssignment(
       request.platform,
       request.username,
+      viewerProfileId,
       request.voiceProfileId ?? ''
     )
 
@@ -116,6 +139,7 @@ export class TTSEngine extends EventEmitter {
       text: filteredText,
       originalText: request.text,
       username: request.username,
+      userKey: viewerProfileId ? `profile:${viewerProfileId}` : `${request.platform}:${normalizeUsername(request.username)}`,
       platform: request.platform,
       priority: request.priority,
       voiceProfileId: request.voiceOverride ? undefined : voiceResolution.voiceProfileId,
@@ -182,6 +206,7 @@ export class TTSEngine extends EventEmitter {
   /** Skip the currently playing item */
   skip(): void {
     if (this.currentItem) {
+      this.clearPlaybackWatchdog()
       this.emit('tts:stop-speaking')
       this.currentItem = null
       this.isPlaying = false
@@ -230,6 +255,7 @@ export class TTSEngine extends EventEmitter {
     this.onlySubsAndMods = settings.onlySubsAndMods
     this.requireCommand = settings.requireCommand
     this.commandPrefixes = [...(settings.commandPrefixes || [])].sort((left, right) => right.length - left.length)
+    this.chatMessageTemplate = normalizeChatMessageTemplate(settings.chatMessageTemplate)
     this.allowedRoles = settings.allowedRoles
     this.userVoiceOverrides = settings.userVoiceOverrides
     this.ignoreEmotes = settings.ignoreEmotes
@@ -263,9 +289,41 @@ export class TTSEngine extends EventEmitter {
 
   /** Called by renderer when speech finishes */
   onSpeechComplete(): void {
+    this.clearPlaybackWatchdog()
     this.currentItem = null
     this.isPlaying = false
     this.processNext()
+  }
+
+  /**
+   * Called when the renderer (re)initializes its TTS hook — e.g. after a reload.
+   * Any speech that was "in flight" is gone with the old page, so clear the
+   * playing flag and resume the queue instead of staying stuck forever.
+   */
+  resetPlayback(): void {
+    this.clearPlaybackWatchdog()
+    this.currentItem = null
+    this.isPlaying = false
+    this.processNext()
+  }
+
+  private armPlaybackWatchdog(text: string): void {
+    this.clearPlaybackWatchdog()
+    // Generous ceiling: synth + playback for even a long line finishes well
+    // within this, so it only fires when something actually broke.
+    const maxMs = Math.min(90_000, 12_000 + text.length * 150)
+    this.playbackWatchdog = setTimeout(() => {
+      this.playbackWatchdog = null
+      console.warn('[TTS] Playback watchdog fired — no completion from renderer; advancing queue.')
+      this.onSpeechComplete()
+    }, maxMs)
+  }
+
+  private clearPlaybackWatchdog(): void {
+    if (this.playbackWatchdog) {
+      clearTimeout(this.playbackWatchdog)
+      this.playbackWatchdog = null
+    }
   }
 
   private processNext(): void {
@@ -288,6 +346,7 @@ export class TTSEngine extends EventEmitter {
       username: next.username,
       voice: finalProfile
     })
+    this.armPlaybackWatchdog(next.text)
 
     this.emitPrefetchForNext()
 
@@ -318,24 +377,31 @@ export class TTSEngine extends EventEmitter {
       : this.voiceProfiles.getDefault()
   }
 
+  private resolveRequestViewerProfileId(request: TTSRequest): string | null {
+    return this.resolveViewerProfileId(request.platform, request.username, {
+      platformUserId: request.platformUserId,
+      displayName: request.displayName
+    })
+  }
+
   /**
    * Returns true if a user has an explicit "blocked" override entry (enabled = false).
    * This mirrors TikFinity's "Allowed" checkbox — unchecked = silenced entirely.
    */
-  private isUserBlocked(platform: string, username: string): boolean {
+  private isUserBlocked(platform: string, username: string, viewerProfileId: string | null): boolean {
     const normalized = normalizeUsername(username)
     if (!normalized) return false
 
     return this.userVoiceOverrides.some((override) => {
       if (override.enabled) return false // enabled overrides are voice assignments, not blocks
-      if (override.platform !== 'all' && override.platform !== platform) return false
-      return normalizeUsername(override.username) === normalized
+      return this.overrideMatchesUser(override, platform, normalized, viewerProfileId)
     })
   }
 
   private resolveUserVoiceAssignment(
     platform: string,
     username: string,
+    viewerProfileId: string | null,
     fallbackProfileId: string
   ): VoiceResolution {
     const normalizedUsername = normalizeUsername(username)
@@ -343,8 +409,7 @@ export class TTSEngine extends EventEmitter {
 
     const match = this.userVoiceOverrides.find((override) => {
       if (!override.enabled) return false
-      if (override.platform !== 'all' && override.platform !== platform) return false
-      return normalizeUsername(override.username) === normalizedUsername
+      return this.overrideMatchesUser(override, platform, normalizedUsername, viewerProfileId)
     })
 
     if (!match) {
@@ -360,6 +425,23 @@ export class TTSEngine extends EventEmitter {
     }
   }
 
+  private overrideMatchesUser(
+    override: TTSUserVoiceOverride,
+    platform: string,
+    normalizedUsername: string,
+    viewerProfileId: string | null
+  ): boolean {
+    if (viewerProfileId) {
+      if (override.viewerProfileId && override.viewerProfileId === viewerProfileId) return true
+
+      const overrideProfileId = this.resolveViewerProfileId(override.platform, override.username)
+      if (overrideProfileId && overrideProfileId === viewerProfileId) return true
+    }
+
+    if (override.platform !== 'all' && override.platform !== platform) return false
+    return normalizeUsername(override.username) === normalizedUsername
+  }
+
   private buildUserVoiceProfile(override: TTSUserVoiceOverride): VoiceProfile {
     return {
       id: `user-voice:${override.id}`,
@@ -368,6 +450,7 @@ export class TTSEngine extends EventEmitter {
       voiceName: override.voiceName,
       kokoroVoice: override.kokoroVoice || DEFAULT_KOKORO_VOICE,
       elevenlabsVoiceId: override.elevenlabsVoiceId || ELEVENLABS_DEFAULT_VOICE_ID,
+      elevenlabsApiKeyId: override.elevenlabsApiKeyId || '',
       elevenlabsStability: override.elevenlabsStability,
       elevenlabsSimilarity: override.elevenlabsSimilarity,
       elevenlabsStyle: override.elevenlabsStyle,
@@ -381,12 +464,24 @@ export class TTSEngine extends EventEmitter {
   }
 
   private resolveChatSpeechMessage(event: ChatEvent): string | null {
-    if (this.onlySubsAndMods && !isSubscriberModeratorOrVip(event.user)) {
+    const viewerProfileId = this.resolveViewerProfileId(event.platform, event.user.username, {
+      platformUserId: event.user.id,
+      displayName: event.user.displayName
+    })
+
+    const isSubModVip = isSubscriberModeratorOrVip(event.user) ||
+      (!!viewerProfileId && !!this.checkProfilePermission && (
+        this.checkProfilePermission(viewerProfileId, 'subscribers') ||
+        this.checkProfilePermission(viewerProfileId, 'moderators') ||
+        this.checkProfilePermission(viewerProfileId, 'vips')
+      ))
+
+    if (this.onlySubsAndMods && !isSubModVip) {
       console.log(`[TTS] Skipping chat from ${event.user.username}: Subs/Mods only mode is ON.`)
       return null
     }
 
-    if (!this.canUserUseChatTTS(event.user)) {
+    if (!this.canUserUseChatTTS(event.user, viewerProfileId)) {
       // canUserUseChatTTS logs its own reasons
       return null
     }
@@ -444,19 +539,20 @@ export class TTSEngine extends EventEmitter {
     return result.replace(/\s+/g, ' ').trim()
   }
 
-  private canUserUseChatTTS(user: UserInfo): boolean {
+  private canUserUseChatTTS(user: UserInfo, viewerProfileId: string | null): boolean {
     if (this.allowedRoles.includes('everyone')) return true
 
     const permitted = this.allowedRoles.some((role) => {
-      const match = userMatchesPermission(user, role)
+      const match = userMatchesPermission(user, role) ||
+        (!!viewerProfileId && !!this.checkProfilePermission && this.checkProfilePermission(viewerProfileId, role))
       if (match) {
-        console.log(`[TTS] User "${user.username}" permitted by role: ${role}`)
+        console.log(`[TTS] User "${user.username}" (Profile: ${viewerProfileId}) permitted by role: ${role}`)
       }
       return match
     })
 
     if (!permitted) {
-      console.log(`[TTS] Skipping: User "${user.username}" does not have required permissions. Roles allowed: ${this.allowedRoles.join(', ')}. User state: Follower=${user.isFollower ?? false}, Sub=${user.isSubscriber}, Mod=${user.isModerator}, VIP=${user.isVip}`)
+      console.log(`[TTS] Skipping: User "${user.username}" (Profile: ${viewerProfileId}) does not have required permissions. Roles allowed: ${this.allowedRoles.join(', ')}. User state: Follower=${user.isFollower ?? false}, Sub=${user.isSubscriber}, Mod=${user.isModerator}, VIP=${user.isVip}`)
     }
 
     return permitted
@@ -464,9 +560,15 @@ export class TTSEngine extends EventEmitter {
 
   private chatToRequest(event: ChatEvent, speechMessage: string): TTSRequest {
     return {
-      text: `${event.user.displayName} says: ${speechMessage}`,
+      text: this.formatChatMessage(event, speechMessage),
       username: event.user.username,
       platform: event.platform,
+      displayName: event.user.displayName,
+      platformUserId: event.user.id,
+      viewerProfileId: this.resolveViewerProfileId(event.platform, event.user.username, {
+        platformUserId: event.user.id,
+        displayName: event.user.displayName
+      }),
       priority: event.user.isModerator ? 'high' : 'normal',
       voiceProfileId: this.chatVoiceProfileId || undefined,
       eventType: 'chat'
@@ -481,15 +583,61 @@ export class TTSEngine extends EventEmitter {
       text: msg,
       username: event.user.username,
       platform: event.platform,
+      displayName: event.user.displayName,
+      platformUserId: event.user.id,
+      viewerProfileId: this.resolveViewerProfileId(event.platform, event.user.username, {
+        platformUserId: event.user.id,
+        displayName: event.user.displayName
+      }),
       priority: 'urgent',
       voiceProfileId: this.subscriptionVoiceProfileId || undefined,
       eventType: 'subscription'
     }
   }
+
+  private formatChatMessage(event: ChatEvent, speechMessage: string): string {
+    const displayName = event.user.displayName || event.user.username
+    const tokenValues: Record<string, string> = {
+      message: speechMessage,
+      rawmessage: event.message.trim(),
+      username: event.user.username,
+      displayname: displayName,
+      name: displayName,
+      userid: event.user.id,
+      platform: event.platform,
+      platformlabel: formatPlatformLabel(event.platform),
+      mention: event.user.username ? `@${event.user.username.replace(/^@+/, '')}` : ''
+    }
+
+    const rendered = this.chatMessageTemplate
+      .replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, token: string) => tokenValues[token.toLowerCase()] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return rendered || speechMessage
+  }
 }
 
 function normalizeUsername(username: string): string {
   return username.trim().replace(/^@+/, '').toLowerCase()
+}
+
+function normalizeChatMessageTemplate(template: string | undefined): string {
+  if (typeof template !== 'string') return DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE
+  const normalized = template.replace(/\s+/g, ' ').trim()
+  return normalized || DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE
+}
+
+function formatPlatformLabel(platform: string): string {
+  const labels: Record<string, string> = {
+    tiktok: 'TikTok',
+    twitch: 'Twitch',
+    youtube: 'YouTube',
+    kick: 'Kick'
+  }
+  if (labels[platform]) return labels[platform]
+  if (!platform) return ''
+  return platform.charAt(0).toUpperCase() + platform.slice(1)
 }
 
 function isSubscriberModeratorOrVip(user: UserInfo): boolean {

@@ -44,7 +44,7 @@ function LayerRow({
             type="checkbox"
             checked={enabled}
             onChange={(e) => onToggle(e.target.checked)}
-            className="w-4 h-4 accent-[#d035f1] flex-shrink-0"
+            className="w-4 h-4 accent-[#19c8ff] flex-shrink-0"
           />
           <span className="text-lg leading-none">{emoji}</span>
           <div className="flex-1 min-w-0">
@@ -85,7 +85,7 @@ function PhysicsRow({ label, value, onChange, min = 0.1, max = 5, step = 0.1 }: 
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-[#d035f1]"
+        className="w-full accent-[#19c8ff]"
       />
     </Field>
   )
@@ -102,7 +102,7 @@ function FollowerHeartsEditor({
   return (
     <>
       <Field label="Burst count" hint="Hearts spawned per follow event.">
-        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={200} className="!w-24 !h-9 !text-xs text-right" />
+        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={200} className="!w-32" />
       </Field>
       <PhysicsRow label="Rise speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
@@ -130,7 +130,7 @@ function FallingRosesEditor({
   return (
     <>
       <Field label="Burst count" hint="Roses spawned per TikTok Rose gift event.">
-        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={150} className="!w-24 !h-9 !text-xs text-right" />
+        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={150} className="!w-32" />
       </Field>
       <PhysicsRow label="Fall speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
@@ -151,7 +151,7 @@ function GalaxyEditor({
     <>
       <p className="text-[10px] text-white/30">Falls when a TikTok Galaxy gift is received.</p>
       <Field label="Particle count">
-        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={200} className="!w-24 !h-9 !text-xs text-right" />
+        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={200} className="!w-32" />
       </Field>
       <PhysicsRow label="Speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
@@ -179,7 +179,7 @@ function GGsEditor({
         />
       </Field>
       <Field label="Count">
-        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={100} className="!w-24 !h-9 !text-xs text-right" />
+        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={100} className="!w-32" />
       </Field>
       <PhysicsRow label="Speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={3} />
@@ -199,7 +199,7 @@ function HeartMeEditor({
     <>
       <p className="text-[10px] text-white/30">Spawns small hearts on TikTok likes. Throttled to avoid floods.</p>
       <Field label="Hearts per burst">
-        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={20} className="!w-24 !h-9 !text-xs text-right" />
+        <NumberInput value={cfg.count} onChange={(v) => set('count', v)} min={1} max={20} className="!w-32" />
       </Field>
       <PhysicsRow label="Speed" value={cfg.speed} onChange={(v) => set('speed', v)} />
       <PhysicsRow label="Scale" value={cfg.scale} onChange={(v) => set('scale', v)} min={0.2} max={2} />
@@ -341,7 +341,7 @@ export function ParticlesConfigEditor({
               step="0.01"
               value={cfg.audioThreshold ?? 0.05}
               onChange={(e) => update({ audioThreshold: parseFloat(e.target.value) })}
-              className="flex-1 accent-[#d035f1]"
+              className="flex-1 accent-[#19c8ff]"
             />
           </div>
         </Field>

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  isRestorablePlatformConnection,
   PlatformConnector,
   restoreEnabledPlatformConnections
 } from './platform-persistence'
@@ -61,5 +62,42 @@ describe('restoreEnabledPlatformConnections', () => {
     ).resolves.toBeUndefined()
 
     expect(connect).toHaveBeenCalledTimes(2)
+  })
+
+  it('restores Twitch chat when auth is configured even if ilyStream is not the Twitch broadcaster', async () => {
+    const connect = vi.fn(async () => undefined) as PlatformConnector['connect']
+
+    await restoreEnabledPlatformConnections(
+      { connect },
+      {
+        twitch: {
+          platform: 'twitch',
+          enabled: false,
+          channel: 'live-channel',
+          clientId: 'client-id',
+          clientSecret: '',
+          accessToken: 'oauth-token',
+          streamKey: ''
+        }
+      }
+    )
+
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<AnyPlatformConfig>>({ platform: 'twitch' })
+    )
+  })
+
+  it('does not restore Twitch from a stream key alone', () => {
+    expect(
+      isRestorablePlatformConnection({
+        platform: 'twitch',
+        enabled: false,
+        channel: 'live-channel',
+        clientId: '',
+        clientSecret: '',
+        streamKey: 'stream-key'
+      })
+    ).toBe(false)
   })
 })

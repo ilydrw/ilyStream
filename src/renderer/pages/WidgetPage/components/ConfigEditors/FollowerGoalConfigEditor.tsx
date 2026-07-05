@@ -83,7 +83,7 @@ export function FollowerGoalConfigEditor({
             min={0}
             max={10000000}
             step={1}
-            className="!w-32 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -94,7 +94,7 @@ export function FollowerGoalConfigEditor({
             min={1}
             max={10000000}
             step={10}
-            className="!w-32 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -131,7 +131,7 @@ export function FollowerGoalConfigEditor({
             min={240}
             max={800}
             step={10}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>

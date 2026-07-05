@@ -40,7 +40,7 @@ export function RoseConfigEditor({
             onChange={(v) => update('count', v)}
             min={1}
             max={150}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>
@@ -59,7 +59,7 @@ export function RoseConfigEditor({
             step={0.1}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
 
@@ -71,7 +71,7 @@ export function RoseConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>

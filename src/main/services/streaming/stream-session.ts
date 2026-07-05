@@ -4,7 +4,7 @@ import type { Writable } from 'stream'
 import type { VideoFramePayload } from '../streaming-types'
 import { PipeBuffer } from './pipe-buffer'
 
-const AUDIO_PIPE_QUEUE_BYTES = 8 * 1024 // ~21 ms at 48 kHz stereo f32
+const AUDIO_PIPE_QUEUE_BYTES = 1024 * 1024 // ~2.7s at 48 kHz stereo f32; protects audio through short encoder/network stalls
 const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
 
 export interface StreamSessionConfig {
@@ -22,14 +22,14 @@ export class StreamSession extends EventEmitter {
   public process: ChildProcess
   public lastStderr = ''
   public failureEmitted = false
-  public frameQueue: VideoFramePayload[] = []
-  private isProcessingQueue = false
-  private videoPumpTimer: ReturnType<typeof setInterval> | null = null
-  private videoPumpBusy = false
-  private videoPumpIntervalMs: number
   private videoBuffer: PipeBuffer | null = null
   private audioBuffer: PipeBuffer | null = null
   private healthTimer: ReturnType<typeof setInterval> | null = null
+  private cfrTimer: ReturnType<typeof setInterval> | null = null
+  private latestVideoFrame: Uint8Array | null = null
+  private lastSentVideoFrame: Uint8Array | null = null
+  private framesRepeated = 0
+  private cfrMaxRepeats: number = 30
   private lastHealthReportAt = Date.now()
   private lastVideoDroppedChunks = 0
   private lastAudioDroppedChunks = 0
@@ -38,7 +38,6 @@ export class StreamSession extends EventEmitter {
 
   constructor(public readonly config: StreamSessionConfig) {
     super()
-    this.videoPumpIntervalMs = 1000 / Math.max(1, Math.min(60, Math.round(config.fps || 30)))
 
     this.process = spawn(config.ffmpegPath, config.args, {
       stdio: ['pipe', 'ignore', 'pipe', config.audioEnabled ? 'pipe' : 'ignore']
@@ -59,6 +58,11 @@ export class StreamSession extends EventEmitter {
 
     this.setupListeners()
     this.startHealthWatchdog()
+    // MJPEG goes through a fixed-cadence pacer so FFmpeg always sees exactly
+    // `fps` frames/sec, even if the renderer's rAF loop hitches. The H.264
+    // pipe relies on the renderer's catch-up loop (see video-encoder.worker)
+    // because re-feeding an encoded P-frame would corrupt the bitstream.
+    if (config.inputFormat === 'mjpeg') this.startCfrPacer()
   }
 
   private setupListeners() {
@@ -81,43 +85,33 @@ export class StreamSession extends EventEmitter {
     })
 
     this.process.on('error', (err) => {
-      this.emit('error', err)
+      if (!this.failureEmitted) this.emit('error', err)
     })
 
-    this.process.stdin?.on('error', (err) => this.emit('error', err))
+    this.process.stdin?.on('error', (err) => {
+      if (!this.failureEmitted) this.emit('error', err)
+    })
     if (this.config.audioEnabled) {
-      (this.process.stdio[3] as any)?.on('error', (err: Error) => this.emit('error', err))
+      (this.process.stdio[3] as any)?.on('error', (err: Error) => {
+        if (!this.failureEmitted) this.emit('error', err)
+      })
     }
 
     this.process.on('close', (code, signal) => {
-      this.stopPump()
       this.stopHealthWatchdog()
+      this.stopCfrPacer()
       this.videoBuffer?.detach()
       this.videoBuffer = null
       this.audioBuffer?.detach()
       this.audioBuffer = null
+      if (this.failureEmitted) return
       this.emit('close', code, signal)
     })
-
-    if (this.config.inputFormat === 'mjpeg') {
-      this.startPump()
-    }
   }
 
   private appendStderr(current: string, next: string): string {
     const combined = current + next
     return combined.length > 6000 ? combined.slice(-6000) : combined
-  }
-
-  private startPump() {
-    this.videoPumpTimer = setInterval(() => this.pumpVideo(), this.videoPumpIntervalMs)
-  }
-
-  private stopPump() {
-    if (this.videoPumpTimer) {
-      clearInterval(this.videoPumpTimer)
-      this.videoPumpTimer = null
-    }
   }
 
   private startHealthWatchdog() {
@@ -141,10 +135,6 @@ export class StreamSession extends EventEmitter {
     const expectedFps = Math.max(1, Math.min(60, Math.round(this.config.fps || 30)))
     const stats = this.getDropStats()
     const parts = [`${receivedFps.toFixed(1)}/${expectedFps} fps received`]
-
-    if (this.frameQueue.length > 0) {
-      parts.push(`pending frames=${this.frameQueue.length}`)
-    }
 
     if (stats.video) {
       const videoDrops = stats.video.droppedChunks - this.lastVideoDroppedChunks
@@ -170,27 +160,52 @@ export class StreamSession extends EventEmitter {
     this.lastHealthReportAt = now
   }
 
-  private pumpVideo() {
-    if (this.videoPumpBusy || !this.process.stdin || this.process.stdin.destroyed) return
-    this.videoPumpBusy = true
-    try {
-      const frame = this.frameQueue.shift()
-      if (frame) this.videoBuffer?.write(frame.data)
-    } finally {
-      this.videoPumpBusy = false
-    }
-  }
-
   public pushVideoFrame(payload: VideoFramePayload) {
     this.framesSinceLastReport++
     this.lastFrameReceivedAt = Date.now()
 
-    if (this.config.inputFormat === 'h264') {
-      this.videoBuffer?.write(payload.data)
-    } else {
-      this.frameQueue.push(payload)
-      if (this.frameQueue.length > 10) this.frameQueue.shift()
+    if (this.cfrTimer) {
+      // MJPEG path: stash for the pacer instead of writing now. The pacer
+      // emits exactly one frame per tick (1/fps seconds), so anything we
+      // produce faster than that just overwrites the previous "latest" and
+      // gets coalesced — same behavior as `requestAnimationFrame` clipping
+      // to monitor refresh.
+      this.latestVideoFrame = payload.data
+      return
     }
+
+    this.videoBuffer?.write(payload.data)
+  }
+
+  private startCfrPacer() {
+    const fps = Math.max(1, Math.min(60, Math.round(this.config.fps || 30)))
+    const interval = 1000 / fps
+    this.cfrMaxRepeats = fps  // ~1s of frozen frames before we stop padding
+    this.cfrTimer = setInterval(() => {
+      const fresh = this.latestVideoFrame
+      let frame: Uint8Array | null = null
+      if (fresh) {
+        this.latestVideoFrame = null
+        this.lastSentVideoFrame = fresh
+        this.framesRepeated = 0
+        frame = fresh
+      } else if (this.lastSentVideoFrame && this.framesRepeated < this.cfrMaxRepeats) {
+        frame = this.lastSentVideoFrame
+        this.framesRepeated++
+      }
+      if (frame) this.videoBuffer?.write(frame)
+    }, interval)
+    ;(this.cfrTimer as any)?.unref?.()
+  }
+
+  private stopCfrPacer() {
+    if (this.cfrTimer) {
+      clearInterval(this.cfrTimer)
+      this.cfrTimer = null
+    }
+    this.latestVideoFrame = null
+    this.lastSentVideoFrame = null
+    this.framesRepeated = 0
   }
 
   public pushAudioFrame(data: Uint8Array) {
@@ -206,8 +221,8 @@ export class StreamSession extends EventEmitter {
 
   public stop() {
     this.failureEmitted = true
-    this.stopPump()
     this.stopHealthWatchdog()
+    this.stopCfrPacer()
     this.videoBuffer?.detach()
     this.videoBuffer = null
     this.audioBuffer?.detach()

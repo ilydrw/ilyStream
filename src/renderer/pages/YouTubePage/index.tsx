@@ -12,9 +12,12 @@ import {
 const PLATFORM_ID = 'youtube'
 const FIELDS = [
   { key: 'apiKey', label: 'API key', type: 'password', placeholder: 'YouTube Data API v3 key' },
-  { key: 'accessToken', label: 'Access token', type: 'password', placeholder: 'Optional for sending' },
-  { key: 'channelId', label: 'Channel ID / Handle', type: 'text', placeholder: 'e.g. @MyChannel or UC...' },
-  { key: 'liveChatId', label: 'Live Chat ID', type: 'text', placeholder: 'Auto-detected if live' },
+  { key: 'clientId', label: 'OAuth client ID', type: 'password', placeholder: 'Google OAuth client ID' },
+  { key: 'clientSecret', label: 'OAuth client secret', type: 'password', placeholder: 'Google OAuth client secret' },
+  { key: 'accessToken', label: 'Access token', type: 'password', placeholder: 'OAuth access token' },
+  { key: 'refreshToken', label: 'Refresh token', type: 'password', placeholder: 'OAuth refresh token' },
+  { key: 'channelId', label: 'Channel ID / Handle / Video URL', type: 'text', placeholder: 'Video URL avoids search quota' },
+  { key: 'liveChatId', label: 'Live Chat ID', type: 'text', placeholder: 'Paste to skip discovery/search' },
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'YouTube stream key' }
 ]
 
@@ -45,10 +48,33 @@ export default function YouTubePage() {
     })
   }, [status])
 
+  useEffect(() => {
+    if (!isConnected) return
+
+    const refreshCapability = () => {
+      window.api.platform.getChatCapabilities().then((caps) => {
+        const capability = getPlatformCapability(caps, PLATFORM_ID)
+        if (capability) setCanSend(capability)
+      })
+    }
+
+    refreshCapability()
+    const timer = window.setInterval(refreshCapability, 2000)
+    return () => window.clearInterval(timer)
+  }, [isConnected])
+
   const platformEvents = useMemo(
     () => recentEvents.filter((event) => event.platform === PLATFORM_ID).slice(0, 15),
     [recentEvents]
   )
+  const isMissingLiveChat = isConnected && canSend.reason === 'YouTube live chat ID is missing'
+  const serviceHealthLabel = error ? 'Service Error' : isMissingLiveChat ? 'Waiting' : isConnected ? 'Healthy' : 'Standby'
+  const pollerLabel = isMissingLiveChat ? 'Finding Chat' : isConnected ? 'Active' : isConnecting ? 'Auth' : 'Offline'
+  const pollerDetail = isMissingLiveChat
+    ? 'Waiting for active live chat'
+    : isConnected
+      ? 'Polling / 5s Interval'
+      : status.toUpperCase()
 
   const handleConnect = async () => {
     try {
@@ -88,13 +114,13 @@ export default function YouTubePage() {
         <Metric 
           icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
           label="Poller Status" 
-          value={isConnected ? 'Active' : isConnecting ? 'Auth' : 'Offline'} 
+          value={pollerLabel} 
         />
         <Metric 
           icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
           label="Service Health" 
-          value={error ? 'Service Error' : isConnected ? 'Healthy' : 'Standby'} 
-          tone={error ? 'danger' : 'neutral'}
+          value={serviceHealthLabel} 
+          tone={error ? 'danger' : isMissingLiveChat ? 'warning' : 'neutral'}
         />
       </div>
 
@@ -173,8 +199,8 @@ export default function YouTubePage() {
               <DiagnosticLine
                 icon={<IconRadio size={16} />}
                 label="Chat Poller"
-                value={isConnected ? 'Polling / 5s Interval' : status.toUpperCase()}
-                tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
+                value={pollerDetail}
+                tone={isMissingLiveChat ? 'muted' : isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine
                 icon={<IconSend size={16} />}

@@ -135,7 +135,7 @@ export function ConditionFields({
             onChange={(event) => onChange({ ...condition, status: event.target.value as any })}
             className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
           >
-            <option value="is_super_fan">Super Fan (VIP/High Level/Top Gifter)</option>
+            <option value="is_super_fan">Super Fan badge/status</option>
             <option value="is_fan_club">Fan Club Member</option>
             <option value="is_team">Team Member</option>
           </select>

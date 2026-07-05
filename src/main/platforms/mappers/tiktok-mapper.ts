@@ -18,16 +18,35 @@ export class TikTokMapper {
     const rawBadges = [
       ...(Array.isArray(data?.badges) ? data.badges : []),
       ...(Array.isArray(data?.userBadges) ? data.userBadges : []),
-      ...(Array.isArray(data?.user?.badges) ? data.user.badges : [])
+      ...(Array.isArray(data?.user?.badges) ? data.user.badges : []),
+      ...(Array.isArray(data?.userDetails?.badges) ? data.userDetails.badges : []),
+      ...(Array.isArray(data?.userDetails?.userBadges) ? data.userDetails.userBadges : [])
     ]
 
     const badges = rawBadges.map((badge: any) => ({
       id: this.firstString(badge?.type, badge?.id, badge?.badgeSceneType, badge?.displayType),
       name: this.firstString(badge?.name, badge?.displayName, badge?.title, badge?.label),
-      imageUrl: this.firstString(badge?.url, badge?.imageUrl, badge?.image?.url?.[0]) || undefined
+      imageUrl: this.firstString(
+        badge?.imageUrl,
+        badge?.url,
+        badge?.icon?.urlList?.[0],
+        badge?.icon?.url_list?.[0],
+        badge?.image?.urlList?.[0],
+        badge?.image?.url_list?.[0],
+        badge?.image?.url?.[0],
+        badge?.badgeImage?.urlList?.[0],
+        badge?.badgeImage?.url_list?.[0]
+      ) || undefined
     }))
 
     const badgeText = badges.map((badge) => `${badge.id} ${badge.name}`).join(' ').toLowerCase()
+    const isSuperFan = Boolean(
+      data?.isSuperFan ||
+        data?.user?.isSuperFan ||
+        data?.userDetails?.isSuperFan ||
+        badgeText.includes('superfan') ||
+        badgeText.includes('super fan')
+    )
     const followRole = this.firstNumber(
       data?.followRole,
       data?.followInfo?.followStatus,
@@ -64,12 +83,19 @@ export class TikTokMapper {
           badgeText.includes('following')
       ),
       isFanClubMember: Boolean(
-        data?.isFanClubMember ||
+        isSuperFan ||
+          data?.isFanClubMember ||
+          data?.user?.isFanClubMember ||
+          data?.userDetails?.isFanClubMember ||
           data?.isSubscriber ||
+          data?.user?.isSubscriber ||
+          data?.userDetails?.isSubscriber ||
           data?.userIdentity?.isSubscriberOfAnchor ||
-          badgeText.includes('fan') ||
-          badgeText.includes('subscriber')
+          data?.user?.userIdentity?.isSubscriberOfAnchor ||
+          data?.userDetails?.userIdentity?.isSubscriberOfAnchor ||
+          isTikTokFanClubBadgeLabel(badgeText)
       ),
+      isSuperFan,
       isTeamMember: Boolean(data?.isTeamMember || badgeText.includes('team')),
       badges
     }
@@ -127,15 +153,43 @@ export class TikTokMapper {
   }
 
   mapLike(data: any): LikeEvent {
+    const likeCount = this.firstNumber(
+      data?.likeCount,
+      data?.like_count,
+      data?.count,
+      data?.likes,
+      data?.likeInfo?.likeCount,
+      data?.likeInfo?.count,
+      data?.socialInfo?.likeCount
+    ) || 1
+    const totalLikes = this.firstNonNegativeNumber(
+      data?.totalLikeCount,
+      data?.total_like_count,
+      data?.totalLikes,
+      data?.totalLikesCount,
+      data?.likeInfo?.totalLikeCount,
+      data?.likeInfo?.totalLikes,
+      data?.socialInfo?.totalLikeCount,
+      data?.roomInfo?.totalLikeCount,
+      data?.roomInfo?.likeCount
+    )
+
     return {
-      id: data.msgId || randomUUID(),
+      id: this.firstString(
+        data?.msgId,
+        data?.messageId,
+        data?.eventId,
+        data?.common?.msgId,
+        data?.common?.messageId,
+        data?.common?.eventId
+      ) || randomUUID(),
       platform: 'tiktok',
       timestamp: new Date(),
       type: 'like',
       raw: data,
       user: this.mapUser(data),
-      likeCount: data.likeCount || 1,
-      totalLikes: data.totalLikeCount || 0
+      likeCount,
+      totalLikes
     }
   }
 
@@ -150,7 +204,7 @@ export class TikTokMapper {
     }
   }
 
-  mapJoin(data: any): JoinEvent {
+  mapMember(data: any): JoinEvent {
     return {
       id: data.msgId || randomUUID(),
       platform: 'tiktok',
@@ -189,8 +243,29 @@ export class TikTokMapper {
       timestamp: new Date(),
       type: 'viewer-count',
       count,
+      viewers: this.mapRoomViewers(data),
       raw: data
     }
+  }
+
+  /**
+   * TikTok's roomUser payload includes a `topViewers` roster — the identifiable
+   * viewers currently in the room (even silent ones). We surface these so the
+   * "in stream" list reflects who's actually present, not just who's chatted.
+   */
+  mapRoomViewers(data: any): UserInfo[] {
+    const raw = Array.isArray(data?.topViewers)
+      ? data.topViewers
+      : Array.isArray(data?.roomInfo?.topViewers)
+        ? data.roomInfo.topViewers
+        : []
+    const viewers: UserInfo[] = []
+    for (const entry of raw) {
+      const userData = entry?.user ?? entry
+      if (!userData || (!userData.uniqueId && !userData.userId && !userData.nickname)) continue
+      viewers.push(this.mapUser(userData))
+    }
+    return viewers
   }
 
   private firstString(...values: unknown[]): string {
@@ -209,6 +284,15 @@ export class TikTokMapper {
     }
     return 0
   }
+
+  private firstNonNegativeNumber(...values: unknown[]): number {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '') continue
+      const number = Number(value)
+      if (Number.isFinite(number) && number >= 0) return Math.floor(number)
+    }
+    return 0
+  }
 }
 
 function isTikTokGiftComboInProgress(data: any): boolean {
@@ -222,6 +306,22 @@ function isTikTokGiftComboInProgress(data: any): boolean {
   const isRepeatableGift = !Number.isFinite(giftType) || giftType === 1
 
   if (!isRepeatableGift) return false
-  return repeatEnd === false || repeatEnd === 0 || repeatEnd === 'false'
+  
+  // If the combo has definitively ended (repeatEnd is true or 1), it's not in progress.
+  if (repeatEnd === true || repeatEnd === 1 || repeatEnd === 'true') {
+    return false
+  }
+
+  // If repeatEnd is false or undefined (first tick of combo), it is in progress.
+  return true
 }
 
+function isTikTokFanClubBadgeLabel(label: string): boolean {
+  return (
+    label.includes('fanclub') ||
+    label.includes('fan club') ||
+    label.includes('subscriber') ||
+    label.includes('subscription') ||
+    label.includes('member')
+  )
+}

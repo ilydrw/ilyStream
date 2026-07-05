@@ -82,6 +82,7 @@ export interface IpcInvokeChannels {
   'window:minimize': () => void
   'window:maximize': () => void
   'window:close': () => void
+  'system:copy-to-clipboard': (text: string) => boolean
   'system:open-windows-settings': (target: WindowsSettingsTarget) => Promise<void>
 
   // Spotify

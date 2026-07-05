@@ -5,6 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { StudioLayer } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
 import { useStudioStore } from '../../../stores/studio-store'
+import {
+  CAMERA_CAPTURE_PRESETS,
+  MAX_CAMERA_CAPTURE_FPS,
+  MAX_CAMERA_CAPTURE_HEIGHT,
+  MAX_CAMERA_CAPTURE_WIDTH
+} from '../utils/camera-capture'
 
 interface Props {
   layer: StudioLayer
@@ -25,12 +31,7 @@ const TYPE_ICONS: Record<string, typeof IconVideo> = {
   image: ImageIcon
 }
 
-const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number; label: string }> = {
-  '1080p60': { width: 1920, height: 1080, fps: 60, label: '1080p 60 FPS' },
-  '1080p30': { width: 1920, height: 1080, fps: 30, label: '1080p 30 FPS' },
-  '720p60': { width: 1280, height: 720, fps: 60, label: '720p 60 FPS' },
-  '720p30': { width: 1280, height: 720, fps: 30, label: '720p 30 FPS' }
-}
+const ZERO_CROP = { top: 0, right: 0, bottom: 0, left: 0 }
 
 function Section({ title, icon: Icon, children, defaultOpen = true }: { title: string; icon: any; children: React.ReactNode; defaultOpen?: boolean }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
@@ -96,6 +97,10 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
   const isAudioLayer = layer.type === 'audio'
   const layout = resolveLayerLayout(layer, activeOrientation)
   const sourceFitMode = layer.config.fitMode === 'cover' || layer.config.fitMode === 'stretch' ? layer.config.fitMode : 'contain'
+  const canvasBounds = isPortrait
+    ? { width: 1080, height: 1920, label: '1080 x 1920' }
+    : { width: 1920, height: 1080, label: '1920 x 1080' }
+  const crop = layout.crop || ZERO_CROP
   const scaleModeOptions = [
     { value: 'contain', label: 'Contain' },
     { value: 'cover', label: 'Cover' },
@@ -128,6 +133,66 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
     } else {
       update({ x: 0, y: 0, width: 1920, height: 1080, crop: { top: 0, right: 0, bottom: 0, left: 0 } })
     }
+  }
+
+  const updateCrop = (cropUpdate: Partial<typeof ZERO_CROP>) => {
+    const nextCrop = { ...crop, ...cropUpdate }
+    update(isPortrait ? { portraitCrop: nextCrop } : { crop: nextCrop })
+  }
+
+  const resetAdjustments = () => {
+    handleTransformUpdate({ rotation: 0 })
+    update(isPortrait
+      ? { portraitCrop: { ...ZERO_CROP }, opacity: 1 }
+      : { crop: { ...ZERO_CROP }, opacity: 1 }
+    )
+  }
+
+  const alignLayer = (horizontal?: 'left' | 'center' | 'right', vertical?: 'top' | 'middle' | 'bottom') => {
+    const next: { x?: number; y?: number } = {}
+
+    if (horizontal === 'left') next.x = 0
+    if (horizontal === 'center') next.x = Math.round((canvasBounds.width - layout.width) / 2)
+    if (horizontal === 'right') next.x = Math.round(canvasBounds.width - layout.width)
+
+    if (vertical === 'top') next.y = 0
+    if (vertical === 'middle') next.y = Math.round((canvasBounds.height - layout.height) / 2)
+    if (vertical === 'bottom') next.y = Math.round(canvasBounds.height - layout.height)
+
+    handleTransformUpdate(next)
+  }
+
+  const placeLayer = (preset: 'center' | 'fill' | 'half' | 'lower-third') => {
+    if (preset === 'fill') {
+      fitToCanvas()
+      return
+    }
+
+    if (preset === 'center') {
+      alignLayer('center', 'middle')
+      return
+    }
+
+    if (preset === 'half') {
+      const width = Math.round(canvasBounds.width * 0.5)
+      const height = Math.round(canvasBounds.height * 0.5)
+      handleTransformUpdate({
+        x: Math.round((canvasBounds.width - width) / 2),
+        y: Math.round((canvasBounds.height - height) / 2),
+        width,
+        height
+      })
+      return
+    }
+
+    const width = Math.round(canvasBounds.width * 0.72)
+    const height = Math.round(canvasBounds.height * 0.18)
+    handleTransformUpdate({
+      x: Math.round((canvasBounds.width - width) / 2),
+      y: Math.round(canvasBounds.height * 0.72),
+      width,
+      height
+    })
   }
 
   const updateConfig = (configUpdates: Record<string, any>) => {
@@ -223,27 +288,63 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {/* Transform Section */}
         {!isAudioLayer && (
-          <Section title="Geometry & Placement" icon={IconVariable}>
-            <div className="grid grid-cols-2 gap-3">
-              <NumericField label="X Pos" value={layout.x} onChange={v => handleTransformUpdate({ x: v })} />
-              <NumericField label="Y Pos" value={layout.y} onChange={v => handleTransformUpdate({ y: v })} />
-              <NumericField label="Width" value={layout.width} onChange={v => handleTransformUpdate({ width: v })} min={10} />
-              <NumericField label="Height" value={layout.height} onChange={v => handleTransformUpdate({ height: v })} min={10} />
+          <Section title="Transform" icon={IconVariable}>
+            <div className="broadcast-transform-summary">
+              <span>{activeOrientation}</span>
+              <strong>{canvasBounds.label}</strong>
+              <em>{Math.round(layout.width)} x {Math.round(layout.height)}</em>
             </div>
-            <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
-              <NumericField label="Rotation" value={layout.rotation || 0} onChange={v => handleTransformUpdate({ rotation: v })} min={-360} max={360} />
+
+            <div className="broadcast-transform-field-grid">
+              <NumericField label="X" value={layout.x} onChange={v => handleTransformUpdate({ x: v })} />
+              <NumericField label="Y" value={layout.y} onChange={v => handleTransformUpdate({ y: v })} />
+              <NumericField label="W" value={layout.width} onChange={v => handleTransformUpdate({ width: v })} min={10} />
+              <NumericField label="H" value={layout.height} onChange={v => handleTransformUpdate({ height: v })} min={10} />
+              <NumericField label="Deg" value={layout.rotation || 0} onChange={v => handleTransformUpdate({ rotation: v })} min={-360} max={360} />
+              <NumericField label="Opacity %" value={layer.opacity * 100} onChange={v => update({ opacity: Math.max(0, Math.min(1, v / 100)) })} min={0} max={100} />
+            </div>
+
+            <div className="broadcast-transform-button-grid">
+              <button type="button" onClick={() => placeLayer('center')} className="broadcast-transform-command">Center</button>
+              <button type="button" onClick={() => placeLayer('fill')} className="broadcast-transform-command">
+                <IconMaximize size={13} /> Fill
+              </button>
+              <button type="button" onClick={() => placeLayer('half')} className="broadcast-transform-command">50%</button>
+              <button type="button" onClick={() => placeLayer('lower-third')} className="broadcast-transform-command">Lower 3rd</button>
+            </div>
+
+            <div className="broadcast-transform-align">
+              <button type="button" title="Align left" onClick={() => alignLayer('left')} className="broadcast-transform-nudge">L</button>
+              <button type="button" title="Align center" onClick={() => alignLayer('center')} className="broadcast-transform-nudge">C</button>
+              <button type="button" title="Align right" onClick={() => alignLayer('right')} className="broadcast-transform-nudge">R</button>
+              <button type="button" title="Align top" onClick={() => alignLayer(undefined, 'top')} className="broadcast-transform-nudge">T</button>
+              <button type="button" title="Align middle" onClick={() => alignLayer(undefined, 'middle')} className="broadcast-transform-nudge">M</button>
+              <button type="button" title="Align bottom" onClick={() => alignLayer(undefined, 'bottom')} className="broadcast-transform-nudge">B</button>
+            </div>
+
+            <div className="broadcast-transform-field-grid is-crop">
+              <NumericField label="Crop T" value={crop.top} onChange={v => updateCrop({ top: Math.max(0, v) })} min={0} />
+              <NumericField label="Crop R" value={crop.right} onChange={v => updateCrop({ right: Math.max(0, v) })} min={0} />
+              <NumericField label="Crop B" value={crop.bottom} onChange={v => updateCrop({ bottom: Math.max(0, v) })} min={0} />
+              <NumericField label="Crop L" value={crop.left} onChange={v => updateCrop({ left: Math.max(0, v) })} min={0} />
+            </div>
+
+            <div className="broadcast-transform-footer">
               <button
-                onClick={() => handleTransformUpdate({ rotation: 0 })}
-                className="h-[46px] px-4 rounded-xl border border-white/5 bg-white/[0.03] text-white/30 hover:text-white hover:bg-white/10 transition-all"
-                title="Reset Rotation"
+                type="button"
+                onClick={resetAdjustments}
+                className="broadcast-transform-command"
+                title="Reset rotation, crop, and opacity"
               >
-                <IconRotateClockwise2 size={16} />
+                <IconRotateClockwise2 size={13} /> Reset
               </button>
               <button
+                type="button"
                 onClick={fitToCanvas}
-                className="h-[46px] px-6 rounded-xl bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 hover:text-white transition-all text-[10px] font-semibold tracking-tight"
+                className="broadcast-transform-command is-primary"
+                title="Fit source to the active canvas"
               >
-                Fit Canvas
+                <IconMaximize size={13} /> Fit Canvas
               </button>
             </div>
 
@@ -333,7 +434,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                     <select
                       value={layer.config.capturePreset || '1080p60'}
                       onChange={e => {
-                        const preset = CAMERA_PRESETS[e.target.value] || CAMERA_PRESETS['1080p60']
+                        const preset = CAMERA_CAPTURE_PRESETS[e.target.value] || CAMERA_CAPTURE_PRESETS['1080p60']
                         updateConfig({
                           capturePreset: e.target.value,
                           captureWidth: preset.width,
@@ -344,15 +445,15 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                       className="w-full bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:border-accent/40 focus:outline-none [&>option]:bg-[#121214]"
                     >
                       {layer.config.capturePreset === 'custom' && <option value="custom">Custom Configuration</option>}
-                      {Object.entries(CAMERA_PRESETS).map(([value, preset]) => (
+                      {Object.entries(CAMERA_CAPTURE_PRESETS).map(([value, preset]) => (
                         <option key={value} value={value}>{preset.label}</option>
                       ))}
                     </select>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <NumericField label="W" value={layer.config.captureWidth || 1920} onChange={v => updateConfig({ capturePreset: 'custom', captureWidth: Math.max(320, Math.round(v)) })} />
-                    <NumericField label="H" value={layer.config.captureHeight || 1080} onChange={v => updateConfig({ capturePreset: 'custom', captureHeight: Math.max(180, Math.round(v)) })} />
-                    <NumericField label="FPS" value={layer.config.captureFps || 60} onChange={v => updateConfig({ capturePreset: 'custom', captureFps: Math.max(15, Math.min(60, Math.round(v))) })} />
+                    <NumericField label="W" value={layer.config.captureWidth || 1920} onChange={v => updateConfig({ capturePreset: 'custom', captureWidth: Math.max(320, Math.min(MAX_CAMERA_CAPTURE_WIDTH, Math.round(v))) })} max={MAX_CAMERA_CAPTURE_WIDTH} />
+                    <NumericField label="H" value={layer.config.captureHeight || 1080} onChange={v => updateConfig({ capturePreset: 'custom', captureHeight: Math.max(180, Math.min(MAX_CAMERA_CAPTURE_HEIGHT, Math.round(v))) })} max={MAX_CAMERA_CAPTURE_HEIGHT} />
+                    <NumericField label="FPS" value={layer.config.captureFps || 60} onChange={v => updateConfig({ capturePreset: 'custom', captureFps: Math.max(15, Math.min(MAX_CAMERA_CAPTURE_FPS, Math.round(v))) })} max={MAX_CAMERA_CAPTURE_FPS} />
                   </div>
                   <button
                     onClick={() => updateConfig({ stabilize: layer.config.stabilize === false })}
@@ -382,7 +483,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                 </select>
               </div>
               <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <NumericField label="Refresh Rate (FPS)" value={layer.config.fps || 8} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} min={1} max={60} />
+                <NumericField label="Refresh Rate (FPS)" value={layer.config.fps || 30} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} min={1} max={60} />
                 <button
                   onClick={() => window.api?.studio?.reloadBrowserSource?.(layer.id)}
                   className="h-[46px] px-4 rounded-xl border border-white/5 bg-white/[0.03] text-white/30 hover:text-white hover:bg-white/10 transition-all"

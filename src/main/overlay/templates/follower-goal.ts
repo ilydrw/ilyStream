@@ -15,20 +15,25 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 
 export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
   const cfg: FollowerGoalConfig = { ...DEFAULT_FOLLOWER_GOAL_CONFIG, ...(widget?.config || {}) }
-  const bgOpacity = isPreview ? 0 : cfg.backgroundOpacity
-
-  const positionMap: Record<string, string> = {
-    'top-left':      'align-items:flex-start;justify-content:flex-start',
-    'top-center':    'align-items:flex-start;justify-content:center',
-    'top-right':     'align-items:flex-start;justify-content:flex-end',
-    'bottom-left':   'align-items:flex-end;justify-content:flex-start',
-    'bottom-center': 'align-items:flex-end;justify-content:center',
-    'bottom-right':  'align-items:flex-end;justify-content:flex-end',
-  }
-  const shellStyle = positionMap[cfg.position] ?? positionMap['top-right']
+  // Honor backgroundOpacity in both preview and production. The editor's
+  // checkerboard backdrop still shows the widget's real transparency, but the
+  // user needs to see their slider's effect — not a forced-transparent preview.
+  const bgOpacity = cfg.backgroundOpacity
 
   const accentRgb = hexToRgb(cfg.accentColor)
   const configJson = JSON.stringify(cfg)
+  // Rules for all positions are emitted up-front so the live-config hook can
+  // switch position by flipping a single attribute. The default in the
+  // original template was top-right; preserve that for unknown values.
+  const positionCss = `
+    .shell { align-items: flex-start; justify-content: flex-end; }
+    .shell[data-position="top-left"]      { align-items: flex-start; justify-content: flex-start; }
+    .shell[data-position="top-center"]    { align-items: flex-start; justify-content: center; }
+    .shell[data-position="top-right"]     { align-items: flex-start; justify-content: flex-end; }
+    .shell[data-position="bottom-left"]   { align-items: flex-end;   justify-content: flex-start; }
+    .shell[data-position="bottom-center"] { align-items: flex-end;   justify-content: center; }
+    .shell[data-position="bottom-right"]  { align-items: flex-end;   justify-content: flex-end; }
+  `
 
   return `<!doctype html>
 <html lang="en" style="background: transparent !important; background-color: transparent !important;">
@@ -44,7 +49,10 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         color-scheme: dark;
         --font-heading: "Outfit", system-ui, sans-serif;
         --blur: ${cfg.blur}px;
-        --bg: rgba(4, 5, 8, ${bgOpacity});
+        /* Background opacity is split into its own CSS variable so the live-
+           config hook can flip it without touching the rgba color literal. */
+        --bg-alpha: ${bgOpacity};
+        --bg: rgba(4, 5, 8, var(--bg-alpha));
         --accent: ${cfg.accentColor};
         --accent-rgb: ${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b};
         --width: ${cfg.width}px;
@@ -62,8 +70,8 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         min-height: 100vh;
         display: flex;
         padding: 40px;
-        ${shellStyle};
       }
+      ${positionCss}
       .card {
         width: auto;
         min-width: var(--width);
@@ -276,7 +284,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
     </style>
   </head>
   <body>
-    <div class="shell">
+    <div class="shell" data-position="${cfg.position}">
       <div class="card" id="card">
         <div class="info-group">
           <div class="lbl" id="lbl-text"></div>
@@ -454,13 +462,20 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         return state[field] || 0;
       }
 
+      function requestJson(url) {
+        var runtime = window.__ilystreamOverlayRuntime;
+        if (runtime && typeof runtime.requestJson === 'function') {
+          return runtime.requestJson(url);
+        }
+        return fetch(url, { cache: 'no-store' }).then(function(response) {
+          if (!response.ok) throw new Error('Goals state fetch failed');
+          return response.json();
+        });
+      }
+
       function hydrate() {
         var isPreview = params.get('preview') === '1' || params.get('preview') === 'true' || params.get('test') === '1';
-        return fetch('/overlay/goals/state', { cache: 'no-store' })
-          .then(function(r) {
-            if (!r.ok) throw new Error('Goals state fetch failed');
-            return r.json();
-          })
+        return requestJson('/overlay/goals/state')
           .then(function(state) {
             var realCount = getGoalCountFromState(state);
             if (realCount > 0 || !isPreview) {
@@ -505,6 +520,90 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
 
       hydrate().catch(console.error);
       connectSSE();
+
+      // Live-config hook: applies WidgetEditorModal config tweaks without
+      // tearing down the document.
+      //
+      // Live-handled (smooth, no reload):
+      //   - accentColor (only when it's a hex literal), width, blur, label,
+      //     position, plus the visible-config fields covered by the CFG
+      //     re-assign + update() pass (showCount, showPercentage, goal,
+      //     startCount, etc.)
+      //
+      // Falls back to HTML mode when any of these change:
+      //   - accentColor switching to/from a named mode (chroma/cyberneon/gob),
+      //     style, themeId, fontFamily, animationStyle, animationDuration,
+      //     goalType, platform — all need a fresh render.
+      var FG_LIVE_FIELDS = {
+        accentColor: 1, width: 1, blur: 1, label: 1, position: 1,
+        goal: 1, startCount: 1, showCount: 1, showPercentage: 1, showBorder: 1,
+        celebrateAt100: 1, celebrationType: 1, opacity: 1,
+        backgroundOpacity: 1, backgroundColor: 1, borderRadius: 1,
+        glassIntensity: 1
+      };
+      var FG_HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+      function fgHandlesAccent(value) {
+        return typeof value === 'string' && FG_HEX_RE.test(String(value).replace('#', ''));
+      }
+      window.__ilystreamApplyConfig = function(cfg) {
+        if (!cfg) return;
+        var root = document.documentElement;
+        var shell = document.querySelector('.shell');
+        var prev = window.__ilystreamLastConfig || null;
+        if (prev) {
+          for (var k in cfg) {
+            if (!cfg.hasOwnProperty(k)) continue;
+            if (prev[k] === cfg[k]) continue;
+            // accentColor only stays live when both old and new are hex.
+            // A switch between hex and a named mode needs a full re-render.
+            if (k === 'accentColor') {
+              if (fgHandlesAccent(cfg[k]) && fgHandlesAccent(prev[k])) continue;
+            } else if (FG_LIVE_FIELDS[k]) {
+              continue;
+            }
+            try {
+              window.parent && window.parent.postMessage(
+                { type: 'ilystream:preview-needs-html' }, '*'
+              );
+            } catch (e) {}
+            return;
+          }
+        }
+        function hexToRgb(hex) {
+          var c = String(hex || '').replace('#', '').trim();
+          if (c.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(c)) return null;
+          return {
+            r: parseInt(c.slice(0, 2), 16),
+            g: parseInt(c.slice(2, 4), 16),
+            b: parseInt(c.slice(4, 6), 16)
+          };
+        }
+        if (fgHandlesAccent(cfg.accentColor)) {
+          var hex = cfg.accentColor.charAt(0) === '#' ? cfg.accentColor : '#' + cfg.accentColor;
+          var rgb = hexToRgb(hex);
+          root.style.setProperty('--accent', hex);
+          if (rgb) root.style.setProperty('--accent-rgb', rgb.r + ', ' + rgb.g + ', ' + rgb.b);
+        }
+        if (cfg.width != null) root.style.setProperty('--width', cfg.width + 'px');
+        if (cfg.blur != null) root.style.setProperty('--blur', cfg.blur + 'px');
+        // backgroundOpacity flows through its own variable so the rgba color
+        // literal stays untouched — only the alpha changes.
+        if (cfg.backgroundOpacity != null) root.style.setProperty('--bg-alpha', String(cfg.backgroundOpacity));
+        if (typeof cfg.label === 'string') {
+          var lbl = document.getElementById('lbl-text');
+          if (lbl) lbl.textContent = cfg.label;
+        }
+        if (typeof cfg.position === 'string' && shell) {
+          shell.setAttribute('data-position', cfg.position);
+        }
+        // Update the in-page CFG snapshot so the existing render loop honors
+        // tweaks like showCount / showPercentage / goal without a reload.
+        try { Object.assign(CFG, cfg); } catch (e) {}
+        // Re-run the render against the current count so toggles take effect
+        // immediately (otherwise the user would wait for the next SSE event).
+        try { update(displayedCount); } catch (e) {}
+        window.__ilystreamLastConfig = cfg;
+      };
     </script>
   </body>
 </html>`

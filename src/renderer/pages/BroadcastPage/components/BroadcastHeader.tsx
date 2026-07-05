@@ -428,17 +428,27 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <div className="w-px h-7 2xl:h-8 bg-white/10 mx-1 self-center" />
 
           {isStreaming ? (
+            // `.app-button-live` matches the design's "On Air" treatment:
+            // solid red surface with white text, inset hairline highlight,
+            // colored outer glow, and a pulsing white dot baked in via ::before.
+            // Sized via --h-button (30px) to align with the rest of the
+            // Pro Console primitives in this header.
             <button
               onClick={onStopBroadcast}
-              className="h-10 2xl:h-11 px-4 2xl:px-6 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-[12px] font-medium tracking-tight hover:bg-red-500/30 transition-all flex items-center gap-2 2xl:gap-3"
+              className="app-button-live"
+              title="End the live broadcast"
             >
               <IconSquare size={12} className="fill-current" /> Stop
             </button>
           ) : (
+            // `.app-button-primary` carries the brand gradient + cyan glow.
+            // Replaces the previous flat-cyan inline styling so Go Live matches
+            // the design system's primary CTA pattern (also used on Dashboard).
             <button
               onClick={onStartBroadcast}
               disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())}
-              className="h-9 2xl:h-10 px-4 2xl:px-6 rounded-md bg-accent text-[#04111a] text-[13px] font-semibold tracking-tight hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="app-button-primary"
+              title="Start the live broadcast"
             >
               <IconBroadcast size={14} /> Go live
             </button>

@@ -160,10 +160,7 @@ export async function fetchElevenLabsVoices(apiKey: string): Promise<ElevenLabsV
     })
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error('Invalid ElevenLabs API Key')
-      if (response.status === 429) throw new Error('ElevenLabs rate limit exceeded')
-      const body = await response.text().catch(() => '')
-      throw new Error(`ElevenLabs API Error (${response.status}): ${body || response.statusText}`)
+      throw new Error(await describeElevenLabsError(response))
     }
 
     const data = await response.json()
@@ -217,11 +214,34 @@ async function fetchElevenLabsAudio(
   )
 
   if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText)
-    throw new Error(`ElevenLabs API error ${response.status}: ${message}`)
+    throw new Error(await describeElevenLabsError(response, voiceId))
   }
 
   return response.blob()
+}
+
+/**
+ * ElevenLabs reuses 401 for both invalid-key and quota-exceeded, so we have to
+ * parse the body to give the user an honest error. Falls back to status text
+ * if the body isn't parseable JSON.
+ */
+async function describeElevenLabsError(response: Response, voiceId?: string): Promise<string> {
+  const raw = await response.text().catch(() => '')
+  let detail: any = null
+  try { detail = raw ? JSON.parse(raw)?.detail : null } catch {}
+
+  const code = detail?.code || detail?.status
+  const message = detail?.message
+
+  if (code === 'quota_exceeded') return `ElevenLabs quota exceeded — ${message || 'out of credits'}`
+  if (code === 'voice_not_found') {
+    const voiceLabel = voiceId ? ` "${voiceId}"` : ''
+    return `ElevenLabs voice${voiceLabel} is not available to this API key. Sync voices, choose a listed voice, or have the voice owner share it to this ElevenLabs account.`
+  }
+  if (code === 'invalid_api_key' || (response.status === 401 && !code)) return 'Invalid ElevenLabs API Key'
+  if (response.status === 429) return 'ElevenLabs rate limit exceeded — slow down requests'
+
+  return `ElevenLabs API error ${response.status}: ${message || raw || response.statusText}`
 }
 
 async function playBlob(blob: Blob, profile: VoiceProfile, requestId: number, text: string): Promise<void> {

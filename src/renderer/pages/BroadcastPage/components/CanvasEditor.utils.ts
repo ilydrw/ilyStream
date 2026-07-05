@@ -1,10 +1,16 @@
 import type { StudioLayer } from '../../../../shared/studio'
-import type { BrowserFrameSurface, CachedMediaFrame, Crop } from './CanvasEditor.types'
+import type { BrowserFrameSurface, CachedMediaFrame, Crop, HandleDir } from './CanvasEditor.types'
 
 export const BROWSER_SOURCE_CAPTURE_MAX_EDGE = 1920
 export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
 export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
 export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 60
+const LIKES_TRACKER_CAPTURE_MIN_WIDTH = 400
+const LIKES_TRACKER_CAPTURE_MIN_HEIGHT = 280
+const LEADERBOARD_CAPTURE_MIN_WIDTH = 440
+const LEADERBOARD_CAPTURE_MIN_HEIGHT = 640
+const CHAT_WIDGET_CAPTURE_MIN_WIDTH = 480
+const CHAT_WIDGET_CAPTURE_MIN_HEIGHT = 720
 
 export type SourceFitMode = 'contain' | 'cover' | 'stretch'
 
@@ -13,6 +19,54 @@ export interface SourceRect {
   y: number
   width: number
   height: number
+}
+
+export function normalizeGridSize(value: number): number {
+  const next = Math.round(Number(value))
+  if (!Number.isFinite(next)) return 20
+  return Math.max(1, next)
+}
+
+export function snapToGridValue(value: number, gridSize: number): number {
+  const normalizedGridSize = normalizeGridSize(gridSize)
+  return Math.round(value / normalizedGridSize) * normalizedGridSize
+}
+
+export function snapPointToGrid(x: number, y: number, gridSize: number): { x: number; y: number } {
+  return {
+    x: snapToGridValue(x, gridSize),
+    y: snapToGridValue(y, gridSize)
+  }
+}
+
+export function snapResizeRectToGrid(rect: SourceRect, handle: HandleDir, gridSize: number, minSize = 10): SourceRect {
+  const right = rect.x + rect.width
+  const bottom = rect.y + rect.height
+  const safeMinSize = Math.max(1, minSize)
+  let x = rect.x
+  let y = rect.y
+  let width = rect.width
+  let height = rect.height
+
+  if (handle.includes('w')) {
+    const snappedX = snapToGridValue(x, gridSize)
+    x = Math.min(snappedX, right - safeMinSize)
+    width = right - x
+  } else if (handle.includes('e')) {
+    const snappedRight = snapToGridValue(right, gridSize)
+    width = Math.max(safeMinSize, snappedRight - x)
+  }
+
+  if (handle.includes('n')) {
+    const snappedY = snapToGridValue(y, gridSize)
+    y = Math.min(snappedY, bottom - safeMinSize)
+    height = bottom - y
+  } else if (handle.includes('s')) {
+    const snappedBottom = snapToGridValue(bottom, gridSize)
+    height = Math.max(safeMinSize, snappedBottom - y)
+  }
+
+  return { x, y, width, height }
 }
 
 export function resolveSourceFitMode(layer: StudioLayer): SourceFitMode {
@@ -334,8 +388,8 @@ export function getBrowserFrameSurface(
 
 
 export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number, height: number): { width: number; height: number; fps: number } {
-  const sourceWidth = Math.max(16, Math.round(width || 1280))
-  const sourceHeight = Math.max(16, Math.round(height || 720))
+  const sourceWidth = Math.max(16, tiktokWidgetCaptureMinWidth(layer), Math.round(width || 1280))
+  const sourceHeight = Math.max(16, tiktokWidgetCaptureMinHeight(layer), Math.round(height || 720))
   const edgeScale = Math.min(BROWSER_SOURCE_CAPTURE_MAX_EDGE / sourceWidth, BROWSER_SOURCE_CAPTURE_MAX_EDGE / sourceHeight)
   const pixelScale = Math.sqrt(BROWSER_SOURCE_CAPTURE_MAX_PIXELS / (sourceWidth * sourceHeight))
   const scale = Math.min(1, edgeScale, pixelScale)
@@ -345,6 +399,57 @@ export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number,
     height: Math.max(16, Math.round(sourceHeight * scale)),
     fps: clampBrowserSourceFps(layer.config?.fps)
   }
+}
+
+function tiktokWidgetCaptureMinWidth(layer: StudioLayer): number {
+  if (isChatWidgetLayer(layer)) return CHAT_WIDGET_CAPTURE_MIN_WIDTH
+  if (isLikesTrackerWidgetLayer(layer)) return LIKES_TRACKER_CAPTURE_MIN_WIDTH
+  if (isLeaderboardWidgetLayer(layer)) return LEADERBOARD_CAPTURE_MIN_WIDTH
+  return 0
+}
+
+function tiktokWidgetCaptureMinHeight(layer: StudioLayer): number {
+  if (isChatWidgetLayer(layer)) return CHAT_WIDGET_CAPTURE_MIN_HEIGHT
+  if (isLikesTrackerWidgetLayer(layer)) return LIKES_TRACKER_CAPTURE_MIN_HEIGHT
+  if (isLeaderboardWidgetLayer(layer)) return LEADERBOARD_CAPTURE_MIN_HEIGHT
+  return 0
+}
+
+function isChatWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const widgetId = String(layer.config?.widgetId || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return (
+    widgetType === 'chat' ||
+    widgetType === 'chat-unified' ||
+    widgetId === 'chat' ||
+    widgetId === 'chat-unified' ||
+    widgetId === 'unified-chat' ||
+    name.includes('unified chat') ||
+    name.includes('chat widget') ||
+    name === 'chat'
+  )
+}
+
+function isLikesTrackerWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return widgetType === 'likes-tracker' || name.includes('like tracker') || name.includes('top likers')
+}
+
+function isLeaderboardWidgetLayer(layer: StudioLayer): boolean {
+  if (layer.type !== 'widget') return false
+  const widgetType = String(layer.config?.widgetType || layer.config?.type || '').toLowerCase()
+  const widgetId = String(layer.config?.widgetId || '').toLowerCase()
+  const name = String(layer.name || '').toLowerCase()
+  return (
+    widgetType === 'leaderboard' ||
+    widgetId === 'leaderboard' ||
+    name.includes('leaderboard') ||
+    name.includes('likeathon')
+  )
 }
 
 export function clampBrowserSourceFps(value: unknown): number {

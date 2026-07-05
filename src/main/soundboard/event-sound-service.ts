@@ -72,6 +72,22 @@ export class EventSoundService {
       clearTimeout(existing.timer)
       existing.count += (event.giftCount || 1)
       existing.lastEvent = event
+      
+      const runTimer = () => {
+        const final = this.giftAggregationTimers.get(giftKey)
+        if (final) {
+          this.giftAggregationTimers.delete(giftKey)
+          const aggregatedEvent = {
+            ...final.lastEvent,
+            giftCount: final.count,
+            isCombo: false,
+            // Sum up monetary value if available
+            monetaryValue: (final.lastEvent.monetaryValue || 0) * (final.count / (final.lastEvent.giftCount || 1))
+          }
+          this.handleAlert('Gift', aggregatedEvent as any)
+        }
+      }
+      existing.timer = setTimeout(runTimer, GIFT_ALERT_AGGREGATION_MS)
     } else {
       this.giftAggregationTimers.set(giftKey, {
         count: event.giftCount || 1,
@@ -178,6 +194,7 @@ export class EventSoundService {
 
     for (const rule of rules) {
       this.handleRuleAlert(rule, event)
+      break
     }
   }
 
@@ -245,7 +262,12 @@ export class EventSoundService {
     // soundboard path) when no overlay client is connected — otherwise the
     // streamer would hear every alert twice (once from the renderer, once
     // from the overlay browser source).
-    if (hasSound && !this.hasOverlayAudioSink()) {
+    //
+    // Exception: if the streamer turned on "local monitoring", always play in
+    // the app too. That's for people who DON'T monitor their OBS browser-source
+    // audio and were otherwise hearing nothing once the overlay connected.
+    const localMonitoring = Boolean(this.settings.alertSoundLocalMonitoring)
+    if (hasSound && (localMonitoring || !this.hasOverlayAudioSink())) {
       this.soundboardService.playSound(rule.soundId, rule.soundVolume)
     }
 
@@ -270,6 +292,12 @@ export class EventSoundService {
     this.overlayServer.pushAlert(
       {
         id: `${event.id}:${rule.id}`,
+        // Rule-based alerts render with the rule's own styling (border,
+        // background, colors, layout, template). We intentionally do NOT apply
+        // the hardcoded "clean" variant here — that ignored the rule's
+        // borderColor/backgroundColor and made the editor's Style controls
+        // do nothing for gift/follow/sub alerts.
+        eventType: event.type,
         template: text,
         imageUrl: hasImage ? imageUrl : '',
         durationMs: rule.durationMs,
@@ -393,6 +421,12 @@ export class EventSoundService {
   private withLegacyAlertRouteValues(settings: AppSettings): AppSettings {
     const alertRules = (settings.alertRules || []).map(rule => {
       if (rule.id === 'default-gifts') {
+        // Sound/image/text plumbing still honours the legacy flat settings for
+        // backward-compat with migrated users. But VISUAL STYLE (border, colors,
+        // layout, animation, sizing) now comes straight from the rule — the
+        // Alerts editor is the only thing that sets those, so overriding them
+        // here silently discarded every style edit (e.g. a 'gradient' border
+        // reverting to the old default).
         return {
           ...rule,
           soundEnabled: settings.eventSoundGiftEnabled,
@@ -401,19 +435,7 @@ export class EventSoundService {
           imageEnabled: settings.eventImageGiftEnabled,
           imageAssetId: settings.eventImageGiftAssetId || rule.imageAssetId,
           textEnabled: settings.eventTextGiftEnabled,
-          textTemplate: settings.eventTextGiftTemplate || rule.textTemplate,
-          textColor: settings.eventTextGiftColor,
-          backgroundColor: settings.eventTextGiftBackgroundColor,
-          borderColor: settings.eventTextGiftBorderColor,
-          fontSize: settings.eventTextGiftFontSize,
-          layout: settings.eventAlertGiftLayout,
-          animationIn: settings.eventAlertGiftAnimationIn,
-          animationOut: settings.eventAlertGiftAnimationOut,
-          durationMs: settings.eventAlertGiftDurationMs,
-          fontWeight: settings.eventAlertGiftFontWeight,
-          textShadow: settings.eventAlertGiftTextShadow,
-          imageTop: settings.eventAlertGiftImageTop,
-          imageLeft: settings.eventAlertGiftImageLeft
+          textTemplate: settings.eventTextGiftTemplate || rule.textTemplate
         }
       }
 
@@ -426,19 +448,7 @@ export class EventSoundService {
           imageEnabled: settings.eventImageFollowEnabled,
           imageAssetId: settings.eventImageFollowAssetId || rule.imageAssetId,
           textEnabled: settings.eventTextFollowEnabled,
-          textTemplate: settings.eventTextFollowTemplate || rule.textTemplate,
-          textColor: settings.eventTextFollowColor,
-          backgroundColor: settings.eventTextFollowBackgroundColor,
-          borderColor: settings.eventTextFollowBorderColor,
-          fontSize: settings.eventTextFollowFontSize,
-          layout: settings.eventAlertFollowLayout,
-          animationIn: settings.eventAlertFollowAnimationIn,
-          animationOut: settings.eventAlertFollowAnimationOut,
-          durationMs: settings.eventAlertFollowDurationMs,
-          fontWeight: settings.eventAlertFollowFontWeight,
-          textShadow: settings.eventAlertFollowTextShadow,
-          imageTop: settings.eventAlertFollowImageTop,
-          imageLeft: settings.eventAlertFollowImageLeft
+          textTemplate: settings.eventTextFollowTemplate || rule.textTemplate
         }
       }
 
@@ -451,19 +461,7 @@ export class EventSoundService {
           imageEnabled: settings.eventImageSuperfanEnabled,
           imageAssetId: settings.eventImageSuperfanAssetId || rule.imageAssetId,
           textEnabled: settings.eventTextSuperfanEnabled,
-          textTemplate: settings.eventTextSuperfanTemplate || rule.textTemplate,
-          textColor: settings.eventTextSuperfanColor,
-          backgroundColor: settings.eventTextSuperfanBackgroundColor,
-          borderColor: settings.eventTextSuperfanBorderColor,
-          fontSize: settings.eventTextSuperfanFontSize,
-          layout: settings.eventAlertSuperfanLayout,
-          animationIn: settings.eventAlertSuperfanAnimationIn,
-          animationOut: settings.eventAlertSuperfanAnimationOut,
-          durationMs: settings.eventAlertSuperfanDurationMs,
-          fontWeight: settings.eventAlertSuperfanFontWeight,
-          textShadow: settings.eventAlertSuperfanTextShadow,
-          imageTop: settings.eventAlertSuperfanImageTop,
-          imageLeft: settings.eventAlertSuperfanImageLeft
+          textTemplate: settings.eventTextSuperfanTemplate || rule.textTemplate
         }
       }
 
@@ -471,6 +469,47 @@ export class EventSoundService {
     })
 
     return { ...settings, alertRules }
+  }
+
+  private getProfessionalAlertDetails(event: AnyStreamEvent): any {
+    const isGift = event.type === 'gift'
+    const isFollow = event.type === 'follow'
+    const isSub = event.type === 'subscription' || (event.type === 'join' && this.shouldTreatJoinAsSuperfan(event as any))
+    
+    let eyebrow = ''
+    let subtitle = ''
+    let variant = ''
+    let accentColor = '#38bdf8'
+
+    if (event.platform === 'tiktok') {
+      if (isGift) {
+        eyebrow = 'Gift received'
+        subtitle = `sent ${event.giftCount || 1}x ${event.giftName}`
+        variant = 'clean-gift'
+        accentColor = '#f7c948'
+      } else if (isFollow) {
+        eyebrow = 'New follower'
+        subtitle = 'started following'
+        variant = 'clean-follow'
+        accentColor = '#38bdf8'
+      } else if (isSub) {
+        eyebrow = 'New subscriber'
+        subtitle = 'joined the community'
+        variant = 'clean-superfan'
+        accentColor = '#e879f9'
+      }
+      return {
+        eventType: event.type,
+        variant,
+        eyebrow,
+        headline: event.user.displayName,
+        subtitle,
+        meta: 'TikTok',
+        accentColor
+      }
+    }
+
+    return {}
   }
 }
 

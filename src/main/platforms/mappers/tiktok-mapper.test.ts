@@ -8,7 +8,7 @@ describe('TikTokMapper', () => {
     expect(mapper.mapGift(makeGiftPayload(false, 1)).isCombo).toBe(true)
     expect(mapper.mapGift(makeGiftPayload('false', 1)).isCombo).toBe(true)
     expect(mapper.mapGift(makeGiftPayload(true, 1)).isCombo).toBe(false)
-    expect(mapper.mapGift(makeGiftPayload(undefined, 1)).isCombo).toBe(false)
+    expect(mapper.mapGift(makeGiftPayload(undefined, 1)).isCombo).toBe(true)
   })
 
   it('treats non-repeatable Heart Me gifts as final even when repeatEnd is false', () => {
@@ -47,6 +47,26 @@ describe('TikTokMapper', () => {
       ...makeGiftPayload(true, 1),
       giftName: "You&#39're Awesome"
     }).giftName).toBe("You're Awesome")
+  })
+
+  it('maps alternate TikTok like counter fields into real like totals', () => {
+    const mapper = new TikTokMapper()
+
+    const event = mapper.mapLike({
+      eventId: 'like-event-1',
+      userId: 'user-1',
+      uniqueId: 'like_friend',
+      nickname: 'Like Friend',
+      count: '12',
+      totalLikes: '3456'
+    })
+
+    expect(event).toEqual(expect.objectContaining({
+      id: 'like-event-1',
+      type: 'like',
+      likeCount: 12,
+      totalLikes: 3456
+    }))
   })
 })
 

@@ -15,6 +15,7 @@ const FIELDS = [
   { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'Twitch app client ID' },
   { key: 'clientSecret', label: 'Client secret', type: 'password', placeholder: 'Client secret' },
   { key: 'accessToken', label: 'Access token', type: 'password', placeholder: 'OAuth access token' },
+  { key: 'refreshToken', label: 'Refresh token', type: 'password', placeholder: 'OAuth refresh token (optional)' },
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'Twitch stream key' }
 ]
 

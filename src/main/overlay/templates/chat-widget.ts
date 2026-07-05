@@ -9,7 +9,11 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
     ...DEFAULT_CHAT_UNIFIED_CONFIG,
     ...(widget?.config || {})
   } as UnifiedChatRuntimeConfig
-  const bgOpacity = isPreview ? 0 : Math.max(0, Math.min(1, cfg.backgroundOpacity ?? (0.3 + (cfg.glassIntensity * 0.5))))
+  // Honor backgroundOpacity in both preview and production. The editor
+  // preview iframe is rendered on top of a checkerboard so any actual
+  // transparency reads as transparent — hardcoding to 0 in preview hid the
+  // slider's effect and made the preview diverge from the saved widget.
+  const bgOpacity = Math.max(0, Math.min(1, cfg.backgroundOpacity ?? (0.3 + (cfg.glassIntensity * 0.5))))
   const blur = Math.max(0, Math.min(100, Number(cfg.blur ?? (cfg.glassIntensity * 40))))
   const borderRadius = cfg.borderRadius ?? 14
   const fontFamily = cfg.fontFamily || 'Outfit'
@@ -19,6 +23,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
   const scale = Math.max(0.4, Math.min(2.5, Number(cfg.scale || 1)))
   const opacity = Math.max(0, Math.min(1, Number(cfg.opacity ?? 1)))
   const showPlatformBadge = cfg.showPlatformBadge !== false
+  const sourceMinWidth = 480
+  const sourceMinHeight = 720
 
   return `
 <!DOCTYPE html>
@@ -48,11 +54,18 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             --feed-opacity: ${opacity};
         }
 
+        html {
+            min-width: ${sourceMinWidth}px;
+            min-height: ${sourceMinHeight}px;
+        }
+
         body {
             margin: 0;
             padding: 24px;
             font-family: var(--font-main);
             color: white;
+            min-width: ${sourceMinWidth}px;
+            min-height: ${sourceMinHeight}px;
             height: 100vh;
             display: flex;
             flex-direction: column;
@@ -257,6 +270,33 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             text-transform: uppercase;
         }
 
+        .role-badges {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .role-badge {
+            width: calc(var(--font-size) * 0.72);
+            height: calc(var(--font-size) * 0.72);
+            object-fit: contain;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .role-badge-glyph {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: calc(var(--font-size) * 0.72);
+            height: calc(var(--font-size) * 0.72);
+            flex-shrink: 0;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+        }
+        .role-badge-glyph svg { width: 100%; height: 100%; display: block; }
+        .role-badge-mod { color: #34d399; }
+        .role-badge-superfan { color: #fbbf24; }
+        .role-badge-member { color: #f472b6; }
+        .role-badge-vip { color: #c084fc; }
+
         .text {
             font-size: var(--font-size);
             line-height: 1.35;
@@ -357,6 +397,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         const FADE_OUT_MS = ${(cfg as any).fadeOutAfterSeconds || 0} * 1000;
         const SHOW_PLATFORM_BADGE = ${showPlatformBadge};
         const IS_PREVIEW = ${JSON.stringify(isPreview)};
+        const SOURCE_MIN_WIDTH = ${sourceMinWidth};
+        const SOURCE_MIN_HEIGHT = ${sourceMinHeight};
         const PREVIEW_MESSAGES = [
             {
                 id: 'preview-chat-1',
@@ -401,6 +443,29 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
 
         function escapeAttr(s) {
             return escapeHtml(s);
+        }
+
+        function roleBadgeSvg(kind) {
+            if (kind === 'mod') return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l7 3v6c0 4.4-3 8.3-7 9.5C8 19.3 5 15.4 5 11V5z"/></svg>';
+            if (kind === 'superfan') return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z"/></svg>';
+            if (kind === 'member') return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-9.5-9C1 9 2.5 5.5 6 5.5c2 0 3.2 1.1 4 2.3.8-1.2 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 16.5 12 21 12 21z"/></svg>';
+            if (kind === 'vip') return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l4 6 6 .9-4.5 4.2L18.5 22 12 18.5 5.5 22l1-8.9L2 8.9 8 8z"/></svg>';
+            return '';
+        }
+
+        function buildRoleBadges(badges) {
+            if (!Array.isArray(badges) || !badges.length) return '';
+            var html = '';
+            for (var i = 0; i < badges.length; i++) {
+                var b = badges[i] || {};
+                var title = escapeAttr(b.title || '');
+                if (b.imageUrl) {
+                    html += '<img class="role-badge" src="' + escapeAttr(b.imageUrl) + '" alt="' + title + '" title="' + title + '" onerror="this.remove()">';
+                } else {
+                    html += '<span class="role-badge-glyph role-badge-' + escapeAttr(b.kind || '') + '" title="' + title + '">' + roleBadgeSvg(b.kind) + '</span>';
+                }
+            }
+            return '<span class="role-badges">' + html + '</span>';
         }
 
         function safeAvatarUrl(url) {
@@ -488,6 +553,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 '<div class="content-box">' +
                     '<div class="username">' +
                         escapeHtml(name) +
+                        buildRoleBadges(msg.badges) +
                         (kindTag ? ' ' + kindTag : '') +
                     '</div>' +
                     '<div class="text">' + escapeHtml(msg.message || '') + '</div>' +
@@ -526,36 +592,142 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             }, 8000);
         }
 
-        function connect() {
-            const evs = new EventSource('/overlay/events?channel=chat-unified');
-            evs.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'snapshot') {
-                    feed.innerHTML = '';
-                    if (data.payload && data.payload.length > 0) {
-                        data.payload.forEach(addMessage);
-                    } else {
-                        feed.innerHTML = \'<div class="empty-placeholder">Waiting for chat messages...</div>\';
+        function renderSnapshot(items) {
+            feed.innerHTML = '';
+            if (items && items.length > 0) {
+                items.forEach(addMessage);
+            } else {
+                feed.innerHTML = '<div class="empty-placeholder">Waiting for chat messages...</div>';
+            }
+        }
+
+        function handleRealtimePacket(data) {
+            if (!data || typeof data !== 'object') return;
+            if (data.type === 'snapshot') {
+                renderSnapshot(data.payload);
+            } else if (data.type === 'append') {
+                addMessage(data.payload);
+            } else if (data.type === 'reload') {
+                window.location.reload();
+            } else if (data.type === 'feature-broadcast' || data.type === 'feature') {
+                showFeatured(data.payload);
+            }
+        }
+
+        let pollingStarted = false;
+        let pollingTimer = null;
+
+        function requestJson(url) {
+            if (typeof fetch === 'function') {
+                return fetch(url, { cache: 'no-store' })
+                    .then((response) => response.ok ? response.json() : Promise.reject(new Error('chat state ' + response.status)));
+            }
+
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.onreadystatechange = () => {
+                    if (xhr.readyState !== 4) return;
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        reject(new Error('chat state ' + xhr.status));
+                        return;
                     }
-                } else if (data.type === \'append\') {
-                    addMessage(data.payload);
-                } else if (data.type === \'reload\') {
-                    window.location.reload();
-                } else if (data.type === \'feature-broadcast\' || data.type === \'feature\') {
-                    showFeatured(data.payload);
+                    try {
+                        resolve(JSON.parse(xhr.responseText || '[]'));
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                xhr.onerror = () => reject(new Error('chat state network error'));
+                xhr.send();
+            });
+        }
+
+        function chatStateUrl() {
+            const url = new URL('/overlay/chat/state', window.location.href);
+            url.searchParams.set('t', Date.now().toString());
+            return url.href;
+        }
+
+        function hydrateChatState() {
+            return requestJson(chatStateUrl())
+                .then(renderSnapshot)
+                .catch((error) => console.warn('[unified-chat] hydration failed', error));
+        }
+
+        function startPolling() {
+            if (pollingStarted) return;
+            pollingStarted = true;
+            const poll = () => {
+                requestJson(chatStateUrl())
+                    .then(renderSnapshot)
+                    .catch((error) => console.warn('[unified-chat] polling failed', error));
+            };
+            poll();
+            pollingTimer = setInterval(poll, 2000);
+        }
+
+        function stopPolling() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
+            }
+            pollingStarted = false;
+        }
+
+        function checkViewportSize() {
+            if (IS_PREVIEW) return;
+            if (window.innerWidth >= SOURCE_MIN_WIDTH && window.innerHeight >= SOURCE_MIN_HEIGHT) return;
+            console.warn(
+                '[unified-chat] Browser source is smaller than the recommended ' +
+                SOURCE_MIN_WIDTH + 'x' + SOURCE_MIN_HEIGHT +
+                ' canvas; TikTok Live Studio may crop or hide messages.'
+            );
+        }
+
+        function connect() {
+            if (typeof EventSource !== 'function') {
+                console.warn('[unified-chat] EventSource not supported, using polling fallback.');
+                startPolling();
+                return;
+            }
+
+            const eventUrl = new URL('/overlay/events?channel=chat-unified', window.location.href).href;
+            let evs;
+            try {
+                evs = new EventSource(eventUrl);
+            } catch (error) {
+                console.warn('[unified-chat] EventSource failed to start, using polling fallback.', error);
+                startPolling();
+                setTimeout(connect, 2000);
+                return;
+            }
+            evs.onopen = () => {
+                stopPolling();
+            };
+            evs.onmessage = (event) => {
+                try {
+                    handleRealtimePacket(JSON.parse(event.data));
+                } catch (error) {
+                    console.warn('[unified-chat] ignored malformed event', error);
                 }
             };
 
             evs.onerror = () => {
                 evs.close();
+                startPolling();
                 setTimeout(connect, 2000);
             };
         }
+
+        checkViewportSize();
+        window.addEventListener('resize', checkViewportSize);
 
         if (IS_PREVIEW) {
             feed.innerHTML = '';
             PREVIEW_MESSAGES.forEach(addMessage);
         } else {
+            hydrateChatState();
             connect();
         }
     </script>

@@ -35,6 +35,15 @@ describe('chat relay helpers', () => {
     expect(buildRelayText(message, 'message-only')).toBe('hello there')
   })
 
+  it('strips legacy html before building relay text', () => {
+    expect(
+      buildRelayText({
+        ...message,
+        message: '<div>SUPER FAN DETECTED</div><div>Welcome back, <strong>@ilydrw</strong>!</div>'
+      })
+    ).toBe('[Twitch] Stream Friend: SUPER FAN DETECTED Welcome back, @ilydrw!')
+  })
+
   it('summarizes mixed send results', () => {
     expect(
       summarizeSendResults([

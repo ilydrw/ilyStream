@@ -1,6 +1,21 @@
 import { Database } from '../db/database'
 import crypto from 'crypto'
 
+interface RemoteTokenRow {
+  token: string
+  label: string | null
+  created_at: string
+  last_used: string | null
+}
+
+export interface RemoteTokenSummary {
+  id: string
+  tokenSuffix: string
+  label: string | null
+  created_at: string
+  last_used: string | null
+}
+
 export class RemoteAuthService {
   constructor(private db: Database) {
     this.initTable()
@@ -43,7 +58,40 @@ export class RemoteAuthService {
     this.db.getRawDb().prepare(`DELETE FROM remote_tokens WHERE token = ?`).run(token)
   }
 
-  getAllTokens(): any[] {
-    return this.db.getRawDb().prepare(`SELECT * FROM remote_tokens`).all()
+  revokeTokenById(id: string): void {
+    const normalizedId = String(id || '').trim()
+    if (!normalizedId) return
+    const row = this.getAllTokens().find((tokenRow) => this.getTokenId(tokenRow.token) === normalizedId)
+    if (!row) return
+    this.revokeToken(row.token)
+  }
+
+  revokeTokenByIdOrToken(value: string): void {
+    const normalized = String(value || '').trim()
+    if (!normalized) return
+    const row = this.getAllTokens().find((tokenRow) => (
+      tokenRow.token === normalized ||
+      this.getTokenId(tokenRow.token) === normalized
+    ))
+    if (!row) return
+    this.revokeToken(row.token)
+  }
+
+  listTokenSummaries(): RemoteTokenSummary[] {
+    return this.getAllTokens().map((row) => ({
+      id: this.getTokenId(row.token),
+      tokenSuffix: row.token.slice(-8),
+      label: row.label,
+      created_at: row.created_at,
+      last_used: row.last_used
+    }))
+  }
+
+  getAllTokens(): RemoteTokenRow[] {
+    return this.db.getRawDb().prepare(`SELECT * FROM remote_tokens`).all() as RemoteTokenRow[]
+  }
+
+  private getTokenId(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex').slice(0, 24)
   }
 }

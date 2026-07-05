@@ -24,7 +24,10 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
   const blur = glassIntensity * 45
   const borderRadius = cfg.borderRadius ?? 20
   const fontFamily = cfg.fontFamily || 'Outfit'
-  const bgRgba = isPreview ? 'transparent' : hexToRgba(cfg.backgroundColor, bgOpacity)
+  // Render the configured background in preview too so the bg color and
+  // glass-intensity sliders show what they'll actually do on stream. The
+  // editor's checkerboard backdrop reads through any real transparency.
+  const bgRgba = hexToRgba(cfg.backgroundColor, bgOpacity)
   const shellStyle = OVERLAY_POSITION_MAP[cfg.position] || OVERLAY_POSITION_MAP['bottom-left']
 
   const platformIcons: Record<string, string> = {
@@ -319,6 +322,30 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       let currentIndex = 0;
       let progressAnimation;
 
+      function wait(ms) {
+        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+      }
+
+      function runElementAnimation(element, keyframes, options) {
+        if (element && typeof element.animate === 'function') {
+          return element.animate(keyframes, options);
+        }
+
+        var finalFrame = keyframes && keyframes.length ? keyframes[keyframes.length - 1] : null;
+        if (element && finalFrame) {
+          for (var key in finalFrame) {
+            if (Object.prototype.hasOwnProperty.call(finalFrame, key)) {
+              element.style[key] = finalFrame[key];
+            }
+          }
+        }
+
+        return {
+          finished: wait(options && options.duration ? options.duration : 0),
+          cancel: function() {}
+        };
+      }
+
       function renderAccount(index) {
         const acc = ACCOUNTS[index];
         if (!acc) return;
@@ -352,7 +379,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
           slide: [{ transform: 'translate3d(0, 0, 0)', opacity: 1 }, { transform: 'translate3d(-20px, 0, 0)', opacity: 0 }]
         }[ANIMATION_TYPE] || exitKeyframes.roll;
 
-        const exitAnim = elContent.animate(exitKeyframes, {
+        const exitAnim = runElementAnimation(elContent, exitKeyframes, {
           duration: 400,
           easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
           fill: 'forwards'
@@ -372,13 +399,13 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
           slide: [{ transform: 'translate3d(20px, 0, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }]
         }[ANIMATION_TYPE] || enterKeyframes.roll;
 
-        elContent.animate(enterKeyframes, {
+        runElementAnimation(elContent, enterKeyframes, {
           duration: 500,
           easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
           fill: 'forwards'
         });
 
-        progressAnimation = elProgress.animate([
+        progressAnimation = runElementAnimation(elProgress, [
           { width: '0%', opacity: 0.5 },
           { width: '100%', opacity: 1 }
         ], {
@@ -393,7 +420,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
       elContent.style.opacity = '1';
 
       if (ACCOUNTS.length > 1) {
-        progressAnimation = elProgress.animate([
+        progressAnimation = runElementAnimation(elProgress, [
           { width: '0%', opacity: 0.5 },
           { width: '100%', opacity: 1 }
         ], {

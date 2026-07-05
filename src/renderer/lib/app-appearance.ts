@@ -14,15 +14,15 @@ const THEME_PALETTES: Record<AppTheme, {
   iconGradient: [string, string, string]
 }> = {
   dark: {
-    background: '#0a0a0c',
-    card: '#121216',
-    border: '#1e1e24',
-    muted: '#71717a',
-    secondary: '#18181b',
+    background: '#141518',
+    card: '#1d1f23',
+    border: '#363a42',
+    muted: '#9aa0a6',
+    secondary: '#24262b',
     accent: '#19c8ff',
     primaryHsl: [194, 100, 55],
     secondaryHsl: [289, 88, 58],
-    iconGradient: ['#FA03D6', '#8849EB', '#19C7FF']
+    iconGradient: ['#D035F1', '#7A8CFF', '#19C8FF']
   },
   midnight: {
     background: '#030305',

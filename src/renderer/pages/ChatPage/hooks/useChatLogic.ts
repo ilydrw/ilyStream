@@ -166,7 +166,11 @@ export function useChatLogic() {
       () =>
         messages.filter((msg) => {
           if (platformFilter && msg.platform !== platformFilter) return false;
-          if (searchQuery && !msg.message.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase().trim();
+            const haystack = `${msg.message} ${msg.displayName} ${msg.username} ${msg.platform}`.toLowerCase();
+            if (!haystack.includes(query)) return false;
+          }
           return true;
         }),
       [messages, platformFilter, searchQuery]

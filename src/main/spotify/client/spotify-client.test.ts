@@ -81,6 +81,78 @@ describe('SpotifyClient', () => {
     expect(queue?.queue?.[0]?.name).toBe('Next Song')
   })
 
+  it('retries enqueue after activating an available Spotify device', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        devices: [
+          {
+            id: 'desktop-device',
+            name: 'Desktop',
+            type: 'Computer',
+            is_active: false,
+            is_restricted: false
+          }
+        ]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const client = new SpotifyClient()
+    client.setAccessToken('access-token')
+
+    await expect(client.enqueue('spotify:track:track-1')).resolves.toBeUndefined()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://api.spotify.com/v1/me/player/devices',
+      expect.any(Object)
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://api.spotify.com/v1/me/player',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ device_ids: ['desktop-device'], play: false })
+      })
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://api.spotify.com/v1/me/player/queue?uri=spotify%3Atrack%3Atrack-1&device_id=desktop-device',
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+
+  it('surfaces a clear enqueue error when no Spotify devices are available', async () => {
+    vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ devices: [] }), { status: 200 }))
+
+    const client = new SpotifyClient()
+    client.setAccessToken('access-token')
+
+    await expect(client.enqueue('spotify:track:track-1')).rejects.toMatchObject({
+      name: 'SpotifyApiError',
+      status: 404,
+      message: 'No active Spotify device found. Open Spotify on desktop or mobile, press Play once, then try the song request again.'
+    } satisfies Partial<SpotifyApiError>)
+  })
+
+  it('surfaces a clear enqueue error when Premium is required', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 403 }))
+
+    const client = new SpotifyClient()
+    client.setAccessToken('access-token')
+
+    await expect(client.enqueue('spotify:track:track-1')).rejects.toMatchObject({
+      name: 'SpotifyApiError',
+      status: 403,
+      message: 'Spotify Premium is required for song requests.'
+    } satisfies Partial<SpotifyApiError>)
+  })
+
   it('surfaces Spotify rate-limit retry timing', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, {
       status: 429,

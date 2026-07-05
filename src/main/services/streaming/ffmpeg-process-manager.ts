@@ -3,7 +3,7 @@ import { EventEmitter } from 'events'
 import type { Writable } from 'stream'
 import { PipeBuffer } from './pipe-buffer'
 
-const AUDIO_PIPE_QUEUE_BYTES = 8 * 1024 // ~21 ms at 48 kHz stereo f32
+const AUDIO_PIPE_QUEUE_BYTES = 1024 * 1024 // ~2.7s at 48 kHz stereo f32; protects audio through short encoder/network stalls
 const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
 
 export class FFmpegProcessManager extends EventEmitter {
@@ -12,6 +12,7 @@ export class FFmpegProcessManager extends EventEmitter {
   private audioBuffer: PipeBuffer | null = null
   private lastStderr = ''
   private failureEmitted = false
+  private stoppingProcess: ChildProcess | null = null
 
   constructor(private name: string) {
     super()
@@ -21,26 +22,32 @@ export class FFmpegProcessManager extends EventEmitter {
     this.stop()
     this.lastStderr = ''
     this.failureEmitted = false
+    this.stoppingProcess = null
 
-    this.process = spawn(ffmpegPath, args, {
+    const child = spawn(ffmpegPath, args, {
       stdio: ['pipe', 'ignore', 'pipe', audioEnabled ? 'pipe' : 'ignore']
     })
+    this.process = child
 
-    this.process.stdin?.setMaxListeners(100)
+    child.stdin?.setMaxListeners(100)
     const audioPipe = this.getAudioPipe()
     audioPipe?.setMaxListeners(100)
 
-    this.process.stdin?.on('error', (err) => this.handleError(err))
-    audioPipe?.on('error', (err) => this.handleError(err))
+    child.stdin?.on('error', (err) => this.handleError(err, child))
+    audioPipe?.on('error', (err) => this.handleError(err, child))
+    child.on('error', (err) => this.handleError(err, child))
 
-    if (this.process.stdin) {
-      this.videoBuffer = new PipeBuffer(this.process.stdin, VIDEO_PIPE_QUEUE_BYTES)
+    const videoBuffer = child.stdin ? new PipeBuffer(child.stdin, VIDEO_PIPE_QUEUE_BYTES) : null
+    const audioBuffer = audioEnabled && audioPipe ? new PipeBuffer(audioPipe, AUDIO_PIPE_QUEUE_BYTES) : null
+
+    if (videoBuffer) {
+      this.videoBuffer = videoBuffer
     }
-    if (audioEnabled && audioPipe) {
-      this.audioBuffer = new PipeBuffer(audioPipe, AUDIO_PIPE_QUEUE_BYTES)
+    if (audioBuffer) {
+      this.audioBuffer = audioBuffer
     }
 
-    this.process.stderr?.on('data', (data) => {
+    child.stderr?.on('data', (data) => {
       let msg = data.toString()
       if (redact) msg = redact(msg)
       this.lastStderr = (this.lastStderr + msg).slice(-6000)
@@ -49,29 +56,28 @@ export class FFmpegProcessManager extends EventEmitter {
       }
     })
 
-    this.process.on('close', (code, signal) => {
-      this.videoBuffer?.detach()
-      this.audioBuffer?.detach()
-      this.videoBuffer = null
-      this.audioBuffer = null
-      
-      if (this.failureEmitted) return
+    child.on('close', (code, signal) => {
+      videoBuffer?.detach()
+      audioBuffer?.detach()
+      if (this.videoBuffer === videoBuffer) this.videoBuffer = null
+      if (this.audioBuffer === audioBuffer) this.audioBuffer = null
+      if (this.process === child) this.process = null
+
+      const wasIntentionalStop = this.stoppingProcess === child
+      if (wasIntentionalStop) this.stoppingProcess = null
+      if (this.failureEmitted || wasIntentionalStop) return
       this.emit('close', code, signal, this.getFailureSummary(code, signal))
-      this.process = null
     })
   }
 
   stop(): void {
-    if (this.process) {
-      // Send 'q' to FFmpeg for a clean shutdown (important for MP4 finalization)
+    const child = this.process
+    if (child) {
+      this.stoppingProcess = child
       try {
-        if (this.process.stdin && this.process.stdin.writable) {
-          this.process.stdin.write('q\n')
-        } else {
-          this.process.kill('SIGINT')
-        }
+        child.kill('SIGINT')
       } catch (err) {
-        this.process.kill('SIGINT')
+        try { child.kill() } catch {}
       }
       this.process = null
     }
@@ -98,19 +104,24 @@ export class FFmpegProcessManager extends EventEmitter {
     return parts.join(', ')
   }
 
+  isRunning(): boolean {
+    return Boolean(this.process && this.process.exitCode === null && !this.process.killed)
+  }
+
   private getAudioPipe(): Writable | null {
     return (this.process?.stdio[3] as Writable) || null
   }
 
-  private handleError(error: Error): void {
+  private handleError(error: Error, child?: ChildProcess): void {
+    if (child && this.process !== child && this.stoppingProcess !== child) return
     const message = error.message || String(error)
     if (!/EOF|EPIPE|closed|write after end/i.test(message)) {
       console.error(`[FFmpeg ${this.name}] Pipe error:`, error)
     }
     if (this.failureEmitted) return
     this.failureEmitted = true
-    this.emit('error', error)
     this.stop()
+    this.emit('error', error)
   }
 
   private getFailureSummary(code: number | null, signal: NodeJS.Signals | null): string {

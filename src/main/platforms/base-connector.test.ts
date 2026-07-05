@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { formatConnectorErrorMessage } from './base-connector'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BaseConnector, ConnectorFatalError, formatConnectorErrorMessage } from './base-connector'
+import type { Platform, PlatformConfig } from './types'
 
 describe('formatConnectorErrorMessage', () => {
   it('keeps normal Error messages readable', () => {
@@ -18,3 +19,41 @@ describe('formatConnectorErrorMessage', () => {
     )
   })
 })
+
+describe('BaseConnector reconnect policy', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('does not auto-reconnect after a fatal connector error', async () => {
+    vi.useFakeTimers()
+    const connector = new FatalConnectConnector()
+    const errors: unknown[] = []
+    connector.on('error', (error) => errors.push(error))
+
+    await expect(
+      connector.connect({ platform: 'twitch', enabled: true })
+    ).rejects.toThrow('reauthorize required')
+
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(connector.connectAttempts).toBe(1)
+    expect(errors[0]).toEqual(expect.objectContaining({ recoverable: false }))
+  })
+})
+
+class FatalConnectConnector extends BaseConnector {
+  readonly platform: Platform = 'twitch'
+  connectAttempts = 0
+
+  validateConfig(_config: PlatformConfig): string | null {
+    return null
+  }
+
+  protected async doConnect(_config: PlatformConfig): Promise<void> {
+    this.connectAttempts += 1
+    throw new ConnectorFatalError('reauthorize required')
+  }
+
+  protected async doDisconnect(): Promise<void> {}
+}

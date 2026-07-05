@@ -46,26 +46,28 @@ export function SourceSidebar(props: SourceSidebarProps) {
     const isCurrentContext = selectionContext === orientation
 
     return (
-      <div className={`flex flex-col min-h-0 transition-all duration-500 ${isCurrentContext ? 'flex-[2]' : 'flex-1 opacity-40'}`}>
+      <div className={`broadcast-source-section ${isCurrentContext ? 'is-active' : ''}`}>
         <div
           onClick={() => onSelectionContextChange(orientation)}
-          className={`px-5 py-3 flex items-center justify-between border-b border-white/[0.04] cursor-pointer transition-colors ${isCurrentContext ? 'bg-white/[0.03]' : 'hover:bg-white/[0.01]'}`}
+          className="broadcast-source-section-head"
         >
-          <div className="flex items-center gap-2">
-            <div className={`w-1.5 h-4 rounded-full transition-all ${isCurrentContext ? 'bg-accent ' : 'bg-white/10'}`} />
-            <h3 className={`text-[10px] font-medium tracking-normal transition-colors ${isCurrentContext ? 'text-white' : 'text-white/40'}`}>{title}</h3>
+          <div className="broadcast-source-section-title">
+            <div className="broadcast-source-section-mark" />
+            <h3>{title}</h3>
           </div>
           {isCurrentContext && (
             <button
+              type="button"
+              title="Add source"
               onClick={(e) => { e.stopPropagation(); onShowSourceModal() }}
-              className="w-7 h-7 rounded-lg bg-accent/10 text-accent hover:bg-accent/20 hover:text-white transition-all flex items-center justify-center"
+              className="broadcast-icon-button is-primary"
             >
               <IconPlus size={16} />
             </button>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+        <div className="broadcast-source-list custom-scrollbar">
           {[...activeScene.layers].reverse().map((layer) => {
             const Icon = LAYER_TYPE_ICONS[layer.type] || IconStack2
             const isSelected = selectedLayerId === layer.id && isCurrentContext
@@ -85,33 +87,37 @@ export function SourceSidebar(props: SourceSidebarProps) {
                 onContextMenu={(e) => {
                   e.preventDefault()
                   onSelectionContextChange(orientation)
-                  onContextMenu(e, layer, orientation)
+                onContextMenu(e, layer, orientation)
                 }}
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all border cursor-pointer ${isSelected ? 'bg-accent text-white border-transparent ' : 'bg-transparent border-transparent text-white/30 hover:bg-white/[0.03]'}`}
+                className={`broadcast-source-row ${isSelected ? 'is-selected' : ''}`}
               >
-                <div className={`shrink-0 transition-colors ${isSelected ? 'text-white/100' : 'text-white/10 group-hover:text-white/30'}`}>
+                <div className="broadcast-source-drag">
                   <IconArrowsMove size={12} />
                 </div>
 
-                <div className={`p-1.5 rounded-lg transition-colors ${isSelected ? 'bg-white/20' : 'bg-white/5 group-hover:bg-white/10'}`}>
+                <div className="broadcast-source-type">
                   <Icon size={14} className={isSelected ? 'text-white' : ''} />
                 </div>
 
-                <span className={`flex-1 text-[11px] font-semibold truncate text-left transition-colors ${isSelected ? 'text-white' : 'group-hover:text-white/60'}`}>
+                <span className="broadcast-source-name">
                   {layer.name}
                 </span>
 
                 {!isAudioLayer && (
-                  <div className={`flex items-center gap-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                  <div className="broadcast-source-actions">
                     <button
+                      type="button"
+                      title={isLocked ? 'Unlock source' : 'Lock source'}
                       onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitLocked: !isLocked } : { locked: !isLocked }) }}
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                      className="broadcast-icon-button"
                     >
                       {isLocked ? <IconLock size={13} className="text-amber-400" /> : <IconLockOpen size={13} className="text-white/20" />}
                     </button>
                     <button
+                      type="button"
+                      title={isVisible ? 'Hide source' : 'Show source'}
                       onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitVisible: !isVisible } : { visible: !isVisible }) }}
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                      className="broadcast-icon-button"
                     >
                       {isVisible ? <IconEye size={13} className="text-white/40" /> : <IconEyeOff size={13} className="text-red-500/60" />}
                     </button>
@@ -121,7 +127,7 @@ export function SourceSidebar(props: SourceSidebarProps) {
                 {isSelected && (
                   <motion.div
                     layoutId="active-indicator"
-                    className="absolute -left-1 top-1/4 bottom-1/4 w-1 bg-white rounded-full"
+                    className="broadcast-source-active-indicator"
                   />
                 )}
               </motion.div>
@@ -129,12 +135,11 @@ export function SourceSidebar(props: SourceSidebarProps) {
           })}
 
           {activeScene.layers.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-              <div className="w-12 h-12 rounded-md bg-white/5 flex items-center justify-center mb-4 text-white/10">
+            <div className="broadcast-source-empty">
+              <div>
                 <IconLayersSubtract size={24} />
               </div>
-              <p className="text-[10px] font-semibold tracking-tight text-white/20">Empty Stage</p>
-              <p className="text-[9px] font-semibold text-white/10 mt-1 tracking-tight">Add sources to begin</p>
+              <p>No sources</p>
             </div>
           )}
         </div>
@@ -143,19 +148,33 @@ export function SourceSidebar(props: SourceSidebarProps) {
   }
 
   return (
-    <div className="flex shrink-0 min-h-0 bg-[#050505] relative animate-in slide-in-from-right duration-300" style={{ width: sidebarWidth }}>
+    <div className="broadcast-dock broadcast-sources-dock animate-in slide-in-from-right duration-300" style={{ width: sidebarWidth }}>
       {/* Resize Handle */}
-      <div onPointerDown={onSidebarResizeStart} className="absolute left-0 top-0 bottom-0 w-6 -left-3 cursor-col-resize hover:bg-white/[0.02] transition-all z-50 group">
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-12 bg-white/5 group-hover:bg-accent/40 rounded-r-lg flex items-center justify-center transition-all shadow-xl">
+      <div onPointerDown={onSidebarResizeStart} className="broadcast-dock-resize group">
+        <div>
           <div className="w-0.5 h-4 bg-white/20 group-hover:bg-white/60" />
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0 min-w-0 border-l border-white/[0.04] bg-[#0c0c0e]">
+      <div className="broadcast-sources-inner">
+        <div className="broadcast-dock-head">
+          <div className="min-w-0">
+            <h3>Sources</h3>
+            <span>{activeScene.name}</span>
+          </div>
+          <button
+            type="button"
+            title="Add source"
+            onClick={onShowSourceModal}
+            className="broadcast-icon-button is-primary"
+          >
+            <IconPlus size={16} />
+          </button>
+        </div>
+
         {/* Source Lists */}
-        <div className="flex flex-col min-h-0 flex-1">
+        <div className="broadcast-source-sections">
           {renderLayerList('16:9', 'Desktop Environment')}
-          <div className="h-px bg-white/[0.04]" />
           {renderLayerList('9:16', 'Mobile Environment')}
         </div>
 
@@ -167,16 +186,18 @@ export function SourceSidebar(props: SourceSidebarProps) {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
-              className="h-[45%] min-h-[300px] border-t border-white/[0.08] flex flex-col overflow-hidden bg-[#080808] shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
+              className="broadcast-inspector"
             >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.04] bg-white/[0.01]">
-                <div className="flex items-center gap-2">
+              <div className="broadcast-inspector-head">
+                <div>
                   <IconAdjustments size={14} className="text-accent" />
-                  <span className="text-[10px] font-medium tracking-normal text-white/50">Source Inspector</span>
+                  <span>Source Inspector</span>
                 </div>
                 <button
+                  type="button"
+                  title="Clear selection"
                   onClick={() => onSelectLayer(null)}
-                  className="text-white/20 hover:text-white transition-colors"
+                  className="broadcast-icon-button"
                 >
                   <IconPlus className="rotate-45" size={16} />
                 </button>
@@ -193,11 +214,11 @@ export function SourceSidebar(props: SourceSidebarProps) {
               </div>
             </motion.div>
           ) : (
-            <div className="px-5 py-8 border-t border-white/[0.04] bg-[#080808] flex flex-col items-center text-center">
-              <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-3 text-white/10">
+            <div className="broadcast-inspector-empty">
+              <div>
                 <IconAdjustments size={20} />
               </div>
-              <p className="text-[10px] font-semibold tracking-tight text-white/10">No Selection</p>
+              <p>No selection</p>
             </div>
           )}
         </AnimatePresence>

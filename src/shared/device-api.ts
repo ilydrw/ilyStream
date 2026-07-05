@@ -35,7 +35,8 @@ export interface PairCode {
 }
 
 export interface PairedDevice {
-  token: string
+  id: string
+  tokenSuffix: string
   label: string
   createdAt: string
   lastUsed: string | null

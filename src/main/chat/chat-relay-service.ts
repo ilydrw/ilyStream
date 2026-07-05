@@ -1,8 +1,11 @@
 import { buildRelayText, getAutoRelayTargets, normalizeRelayText } from '../../shared/chat-relay'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
+import { htmlToSingleLinePlainText } from '../../shared/plain-text'
 import type { AppSettings } from '../../shared/app-settings'
 import { PlatformManager } from '../platforms/platform-manager'
 import type { AnyStreamEvent, ChatEvent, Platform, PlatformChatSendResult } from '../platforms/types'
+
+const CHAT_RELAY_SUPPRESSED_ECHO = Symbol('chatRelaySuppressedEcho')
 
 export class ChatRelayService {
   private readonly suppressionWindowMs: number
@@ -36,7 +39,7 @@ export class ChatRelayService {
     platforms: Platform[],
     text: string
   ): Promise<PlatformChatSendResult[]> {
-    return this.sendToPlatforms(platforms, text)
+    return this.sendToPlatforms(platforms, htmlToSingleLinePlainText(text))
   }
 
   private async handleChatEvent(event: ChatEvent): Promise<void> {
@@ -46,6 +49,7 @@ export class ChatRelayService {
     }
 
     if (this.consumeSuppression(event.platform, incomingText)) {
+      markSuppressedChatRelayEcho(event)
       return
     }
 
@@ -101,8 +105,13 @@ export class ChatRelayService {
       return []
     }
 
-    const results = await this.platformManager.sendChatMessageToPlatforms(uniquePlatforms, text)
-    const normalizedText = normalizeRelayText(text)
+    const chatText = htmlToSingleLinePlainText(text)
+    if (!chatText) {
+      return []
+    }
+
+    const results = await this.platformManager.sendChatMessageToPlatforms(uniquePlatforms, chatText)
+    const normalizedText = normalizeRelayText(chatText)
 
     if (normalizedText.length > 0) {
       for (const result of results) {
@@ -152,4 +161,16 @@ export class ChatRelayService {
   private getSuppressionKey(platform: Platform, text: string): string {
     return `${platform}:${text}`
   }
+}
+
+export function markSuppressedChatRelayEcho(event: AnyStreamEvent): void {
+  Object.defineProperty(event, CHAT_RELAY_SUPPRESSED_ECHO, {
+    value: true,
+    enumerable: false,
+    configurable: true
+  })
+}
+
+export function isSuppressedChatRelayEcho(event: AnyStreamEvent): boolean {
+  return Boolean((event as any)[CHAT_RELAY_SUPPRESSED_ECHO])
 }

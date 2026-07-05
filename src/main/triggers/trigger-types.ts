@@ -111,7 +111,7 @@ export interface PlaySoundAction {
 
 export interface ShowAlertAction {
   type: 'show_alert'
-  /** HTML template with placeholders */
+  /** Alert text template with placeholders */
   template: string
   /** Optional image to display with the alert */
   imageUrl?: string

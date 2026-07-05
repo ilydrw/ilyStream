@@ -55,7 +55,7 @@ export function ChatConfigEditor({
             min={240}
             max={900}
             step={10}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -65,7 +65,7 @@ export function ChatConfigEditor({
             onChange={(v) => update('fontSize', v)}
             min={10}
             max={32}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -98,7 +98,7 @@ export function ChatConfigEditor({
             onChange={(v) => update('maxItems', v)}
             min={1}
             max={30}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -111,7 +111,7 @@ export function ChatConfigEditor({
             onChange={(v) => update('fadeOutAfterSeconds', v)}
             min={0}
             max={300}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 

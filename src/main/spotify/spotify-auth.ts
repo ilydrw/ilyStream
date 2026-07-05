@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto'
-import { createServer } from 'http'
+import { createServer, Server } from 'http'
 import { shell } from 'electron'
 
 export const SPOTIFY_REDIRECT_PORT = 8789
@@ -40,8 +40,13 @@ function generateCodeChallenge(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url')
 }
 
+// In-flight auth attempt. A second connect click should cancel the first so we can re-bind port 8789.
+let activeAuth: { server: Server, cancel: (reason: Error) => void } | null = null
+
 export async function initiateSpotifyAuth(clientId: string): Promise<SpotifyTokens> {
   if (!clientId.trim()) throw new Error('Spotify Client ID is required before connecting.')
+
+  await cancelActiveAuth(new Error('Spotify auth canceled — restarted by a new connect attempt.'))
 
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = generateCodeChallenge(codeVerifier)
@@ -63,11 +68,29 @@ export async function initiateSpotifyAuth(clientId: string): Promise<SpotifyToke
   return exchangeCodeForTokens(clientId, code, codeVerifier)
 }
 
+async function cancelActiveAuth(reason: Error): Promise<void> {
+  const prev = activeAuth
+  if (!prev) return
+  activeAuth = null
+  prev.cancel(reason)
+  await new Promise<void>((resolve) => prev.server.close(() => resolve()))
+}
+
 function waitForCallback(expectedState: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    let settled = false
+
+    const finalize = (action: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (activeAuth?.server === server) activeAuth = null
       server.close()
-      reject(new Error('Spotify auth timed out — no response within 5 minutes'))
+      action()
+    }
+
+    const timeout = setTimeout(() => {
+      finalize(() => reject(new Error('Spotify auth timed out — no response within 5 minutes')))
     }, 5 * 60 * 1000)
 
     const server = createServer((req, res) => {
@@ -91,32 +114,31 @@ function waitForCallback(expectedState: string): Promise<string> {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(html, 'utf8')
 
-        clearTimeout(timeout)
-        server.close()
-
         if (code && validState) {
-          resolve(code)
+          finalize(() => resolve(code))
         } else if (!validState) {
-          reject(new Error('Spotify auth state mismatch. Try connecting again.'))
+          finalize(() => reject(new Error('Spotify auth state mismatch. Try connecting again.')))
         } else {
-          reject(new Error(`Spotify auth denied: ${error ?? 'unknown'}`))
+          finalize(() => reject(new Error(`Spotify auth denied: ${error ?? 'unknown'}`)))
         }
       } catch (err) {
         res.writeHead(500)
         res.end()
-        clearTimeout(timeout)
-        server.close()
-        reject(err)
+        finalize(() => reject(err))
       }
     })
+
+    activeAuth = {
+      server,
+      cancel: (reason) => finalize(() => reject(reason))
+    }
 
     server.listen(SPOTIFY_REDIRECT_PORT, '127.0.0.1', () => {
       console.log(`[spotify-auth] Callback server listening on port ${SPOTIFY_REDIRECT_PORT}`)
     })
 
     server.on('error', (err) => {
-      clearTimeout(timeout)
-      reject(new Error(`Could not start Spotify callback server on port ${SPOTIFY_REDIRECT_PORT}: ${err.message}`))
+      finalize(() => reject(new Error(`Could not start Spotify callback server on port ${SPOTIFY_REDIRECT_PORT}: ${err.message}`)))
     })
   })
 }

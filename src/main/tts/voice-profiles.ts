@@ -39,6 +39,8 @@ export interface VoiceProfile {
   elevenlabsSimilarity?: number
   /** ElevenLabs style (0–1): exaggerates speaker style (v2 models only). */
   elevenlabsStyle?: number
+  /** Saved ElevenLabs workspace/API key id used for this voice. */
+  elevenlabsApiKeyId?: string
   /** Voice language (e.g., 'en-US') */
   lang: string
   /** Pitch multiplier (0.1 - 2.0, default 1.0) */

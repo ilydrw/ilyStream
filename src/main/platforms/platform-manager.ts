@@ -16,6 +16,7 @@ import { Database } from '../db/database'
 import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
 import { resolveAppSettings } from '../../shared/app-settings'
 
+
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
   private viewerCounts: Partial<Record<Platform, number>> = {}
@@ -39,7 +40,9 @@ export class PlatformManager extends EventEmitter {
       connector.setAutoReconnect(autoReconnect)
 
       connector.on('event', (event: AnyStreamEvent) => {
-        console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
+        if (event.type !== 'like' || false) {
+          console.log(`[platform-manager] Relaying ${event.type} from ${connector.platform}`)
+        }
 
         if (event.type === 'viewer-count') {
           this.viewerCounts[event.platform] = (event as any).count
@@ -58,6 +61,7 @@ export class PlatformManager extends EventEmitter {
       })
 
       connector.on('token-refresh', (data: unknown) => {
+        this.persistRefreshedPlatformToken(data)
         this.emit('token-refresh', data)
       })
 
@@ -77,6 +81,33 @@ export class PlatformManager extends EventEmitter {
     const connector = this.connectors.get(config.platform)
     if (!connector) throw new Error(`Unknown platform: ${config.platform}`)
     await connector.connect(config)
+  }
+
+  private persistRefreshedPlatformToken(data: unknown): void {
+    if (!data || typeof data !== 'object') return
+
+    const token = data as {
+      platform?: Platform
+      accessToken?: unknown
+      refreshToken?: unknown
+    }
+    if (!token.platform || typeof token.accessToken !== 'string' || token.accessToken.trim().length === 0) {
+      return
+    }
+
+    const existing = this.db.getPlatformConfig(token.platform)
+    if (!existing) return
+
+    const nextConfig = { ...existing } as AnyPlatformConfig & {
+      accessToken?: string
+      refreshToken?: string
+    }
+    nextConfig.accessToken = token.accessToken
+    if (typeof token.refreshToken === 'string' && token.refreshToken.trim().length > 0) {
+      nextConfig.refreshToken = token.refreshToken
+    }
+
+    this.db.savePlatformConfig(nextConfig)
   }
 
   async disconnect(platform: Platform): Promise<void> {

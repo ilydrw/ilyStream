@@ -1,5 +1,5 @@
 import React from 'react'
-import {IconAt, IconGauge, IconHeadphones, IconKey, IconShieldCheck, IconVolume, IconActivity} from '@tabler/icons-react'
+import {IconAt, IconGauge, IconHeadphones, IconKey, IconShieldCheck, IconVolume, IconActivity, IconPlus, IconTrash} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { AppSettings } from '../../../../shared/app-settings'
 import { useStudioStore } from '../../../stores/studio-store'
@@ -123,9 +123,49 @@ function EngineNumber({
   )
 }
 
+function MentionToggle({
+  active,
+  title,
+  hint,
+  icon,
+  onClick
+}: {
+  active: boolean
+  title: string
+  hint: string
+  icon: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-12 min-w-0 items-center gap-3 rounded-lg border px-3 text-left transition-all ${
+        active
+          ? 'border-accent/35 bg-accent/10 text-accent shadow-[0_0_18px_rgba(var(--accent-rgb),0.08)]'
+          : 'border-white/[0.07] bg-white/[0.025] text-white/45 hover:border-white/15 hover:bg-white/[0.045] hover:text-white/70'
+      }`}
+    >
+      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${active ? 'bg-accent/15' : 'bg-white/[0.045]'}`}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold tracking-tight text-white/75">{title}</span>
+        <span className="block truncate text-[10px] font-medium text-white/28">{hint}</span>
+      </span>
+      <span className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${active ? 'bg-accent' : 'bg-white/10'}`}>
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${active ? 'left-[14px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  )
+}
+
 export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsProps) {
   const [devices, setDevices] = React.useState<MediaDeviceInfo[]>([])
   const [apiKeyDraft, setApiKeyDraft] = React.useState(settings.elevenlabsApiKey)
+  const [workspaceLabelDraft, setWorkspaceLabelDraft] = React.useState('')
+  const [workspaceKeyDraft, setWorkspaceKeyDraft] = React.useState('')
 
   React.useEffect(() => {
     setApiKeyDraft(settings.elevenlabsApiKey)
@@ -152,6 +192,44 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
   const saveApiKey = () => {
     void onUpdate('elevenlabsApiKey', apiKeyDraft)
     toast.success('Voice provider key saved')
+  }
+
+  const addWorkspaceKey = async () => {
+    const apiKey = workspaceKeyDraft.trim()
+    if (!apiKey) {
+      toast.error('Paste an ElevenLabs API key first')
+      return
+    }
+
+    const label = workspaceLabelDraft.trim() || `Workspace ${settings.elevenlabsApiKeys.length + 1}`
+    const entry = {
+      id: `el-${crypto.randomUUID()}`,
+      label: label.slice(0, 80),
+      apiKey
+    }
+    const nextKeys = [...settings.elevenlabsApiKeys, entry]
+
+    await onUpdate('elevenlabsApiKeys', nextKeys)
+    if (!settings.elevenlabsApiKey && !settings.elevenlabsDefaultApiKeyId) {
+      await onUpdate('elevenlabsDefaultApiKeyId', entry.id)
+    }
+    setWorkspaceLabelDraft('')
+    setWorkspaceKeyDraft('')
+    toast.success('ElevenLabs workspace added')
+  }
+
+  const deleteWorkspaceKey = async (id: string) => {
+    const nextKeys = settings.elevenlabsApiKeys.filter((key) => key.id !== id)
+    await onUpdate('elevenlabsApiKeys', nextKeys)
+    if (settings.elevenlabsDefaultApiKeyId === id) {
+      await onUpdate('elevenlabsDefaultApiKeyId', '')
+    }
+    toast.info('ElevenLabs workspace removed')
+  }
+
+  const setDefaultWorkspaceKey = async (id: string) => {
+    await onUpdate('elevenlabsDefaultApiKeyId', id)
+    toast.success('Default ElevenLabs workspace updated')
   }
 
   return (
@@ -227,23 +305,21 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
             </EngineRow>
 
             <EngineRow label="Mention Handling" hint="Tune how @names are spoken or ignored when chat gets noisy.">
-              <div className="flex flex-wrap justify-end gap-3">
-                <button
+              <div className="grid w-full gap-2 sm:grid-cols-2 md:w-[380px]">
+                <MentionToggle
+                  active={settings.tts.readAtSymbol}
+                  title="Read @"
+                  hint="Speak the symbol"
+                  icon={<IconAt size={15} />}
                   onClick={() => void onUpdate('ttsReadAtSymbol', !settings.tts.readAtSymbol)}
-                  className={`app-button !h-10 !px-4 ${settings.tts.readAtSymbol ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
-                  title="Read @ symbols aloud"
-                >
-                  <IconAt size={15} />
-                  Read
-                </button>
-                <button
+                />
+                <MentionToggle
+                  active={settings.tts.skipMessagesStartingWithAt}
+                  title="Skip @"
+                  hint="Ignore @ starters"
+                  icon={<IconShieldCheck size={15} />}
                   onClick={() => void onUpdate('ttsSkipMessagesStartingWithAt', !settings.tts.skipMessagesStartingWithAt)}
-                  className={`app-button !h-10 !px-4 ${settings.tts.skipMessagesStartingWithAt ? '!bg-accent/10 text-accent !border-accent/20' : 'text-white/40'}`}
-                  title="Skip messages starting with @"
-                >
-                  <IconShieldCheck size={15} />
-                  Skip
-                </button>
+                />
               </div>
             </EngineRow>
           </div>
@@ -304,10 +380,85 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
                 {apiKeyDraft === settings.elevenlabsApiKey ? 'Provider Key Current' : 'Save Provider Key'}
               </button>
             </div>
+
+            <div className="mt-6 border-t border-white/[0.06] pt-5">
+              <div className="mb-3">
+                <h4 className="text-xs font-semibold text-white/60">Additional workspaces</h4>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/25">
+                  Add shared keys here, then pick the matching workspace in a voice profile or user voice rule.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={workspaceLabelDraft}
+                  onChange={(event) => setWorkspaceLabelDraft(event.target.value)}
+                  placeholder="Label, e.g. Logan"
+                  className="app-input !h-10 !w-full !px-3 !text-xs"
+                />
+                <input
+                  type="password"
+                  value={workspaceKeyDraft}
+                  onChange={(event) => setWorkspaceKeyDraft(event.target.value)}
+                  placeholder="Shared API key..."
+                  className="app-input !h-10 !w-full !px-3 !text-xs"
+                />
+                <button
+                  onClick={() => void addWorkspaceKey()}
+                  className="app-button w-full !h-10 !text-xs font-semibold"
+                >
+                  <IconPlus size={14} />
+                  Add Workspace Key
+                </button>
+              </div>
+
+              {settings.elevenlabsApiKeys.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {settings.elevenlabsApiKeys.map((key) => (
+                    <div
+                      key={key.id}
+                      className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-semibold text-white/75">{key.label}</div>
+                          <div className="mt-0.5 font-mono text-[10px] text-white/25">
+                            {maskApiKey(key.apiKey)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void deleteWorkspaceKey(key.id)}
+                          className="app-button !h-8 !w-8 !p-0 hover:!border-danger/30 hover:!text-danger"
+                          title="Remove workspace key"
+                        >
+                          <IconTrash size={13} />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void setDefaultWorkspaceKey(key.id)}
+                        disabled={settings.elevenlabsDefaultApiKeyId === key.id}
+                        className="mt-2 text-[10px] font-semibold text-accent transition-colors hover:text-accent/80 disabled:text-white/25"
+                      >
+                        {settings.elevenlabsDefaultApiKeyId === key.id ? 'Default workspace' : 'Make default'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </aside>
         </div>
       </div>
     </section>
   )
+}
+
+function maskApiKey(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length <= 8) return 'Saved key'
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
 }
 

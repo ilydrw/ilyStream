@@ -16,8 +16,10 @@ import { NowPlayingManager } from './managers/now-playing-manager'
 import { LikesTracker } from './managers/likes-tracker'
 import { DEFAULT_PORT } from './types'
 import { shouldBroadcastParticleEvent } from './overlay-payloads'
+import { renderWidgetPreviewHtml } from './widget-renderers'
+import type { Widget } from '../../shared/widgets'
 
-const DEFAULT_LISTEN_HOST = '0.0.0.0'
+const DEFAULT_LISTEN_HOST = '127.0.0.1'
 const ALLOWED_LISTEN_HOSTS = new Set(['0.0.0.0', '127.0.0.1', 'localhost', '::1', '::'])
 
 function resolveListenHost(): string {
@@ -60,6 +62,8 @@ export class OverlayServer extends EventEmitter {
   private obsService: any | null = null
   private platformManager: any | null = null
   private soundboardService: any | null = null
+  private statsService: any | null = null
+  private economyService: any | null = null
   private server: Server | null = null
   private listenHost = DEFAULT_LISTEN_HOST
 
@@ -130,7 +134,9 @@ export class OverlayServer extends EventEmitter {
       () => this.obsService?.getStatus() || null,
       () => this.platformManager?.getViewerCounts() || {},
       (event) => this.handleStreamEvent(event),
-      (action) => this.emit('deck-action', action)
+      (action) => this.emit('deck-action', action),
+      () => this.statsService,
+      () => this.economyService?.getLeaderboardSnapshot?.() || []
     )
   }
 
@@ -149,6 +155,8 @@ export class OverlayServer extends EventEmitter {
   }
   setObsService(obsService: any): void { this.obsService = obsService }
   setPlatformManager(platformManager: any): void { this.platformManager = platformManager }
+  setStatsService(statsService: any): void { this.statsService = statsService }
+  setEconomyService(economyService: any): void { this.economyService = economyService }
 
   getStatus(): OverlayRuntimeStatus {
     return {
@@ -162,11 +170,26 @@ export class OverlayServer extends EventEmitter {
       particleClientCount: this.sse.getClientCount('event-particles'),
       roseClientCount: this.sse.getClientCount('falling-roses'),
       likesClientCount: this.sse.getClientCount('likes'),
+      leaderboardClientCount: this.sse.getClientCount('leaderboard'),
       dualVerticalClientCount: this.router.getDualVerticalClientCount()
     }
   }
 
   getGoalState() { return this.goals.getState() }
+
+  /**
+   * Render a widget's preview HTML (with the preview-bootstrap script injected)
+   * using the same context the HTTP overlay route uses. The renderer-side
+   * WidgetEditorModal pushes the result over postMessage to the live iframe,
+   * which lets config tweaks apply in-place without reloading the page.
+   */
+  renderWidgetPreview(widget: Widget): string | null {
+    return renderWidgetPreviewHtml(widget, {
+      settings: this.db?.getAllSettings() || {},
+      boardSounds: this.soundboardService?.getAllSounds('board') || [],
+      deckActions: this.db?.getAllDeckActions() || []
+    })
+  }
 
   start(port: number = DEFAULT_PORT): Promise<OverlayRuntimeStatus> {
     return this.enqueue(async () => {
@@ -206,7 +229,14 @@ export class OverlayServer extends EventEmitter {
   }
 
   broadcast(channel: any, payload: any): void {
-    console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
+    // Skip the per-broadcast log for leaderboard/deck — those are emitted in
+    // tight bursts by the like pipeline and JSON.stringify on the full
+    // leaderboard payload is the most expensive per-like log we have.
+    const payloadType = (payload as any)?.type
+    const isHotChannel = channel === 'leaderboard' || channel === 'deck' || payloadType === 'leaderboard'
+    if (!isHotChannel) {
+      console.log(`[OverlayServer] Broadcasting to channel ${channel}:`, JSON.stringify(payload).slice(0, 100))
+    }
     this.sse.broadcast(channel, payload)
   }
 
@@ -301,7 +331,8 @@ export class OverlayServer extends EventEmitter {
       'follower-goal': 'follower-goal', 'socials': 'socials', 'screen-border': 'screen-border',
       'event-particles': 'event-particles', 'gift-overlays': 'event-particles',
       'falling-roses': 'falling-roses', 'particles': 'particles', 'discord-promo': 'discord-promo',
-      'node-network': 'node-network', 'latest-gifter': 'latest-gifter', 'physics': 'physics', 'deck': 'deck'
+      'node-network': 'node-network', 'latest-gifter': 'latest-gifter', 'physics': 'physics',
+      'leaderboard': 'leaderboard', 'deck': 'deck'
     }
     const channel = channelMap[type]
     if (channel) this.sse.broadcast(channel, { type: 'reload', id })
@@ -379,7 +410,9 @@ export class OverlayServer extends EventEmitter {
     this.status.devicePairUrl = devicePairUrls[0] || null
     this.status.devicePairUrls = devicePairUrls
     this.status.startedAt = this.status.startedAt || new Date().toISOString()
-    const base = `http://127.0.0.1:${port}`
+    const localHost = formatHostPort('127.0.0.1', port)
+    const overlayHost = deviceHosts.includes(localHost) ? localHost : (deviceHosts[0] || localHost)
+    const base = `http://${overlayHost}`
     this.status.chatUrl = `${base}/overlay/chat.html`
     this.status.alertsUrl = `${base}/overlay/alerts.html`
     this.status.goalsUrl = `${base}/overlay/goals.html`

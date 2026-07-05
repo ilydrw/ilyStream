@@ -4,6 +4,7 @@ import type { Action, AIRespondAction } from '../trigger-types'
 import type { TTSEngine } from '../../tts/tts-engine'
 import type { AIService } from '../../ai/ai-service'
 import type { AutomationActionStatus } from '../../../shared/automation-receipts'
+import { htmlToSingleLinePlainText } from '../../../shared/plain-text'
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
@@ -68,7 +69,7 @@ export class ActionExecutor extends EventEmitter {
         this.emit('send-chat', {
           ...action,
           platform: action.platform === 'source' ? event.platform : action.platform || event.platform,
-          message: this.fillTemplate(action.template, event)
+          message: htmlToSingleLinePlainText(this.fillTemplate(action.template, event))
         }, event)
         return { status: 'ran', summary: describeAction(action) }
 
@@ -126,7 +127,7 @@ export class ActionExecutor extends EventEmitter {
     })
 
     if (action.output === 'chat' || action.output === 'both') {
-      this.emit('send-chat', { platform: event.platform, message: responseText })
+      this.emit('send-chat', { platform: event.platform, message: htmlToSingleLinePlainText(responseText) })
     }
 
     if (action.output === 'tts' || action.output === 'both') {

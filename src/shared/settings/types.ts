@@ -18,11 +18,18 @@ import {
 } from '../alert-rules'
 
 export const DEFAULT_TTS_COMMAND_PREFIXES = ['!tts', '!say', '!speak']
+export const DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE = '{displayName} says: {message}'
 
 export interface VoiceModifiers {
   radioFilter: boolean
   speedRamping: boolean
   pitchShifting: 'low' | 'normal' | 'high' | 'dynamic'
+}
+
+export interface ElevenLabsApiKeyEntry {
+  id: string
+  label: string
+  apiKey: string
 }
 
 export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'joker'
@@ -42,12 +49,14 @@ export interface TTSUserVoiceOverride {
   id: string
   platform: 'all' | 'tiktok' | 'twitch' | 'youtube' | 'kick'
   username: string
+  viewerProfileId?: string
   mode: 'profile' | 'custom'
   voiceProfileId: string
   provider: TTSVoiceProvider
   voiceName: string
   kokoroVoice: string
   elevenlabsVoiceId: string
+  elevenlabsApiKeyId?: string
   elevenlabsStability: number
   elevenlabsSimilarity: number
   elevenlabsStyle: number
@@ -57,6 +66,8 @@ export interface TTSUserVoiceOverride {
   volume: number
   enabled: boolean
 }
+
+export type TTSUserVoiceOverridePlatform = TTSUserVoiceOverride['platform']
 
 export interface AutomationKeystrokeMapping {
   id: string
@@ -77,6 +88,7 @@ export interface TTSSettings {
   perUserLimit: number
   requireCommand: boolean
   commandPrefixes: string[]
+  chatMessageTemplate: string
   allowedRoles: TTSAudiencePermission[]
   chatVoiceProfileId: string
   giftVoiceProfileId: string
@@ -130,6 +142,10 @@ export interface ChatSettings {
 
 export interface AISettings {
   enabled: boolean
+  requireCommand: boolean
+  commandPrefixes: string[]
+  voiceProfileId: string
+  speechPrefix: string
   apiKey: string
   model: string
   endpoint: string
@@ -218,6 +234,20 @@ export interface AppSettings {
   streamingWidth: number
   streamingHeight: number
   aiEnabled: boolean
+  aiRequireCommand: boolean
+  aiCommandPrefixes: string[]
+  aiVoiceProfileId: string
+  aiSpeechPrefix: string
+  ttsChatMessageTemplate: string
+  elevenlabsApiKey: string
+  elevenlabsApiKeys: ElevenLabsApiKeyEntry[]
+  elevenlabsDefaultApiKeyId: string
+  /**
+   * When true, alert sounds also play in the app (local monitoring) even while
+   * an overlay browser source is connected. Off by default so users who monitor
+   * their OBS overlay audio don't hear every alert twice.
+   */
+  alertSoundLocalMonitoring: boolean
 }
 
 export type AppSettingKey = string // Simplified for broad compatibility

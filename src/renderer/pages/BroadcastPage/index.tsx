@@ -13,6 +13,7 @@ import { ContextMenu } from '../../components/ui/ContextMenu'
 import { AddSourceModal } from './components/AddSourceModal'
 import { getOptimizedCaptureInputFormat, pickAvcCodecString, type BroadcastLayoutId, type BroadcastLayoutMode, buildStreamPlatforms } from './utils/streaming-config'
 import { resolveWidgetStudioPreset } from './utils/widget-placement'
+import { formatMediaError } from './utils/media-init'
 
 // Modular Components & Hooks
 import { BroadcastHeader } from './components/BroadcastHeader'
@@ -41,6 +42,7 @@ function formatDuration(totalSeconds: number): string {
 type ProjectorAspectRatio = '16:9' | '9:16'
 const LANDSCAPE_STAGE = { width: 1920, height: 1080 }
 const PORTRAIT_STAGE = { width: 1080, height: 1920 }
+const DEFAULT_WIDGET_CAPTURE_FPS = 30
 const VIRTUAL_CAMERA_FEED_STORAGE_KEY = 'ilystream-virtual-camera-feed'
 const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
   mode: 'layout',
@@ -50,8 +52,11 @@ const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
 
 const DEFAULT_BROADCAST_FPS = Math.min(60, Math.max(1, DEFAULT_APP_SETTINGS.streaming.fps))
 const DEFAULT_BROADCAST_BITRATE_KBPS = DEFAULT_APP_SETTINGS.streaming.bitrate
-const TWITCH_SAFE_FPS = 30
-const TWITCH_SAFE_BITRATE_KBPS = 4500
+// Twitch's stable H.264 lane is still 1080p60 with 6000 Kbps video plus
+// 160 Kbps AAC. Some accounts can ingest more, but 8 Mbps is where viewer
+// buffering and ingest warnings start showing up on ordinary channels.
+const TWITCH_SAFE_FPS = 60
+const TWITCH_SAFE_BITRATE_KBPS = 6000
 
 function clampBroadcastFps(value: unknown): number {
   const fps = Number(value)
@@ -63,6 +68,20 @@ function clampBroadcastBitrateKbps(value: unknown): number {
   const bitrate = Number(value)
   const fallback = Number.isFinite(DEFAULT_BROADCAST_BITRATE_KBPS) ? DEFAULT_BROADCAST_BITRATE_KBPS : 6000
   return Math.max(500, Math.min(51000, Math.round(Number.isFinite(bitrate) ? bitrate : fallback)))
+}
+
+function getMediaDeviceAccessMessage(error: unknown): string {
+  const name = (error as any)?.name
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Camera access is blocked. Enable camera access for desktop apps in Windows privacy settings, then refresh devices.'
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'Windows did not report any camera devices.'
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'A camera was found but is busy or blocked by another app. Close other camera apps, then refresh devices.'
+  }
+  return `Camera discovery failed: ${formatMediaError(error)}`
 }
 
 async function loadBroadcastOutputConfig(): Promise<{ fps: number; bitrateKbps: number }> {
@@ -195,6 +214,7 @@ export default function BroadcastPage() {
   const [status, setStatus] = useState('Offline')
   const [streamError, setStreamError] = useState<string | null>(null)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [deviceAccessError, setDeviceAccessError] = useState<string | null>(null)
   const [widgets, setWidgets] = useState<any[]>([])
   const [platforms, setPlatforms] = useState<any[]>([])
   const [monitors, setMonitors] = useState<any[]>([])
@@ -356,6 +376,63 @@ export default function BroadcastPage() {
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources
   })
 
+  const refreshMediaDevices = useCallback(async (requestAccess = false) => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setDevices([])
+      setDeviceAccessError('Media devices are not available in this window.')
+      return [] as MediaDeviceInfo[]
+    }
+
+    let accessError: unknown = null
+    let probeStream: MediaStream | null = null
+
+    if (requestAccess) {
+      try {
+        probeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      } catch (err) {
+        accessError = err
+        console.warn('[BroadcastPage] Camera permission probe failed:', err)
+      } finally {
+        probeStream?.getTracks().forEach(track => track.stop())
+      }
+    }
+
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices()
+      const hasVideoDevice = list.some(device => device.kind === 'videoinput')
+      setDevices(list)
+
+      if (accessError) {
+        const name = (accessError as any)?.name
+        setDeviceAccessError(
+          !hasVideoDevice || name === 'NotAllowedError' || name === 'SecurityError'
+            ? getMediaDeviceAccessMessage(accessError)
+            : null
+        )
+      } else {
+        setDeviceAccessError(null)
+      }
+
+      return list
+    } catch (err) {
+      console.error('[BroadcastPage] Failed to enumerate media devices:', err)
+      setDevices([])
+      setDeviceAccessError(getMediaDeviceAccessMessage(err))
+      return [] as MediaDeviceInfo[]
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshMediaDevices(true)
+
+    const handleDeviceChange = () => {
+      void refreshMediaDevices(false)
+    }
+
+    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange)
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange)
+  }, [refreshMediaDevices])
+
   // Tracks aspect ratios currently being mirrored to projector windows so we
   // can force the matching output canvas to render on demand. Without this,
   // a 9:16 projector opened in horizontal-only mode would have no vertical
@@ -473,7 +550,6 @@ export default function BroadcastPage() {
   // Basic Initialization
   useEffect(() => {
     void (async () => {
-      const list = await navigator.mediaDevices.enumerateDevices(); setDevices(list)
       if (window.api?.widgets) setWidgets(await window.api.widgets.getAll())
       if (window.api?.platform) {
         const configs = toPlatformConfigMap(await window.api.platform.getConfigs())
@@ -650,9 +726,12 @@ export default function BroadcastPage() {
             ? fitRect(PORTRAIT_STAGE, 720, 160, 0.72)
             : fitRect(PORTRAIT_STAGE, 1280, 720)
 
-    const layerConfig = widgetPreset?.config
+    const layerConfigBase = widgetPreset?.config
       ? { ...config, ...widgetPreset.config }
       : config
+    const layerConfig = type === 'widget' && layerConfigBase.fps === undefined
+      ? { ...layerConfigBase, fps: DEFAULT_WIDGET_CAPTURE_FPS }
+      : layerConfigBase
     const locked = widgetPreset?.locked ?? false
 
     store.addLayer(targetScene.id, {
@@ -707,6 +786,13 @@ export default function BroadcastPage() {
     const { fps, bitrateKbps } = applyDestinationOutputCaps(configuredOutput, destinations)
     console.log(`[BroadcastPage] Starting broadcast at ${fps} FPS / ${bitrateKbps} Kbps`)
     setOutputConfig({ fps, bitrateKbps })
+    // Force MJPEG input when streaming to Twitch. With MJPEG, the renderer
+    // does CPU JPEG encoding and ffmpeg re-encodes via the hardware h264
+    // encoder (AMF/NVENC/QSV), which uses the GPU's dedicated video ASIC —
+    // separate from the 3D engine the game is using. H264 input via WebCodecs
+    // looks more efficient on paper, but it fights the game for the same
+    // Media Foundation encoder slot and ends up choppier in practice for
+    // anyone gaming on the same GPU.
     const useReliablePipe = destinations.some(usesTwitchIngest)
     const hIn = useReliablePipe
       ? 'mjpeg'
@@ -717,8 +803,19 @@ export default function BroadcastPage() {
       : await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
     setLayoutInputFormats({ horizontal: hIn, vertical: vIn })
 
-    const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
-    if (res.every(r => r.success)) { setIsStreaming(true); setStatus('Live') } else setStreamError('Failed to start one or more outputs')
+    const context = audioEngine.getContext()
+    if (context.state === 'suspended') await context.resume().catch(() => {})
+
+    const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: context.sampleRate })))
+    if (res.every(r => r.success)) {
+      setIsStreaming(true)
+      setStatus('Live')
+    } else {
+      await window.api.streaming.stop()
+      setIsStreaming(false)
+      setStatus(isRecording ? 'Recording' : 'Offline')
+      setStreamError(res.find(r => !r.success)?.error || 'Failed to start one or more outputs')
+    }
   }
 
   const stopBroadcast = async () => {
@@ -731,7 +828,16 @@ export default function BroadcastPage() {
     setStreamError(null)
     const fps = Math.max(1, Math.min(60, Math.round(outputConfig.fps || 30)))
     const bitrateKbps = store.recordingSettings.bitrateKbps || 12000
-    const inputFormat = await getOptimizedCaptureInputFormat(store.canvasWidth, store.canvasHeight, fps, bitrateKbps * 1000)
+    const recordingCodec = store.recordingSettings.codec || (
+      String(store.recordingSettings.encoder || '').startsWith('hevc') || store.recordingSettings.encoder === 'libx265'
+        ? 'h265'
+        : 'h264'
+    )
+    const inputFormat = isStreaming
+      ? captureInputFormat
+      : recordingCodec === 'h265'
+        ? 'mjpeg'
+        : await getOptimizedCaptureInputFormat(store.canvasWidth, store.canvasHeight, fps, bitrateKbps * 1000)
     setCaptureInputFormat(inputFormat)
     setOutputConfig({ fps, bitrateKbps })
 
@@ -863,7 +969,7 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-black relative">
+    <div className="broadcast-studio">
       <BroadcastHeader
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
         showLeftSidebar={showLeftSidebar} onToggleLeftSidebar={() => setShowLeftSidebar(!showLeftSidebar)} showRightSidebar={showRightSidebar} onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
@@ -922,7 +1028,7 @@ export default function BroadcastPage() {
         />
       )}
 
-      <div className="flex-1 flex min-h-0 bg-black">
+      <div className="broadcast-workbench">
         {showLeftSidebar && (
           <SceneSidebar
             scenes={store.scenes}
@@ -936,15 +1042,22 @@ export default function BroadcastPage() {
             setEditingSceneId={setEditingSceneId}
             editingSceneName={editingSceneName}
             setEditingSceneName={setEditingSceneName}
+            activeOrientation={selectionContext}
             onContextMenu={(e, id) => setSceneContextMenu({ x: e.clientX, y: e.clientY, sceneId: id })}
           />
         )}
-        <div className="flex-1 flex min-w-0 min-h-0 bg-[#080808] overflow-hidden relative">
+        <div className="broadcast-monitor-stack">
           {store.studioMode ? (
-            <div className="flex-1 flex min-w-0 h-full gap-4 p-4">
+            <div className="broadcast-studio-monitors">
               {/* Preview Canvas (Left) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-white/5 bg-black/20 rounded-md overflow-hidden relative group">
-                <div className="absolute top-4 left-4 z-10 px-3 py-1 bg-accent/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg">Preview</div>
+              <div className="broadcast-monitor-panel is-preview">
+                <div className="broadcast-monitor-head">
+                  <div>
+                    <span className="broadcast-monitor-kicker">Preview</span>
+                    <strong>{previewScene.name}</strong>
+                  </div>
+                  <span>{selectionContext}</span>
+                </div>
                 <CanvasEditor
                   activeScene={previewScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -961,11 +1074,17 @@ export default function BroadcastPage() {
               </div>
 
               {/* Transition Controls */}
-              <div className="flex flex-col justify-center items-center gap-4 px-3">
-                <div className="flex flex-col items-center gap-1">
+              <div className="broadcast-transition-dock">
+                <div className="broadcast-transition-title">
+                  <span>Transition</span>
+                  <strong>{store.transitionDuration}ms</strong>
+                </div>
+                <div className="broadcast-transition-group">
                   <button
+                    type="button"
+                    title="Fade transition"
                     onClick={() => store.transition('fade')}
-                    className="w-16 h-16 rounded-md bg-accent text-white flex flex-col items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all border border-white/10 group"
+                    className="broadcast-transition-button is-primary"
                   >
                     <IconArrowsMove size={24} className="group-hover:rotate-180 transition-transform duration-500" />
                     <span className="text-[10px] font-semibold tracking-tighter">Fade</span>
@@ -975,38 +1094,38 @@ export default function BroadcastPage() {
                       type="number"
                       value={store.transitionDuration}
                       onChange={(e) => store.setTransitionDuration(Number(e.target.value))}
-                      className="w-12 bg-white/5 border border-white/10 rounded text-[9px] font-semibold text-center text-white/50 focus:text-accent focus:border-accent/50 outline-none transition-all"
+                      className="broadcast-transition-duration"
                       title="Transition Duration (ms)"
                     />
-                    <span className="text-[7px] font-semibold tracking-tight text-white/20">ms</span>
                   </div>
                 </div>
 
-                <div className="h-px w-10 bg-white/10" />
-
                 <button
+                  type="button"
+                  title="Cut transition"
                   onClick={() => store.transition('cut')}
-                  className="w-16 py-3 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 text-[9px] font-semibold tracking-tight transition-all border border-white/5"
+                  className="broadcast-transition-button"
                 >
                   Cut
                 </button>
 
-                <div className="h-px w-10 bg-white/10" />
-
-                <div className="flex flex-col items-center gap-1">
+                <div className="broadcast-transition-group">
                   <button
+                    type="button"
+                    title="Stinger transition"
                     onClick={() => {
                       if (!store.stingerSettings.path) setShowStingerConfig(true)
                       else store.transition('stinger')
                     }}
-                    className={`w-16 h-16 rounded-md flex flex-col items-center justify-center gap-1 transition-all border border-white/10 group ${ store.stingerSettings.path ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:brightness-110' : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40' }`}
+                    className={`broadcast-transition-button ${store.stingerSettings.path ? 'is-stinger-ready' : ''}`}
                   >
                     <IconVideo size={24} />
                     <span className="text-[10px] font-semibold tracking-tighter">Stinger</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setShowStingerConfig(true)}
-                    className="text-[8px] font-semibold tracking-tight text-white/20 hover:text-white/60 transition-colors"
+                    className="broadcast-transition-link"
                   >
                     Setup
                   </button>
@@ -1015,8 +1134,14 @@ export default function BroadcastPage() {
 
 
               {/* Program Canvas (Right) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-red-500/20 bg-black/20 rounded-md overflow-hidden relative group">
-                <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-red-500/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg animate-pulse">Live</div>
+              <div className="broadcast-monitor-panel is-program">
+                <div className="broadcast-monitor-head">
+                  <div>
+                    <span className="broadcast-monitor-kicker">Program</span>
+                    <strong>{activeScene.name}</strong>
+                  </div>
+                  <span className={isStreaming ? 'is-live' : ''}>{isStreaming ? 'Live' : 'Ready'}</span>
+                </div>
                 <CanvasEditor
                   activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -1037,7 +1162,15 @@ export default function BroadcastPage() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col min-w-0 min-h-0 p-6">
+            <div className="broadcast-single-monitor">
+              <div className="broadcast-monitor-panel is-program is-single">
+                <div className="broadcast-monitor-head">
+                  <div>
+                    <span className="broadcast-monitor-kicker">Program</span>
+                    <strong>{activeScene.name}</strong>
+                  </div>
+                  <span className={isStreaming ? 'is-live' : ''}>{isStreaming ? 'Live' : selectionContext}</span>
+                </div>
               <CanvasEditor
                 activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                 captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -1055,6 +1188,7 @@ export default function BroadcastPage() {
                 }}
                 ref={canvasRef}
               />
+              </div>
             </div>
           )}
         </div>
@@ -1065,7 +1199,10 @@ export default function BroadcastPage() {
             onSelectLayer={store.setSelectedLayer}
             onUpdateLayer={(id, u) => store.updateLayer(store.studioMode ? previewScene.id : activeScene.id, id, u)}
             onReorderLayer={(id, i) => store.reorderLayer(store.studioMode ? previewScene.id : activeScene.id, id, i)}
-            onShowSourceModal={() => setShowSourceModal(true)}
+            onShowSourceModal={() => {
+              setShowSourceModal(true)
+              void refreshMediaDevices(true)
+            }}
             onContextMenu={(e, l, ctx) => {
               changeSelectionContext(ctx)
               setSourceContextMenu({ x: e.clientX, y: e.clientY, layer: l, sceneId: getSceneIdForLayer(l), aspectRatio: ctx })
@@ -1083,7 +1220,15 @@ export default function BroadcastPage() {
       </div>
 
       <MixerContainer isCollapsed={isMixerCollapsed} onToggleCollapse={() => setIsMixerCollapsed(!isMixerCollapsed)} mixerHeight={mixerHeight} onResizeStart={() => setIsResizingMixer(true)} activeScene={activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
-      <AddSourceModal open={showSourceModal} onClose={() => setShowSourceModal(false)} onAdd={addSource} widgets={widgets} devices={devices} />
+      <AddSourceModal
+        open={showSourceModal}
+        onClose={() => setShowSourceModal(false)}
+        onAdd={addSource}
+        widgets={widgets}
+        devices={devices}
+        deviceAccessError={deviceAccessError}
+        onRefreshDevices={() => { void refreshMediaDevices(true) }}
+      />
       <EnhancementModal
         open={store.showEnhancementModal}
         onClose={() => store.setShowEnhancementModal(false)}

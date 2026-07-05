@@ -27,6 +27,7 @@ import { StatsService } from '../stats/stats-service'
 import { DeviceApi } from '../overlay/device-api'
 import { BrowserSourceService } from './browser-source-service'
 import { GoveeService } from './govee-service'
+
 import { VirtualCameraService } from './virtual-camera-service'
 import { LightingManagerService } from './lighting/lighting-manager'
 import { TikTokChatSender } from '../platforms/tiktok/tiktok-chat-sender'
@@ -66,6 +67,7 @@ export class ServiceRegistry {
   public deviceApi: DeviceApi
   public eventOrchestrator: EventOrchestrator
   public goveeService: GoveeService
+
   public virtualCameraService: VirtualCameraService
   public lightingManager: LightingManagerService
   public tiktokChatSender: TikTokChatSender
@@ -79,7 +81,10 @@ export class ServiceRegistry {
     this.tiktokChatSender = new TikTokChatSender()
     this.platformManager = new PlatformManager(this.db, this.tiktokChatSender)
     this.spotifyService = new SpotifyService(this.db, this.platformManager)
-    this.ttsEngine = new TTSEngine()
+    this.ttsEngine = new TTSEngine(
+      (platform, username, identity) => this.db.getViewerProfileId(platform, username, identity),
+      (profileId, permission) => this.db.stats.profileMatchesPermission(profileId, permission)
+    )
     this.soundboardService = new SoundboardService(this.db)
     this.assetService = new AssetService()
     this.aiService = new AIService()
@@ -99,6 +104,7 @@ export class ServiceRegistry {
     this.streamIntelligenceService = new StreamIntelligenceService()
     this.streamerbotBridgeService = new StreamerbotBridgeService()
     this.goveeService = new GoveeService(this.db)
+
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
     this.lightingManager = new LightingManagerService()
     this.recordingsService = new RecordingsService()
@@ -107,6 +113,7 @@ export class ServiceRegistry {
     // Register lighting providers
     this.lightingManager.registerProvider(this.hueService)
     this.lightingManager.registerProvider(this.goveeService)
+    this.lightingManager.registerProvider(this.razerChromaService)
 
     const settingsFetcher = () => resolveAppSettings(this.db.getAllSettings())
     this.chatRelayService = new ChatRelayService(this.platformManager, settingsFetcher)
@@ -115,7 +122,8 @@ export class ServiceRegistry {
       this.aiService,
       this.ttsEngine,
       this.chatRelayService,
-      this.memoryService
+      this.memoryService,
+      this.statsService
     )
     this.automationService = new AutomationService()
     this.voicemodService = new VoicemodService()

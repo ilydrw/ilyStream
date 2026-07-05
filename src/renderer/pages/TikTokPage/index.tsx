@@ -1,10 +1,11 @@
-import { IconAlertCircle, IconBrowser, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi } from '@tabler/icons-react'
+import { IconAlertCircle, IconBrowser, IconChartBar, IconHeart, IconLayout, IconMessage2, IconRadio, IconSend, IconUsers, IconWifi } from '@tabler/icons-react'
 import { IconCircleCheck, IconPlayerPlay } from '../../components/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
 import { getPlatformCapability, getPlatformConfig } from '../../lib/platform-configs'
 import type { TikTokSenderStatus } from '../../../main/platforms/tiktok/tiktok-chat-sender'
+import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -41,6 +42,13 @@ export default function TikTokPage() {
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
   const [senderStatus, setSenderStatus] = useState<TikTokSenderStatus>(DEFAULT_SENDER_STATUS)
   const [senderTest, setSenderTest] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; message?: string }>({ state: 'idle' })
+  const [overlayStatus, setOverlayStatus] = useState<OverlayRuntimeStatus | null>(null)
+  const [likeHealth, setLikeHealth] = useState<{ count: number; lastAt: number | null; lastUser: string | null }>({
+    count: 0,
+    lastAt: null,
+    lastUser: null
+  })
+  const [likeTest, setLikeTest] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; message?: string }>({ state: 'idle' })
 
   const status = statuses[PLATFORM_ID] || 'disconnected'
   const error = errors[PLATFORM_ID] || null
@@ -71,10 +79,56 @@ export default function TikTokPage() {
     return () => clearInterval(interval)
   }, [status])
 
+  useEffect(() => {
+    if (!window.api?.overlay) return
+
+    const loadOverlayStatus = () => {
+      void window.api.overlay.getStatus().then((status: OverlayRuntimeStatus) => {
+        setOverlayStatus(status)
+      })
+    }
+
+    loadOverlayStatus()
+    const interval = window.setInterval(loadOverlayStatus, 3000)
+    const unsubscribe = window.api.on('overlay:status-changed', (status: unknown) => {
+      setOverlayStatus(status as OverlayRuntimeStatus)
+    })
+
+    return () => {
+      window.clearInterval(interval)
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.api?.on?.('event:stream', (event: any) => {
+      if (event?.platform !== PLATFORM_ID || event?.type !== 'like') return
+      const amount = Math.max(1, Math.floor(Number(event.likeCount) || 1))
+      const reportedTotal = !event.raw?.simulated && Number.isFinite(Number(event.totalLikes)) && Number(event.totalLikes) > 0
+        ? Math.floor(Number(event.totalLikes))
+        : 0
+      setLikeHealth((prev) => ({
+        count: reportedTotal > 0 ? Math.max(prev.count + amount, reportedTotal) : prev.count + amount,
+        lastAt: Date.now(),
+        lastUser: event.user?.displayName || event.user?.username || 'TikTok viewer'
+      }))
+    })
+
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
+  }, [])
+
   const platformEvents = useMemo(
     () => recentEvents.filter((event) => event.platform === PLATFORM_ID).slice(0, 15),
     [recentEvents]
   )
+  const leaderboardClients = overlayStatus?.leaderboardClientCount || 0
+  const likesTrackerClients = overlayStatus?.likesClientCount || 0
+  const overlayRunning = Boolean(overlayStatus?.running)
+  const likeHealthLabel = likeHealth.lastAt
+    ? `${likeHealth.count.toLocaleString()} likes, last from ${likeHealth.lastUser}`
+    : 'No like events this session'
   const senderChecks = [
     { label: 'Window', ok: senderStatus.isWindowOpen },
     { label: 'TikTok', ok: senderStatus.isOnTikTok },
@@ -164,6 +218,25 @@ export default function TikTokPage() {
       }
     } catch (err: any) {
       setSenderTest({ state: 'failed', message: err?.message || 'Could not send the test message.' })
+    }
+  }
+
+  const handleTestLike = async () => {
+    if (!window.api?.events?.simulate) return
+    setLikeTest({ state: 'sending' })
+    try {
+      await window.api.events.simulate({
+        platform: PLATFORM_ID,
+        type: 'like',
+        username: 'leaderboard_test',
+        displayName: 'Leaderboard Test',
+        likeCount: 25,
+        totalLikes: 100000000,
+        suppressSound: true
+      })
+      setLikeTest({ state: 'sent', message: 'Test like sent through the widget pipeline.' })
+    } catch (err: any) {
+      setLikeTest({ state: 'failed', message: err?.message || 'Could not send the test like.' })
     }
   }
 
@@ -264,7 +337,7 @@ export default function TikTokPage() {
             <div className="app-section-head">
               <div>
                 <h2>Diagnostics</h2>
-                <p>Technical heartbeat for the TikTok node.</p>
+                <p>Connect, test, live status, errors, and widget delivery.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8">
@@ -280,6 +353,47 @@ export default function TikTokPage() {
                 value={canSend.canSend ? 'Operational' : canSend.reason || 'Restricted'}
                 tone={canSend.canSend ? 'good' : 'muted'}
               />
+              <DiagnosticLine
+                icon={<IconHeart size={16} />}
+                label="Like Events"
+                value={likeHealthLabel}
+                tone={likeHealth.lastAt ? 'good' : isConnected ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconLayout size={16} />}
+                label="Likes Tracker Source"
+                value={overlayRunning ? `${likesTrackerClients} attached` : 'Overlay server offline'}
+                tone={overlayRunning && likesTrackerClients > 0 ? 'good' : overlayRunning ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconChartBar size={16} />}
+                label="Leaderboard Source"
+                value={overlayRunning ? `${leaderboardClients} attached` : 'Overlay server offline'}
+                tone={overlayRunning && leaderboardClients > 0 ? 'good' : overlayRunning ? 'muted' : 'bad'}
+              />
+              <DiagnosticLine
+                icon={<IconAlertCircle size={16} />}
+                label="Recent Errors"
+                value={error || overlayStatus?.lastError || 'None'}
+                tone={error || overlayStatus?.lastError ? 'bad' : 'good'}
+              />
+            </div>
+            <div className="flex flex-col gap-3 border-t border-white/5 px-8 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold text-white/60">Widget pipeline test</p>
+                <p className={`mt-1 text-[11px] font-semibold ${likeTest.state === 'failed' ? 'text-danger/80' : 'text-white/30'}`}>
+                  {likeTest.message || 'Sends a local TikTok like through the same event path as the live connector.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleTestLike}
+                disabled={likeTest.state === 'sending'}
+                className="app-button-secondary !h-10 !px-5 text-xs font-semibold disabled:opacity-40"
+              >
+                {likeTest.state === 'sending' ? <IconAlertCircle size={15} /> : <IconHeart size={15} />}
+                Send Test Like
+              </button>
             </div>
           </section>
 

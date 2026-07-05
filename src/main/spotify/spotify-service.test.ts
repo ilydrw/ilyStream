@@ -17,7 +17,8 @@ const DEFAULT_SETTINGS = {
   spotifySkipEnabled: true,
   spotifyAllowExplicit: true,
   spotifyMaxQueueLength: 0,
-  spotifyMaxPerUser: 3
+  spotifyMaxPerUser: 3,
+  spotifyVotesRequired: 1
 }
 
 function createService(settings: Record<string, unknown> = {}, options: { connected?: boolean } = {}) {
@@ -83,21 +84,21 @@ function makeRequest(id: string, trackId: string, requestedBy: string): SpotifyS
   }
 }
 
-function makeChat(message: string): ChatEvent {
+function makeChat(message: string, user: Partial<ChatEvent['user']> = {}): ChatEvent {
   return {
     id: `chat-${message}`,
     platform: 'twitch',
     timestamp: new Date(),
     type: 'chat',
     user: {
-      id: 'viewer-id',
-      username: 'viewer',
-      displayName: 'Viewer Name',
-      profilePictureUrl: 'https://example.com/viewer.png',
-      isModerator: false,
-      isSubscriber: false,
-      isVip: false,
-      badges: []
+      id: user.id ?? 'viewer-id',
+      username: user.username ?? 'viewer',
+      displayName: user.displayName ?? 'Viewer Name',
+      profilePictureUrl: user.profilePictureUrl ?? 'https://example.com/viewer.png',
+      isModerator: user.isModerator ?? false,
+      isSubscriber: user.isSubscriber ?? false,
+      isVip: user.isVip ?? false,
+      badges: user.badges ?? []
     },
     message,
     emotes: [],
@@ -128,6 +129,31 @@ describe('SpotifyService chat commands', () => {
       profilePictureUrl: 'https://example.com/viewer.png',
       status: 'queued'
     })
+  })
+
+  it('reports song request 404s as a missing active Spotify device', async () => {
+    const { service, client } = createService()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      client.searchTrack.mockResolvedValue(makeTrack())
+      client.enqueue.mockRejectedValue(
+        new SpotifyApiError(
+          'No active Spotify device found. Open Spotify on desktop or mobile, press Play once, then try the song request again.',
+          404
+        )
+      )
+
+      await expect(service.processEvent(makeChat('!play current song'))).resolves.toBe(true)
+
+      expect(service.getQueue()).toEqual([])
+      expect(service.getStatus()).toMatchObject({
+        connected: true,
+        isActiveDevice: false,
+        error: 'Song request failed: No active Spotify device found. Open Spotify on desktop or mobile, press Play once, then try the song request again.'
+      })
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('restores a saved session before handling chat song requests', async () => {
@@ -187,6 +213,26 @@ describe('SpotifyService chat commands', () => {
     const { service, client } = createService()
 
     await expect(service.processEvent(makeChat('!skip'))).resolves.toBe(true)
+    expect(client.skip).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires distinct votes before skipping when configured', async () => {
+    const { service, client } = createService({ spotifyVotesRequired: 2 })
+    ;(service as any).currentNowPlaying = {
+      ...(service as any).currentNowPlaying,
+      trackId: 'track-current'
+    }
+
+    await expect(service.processEvent(makeChat('!voteskip'))).resolves.toBe(true)
+    await expect(service.processEvent(makeChat('!voteskip'))).resolves.toBe(true)
+    expect(client.skip).not.toHaveBeenCalled()
+
+    await expect(service.processEvent(makeChat('!voteskip', {
+      id: 'second-viewer-id',
+      username: 'second_viewer',
+      displayName: 'Second Viewer'
+    }))).resolves.toBe(true)
+
     expect(client.skip).toHaveBeenCalledTimes(1)
   })
 

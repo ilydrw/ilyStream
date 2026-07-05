@@ -54,30 +54,33 @@ export class TriggerEngine extends EventEmitter {
     if (event.isCombo) return
 
     const key = `${event.platform}:${event.user.username}:${event.giftId}`
-    const existing = this.giftDebouncers.get(key)
+    
+    const runTimer = () => {
+      const buffered = this.giftDebouncers.get(key)
+      if (buffered) {
+        this.giftDebouncers.delete(key)
+        void this.processEvent({
+          ...buffered.latestEvent,
+          giftCount: buffered.totalCount,
+          monetaryValue: buffered.totalValue,
+          isCombo: false
+        })
+      }
+    }
 
+    const existing = this.giftDebouncers.get(key)
     if (existing) {
       clearTimeout(existing.timer)
       existing.totalCount += event.giftCount
       existing.totalValue += event.monetaryValue
       existing.latestEvent = event
+      existing.timer = setTimeout(runTimer, 2000)
     } else {
       this.giftDebouncers.set(key, {
         totalCount: event.giftCount,
         totalValue: event.monetaryValue,
         latestEvent: event,
-        timer: setTimeout(() => {
-          const buffered = this.giftDebouncers.get(key)
-          if (buffered) {
-            this.giftDebouncers.delete(key)
-            void this.processEvent({
-              ...buffered.latestEvent,
-              giftCount: buffered.totalCount,
-              monetaryValue: buffered.totalValue,
-              isCombo: false
-            })
-          }
-        }, 2000)
+        timer: setTimeout(runTimer, 2000)
       })
     }
   }

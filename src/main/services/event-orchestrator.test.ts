@@ -1,22 +1,23 @@
 import { EventEmitter } from 'events'
 import { describe, expect, it, vi } from 'vitest'
 import { EventOrchestrator } from './event-orchestrator'
+import { markSuppressedChatRelayEcho } from '../chat/chat-relay-service'
 import type { ChatEvent, LikeEvent } from '../platforms/types'
 
-function makeChat(message: string): ChatEvent {
+function makeChat(message: string, user: Partial<ChatEvent['user']> = {}): ChatEvent {
   return {
     id: `chat-${message}`,
     platform: 'twitch',
     timestamp: new Date(),
     type: 'chat',
     user: {
-      id: 'viewer-id',
-      username: 'viewer',
-      displayName: 'Viewer',
-      isModerator: false,
-      isSubscriber: false,
-      isVip: false,
-      badges: []
+      id: user.id ?? 'viewer-id',
+      username: user.username ?? 'viewer',
+      displayName: user.displayName ?? 'Viewer',
+      isModerator: user.isModerator ?? false,
+      isSubscriber: user.isSubscriber ?? false,
+      isVip: user.isVip ?? false,
+      badges: user.badges ?? []
     },
     message,
     emotes: [],
@@ -72,6 +73,12 @@ function makeOrchestrator(
     processEvent: vi.fn().mockResolvedValue(spotifyHandled),
     getNowPlaying: vi.fn(() => ({ queue: [] }))
   })
+  const eventSoundService = {
+    processEvent: vi.fn(),
+    playSound: vi.fn(),
+    stopAll: vi.fn()
+  }
+  const triggerEngine = Object.assign(new EventEmitter(), { evaluate: vi.fn() })
   const chatRelayService = {
     sendManualMessage: overrides.sendManualMessage || vi.fn().mockResolvedValue([{ platform: 'twitch', ok: true }])
   }
@@ -97,12 +104,12 @@ function makeOrchestrator(
     platformManager as any,
     { addEvent: vi.fn(), pruneEventHistory: vi.fn(), getAllSettings: vi.fn(() => overrides.settings || {}) } as any,
     overlayServer as any,
-    { processEvent: vi.fn() } as any,
+    eventSoundService as any,
     spotifyService as any,
     chatRelayService as any,
     ttsEngine as any,
     {} as any,
-    Object.assign(new EventEmitter(), { evaluate: vi.fn() }) as any,
+    triggerEngine as any,
     { handleTrigger: vi.fn() } as any,
     {} as any,
     {} as any,
@@ -115,7 +122,7 @@ function makeOrchestrator(
   )
 
   orchestrator.init()
-  return { orchestrator, platformManager, spotifyService, chatRelayService, ttsEngine, statsService, overlayServer, economyService, loyaltyService }
+  return { orchestrator, platformManager, spotifyService, chatRelayService, ttsEngine, statsService, overlayServer, economyService, loyaltyService, eventSoundService, triggerEngine }
 }
 
 async function flushAsyncHandlers() {
@@ -149,6 +156,41 @@ describe('EventOrchestrator Spotify handling', () => {
     await flushAsyncHandlers()
 
     expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+  })
+
+  it('does not route synthetic AI co-host chat back into TTS', async () => {
+    const { platformManager, ttsEngine, overlayServer, eventSoundService, spotifyService, triggerEngine } = makeOrchestrator(false)
+
+    platformManager.emit('event', makeChat('hello from ai', {
+      id: 'ai-cohost',
+      username: 'ai-cohost',
+      displayName: 'ilyStream AI',
+      isModerator: true
+    }))
+    await flushAsyncHandlers()
+
+    expect(overlayServer.handleStreamEvent).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'hello from ai'
+    }))
+    expect(eventSoundService.processEvent).not.toHaveBeenCalled()
+    expect(spotifyService.processEvent).not.toHaveBeenCalled()
+    expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+    expect(triggerEngine.evaluate).not.toHaveBeenCalled()
+  })
+
+  it('does not route echoed manual chat sends back into TTS', async () => {
+    const { platformManager, ttsEngine, overlayServer, eventSoundService, spotifyService, triggerEngine } = makeOrchestrator(false)
+    const echo = makeChat('hello from ai')
+    markSuppressedChatRelayEcho(echo)
+
+    platformManager.emit('event', echo)
+    await flushAsyncHandlers()
+
+    expect(overlayServer.handleStreamEvent).toHaveBeenCalledWith(echo)
+    expect(eventSoundService.processEvent).not.toHaveBeenCalled()
+    expect(spotifyService.processEvent).not.toHaveBeenCalled()
+    expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+    expect(triggerEngine.evaluate).not.toHaveBeenCalled()
   })
 
   it('keeps dispatching later consumers when an earlier stage throws', async () => {

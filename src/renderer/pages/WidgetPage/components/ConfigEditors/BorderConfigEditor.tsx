@@ -4,22 +4,9 @@ import {
   type BorderConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { applyWidgetThemeConfig, type WidgetThemeId } from '../../../../../shared/widget-themes'
 import { NumberInput } from '../../../../components/ui/Inputs'
 import { Section, Field, ColorRow } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
-
-const BORDER_THEME_OPTIONS: Array<{
-  id: WidgetThemeId
-  style: BorderConfig['style']
-  label: string
-  selectedClass: string
-}> = [
-  { id: 'classic', style: 'classic', label: 'Classic', selectedClass: 'bg-accent text-white border-transparent ' },
-  { id: 'chroma', style: 'chroma', label: 'Chroma', selectedClass: 'bg-gradient-to-r from-red-500 via-yellow-300 via-green-400 to-fuchsia-500 text-white border-transparent' },
-  { id: 'cyber', style: 'cyber', label: 'Cyber', selectedClass: 'bg-accent text-white border-transparent ' },
-  { id: 'gob-the-stopper', style: 'gob-the-stopper', label: 'Gob', selectedClass: 'bg-lime-300 text-black border-lime-200 shadow-[0_0_18px_rgba(182,255,0,0.24)]' }
-]
 
 export function BorderConfigEditor({
   draft,
@@ -37,27 +24,9 @@ export function BorderConfigEditor({
     onChange({ ...draft, config: { ...config, [key]: value } })
   }
 
-  const applyTheme = (themeId: WidgetThemeId) => {
-    onChange({ ...draft, config: applyWidgetThemeConfig(config, themeId) })
-  }
-
   return (
     <div className="flex flex-col gap-8">
       <Section label="Colors">
-        <Field label="Theme">
-          <div className="grid grid-cols-4 gap-2">
-            {BORDER_THEME_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => applyTheme(option.id)}
-                className={`h-9 rounded-lg text-[9px] font-semibold tracking-tight border transition-all ${ config.style === option.style ? option.selectedClass : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </Field>
-
         <ColorRow label="Primary" value={config.color1} onChange={(v) => update('color1', v)} />
         <ColorRow label="Secondary" value={config.color2} onChange={(v) => update('color2', v)} />
 
@@ -69,7 +38,7 @@ export function BorderConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
       </Section>
@@ -95,7 +64,7 @@ export function BorderConfigEditor({
             onChange={(v) => update('borderRadius', v)}
             min={0}
             max={200}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
       </Section>
@@ -107,7 +76,7 @@ export function BorderConfigEditor({
             onChange={(v) => update('thickness', v)}
             min={1}
             max={50}
-            className="!w-24 !h-9 !text-xs text-right"
+            className="!w-32"
           />
         </Field>
 
@@ -119,7 +88,7 @@ export function BorderConfigEditor({
             step={0.1}
             value={config.glowIntensity}
             onChange={(e) => update('glowIntensity', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
 
@@ -131,7 +100,7 @@ export function BorderConfigEditor({
             step={0.1}
             value={config.speed}
             onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-[#d035f1]"
+            className="w-full accent-[#19c8ff]"
           />
         </Field>
         <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">

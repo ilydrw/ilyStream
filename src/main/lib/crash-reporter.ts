@@ -1,6 +1,7 @@
 import { app, dialog } from 'electron'
 import { join, dirname } from 'path'
 import { mkdirSync, appendFileSync } from 'fs'
+import { redactString } from './logger'
 
 export function formatError(error: unknown): string {
   if (error instanceof Error) return error.stack || `${error.name}: ${error.message}`
@@ -33,9 +34,14 @@ export function writeCrashLog(label: string, error: unknown): void {
   if (!crashLogPath) return
   try {
     mkdirSync(dirname(crashLogPath), { recursive: true })
+    // Redact the formatted error before writing. formatError() may include
+    // `error.stack` from a throw near a token (e.g. fetch in the orchestrator
+    // hot path) and the crash log is not routed through the console.* pipeline
+    // where the redactor normally runs.
+    const body = redactString(formatError(error))
     appendFileSync(
       crashLogPath,
-      `[${new Date().toISOString()}] ${label}\n${formatError(error)}\n\n`,
+      `[${new Date().toISOString()}] ${label}\n${body}\n\n`,
       'utf8'
     )
   } catch {
@@ -48,7 +54,9 @@ export function reportFatalError(label: string, error: unknown, mainWindow: Elec
   writeCrashLog(label, error)
   if (mainWindow && !mainWindow.isDestroyed() && !startupError) return
   try {
-    dialog.showErrorBox('ilyStream startup error', `${label}\n\n${formatError(error)}`)
+    // Redact before surfacing to the user — the dialog box is shown verbatim
+    // and a token in a stack trace would land on screen.
+    dialog.showErrorBox('ilyStream startup error', `${label}\n\n${redactString(formatError(error))}`)
   } catch {
     /* best effort */
   }
@@ -56,7 +64,7 @@ export function reportFatalError(label: string, error: unknown, mainWindow: Elec
 
 export function buildStartupErrorHtml(error: unknown): string {
   const crashLogPath = getCrashLogPath()
-  const details = escapeHtml(formatError(error))
+  const details = escapeHtml(redactString(formatError(error)))
   const logLine = crashLogPath
     ? `<p>Crash log: <code>${escapeHtml(crashLogPath)}</code></p>`
     : ''

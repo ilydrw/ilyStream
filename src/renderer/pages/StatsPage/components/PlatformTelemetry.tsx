@@ -2,6 +2,7 @@ import {IconChartBar} from '@tabler/icons-react'
 import type { GlobalStats } from '../../../../shared/stats'
 import type { Platform } from '../../../../main/platforms/types'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
+import { subscriptionMetricLabel, subscriptionMetricTitle } from '../../../lib/audience-labels'
 import { formatCurrency, formatRelativeTime } from '../utils'
 
 const PLATFORMS: Platform[] = ['tiktok', 'twitch', 'youtube', 'kick']
@@ -26,9 +27,9 @@ interface PlatformTelemetryProps {
   isRelevant: (platform: Platform | 'all', key: string) => boolean
 }
 
-function PlatformStatRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function PlatformStatRow({ label, value, sub, title }: { label: string; value: string; sub?: string; title?: string }) {
   return (
-    <div className="flex items-baseline justify-between py-0.5 pr-1">
+    <div className="flex items-baseline justify-between py-0.5 pr-1" title={title}>
       <span className="text-white/40 font-medium">{label}</span>
       <div className="flex items-baseline gap-2">
         {sub && <span className="text-[10px] text-white/20 font-mono">{sub}</span>}
@@ -91,7 +92,13 @@ export function PlatformTelemetry({ global, activePlatformTab, onTabChange, isRe
               <div className="space-y-4 text-sm bg-white/[0.02] rounded-xl p-4 border border-white/[0.05]">
                 {isRelevant(p, 'totalLikes') && <PlatformStatRow label="Likes" value={ps.totalLikes.toLocaleString()} />}
                 {isRelevant(p, 'totalGifts') && <PlatformStatRow label="Gifts" value={ps.totalGifts.toLocaleString()} sub={formatCurrency(ps.totalGiftValueCents)} />}
-                {isRelevant(p, 'totalSubscriptions') && <PlatformStatRow label="Subs" value={ps.totalSubscriptions.toLocaleString()} />}
+                {isRelevant(p, 'totalSubscriptions') && (
+                  <PlatformStatRow
+                    label={subscriptionMetricLabel(p)}
+                    value={ps.totalSubscriptions.toLocaleString()}
+                    title={subscriptionMetricTitle(p)}
+                  />
+                )}
                 {isRelevant(p, 'totalFollows') && <PlatformStatRow label="Follows" value={ps.totalFollows.toLocaleString()} />}
                 {isRelevant(p, 'totalShares') && <PlatformStatRow label="Shares" value={ps.totalShares.toLocaleString()} />}
                 {isRelevant(p, 'totalRaids') && <PlatformStatRow label="Raids" value={ps.totalRaids.toLocaleString()} />}

@@ -124,8 +124,8 @@ export function resolveWidgetStudioPreset(
       portrait: panelBox(portraitWidth, portraitHeight, 500, 160, 'top-left', 48)
     },
     'likes-tracker': {
-      landscape: panelBox(canvasWidth, canvasHeight, 420, 220, 'top-right'),
-      portrait: panelBox(portraitWidth, portraitHeight, 500, 240, 'top-left', 48)
+      landscape: panelBox(canvasWidth, canvasHeight, 420, 280, 'top-right'),
+      portrait: panelBox(portraitWidth, portraitHeight, 500, 280, 'top-left', 48)
     },
     leaderboard: {
       landscape: panelBox(canvasWidth, canvasHeight, 430, 520, 'top-right'),

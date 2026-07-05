@@ -11,9 +11,26 @@ import {
 
 const CHAT_XP_COOLDOWN_MS = 30_000
 const CHAT_PLATFORMS = new Set<Platform>(['tiktok', 'twitch', 'youtube', 'kick'])
+/**
+ * Trailing-fire window for batching XP writes from like events. Likes burst
+ * dozens/sec on TikTok; coalescing per-user XP into one read+write each
+ * window keeps SQLite quiet without delaying level-up announcements more
+ * than a beat.
+ */
+const LIKE_XP_FLUSH_INTERVAL_MS = 1000
+
+interface PendingLikeXp {
+  award: LoyaltyXpAward
+  totalAmount: number
+  previousXp: number
+  previousLevel: number
+}
 
 export class LoyaltyService extends EventEmitter {
   private chatXpCooldowns = new Map<string, number>()
+  /** Aggregated pending XP per `${platform}:${username}` for like events. */
+  private pendingLikeXp = new Map<string, PendingLikeXp>()
+  private likeXpFlushTimer: NodeJS.Timeout | null = null
 
   constructor(private readonly db: Database) {
     super()
@@ -25,7 +42,18 @@ export class LoyaltyService extends EventEmitter {
     }
 
     const award = this.getAwardForEvent(event)
-    return award ? this.addXp(award) : null
+    if (!award) return null
+
+    // Likes are bursty — coalesce per-user XP into one DB read+write per
+    // window. Level-up emits still happen for users that cross a threshold,
+    // just up to ~1s late. Every other event type stays synchronous so
+    // gift/sub/follow level-ups fire immediately.
+    if (event.type === 'like') {
+      this.queueLikeXp(award)
+      return null
+    }
+
+    return this.addXp(award)
   }
 
   recordSongRequest(input: {
@@ -158,6 +186,107 @@ export class LoyaltyService extends EventEmitter {
       if (now - timestamp > CHAT_XP_COOLDOWN_MS * 4) {
         this.chatXpCooldowns.delete(key)
       }
+    }
+  }
+
+  private queueLikeXp(award: LoyaltyXpAward): void {
+    const username = award.username.trim()
+    if (!username || award.amount <= 0 || !isChatPlatform(award.platform)) return
+
+    const key = `${award.platform}:${username}`
+    const amount = Math.max(0, Math.floor(award.amount))
+    const existing = this.pendingLikeXp.get(key)
+
+    if (existing) {
+      existing.totalAmount += amount
+      // Keep the latest displayName/award metadata in case it changed.
+      existing.award = { ...award, amount: existing.totalAmount }
+    } else {
+      // Snapshot the current XP/level once per window. Subsequent likes in
+      // the same window add to `totalAmount` without re-reading the DB.
+      const previous = this.getUserProgress(award.platform, username)
+      const previousXp = previous?.xp ?? 0
+      const previousLevel = previous?.level ?? getLoyaltyLevelForXp(previousXp)
+      this.pendingLikeXp.set(key, {
+        award: { ...award, amount },
+        totalAmount: amount,
+        previousXp,
+        previousLevel
+      })
+    }
+
+    if (!this.likeXpFlushTimer) {
+      this.likeXpFlushTimer = setTimeout(() => {
+        this.likeXpFlushTimer = null
+        this.flushLikeXpNow()
+      }, LIKE_XP_FLUSH_INTERVAL_MS)
+    }
+  }
+
+  /** Drain `pendingLikeXp` into one transactional batch of UPSERTs. */
+  private flushLikeXpNow(): void {
+    if (this.pendingLikeXp.size === 0) return
+    const entries = Array.from(this.pendingLikeXp.values())
+    this.pendingLikeXp.clear()
+
+    interface ComputedRow {
+      pending: PendingLikeXp
+      username: string
+      displayName: string
+      nextXp: number
+      nextProgress: ReturnType<typeof getLoyaltyProgressForXp>
+    }
+    const rows: ComputedRow[] = []
+    for (const pending of entries) {
+      const username = pending.award.username.trim()
+      if (!username) continue
+      const displayName = pending.award.displayName.trim() || username
+      const nextXp = pending.previousXp + pending.totalAmount
+      const nextProgress = getLoyaltyProgressForXp(nextXp)
+      rows.push({ pending, username, displayName, nextXp, nextProgress })
+    }
+    if (rows.length === 0) return
+
+    try {
+      const raw = this.db.getRawDb()
+      const stmt = raw.prepare(`
+        INSERT INTO economy_users (username, platform, points, xp, level, updated_at)
+        VALUES (?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(username, platform) DO UPDATE SET
+          xp = excluded.xp,
+          level = excluded.level,
+          updated_at = CURRENT_TIMESTAMP
+      `)
+      const tx = raw.transaction((items: ComputedRow[]) => {
+        for (const r of items) {
+          stmt.run(r.username, r.pending.award.platform, r.nextXp, r.nextProgress.level)
+        }
+      })
+      tx(rows)
+    } catch (err) {
+      console.error('[loyalty] like-xp flush failed; re-queueing:', err)
+      // Re-queue so the next window retries.
+      for (const r of rows) {
+        const key = `${r.pending.award.platform}:${r.username}`
+        this.pendingLikeXp.set(key, r.pending)
+      }
+      return
+    }
+
+    // Emit one level-up per user that crossed a threshold.
+    for (const r of rows) {
+      if (r.nextProgress.level <= r.pending.previousLevel) continue
+      const levelUp: LoyaltyLevelUpEvent = {
+        username: r.username,
+        platform: r.pending.award.platform,
+        displayName: r.displayName,
+        xp: r.nextXp,
+        previousLevel: r.pending.previousLevel,
+        awardedXp: r.pending.totalAmount,
+        reason: r.pending.award.reason,
+        ...r.nextProgress
+      }
+      this.emit('level-up', levelUp)
     }
   }
 }

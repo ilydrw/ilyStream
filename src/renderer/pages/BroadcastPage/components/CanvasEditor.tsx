@@ -15,7 +15,7 @@ import {
   type HandleDir
 } from './CanvasEditor.types'
 
-import { resolveImageSource } from './CanvasEditor.utils'
+import { normalizeGridSize, resolveImageSource, snapPointToGrid, snapResizeRectToGrid } from './CanvasEditor.utils'
 import { useBroadcastAudio } from './useBroadcastAudio'
 import { useVideoEncoder } from './useVideoEncoder'
 
@@ -26,6 +26,32 @@ import { CanvasToolbar } from './CanvasToolbar'
 import { CanvasStatusBar } from './CanvasStatusBar'
 import { useRenderLoop } from './useRenderLoop'
 import { useBrowserSources } from './useBrowserSources'
+
+function CanvasGridOverlay({ gridSize }: { gridSize: number }) {
+  const normalizedGridSize = normalizeGridSize(gridSize)
+  const majorGridSize = normalizedGridSize * 5
+
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        backgroundImage: [
+          'linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)',
+          'linear-gradient(to right, rgba(208,53,241,0.18) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(208,53,241,0.18) 1px, transparent 1px)'
+        ].join(', '),
+        backgroundSize: [
+          `${normalizedGridSize}px ${normalizedGridSize}px`,
+          `${normalizedGridSize}px ${normalizedGridSize}px`,
+          `${majorGridSize}px ${majorGridSize}px`,
+          `${majorGridSize}px ${majorGridSize}px`
+        ].join(', '),
+        opacity: 0.38
+      }}
+    />
+  )
+}
 
 export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((props, ref) => {
   const {
@@ -48,6 +74,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const undo = useStudioStore(s => s.undo)
   const redo = useStudioStore(s => s.redo)
   const snapToGrid = useStudioStore(s => s.snapToGrid)
+  const toggleSnapToGrid = useStudioStore(s => s.toggleSnapToGrid)
+  const setGridSize = useStudioStore(s => s.setGridSize)
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -60,6 +88,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
   const [activeGuides, setActiveGuides] = useState<{ type: 'v' | 'h', pos: number, targetId?: string }[]>([])
   const gridSize = useStudioStore(s => s.gridSize)
+  const safeGridSize = useMemo(() => normalizeGridSize(gridSize), [gridSize])
   const previewSceneId = useStudioStore(s => s.previewSceneId)
   const activeSceneId = useStudioStore(s => s.activeSceneId)
   const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
@@ -399,6 +428,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
         let newY = d.origY + (e.clientY - d.startY) / scaleRef.current
 
         if (snapToGrid) {
+          const gridSnap = snapPointToGrid(newX, newY, safeGridSize)
+          newX = gridSnap.x
+          newY = gridSnap.y
+
           const snap = getSnappingResult(newX, newY, d.width, d.height, d.id)
           newX = snap.x
           newY = snap.y
@@ -428,6 +461,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
         // 1. Snapping (Apply to the raw dragged edge)
         if (snapToGrid) {
+          const gridSnap = snapResizeRectToGrid(
+            { x: finalX, y: finalY, width: finalW, height: finalH },
+            r.handle,
+            safeGridSize
+          )
+          finalX = gridSnap.x
+          finalY = gridSnap.y
+          finalW = gridSnap.width
+          finalH = gridSnap.height
+
           const threshold = 48 / scaleRef.current
           const guides: { type: 'v' | 'h', pos: number, targetId?: string }[] = []
           const targetsX = [{ pos: 0 }, { pos: curCanvasW / 2 }, { pos: curCanvasW }]
@@ -517,7 +560,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [activeScene.id, activeScene.layers, updateLayer, isPanning, selectionContext, aspectRatio, snapToGrid])
+  }, [activeScene.id, activeScene.layers, updateLayer, isPanning, selectionContext, aspectRatio, snapToGrid, safeGridSize])
 
   const resetView = () => {
     setZoom(1)
@@ -532,7 +575,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   return (
     <div className="relative flex-1 flex flex-col bg-black/40 overflow-hidden" ref={wrapperRef}>
-      <CanvasToolbar canvasWidth={canvasWidth} canvasHeight={canvasHeight} isFullscreen={false} onToggleFullscreen={() => {}} onResetView={resetView} />
+      <CanvasToolbar
+        canvasWidth={canvasWidth}
+        canvasHeight={canvasHeight}
+        isFullscreen={false}
+        snapToGrid={snapToGrid}
+        gridSize={safeGridSize}
+        onToggleFullscreen={() => {}}
+        onResetView={resetView}
+        onToggleSnapToGrid={toggleSnapToGrid}
+        onGridSizeChange={setGridSize}
+      />
       <div
         ref={viewportRef}
         onMouseDown={handleCanvasMouseDown}
@@ -562,6 +615,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   onContextMenu={(e) => handleEditorContextMenu(e, null, aspectRatio)}
                 >
                 <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="block w-full h-full" />
+                {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
                 <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} />
                 <InteractionLayer
                   layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null}
@@ -615,6 +669,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     height={secondaryNativeH}
                     className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover: border border-white/5"
                   />
+                  {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
                   <InteractionLayer
                     layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
                     aspectRatio={secondaryPreviewAspectRatio} canvasWidth={secondaryNativeW}

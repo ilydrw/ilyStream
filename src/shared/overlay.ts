@@ -1,3 +1,11 @@
+/** A user-role badge attached to a feed item (mod / member / super fan / vip). */
+export interface OverlayFeedBadge {
+  kind: 'mod' | 'member' | 'superfan' | 'vip'
+  title: string
+  /** Platform-supplied badge art, when available. Falls back to a glyph. */
+  imageUrl?: string
+}
+
 export interface OverlayFeedItem {
   id: string
   kind: 'chat' | 'gift' | 'subscription' | 'follow' | 'raid' | 'like' | 'share'
@@ -11,11 +19,20 @@ export interface OverlayFeedItem {
   accentColor: string
   timestamp: string
   emphasis: boolean
+  /** Role badges to render next to the name (mod, sub/fan-club, super fan). */
+  badges?: OverlayFeedBadge[]
 }
 
 export interface OverlayAlertItem {
   id: string
   platform: string
+  eventType?: string
+  variant?: string
+  eyebrow?: string
+  headline?: string
+  subtitle?: string
+  meta?: string
+  accentColor?: string
   html: string
   imageUrl?: string
   audioUrl?: string
@@ -84,5 +101,6 @@ export interface OverlayRuntimeStatus {
   particleClientCount?: number
   roseClientCount?: number
   likesClientCount?: number
+  leaderboardClientCount?: number
   dualVerticalClientCount?: number
 }
