@@ -4,8 +4,7 @@ import {
   type RoseConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { Section, Slider, PercentSlider, ColorRow, EditorNote } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
 
 export function RoseConfigEditor({
@@ -26,57 +25,48 @@ export function RoseConfigEditor({
 
   return (
     <div className="flex flex-col gap-8">
-      <Section label="Behavior">
-        <SwitchRow
-          label="Event Driven"
-          hint="Roses now spawn only when a TikTok Rose gift occurs."
-          value={config.eventDriven}
-          onChange={(v) => update('eventDriven', v)}
+      <EditorNote>
+        Roses drift down the scene whenever viewers send rose gifts — density follows the
+        gift combo size.
+      </EditorNote>
+
+      <Section label="Fall">
+        <Slider
+          label="Rose count"
+          value={config.count}
+          min={5}
+          max={150}
+          step={5}
+          onChange={(v) => update('count', v)}
         />
-
-        <Field label="Rose count" hint="Number of roses to spawn in a burst.">
-          <NumberInput
-            value={config.count}
-            onChange={(v) => update('count', v)}
-            min={1}
-            max={150}
-            className="!w-32"
-          />
-        </Field>
+        <Slider
+          label="Fall speed"
+          value={config.speed}
+          min={1}
+          max={10}
+          format={(v) => `${v}×`}
+          onChange={(v) => update('speed', v)}
+        />
+        <PercentSlider
+          label="Size"
+          value={config.scale}
+          min={0.5}
+          max={3}
+          step={0.1}
+          onChange={(v) => update('scale', v)}
+        />
       </Section>
 
-      <Section label="Appearance">
-        <ColorRow label="Primary Color" value={config.primaryColor} onChange={(v) => update('primaryColor', v)} />
-        <ColorRow label="Secondary Color" value={config.secondaryColor} onChange={(v) => update('secondaryColor', v)} />
+      <Section label="Colors">
+        <ColorRow label="Petals" value={config.primaryColor} onChange={(v) => update('primaryColor', v)} />
+        <ColorRow label="Stem" value={config.secondaryColor} onChange={(v) => update('secondaryColor', v)} />
       </Section>
 
-      <Section label="Physics">
-        <Field label={`Fall Speed — ${config.speed}`}>
-          <input
-            type="range"
-            min={0.1}
-            max={5}
-            step={0.1}
-            value={config.speed}
-            onChange={(e) => update('speed', parseFloat(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-
-        <Field label={`Scale — ${config.scale}`}>
-          <input
-            type="range"
-            min={0.2}
-            max={3}
-            step={0.1}
-            value={config.scale}
-            onChange={(e) => update('scale', parseFloat(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-      </Section>
-
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: false, radius: false, glass: false, animation: true }}
+      />
     </div>
   )
 }

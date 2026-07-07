@@ -4,9 +4,37 @@ import {
   type FollowerGoalConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import {
+  Section,
+  Slider,
+  PercentSlider,
+  PositionGrid,
+  SwitchRow,
+  ColorRow,
+  NumberRow,
+  SegmentedRow,
+  TextRow
+} from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
+
+const POSITIONS = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right'
+] as const
+
+const GOAL_TYPES: Array<{ value: FollowerGoalConfig['goalType']; label: string }> = [
+  { value: 'follows', label: 'Follows' },
+  { value: 'subs', label: 'Subs' },
+  { value: 'likes', label: 'Likes' },
+  { value: 'gifts', label: 'Gifts' },
+  { value: 'shares', label: 'Shares' },
+  { value: 'raids', label: 'Raids' },
+  { value: 'viewers', label: 'Viewers' }
+]
 
 export function FollowerGoalConfigEditor({
   draft,
@@ -24,121 +52,54 @@ export function FollowerGoalConfigEditor({
     onChange({ ...draft, config: { ...config, [key]: value } })
   }
 
-  const positions: FollowerGoalConfig['position'][] = [
-    'top-left',
-    'top-center',
-    'top-right',
-    'bottom-left',
-    'bottom-center',
-    'bottom-right'
-  ]
-
   return (
-    <div className="flex flex-col gap-6">
-      <Section label="Goal">
-        <Field label="Goal type">
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { id: 'follows', label: 'Followers' },
-              { id: 'likes', label: 'Likes' },
-              { id: 'gifts', label: 'Gifts' },
-              { id: 'subs', label: 'Subs' },
-              { id: 'shares', label: 'Shares' },
-              { id: 'raids', label: 'Raids' },
-              { id: 'viewers', label: 'Viewers' }
-            ] as const).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => update('goalType', t.id as any)}
-                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.goalType === t.id ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Platform">
-          <div className="grid grid-cols-3 gap-2">
-            {([
-              { id: 'all', label: 'All' },
-              { id: 'twitch', label: 'Twitch' },
-              { id: 'tiktok', label: 'TikTok' }
-            ] as const).map((p) => (
-              <button
-                key={p.id}
-                onClick={() => update('platform', p.id as any)}
-                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.platform === p.id ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label={`Starting ${config.goalType} count`}>
-          <NumberInput
-            value={config.startCount}
-            onChange={(v) => update('startCount', v)}
-            min={0}
-            max={10000000}
-            step={1}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label={`Target ${config.goalType} count`}>
-          <NumberInput
-            value={config.goal}
-            onChange={(v) => update('goal', v)}
-            min={1}
-            max={10000000}
-            step={10}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label="Label">
-          <input
-            type="text"
-            value={config.label}
-            onChange={(e) => update('label', e.currentTarget.value)}
-            className="app-input !h-9 !text-xs !px-3"
-            placeholder={`${config.goalType.charAt(0).toUpperCase() + config.goalType.slice(1)} Goal`}
-          />
-        </Field>
+    <div className="flex flex-col gap-8">
+      <Section label="Goal" description="What the bar counts and where it ends.">
+        <SegmentedRow
+          label="Metric"
+          value={config.goalType}
+          options={GOAL_TYPES}
+          columns={4}
+          onChange={(v) => update('goalType', v)}
+        />
+        <NumberRow
+          label="Target"
+          value={config.goal}
+          min={1}
+          max={100000000}
+          onChange={(v) => update('goal', v)}
+        />
+        <NumberRow
+          label="Head start"
+          hint="Added to the live count — carry progress over from before the stream."
+          value={config.startCount}
+          min={0}
+          max={100000000}
+          onChange={(v) => update('startCount', v)}
+        />
+        <SegmentedRow
+          label="Count from"
+          value={config.platform}
+          options={[
+            { value: 'all', label: 'All platforms' },
+            { value: 'twitch', label: 'Twitch' },
+            { value: 'tiktok', label: 'TikTok' }
+          ]}
+          onChange={(v) => update('platform', v)}
+        />
+        <TextRow
+          label="Label"
+          hint="The heading above the bar."
+          value={config.label}
+          placeholder="Follower goal"
+          onChange={(v) => update('label', v)}
+        />
       </Section>
 
-      <Section label="Layout">
-        <Field label="Anchor position">
-          <div className="grid grid-cols-3 gap-2">
-            {positions.map((pos) => (
-              <button
-                key={pos}
-                onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {pos.replace('-', ' ')}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Card width (px)">
-          <NumberInput
-            value={config.width}
-            onChange={(v) => update('width', v)}
-            min={240}
-            max={800}
-            step={10}
-            className="!w-32"
-          />
-        </Field>
-      </Section>
-
-      <Section label="Display">
+      <Section label="Readout">
         <SwitchRow
           label="Show count"
+          hint="Current / target numbers next to the bar."
           value={config.showCount}
           onChange={(v) => update('showCount', v)}
         />
@@ -147,64 +108,86 @@ export function FollowerGoalConfigEditor({
           value={config.showPercentage}
           onChange={(v) => update('showPercentage', v)}
         />
+      </Section>
+
+      <Section label="Placement">
+        <PositionGrid
+          label="Anchor"
+          value={config.position}
+          allowed={POSITIONS}
+          onChange={(v) => update('position', v)}
+        />
+        <Slider
+          label="Bar width"
+          value={config.width}
+          min={200}
+          max={800}
+          step={10}
+          unit="px"
+          onChange={(v) => update('width', v)}
+        />
+      </Section>
+
+      <Section label="Style">
+        <ColorRow label="Accent" hint="Bar fill and highlights." value={config.accentColor} onChange={(v) => update('accentColor', v)} />
+        <PercentSlider
+          label="Card background"
+          value={config.backgroundOpacity}
+          onChange={(v) => update('backgroundOpacity', v)}
+        />
+        <Slider
+          label="Backdrop blur"
+          value={config.blur}
+          min={0}
+          max={80}
+          unit="px"
+          onChange={(v) => update('blur', v)}
+        />
         <SwitchRow
-          label="Show card border"
+          label="Animated border"
           value={config.showBorder}
           onChange={(v) => update('showBorder', v)}
         />
-      </Section>
-
-      <Section label="Glassmorphism">
-        <Field label="Accent color">
-          <div className="flex flex-col gap-3">
-            <ColorRow label="Base color" value={config.accentColor.startsWith('#') ? config.accentColor : '#ff7a45'} onChange={(v) => update('accentColor', v)} />
-
-            <div className="pt-2 border-t border-white/5">
-              <span className="text-[10px] font-semibold text-white/40 tracking-wider mb-2 block">Special Effects</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => update('accentColor', 'chroma')}
-                  className={`h-9 rounded-lg text-[10px] font-semibold tracking-tight border transition-all ${ config.accentColor === 'chroma' ? 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500 text-white border-transparent' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-                >
-                  Chroma
-                </button>
-                <button
-                  onClick={() => update('accentColor', 'cyberneon')}
-                  className={`h-9 rounded-lg text-[10px] font-semibold tracking-tight border transition-all ${ config.accentColor === 'cyberneon' ? 'bg-gradient-to-r from-[#D035F1] to-[#19C8FF] text-white border-transparent' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-                >
-                  Cyberneon
-                </button>
-              </div>
-            </div>
-          </div>
-        </Field>
-      </Section>
-
-      <Section label="Celebration">
-        <SwitchRow
-          label="Milestone Celebration"
-          hint="Trigger a burst of particles when the goal is reached."
-          value={!!config.celebrateAt100}
-          onChange={(v) => update('celebrateAt100', v)}
-        />
-        {config.celebrateAt100 && (
-          <Field label="Effect type">
-            <div className="grid grid-cols-3 gap-2">
-              {(['confetti', 'fireworks', 'hearts'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => update('celebrationType', t)}
-                  className={`h-9 rounded-lg text-[10px] font-semibold border transition-all capitalize ${ config.celebrationType === t ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </Field>
+        {config.showBorder && (
+          <SegmentedRow
+            label="Border style"
+            value={config.style}
+            options={[
+              { value: 'classic', label: 'Classic' },
+              { value: 'chroma', label: 'Chroma' },
+              { value: 'cyber', label: 'Cyber' },
+              { value: 'gob-the-stopper', label: 'Gob' }
+            ]}
+            onChange={(v) => update('style', v)}
+          />
         )}
       </Section>
 
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <Section label="Celebration" description="When the goal hits 100%.">
+        <SwitchRow
+          label="Celebrate at 100%"
+          value={config.celebrateAt100 !== false}
+          onChange={(v) => update('celebrateAt100', v)}
+        />
+        {config.celebrateAt100 !== false && (
+          <SegmentedRow
+            label="Effect"
+            value={config.celebrationType || 'confetti'}
+            options={[
+              { value: 'confetti', label: 'Confetti' },
+              { value: 'fireworks', label: 'Fireworks' },
+              { value: 'hearts', label: 'Hearts' }
+            ]}
+            onChange={(v) => update('celebrationType', v)}
+          />
+        )}
+      </Section>
+
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: false, radius: false, glass: false, animation: true }}
+      />
     </div>
   )
 }

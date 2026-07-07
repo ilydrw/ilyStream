@@ -6,9 +6,28 @@ import {
   type SocialAccount,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import { Section, Slider, PositionGrid, ColorRow, SegmentedRow } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
+
+const POSITIONS = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right'
+] as const
+
+const PLATFORM_OPTIONS: Array<{ value: SocialAccount['platform']; label: string; short: string }> = [
+  { value: 'twitter', label: 'X / Twitter', short: 'X' },
+  { value: 'youtube', label: 'YouTube', short: 'YT' },
+  { value: 'tiktok', label: 'TikTok', short: 'TT' },
+  { value: 'twitch', label: 'Twitch', short: 'TW' },
+  { value: 'kick', label: 'Kick', short: 'KK' },
+  { value: 'instagram', label: 'Instagram', short: 'IG' },
+  { value: 'discord', label: 'Discord', short: 'DC' },
+  { value: 'custom', label: 'Custom', short: '···' }
+]
 
 export function SocialsConfigEditor({
   draft,
@@ -27,122 +46,141 @@ export function SocialsConfigEditor({
   }
 
   const addAccount = () => {
-    const newAccount: SocialAccount = { id: crypto.randomUUID(), platform: 'twitter', username: '@Username' }
+    const newAccount: SocialAccount = { id: crypto.randomUUID(), platform: 'twitter', username: '@handle' }
     update('accounts', [...config.accounts, newAccount])
   }
 
   const removeAccount = (id: string) => {
-    update('accounts', config.accounts.filter(a => a.id !== id))
+    update('accounts', config.accounts.filter((a) => a.id !== id))
   }
 
   const updateAccount = (id: string, updates: Partial<SocialAccount>) => {
-    update('accounts', config.accounts.map(a => a.id === id ? { ...a, ...updates } : a))
+    update('accounts', config.accounts.map((a) => (a.id === id ? { ...a, ...updates } : a)))
   }
 
   return (
     <div className="flex flex-col gap-8">
-      <Section label="Linked Accounts">
-        <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-          {config.accounts.map((acc) => (
-            <div key={acc.id} className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/5 group hover:bg-white/[0.05] transition-all">
-              <div className="w-8 h-8 rounded-lg bg-black/40 flex items-center justify-center shrink-0 border border-white/5 relative">
-                <select
-                  value={acc.platform}
-                  onChange={(e) => updateAccount(acc.id, { platform: e.target.value as any })}
-                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10"
-                >
-                  <option value="twitter">X</option>
-                  <option value="youtube">YT</option>
-                  <option value="tiktok">TT</option>
-                  <option value="twitch">TW</option>
-                  <option value="kick">KK</option>
-                  <option value="instagram">IG</option>
-                  <option value="discord">DC</option>
-                  <option value="custom">CS</option>
-                </select>
-                <span className="text-[9px] font-semibold text-[#19c8ff] pointer-events-none">{acc.platform.slice(0, 2)}</span>
-              </div>
-
-              <input
-                type="text"
-                value={acc.username}
-                onChange={(e) => updateAccount(acc.id, { username: e.target.value })}
-                className="flex-1 bg-transparent border-none text-xs font-semibold text-white/90 outline-none placeholder:text-white/10"
-                placeholder="@handle"
-              />
-
-              <button
-                onClick={() => removeAccount(acc.id)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/10 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100"
+      <Section
+        label="Accounts"
+        description="Handles rotate one at a time in the order below."
+      >
+        <div className="flex flex-col gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+          {config.accounts.map((acc) => {
+            const platform = PLATFORM_OPTIONS.find((p) => p.value === acc.platform)
+            return (
+              <div
+                key={acc.id}
+                className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/10 group hover:border-white/20 transition-all"
               >
-                <IconTrash size={12} />
-              </button>
-            </div>
-          ))}
+                <div
+                  className="w-9 h-9 rounded-md bg-black/40 flex items-center justify-center shrink-0 border border-white/10 relative"
+                  title={platform?.label}
+                >
+                  <select
+                    value={acc.platform}
+                    onChange={(e) => updateAccount(acc.id, { platform: e.target.value as SocialAccount['platform'] })}
+                    className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10"
+                    aria-label="Account platform"
+                  >
+                    {PLATFORM_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] font-semibold text-accent pointer-events-none">
+                    {platform?.short ?? '?'}
+                  </span>
+                </div>
+
+                <input
+                  type="text"
+                  value={acc.username}
+                  onChange={(e) => updateAccount(acc.id, { username: e.target.value })}
+                  className="flex-1 bg-transparent border-none text-[12px] font-semibold text-white/90 outline-none placeholder:text-white/20"
+                  placeholder="@handle"
+                  aria-label="Account handle"
+                />
+
+                <button
+                  onClick={() => removeAccount(acc.id)}
+                  className="w-8 h-8 rounded-md flex items-center justify-center text-white/20 hover:text-danger hover:bg-danger/10 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                  aria-label={`Remove ${acc.username}`}
+                >
+                  <IconTrash size={13} />
+                </button>
+              </div>
+            )
+          })}
 
           <button
             onClick={addAccount}
-            className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 text-[10px] font-semibold tracking-tight text-white/20 hover:border-white/20 hover:text-white hover:bg-white/[0.02] transition-all"
+            className="flex items-center justify-center gap-2 h-9 rounded-lg border border-dashed border-white/15 text-[11px] font-semibold text-white/40 hover:border-white/30 hover:text-white/80 hover:bg-white/[0.02] transition-all cursor-pointer"
           >
-            <IconPlus size={12} />
-            Add Account
+            <IconPlus size={13} />
+            Add account
           </button>
         </div>
       </Section>
 
       <Section label="Rotation">
-        <Field label={`Interval — ${config.interval} seconds`}>
-          <input
-            type="range"
-            min={3}
-            max={60}
-            step={1}
-            value={config.interval}
-            onChange={(e) => update('interval', Number(e.currentTarget.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-      </Section>
-
-      <Section label="Layout">
-        <Field label="Anchor position">
-          <div className="grid grid-cols-3 gap-2">
-            {(['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'] as const).map((pos) => (
-              <button
-                key={pos}
-                onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-accent text-white border-transparent ' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {pos.replace('-', ' ')}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Widget width (px)">
-          <NumberInput
-            value={config.width}
-            onChange={(v) => update('width', v)}
-            min={200}
-            max={600}
-            step={10}
-            className="!w-32"
-          />
-        </Field>
-
-        <SwitchRow
-          label="Show border"
-          value={config.showBorder}
-          onChange={(v) => update('showBorder', v)}
+        <Slider
+          label="Time per handle"
+          value={config.interval}
+          min={3}
+          max={60}
+          unit="s"
+          onChange={(v) => update('interval', v)}
+        />
+        <SegmentedRow
+          label="Transition"
+          value={config.animation}
+          options={[
+            { value: 'roll', label: 'Roll' },
+            { value: 'fade', label: 'Fade' },
+            { value: 'slide', label: 'Slide' }
+          ]}
+          onChange={(v) => update('animation', v)}
         />
       </Section>
 
-      <Section label="Appearance">
+      <Section label="Placement">
+        <PositionGrid
+          label="Anchor"
+          value={config.position}
+          allowed={POSITIONS}
+          onChange={(v) => update('position', v)}
+        />
+        <Slider
+          label="Widget width"
+          value={config.width}
+          min={200}
+          max={600}
+          step={10}
+          unit="px"
+          onChange={(v) => update('width', v)}
+        />
+      </Section>
+
+      <Section label="Style">
+        <SegmentedRow
+          label="Look"
+          value={config.style}
+          options={[
+            { value: 'classic', label: 'Classic' },
+            { value: 'chroma', label: 'Chroma' },
+            { value: 'cyber', label: 'Cyber' },
+            { value: 'gob-the-stopper', label: 'Gob' }
+          ]}
+          onChange={(v) => update('style', v)}
+        />
         <ColorRow label="Accent" value={config.accentColor} onChange={(v) => update('accentColor', v)} />
         <ColorRow label="Background" value={config.backgroundColor || '#0b0d10'} onChange={(v) => update('backgroundColor', v)} />
       </Section>
 
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: true, radius: true, glass: true, animation: false }}
+      />
     </div>
   )
 }

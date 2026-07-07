@@ -4,9 +4,26 @@ import {
   type NowPlayingConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import {
+  Section,
+  Slider,
+  PercentSlider,
+  PositionGrid,
+  SwitchRow,
+  ColorRow,
+  NumberRow,
+  SegmentedRow
+} from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
+
+const POSITIONS = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right'
+] as const
 
 export function NowPlayingConfigEditor({
   draft,
@@ -25,59 +42,8 @@ export function NowPlayingConfigEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <Section label="Layout">
-        <Field label="Mode" hint="Compact hides the artist line.">
-          <div className="grid grid-cols-2 gap-2">
-            {(['wide', 'compact'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => update('layout', mode)}
-                className={`h-10 rounded-lg text-xs font-semibold border transition-all ${ config.layout === mode ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {mode === 'wide' ? 'Wide' : 'Compact'}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Anchor position">
-          <div className="grid grid-cols-3 gap-2">
-            {(['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'] as const).map((pos) => (
-              <button
-                key={pos}
-                onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[10px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {pos.replace('-', ' ')}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Title font size">
-          <NumberInput
-            value={config.fontSize}
-            onChange={(v) => update('fontSize', v)}
-            min={12}
-            max={48}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label="Widget width (px)">
-          <NumberInput
-            value={config.width}
-            onChange={(v) => update('width', v)}
-            min={240}
-            max={800}
-            step={10}
-            className="!w-32"
-          />
-        </Field>
-      </Section>
-
-      <Section label="Show / Hide">
+    <div className="flex flex-col gap-8">
+      <Section label="Content" description="Fed live by Spotify — track, art, progress, and the song-request queue.">
         <SwitchRow
           label="Album art"
           value={config.showAlbumArt}
@@ -89,36 +55,72 @@ export function NowPlayingConfigEditor({
           onChange={(v) => update('showProgressBar', v)}
         />
         <SwitchRow
-          label="Requester credit"
-          hint="Shows the chat user who used !play."
+          label="Requested by"
+          hint="Credits the viewer whose song request is playing."
           value={config.showRequester}
           onChange={(v) => update('showRequester', v)}
         />
         <SwitchRow
-          label="Hide when nothing playing"
-          value={config.hideWhenIdle}
-          onChange={(v) => update('hideWhenIdle', v)}
-        />
-        <SwitchRow
-          label="Show queue"
-          hint="Displays upcoming songs below the track."
+          label="Up next queue"
+          hint="Shows pending song requests under the current track."
           value={config.showQueue}
           onChange={(v) => update('showQueue', v)}
         />
         {config.showQueue && (
-          <Field label="Max queue items">
-            <NumberInput
-              value={config.maxQueueItems}
-              onChange={(v) => update('maxQueueItems', v)}
-              min={1}
-              max={10}
-              className="!w-32"
-            />
-          </Field>
+          <NumberRow
+            label="Queue items"
+            value={config.maxQueueItems}
+            min={1}
+            max={10}
+            onChange={(v) => update('maxQueueItems', v)}
+          />
         )}
+        <SwitchRow
+          label="Hide when nothing plays"
+          hint="The card fades out between tracks instead of sitting empty."
+          value={config.hideWhenIdle}
+          onChange={(v) => update('hideWhenIdle', v)}
+        />
       </Section>
 
-      <Section label="Borders">
+      <Section label="Placement">
+        <PositionGrid
+          label="Anchor"
+          value={config.position}
+          allowed={POSITIONS}
+          onChange={(v) => update('position', v)}
+        />
+        <Slider
+          label="Card width"
+          value={config.width}
+          min={240}
+          max={720}
+          step={10}
+          unit="px"
+          onChange={(v) => update('width', v)}
+        />
+        <Slider
+          label="Title size"
+          value={config.fontSize}
+          min={10}
+          max={32}
+          unit="px"
+          onChange={(v) => update('fontSize', v)}
+        />
+      </Section>
+
+      <Section label="Colors">
+        <ColorRow label="Accent" hint="Progress bar and queue markers." value={config.accentColor} onChange={(v) => update('accentColor', v)} />
+        <ColorRow label="Text" value={config.textColor} onChange={(v) => update('textColor', v)} />
+        <ColorRow label="Background" value={config.backgroundColor} onChange={(v) => update('backgroundColor', v)} />
+        <PercentSlider
+          label="Background opacity"
+          value={config.backgroundOpacity}
+          onChange={(v) => update('backgroundOpacity', v)}
+        />
+      </Section>
+
+      <Section label="Border">
         <SwitchRow
           label="Show border"
           value={config.showBorder}
@@ -126,52 +128,37 @@ export function NowPlayingConfigEditor({
         />
         {config.showBorder && (
           <>
-            <Field label="Border Type">
-              <div className="grid grid-cols-4 gap-2">
-                {(['solid', 'chroma', 'cyber', 'gob-the-stopper'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => update('borderType', type)}
-                    className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.borderType === type ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-                  >
-                    {type === 'gob-the-stopper' ? 'GOB' : type.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
+            <SegmentedRow
+              label="Border style"
+              value={config.borderType}
+              options={[
+                { value: 'solid', label: 'Solid' },
+                { value: 'chroma', label: 'Chroma' },
+                { value: 'cyber', label: 'Cyber' },
+                { value: 'gob-the-stopper', label: 'Gob' }
+              ]}
+              onChange={(v) => update('borderType', v)}
+            />
+            <Slider
+              label="Border width"
+              value={config.borderWidth}
+              min={1}
+              max={12}
+              unit="px"
+              onChange={(v) => update('borderWidth', v)}
+            />
             {config.borderType === 'solid' && (
-              <ColorRow
-                label="Border Color"
-                value={config.borderColor}
-                onChange={(v) => update('borderColor', v)}
-              />
+              <ColorRow label="Border color" value={config.borderColor} onChange={(v) => update('borderColor', v)} />
             )}
-
-            <Field label="Border Width">
-              <NumberInput
-                value={config.borderWidth}
-                onChange={(v) => update('borderWidth', v)}
-                min={1}
-                max={10}
-                className="!w-32"
-              />
-            </Field>
           </>
         )}
       </Section>
 
-      <Section label="Colors">
-        <ColorRow label="Accent" value={config.accentColor} onChange={(v) => update('accentColor', v)} />
-        <ColorRow
-          label="Background"
-          value={config.backgroundColor}
-          onChange={(v) => update('backgroundColor', v)}
-        />
-        <ColorRow label="Text" value={config.textColor} onChange={(v) => update('textColor', v)} />
-      </Section>
-
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: true, radius: true, glass: true, animation: true }}
+      />
     </div>
   )
 }

@@ -4,8 +4,7 @@ import {
   type PhysicsConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow } from './Shared'
+import { Section, Slider, SwitchRow, NumberRow, EditorNote } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
 
 export function PhysicsConfigEditor({
@@ -26,97 +25,75 @@ export function PhysicsConfigEditor({
 
   return (
     <div className="flex flex-col gap-8">
-      <Section label="Physics Engine">
-        <Field label={`Gravity — ${config.gravity}`} hint="How fast objects fall.">
-          <input
-            type="range"
-            min={0}
-            max={5}
-            step={0.1}
-            value={config.gravity}
-            onChange={(e) => update('gravity', parseFloat(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
+      <EditorNote>
+        Chat events drop physical objects (emotes, gift icons) that bounce around the scene.
+        Tuning is about feel — heavy and lazy, or floaty and chaotic.
+      </EditorNote>
 
-        <Field label={`Bounciness — ${Math.round(config.restitution * 100)}%`} hint="Higher values make objects bounce more.">
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.restitution}
-            onChange={(e) => update('restitution', parseFloat(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-
-        <Field label={`Friction — ${Math.round(config.friction * 100)}%`} hint="Resistance when objects slide.">
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={config.friction}
-            onChange={(e) => update('friction', parseFloat(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-      </Section>
-
-      <Section label="World Rules">
+      <Section label="World">
+        <Slider
+          label="Gravity"
+          hint="Below 1 floats, above 1 slams."
+          value={config.gravity}
+          min={0}
+          max={3}
+          step={0.1}
+          format={(v) => `${v.toFixed(1)}×`}
+          onChange={(v) => update('gravity', v)}
+        />
+        <Slider
+          label="Friction"
+          hint="How quickly objects lose momentum sliding along edges."
+          value={config.friction}
+          min={0}
+          max={1}
+          step={0.05}
+          format={(v) => v.toFixed(2)}
+          onChange={(v) => update('friction', v)}
+        />
+        <Slider
+          label="Bounciness"
+          hint="0 = dead drop, 1 = superball."
+          value={config.restitution}
+          min={0}
+          max={1}
+          step={0.05}
+          format={(v) => v.toFixed(2)}
+          onChange={(v) => update('restitution', v)}
+        />
         <SwitchRow
-          label="Enable Walls"
-          hint="Keep objects within screen boundaries."
+          label="Walls"
+          hint="Keep objects inside the frame instead of letting them tumble out the sides."
           value={config.enableWalls}
           onChange={(v) => update('enableWalls', v)}
         />
-
-        <Field label="Max Objects" hint="Maximum objects allowed on screen.">
-          <NumberInput
-            value={config.maxObjects}
-            onChange={(v) => update('maxObjects', v)}
-            min={1}
-            max={200}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label="Lifespan (Seconds)" hint="How long objects stay on screen.">
-          <NumberInput
-            value={config.particleLifeSec}
-            onChange={(v) => update('particleLifeSec', v)}
-            min={1}
-            max={120}
-            className="!w-32"
-          />
-        </Field>
       </Section>
 
-      <Section label="Layout">
-        <Field label="Aspect ratio" hint="TikTok uses Vertical (9:16). Auto fills area.">
-          <div className="grid grid-cols-3 gap-2">
-            {(['auto', 'tiktok', 'landscape'] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-accent text-white border-transparent ' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {r === 'auto' ? 'Auto' : r === 'tiktok' ? '9:16' : '16:9'}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <SwitchRow
-          label="Force TikTok Dimensions"
-          hint="Specifically restrict simulation to a central column."
-          value={config.forceTikTokDimensions}
-          onChange={(v) => update('forceTikTokDimensions', v)}
+      <Section label="Objects">
+        <Slider
+          label="Lifetime"
+          hint="Objects pop after this long so the scene never clogs."
+          value={config.particleLifeSec}
+          min={2}
+          max={60}
+          unit="s"
+          onChange={(v) => update('particleLifeSec', v)}
+        />
+        <NumberRow
+          label="Max objects"
+          hint="Oldest objects pop early when the cap is hit."
+          value={config.maxObjects}
+          min={5}
+          max={200}
+          onChange={(v) => update('maxObjects', v)}
         />
       </Section>
 
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: false, radius: false, glass: false, animation: true }}
+      />
     </div>
   )
 }

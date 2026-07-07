@@ -1,93 +1,103 @@
-import React from 'react'
-import { Field, Section } from './Shared'
-import { NumberInput, TextInput } from '../../../../components/ui/Inputs'
+import { Section, SegmentedRow, Slider, TextRow, NumberRow, PercentSlider } from './Shared'
 
 interface DesignSystemConfig {
-  fontFamily: string
-  borderRadius: number
-  glassIntensity: number
+  fontFamily?: string
+  borderRadius?: number
+  glassIntensity?: number
   animationStyle?: string
   animationDuration?: number
 }
 
+export interface DesignSystemFeatures {
+  font?: boolean
+  radius?: boolean
+  glass?: boolean
+  animation?: boolean
+}
+
+const ANIMATION_OPTIONS = [
+  { value: 'fade', label: 'Fade' },
+  { value: 'slide', label: 'Slide' },
+  { value: 'zoom', label: 'Zoom' },
+  { value: 'none', label: 'None' }
+]
+
+/**
+ * Cross-widget design controls. Pass `features` to show ONLY the knobs this
+ * widget's overlay template actually honors — a control that silently does
+ * nothing is worse than no control.
+ */
 export function DesignSystemSection({
   config,
-  onUpdate
+  onUpdate,
+  features
 }: {
-  config: DesignSystemConfig,
-  onUpdate: (key: string, value: any) => void
+  config: DesignSystemConfig
+  onUpdate: (key: string, value: unknown) => void
+  features?: DesignSystemFeatures
 }) {
+  const show: Required<DesignSystemFeatures> = {
+    font: features?.font ?? true,
+    radius: features?.radius ?? true,
+    glass: features?.glass ?? true,
+    animation: features?.animation ?? true
+  }
+
+  const showAnimation = show.animation && config.animationStyle !== undefined
+  if (!show.font && !show.radius && !show.glass && !showAnimation) return null
+
   return (
-    <Section label="Design System">
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Font Family" hint="Google Font name (e.g. Outfit, Inter)">
-          <TextInput
-            value={config.fontFamily || 'Inter'}
-            onChange={(v) => onUpdate('fontFamily', v)}
-            placeholder="Outfit"
-            className=""
-          />
-        </Field>
-        <Field label="Corner Radius" hint="Rounded corners (px)">
-          <NumberInput
-            value={config.borderRadius ?? 12}
-            onChange={(v) => onUpdate('borderRadius', v)}
-            min={0}
-            max={50}
-            className=""
-          />
-        </Field>
-      </div>
+    <Section label="Design">
+      {show.font && (
+        <TextRow
+          label="Font family"
+          hint="Any Google Font name (Inter, Outfit, Space Grotesk…). Loaded automatically."
+          value={config.fontFamily || 'Inter'}
+          placeholder="Inter"
+          onChange={(v) => onUpdate('fontFamily', v)}
+        />
+      )}
 
-      <Field label="Glassmorphism Intensity" hint="Transparency & Blur strength">
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={config.glassIntensity ?? 0.5}
-            onChange={(e) => onUpdate('glassIntensity', parseFloat(e.target.value))}
-            className="flex-1 accent-[#19c8ff]"
-          />
-          <span className="text-[10px] font-mono text-white/50 w-6">
-            {Math.round((config.glassIntensity ?? 0.5) * 100)}%
-          </span>
-        </div>
-      </Field>
+      {show.radius && (
+        <NumberRow
+          label="Corner radius"
+          hint="Rounding of card corners, in pixels."
+          value={config.borderRadius ?? 12}
+          min={0}
+          max={50}
+          onChange={(v) => onUpdate('borderRadius', v)}
+        />
+      )}
 
-      {config.animationStyle !== undefined && (
+      {show.glass && (
+        <PercentSlider
+          label="Glass intensity"
+          hint="How frosted the card background looks — blends transparency and blur."
+          value={config.glassIntensity ?? 0.5}
+          step={0.1}
+          onChange={(v) => onUpdate('glassIntensity', v)}
+        />
+      )}
+
+      {showAnimation && (
         <>
-          <Field label="Entrance Animation">
-            <div className="grid grid-cols-5 gap-1.5">
-              {['slide', 'fade', 'zoom', 'bounce', 'none'].map((style) => (
-                <button
-                  key={style}
-                  onClick={() => onUpdate('animationStyle', style)}
-                  className={`py-1.5 rounded-md text-[9px] font-semibold tracking-wider transition-all border ${ config.animationStyle === style ? 'bg-accent border-transparent text-white ' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10' }`}
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Animation Duration" hint="Time in milliseconds">
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="200"
-                max="2000"
-                step="50"
-                value={config.animationDuration ?? 800}
-                onChange={(e) => onUpdate('animationDuration', parseInt(e.target.value))}
-                className="flex-1 accent-[#19c8ff]"
-              />
-              <span className="text-[10px] font-mono text-white/50 w-10 text-right">
-                {config.animationDuration ?? 800}ms
-              </span>
-            </div>
-          </Field>
+          <SegmentedRow
+            label="Entrance animation"
+            value={config.animationStyle || 'fade'}
+            options={ANIMATION_OPTIONS}
+            onChange={(v) => onUpdate('animationStyle', v)}
+          />
+          {config.animationStyle !== 'none' && (
+            <Slider
+              label="Animation duration"
+              value={config.animationDuration ?? 800}
+              min={200}
+              max={2000}
+              step={50}
+              unit="ms"
+              onChange={(v) => onUpdate('animationDuration', v)}
+            />
+          )}
         </>
       )}
     </Section>

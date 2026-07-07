@@ -4,9 +4,17 @@ import {
   type AlertsConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { Section, Field, ColorRow } from './Shared'
+import { EditorNote } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
 
+/**
+ * The alerts widget is a frame: WHAT each alert says, its colors, sound, and
+ * entrance animation are configured per event type (follow, sub, gift, raid,
+ * superfan…) in Settings → Alerts, because they are shared with the sound
+ * engine and TTS. This editor only owns the shell the alerts render inside —
+ * the previous version showed accent/text/duration controls the overlay
+ * template never read.
+ */
 export function AlertsConfigEditor({
   draft,
   onChange
@@ -19,32 +27,25 @@ export function AlertsConfigEditor({
     [draft.config]
   )
 
-  const update = <K extends keyof AlertsConfig>(key: K, value: AlertsConfig[K]) => {
+  const update = (key: string, value: unknown) => {
     onChange({ ...draft, config: { ...config, [key]: value } })
   }
 
   return (
     <div className="flex flex-col gap-8">
-      <Section label="Core Settings">
-        <div className="grid grid-cols-2 gap-4">
-          <ColorRow label="Accent color" value={config.accentColor} onChange={(v) => update('accentColor', v)} />
-          <ColorRow label="Text color" value={config.textColor} onChange={(v) => update('textColor', v)} />
-        </div>
+      <EditorNote>
+        Per-event alert content — messages, colors, sounds, durations, and animations for
+        follows, subs, gifts, and raids — lives in{' '}
+        <span className="text-white/80 font-semibold">Settings → Alerts</span>, where it is
+        shared with alert sounds and TTS. This page styles the card those alerts render
+        inside.
+      </EditorNote>
 
-        <Field label={`Duration — ${config.duration / 1000}s`}>
-          <input
-            type="range"
-            min={1000}
-            max={30000}
-            step={500}
-            value={config.duration}
-            onChange={(e) => update('duration', parseInt(e.target.value))}
-            className="w-full accent-[#19c8ff]"
-          />
-        </Field>
-      </Section>
-
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <DesignSystemSection
+        config={config}
+        onUpdate={update}
+        features={{ font: true, radius: true, glass: true, animation: false }}
+      />
     </div>
   )
 }

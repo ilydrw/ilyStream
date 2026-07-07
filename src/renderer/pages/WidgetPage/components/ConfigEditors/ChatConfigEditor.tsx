@@ -4,9 +4,19 @@ import {
   type ChatConfig,
   type Widget
 } from '../../../../../shared/widgets'
-import { NumberInput } from '../../../../components/ui/Inputs'
-import { Section, Field, SwitchRow, ColorRow } from './Shared'
+import {
+  Section,
+  Slider,
+  PercentSlider,
+  PositionGrid,
+  SwitchRow,
+  ColorRow,
+  NumberRow,
+  SegmentedRow
+} from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
+
+const POSITIONS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const
 
 export function ChatConfigEditor({
   draft,
@@ -24,113 +34,115 @@ export function ChatConfigEditor({
     onChange({ ...draft, config: { ...config, [key]: value } })
   }
 
-  const positions: ChatConfig['position'][] = [
-    'top-left',
-    'top-right',
-    'bottom-left',
-    'bottom-right'
-  ]
-
   return (
-    <div className="flex flex-col gap-6">
-      <Section label="Layout">
-        <Field label="Anchor position">
-          <div className="grid grid-cols-2 gap-2">
-            {positions.map((pos) => (
-              <button
-                key={pos}
-                onClick={() => update('position', pos)}
-                className={`h-10 rounded-lg text-[11px] font-semibold border transition-all ${ config.position === pos ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {pos.replace('-', ' ')}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Feed width (px)">
-          <NumberInput
-            value={config.width}
-            onChange={(v) => update('width', v)}
-            min={240}
-            max={900}
-            step={10}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label="Message font size (px)">
-          <NumberInput
-            value={config.fontSize}
-            onChange={(v) => update('fontSize', v)}
-            min={10}
-            max={32}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field label="Aspect ratio" hint="TikTok uses Vertical (9:16). Auto fills the entire area.">
-          <div className="grid grid-cols-3 gap-2">
-            {(['auto', 'tiktok', 'landscape'] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => update('aspectRatio', r)}
-                className={`h-9 rounded-lg text-[10px] font-semibold border transition-all ${ config.aspectRatio === r ? 'bg-white text-black border-white' : 'bg-white/[0.03] text-white/60 border-white/10 hover:border-white/20' }`}
-              >
-                {r === 'auto' ? 'Auto (Fill)' : r === 'tiktok' ? 'Vertical (9:16)' : 'Landscape (16:9)'}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <SwitchRow
-          label="Force TikTok Dimensions"
-          hint="Locks resolution to 1080x1920 for TikTok Live Studio 'Fit to Screen'"
-          value={config.forceTikTokDimensions}
-          onChange={(v) => update('forceTikTokDimensions', v)}
+    <div className="flex flex-col gap-8">
+      <Section label="Feed">
+        <NumberRow
+          label="Messages shown"
+          value={config.maxItems}
+          min={1}
+          max={30}
+          onChange={(v) => update('maxItems', v)}
         />
-      </Section>
-
-      <Section label="Behavior">
-        <Field label="Max visible messages" hint="Older messages roll off as new ones arrive.">
-          <NumberInput
-            value={config.maxItems}
-            onChange={(v) => update('maxItems', v)}
-            min={1}
-            max={30}
-            className="!w-32"
-          />
-        </Field>
-
-        <Field
-          label="Auto-fade after (seconds)"
-          hint="Messages disappear after N seconds. Set 0 to keep forever."
-        >
-          <NumberInput
-            value={config.fadeOutAfterSeconds}
-            onChange={(v) => update('fadeOutAfterSeconds', v)}
-            min={0}
-            max={300}
-            className="!w-32"
-          />
-        </Field>
-
-        <SwitchRow
-          label="Show platform badge"
-          hint="Tiny pill showing TikTok / Twitch / etc."
-          value={config.showPlatformBadge}
-          onChange={(v) => update('showPlatformBadge', v)}
-        />
-
         <SwitchRow
           label="Chat only"
-          hint="Hide gifts, subs, and follows from the feed."
+          hint="Hide follows, gifts, and other events — pure conversation."
           value={config.chatOnly}
           onChange={(v) => update('chatOnly', v)}
         />
+        <SwitchRow
+          label="Platform badges"
+          hint="Show which platform each message came from."
+          value={config.showPlatformBadge}
+          onChange={(v) => update('showPlatformBadge', v)}
+        />
+        <Slider
+          label="Fade out after"
+          hint="Messages quietly disappear once they have been read. 0 keeps them forever."
+          value={config.fadeOutAfterSeconds}
+          min={0}
+          max={120}
+          step={5}
+          format={(v) => (v === 0 ? 'never' : `${v}s`)}
+          onChange={(v) => update('fadeOutAfterSeconds', v)}
+        />
       </Section>
 
-      <DesignSystemSection config={config as any} onUpdate={update as any} />
+      <Section label="Placement">
+        <PositionGrid
+          label="Anchor corner"
+          value={config.position}
+          allowed={POSITIONS}
+          onChange={(v) => update('position', v)}
+        />
+        <SegmentedRow
+          label="Canvas shape"
+          hint="Matches the browser source you will paste this into."
+          value={config.aspectRatio}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'landscape', label: '16:9' },
+            { value: 'tiktok', label: '9:16' }
+          ]}
+          onChange={(v) => update('aspectRatio', v)}
+        />
+        {config.aspectRatio === 'tiktok' && (
+          <SwitchRow
+            label="Force TikTok dimensions"
+            hint="Locks the layout to 1080×1920 even if the source reports otherwise."
+            value={config.forceTikTokDimensions}
+            onChange={(v) => update('forceTikTokDimensions', v)}
+          />
+        )}
+      </Section>
+
+      <Section label="Size">
+        <Slider
+          label="Feed width"
+          value={config.width}
+          min={240}
+          max={800}
+          step={10}
+          unit="px"
+          onChange={(v) => update('width', v)}
+        />
+        <Slider
+          label="Text size"
+          value={config.fontSize}
+          min={10}
+          max={32}
+          unit="px"
+          onChange={(v) => update('fontSize', v)}
+        />
+      </Section>
+
+      <Section label="Surface">
+        <ColorRow
+          label="Accent"
+          hint="Usernames and event highlights."
+          value={config.accentColor}
+          onChange={(v) => update('accentColor', v)}
+        />
+        <PercentSlider
+          label="Card background"
+          value={config.backgroundOpacity}
+          onChange={(v) => update('backgroundOpacity', v)}
+        />
+        <Slider
+          label="Backdrop blur"
+          value={config.blur}
+          min={0}
+          max={80}
+          unit="px"
+          onChange={(v) => update('blur', v)}
+        />
+      </Section>
+
+      <DesignSystemSection
+        config={config}
+        onUpdate={update as (key: string, value: unknown) => void}
+        features={{ font: false, radius: false, glass: false, animation: true }}
+      />
     </div>
   )
 }
