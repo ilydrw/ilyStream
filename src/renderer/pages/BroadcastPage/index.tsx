@@ -733,6 +733,23 @@ export default function BroadcastPage() {
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
+    // Destinations that resolve their key at go-live time (YouTube with a
+    // connected Google account): fetch/provision the broadcast + stream key
+    // now, once, and substitute it in before the encoders spin up.
+    if (destinations.some(d => d.platform?.autoKey && !d.platform.key)) {
+      try {
+        const live = await window.api.platform.youtube.prepareLive()
+        console.log(`[BroadcastPage] YouTube broadcast ready: "${live.title}" ${live.watchUrl}${live.autoStart ? '' : ' — auto-start is off for this broadcast; press "Go live" in YouTube Studio if it does not start on its own'}`)
+        for (const d of destinations) {
+          if (d.platform?.autoKey && !d.platform.key) {
+            d.platform = { ...d.platform, url: live.rtmpUrl, key: live.streamKey }
+          }
+        }
+      } catch (err) {
+        return setStreamError(err instanceof Error ? err.message : 'YouTube go-live setup failed')
+      }
+    }
+
     const configuredOutput = await loadBroadcastOutputConfig()
     const { fps, bitrateKbps } = applyDestinationOutputCaps(configuredOutput, destinations)
     console.log(`[BroadcastPage] Starting broadcast at ${fps} FPS / ${bitrateKbps} Kbps`)

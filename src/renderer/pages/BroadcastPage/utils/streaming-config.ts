@@ -7,6 +7,11 @@ export interface StreamPlatformDestination {
   name: string
   url: string
   key: string
+  /**
+   * True when the key is resolved at go-live time from the platform's API
+   * (YouTube via the connected Google account) instead of a pasted key.
+   */
+  autoKey?: boolean
 }
 
 export const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number }> = {
@@ -42,8 +47,19 @@ export function buildStreamPlatforms(configs: any): StreamPlatformDestination[] 
   const youtubeKey = String(configs.youtube?.streamKey || '').trim()
   const tiktokKey = String(configs.tiktok?.streamKey || '').trim()
   const kickKey = String(configs.kick?.streamKey || '').trim()
+  // Signed in with Google → the stream key is fetched (or provisioned) from
+  // the YouTube API at go-live time; no pasted key needed. A manual key, if
+  // present, still wins as an explicit override.
+  const youtubeOAuthReady = Boolean(
+    String(configs.youtube?.accessToken || '').trim() ||
+    String(configs.youtube?.refreshToken || '').trim()
+  )
   if (twitchKey) available.push({ id: 'twitch', name: 'Twitch', url: 'rtmp://ingest.global-contribute.live-video.net/app', key: twitchKey })
-  if (youtubeKey) available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: youtubeKey })
+  if (youtubeKey) {
+    available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: youtubeKey })
+  } else if (youtubeOAuthReady) {
+    available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: '', autoKey: true })
+  }
   if (tiktokKey) available.push({ id: 'tiktok', name: 'TikTok', url: 'rtmp://open-rtmp.tiktok.com/stage', key: tiktokKey })
   if (kickKey) available.push({ id: 'kick', name: 'Kick', url: normalizeKickStreamUrl(configs.kick?.streamUrl), key: kickKey })
   return available

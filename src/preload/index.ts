@@ -141,7 +141,17 @@ const api = {
     },
     youtube: {
       beginAuth: (payload: { clientId?: string; clientSecret?: string }) =>
-        ipcRenderer.invoke('youtube:begin-auth', payload)
+        ipcRenderer.invoke('youtube:begin-auth', payload),
+      prepareLive: (payload?: { title?: string }) =>
+        ipcRenderer.invoke('youtube:prepare-live', payload) as Promise<{
+          rtmpUrl: string
+          streamKey: string
+          broadcastId: string
+          watchUrl: string
+          title: string
+          autoStart: boolean
+          createdBroadcast: boolean
+        }>
     },
     kick: {
       subscribeEvents: (payload: { clientId: string; clientSecret: string; broadcasterUserId?: string | number; channelName?: string }) =>

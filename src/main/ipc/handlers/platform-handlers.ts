@@ -13,6 +13,8 @@ import {
   DEFAULT_YOUTUBE_CLIENT_ID,
   DEFAULT_YOUTUBE_CLIENT_SECRET
 } from '../../platforms/youtube/youtube-auth'
+import { ensureYouTubeLiveDestination } from '../../platforms/youtube/youtube-live'
+import type { YouTubeConfig } from '../../platforms/types'
 import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
 
 export function registerPlatformHandlers(
@@ -112,6 +114,30 @@ export function registerPlatformHandlers(
       }
     }
   )
+
+  // Turnkey go-live: resolves (or creates) the signed-in account's live
+  // stream + broadcast and returns the RTMP url/key the encoder should push
+  // to. Called by the Broadcast page right before starting the YouTube
+  // output, so users who signed in with Google never handle a stream key.
+  ipcMain.handle('youtube:prepare-live', async (_event, payload?: { title?: string }) => {
+    const saved = db.getAllPlatformConfigs().youtube as YouTubeConfig | undefined
+    if (!saved) {
+      throw new Error(
+        'YouTube is not configured. Open the YouTube page and use "Connect with Google" first.'
+      )
+    }
+    const config: YouTubeConfig = {
+      ...saved,
+      clientId: saved.clientId?.trim() || DEFAULT_YOUTUBE_CLIENT_ID,
+      clientSecret: saved.clientSecret?.trim() || DEFAULT_YOUTUBE_CLIENT_SECRET
+    }
+    const destination = await ensureYouTubeLiveDestination(config, { title: payload?.title })
+    console.log(
+      `[youtube-live] Prepared broadcast "${destination.title}" (${destination.broadcastId}) — ` +
+      `${destination.createdBroadcast ? 'created new' : 'reusing existing'}, autoStart=${destination.autoStart}`
+    )
+    return destination
+  })
 
   ipcMain.handle(
     'kick:subscribe-events',

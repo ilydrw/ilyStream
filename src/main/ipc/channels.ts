@@ -49,6 +49,15 @@ export interface IpcInvokeChannels {
     clientId?: string
     clientSecret?: string
   }) => Promise<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string }>
+  'youtube:prepare-live': (payload?: { title?: string }) => Promise<{
+    rtmpUrl: string
+    streamKey: string
+    broadcastId: string
+    watchUrl: string
+    title: string
+    autoStart: boolean
+    createdBroadcast: boolean
+  }>
   'kick:subscribe-events': (payload: {
     clientId: string
     clientSecret: string

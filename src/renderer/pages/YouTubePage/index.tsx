@@ -32,7 +32,7 @@ const ADVANCED_FIELDS = [
   { key: 'accessToken', label: 'Access token', type: 'password', placeholder: 'Filled in by Connect with Google' },
   { key: 'refreshToken', label: 'Refresh token', type: 'password', placeholder: 'Filled in by Connect with Google' },
   { key: 'liveChatId', label: 'Live Chat ID override', type: 'text', placeholder: 'Optional — forces Data API polling; leave blank' },
-  { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'YouTube stream key' }
+  { key: 'streamKey', label: 'Stream key override', type: 'password', placeholder: 'Auto-managed via Google sign-in — paste only to override' }
 ]
 
 export default function YouTubePage() {
