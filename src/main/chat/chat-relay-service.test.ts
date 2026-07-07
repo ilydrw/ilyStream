@@ -342,6 +342,139 @@ describe('ChatRelayService', () => {
     }
   })
 
+  it('keeps suppressing repeated deliveries of the same echoed message', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      youtube: { platform: 'youtube', canSend: true }
+    })
+    platformManager.sendChatMessageToPlatforms.mockImplementation(async (platforms) =>
+      platforms.map((platform) => ({ platform, ok: true }))
+    )
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({ chatAutoRelayEnabled: false })
+    )
+
+    try {
+      await service.sendManualMessage(['youtube'], 'this exact relay text got sent once')
+
+      const firstEcho = createChatEvent('youtube', 'this exact relay text got sent once', 'ilydrw')
+      const secondEcho = createChatEvent('youtube', 'this exact relay text got sent once', 'ilydrw')
+      platformManager.emit('event', firstEcho)
+      platformManager.emit('event', secondEcho)
+
+      expect(isSuppressedChatRelayEcho(firstEcho)).toBe(true)
+      expect(isSuppressedChatRelayEcho(secondEcho)).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('suppresses echoes the platform truncated before echoing back', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      youtube: { platform: 'youtube', canSend: true }
+    })
+    platformManager.sendChatMessageToPlatforms.mockImplementation(async (platforms) =>
+      platforms.map((platform) => ({ platform, ok: true }))
+    )
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({ chatAutoRelayEnabled: false })
+    )
+
+    try {
+      const longText =
+        'this is a very long relayed message that will absolutely get cut off by the two hundred character limit some platforms enforce on live chat sends and therefore come back shorter than it went out'
+      await service.sendManualMessage(['youtube'], longText)
+
+      const truncatedEcho = createChatEvent('youtube', `${longText.slice(0, 120)}…`, 'ilydrw')
+      platformManager.emit('event', truncatedEcho)
+
+      expect(isSuppressedChatRelayEcho(truncatedEcho)).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('suppresses third-party relay copies of a message already shown from another platform', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({})
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([])
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({ chatAutoRelayEnabled: false })
+    )
+
+    try {
+      const original = createChatEvent('tiktok', 'what a sick play that was', 'Ren')
+      platformManager.emit('event', original)
+      expect(isSuppressedChatRelayEcho(original)).toBe(false)
+
+      // StreamElements-style bridge writes "name: message" into Twitch chat.
+      const bridged = createChatEvent('twitch', 'Ren: what a sick play that was', 'StreamElements')
+      platformManager.emit('event', bridged)
+      expect(isSuppressedChatRelayEcho(bridged)).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('leaves ordinary colon-containing messages alone', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({})
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([])
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({ chatAutoRelayEnabled: false })
+    )
+
+    try {
+      const original = createChatEvent('tiktok', 'what a sick play that was', 'Ren')
+      platformManager.emit('event', original)
+
+      // Same core text but the implied author does not match the original's.
+      const unrelated = createChatEvent('twitch', 'PSA: what a sick play that was', 'Real Viewer')
+      platformManager.emit('event', unrelated)
+      expect(isSuppressedChatRelayEcho(unrelated)).toBe(false)
+
+      const normalColon = createChatEvent('twitch', 'reminder: raid at 8pm tonight', 'Mod Friend')
+      platformManager.emit('event', normalColon)
+      expect(isSuppressedChatRelayEcho(normalColon)).toBe(false)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('collapses undecorated cross-platform duplicates but not short coincidences', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({})
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([])
+
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({ chatAutoRelayEnabled: false })
+    )
+
+    try {
+      platformManager.emit('event', createChatEvent('tiktok', 'the transition on that scene was so smooth', 'Ren'))
+      const mirrored = createChatEvent('kick', 'the transition on that scene was so smooth', 'KickBridge')
+      platformManager.emit('event', mirrored)
+      expect(isSuppressedChatRelayEcho(mirrored)).toBe(true)
+
+      platformManager.emit('event', createChatEvent('tiktok', 'lol', 'Ren'))
+      const coincidence = createChatEvent('kick', 'lol', 'Someone Else')
+      platformManager.emit('event', coincidence)
+      expect(isSuppressedChatRelayEcho(coincidence)).toBe(false)
+    } finally {
+      service.dispose()
+    }
+  })
+
   it('does not auto relay TikTok like system messages that arrive as chat', async () => {
     const platformManager = new MockPlatformManager()
     platformManager.getChatCapabilities.mockReturnValue({
