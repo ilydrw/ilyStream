@@ -159,7 +159,13 @@ export class TwitchConnector extends BaseConnector {
     })
 
     this.chatClient.onJoin((channel: string, user: string) => {
-      console.log(`[twitch-connector] Joined ${channel} as ${user}`)
+      // With requestMembershipEvents, this fires for EVERY user who enters the
+      // IRC room (StreamElements, Nightbot, lurkers...), not just us. Only the
+      // join of our own authenticated nick means "we are in the channel".
+      const self = this.chatClient?.currentNick?.toLowerCase() === user.toLowerCase()
+      if (self) {
+        console.log(`[twitch-connector] Joined ${channel} as ${user}`)
+      }
     })
 
     this.chatClient.onJoinFailure((channel: string, reason: string) => {
