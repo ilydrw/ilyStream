@@ -8,13 +8,20 @@ import { usePreviewViewportScale } from './usePreviewViewportScale'
 export function WidgetCard({
   widget,
   url,
+  previewUrl,
   copyState,
   onCopyUrl,
   onConfigure,
   onDelete
 }: {
   widget: Widget
+  /** Browser-source URL shown to the user — may carry the LAN host for OBS. */
   url: string | null
+  /**
+   * Loopback URL for the in-app preview iframe. The renderer CSP only allows
+   * framing 127.0.0.1/localhost, so framing the LAN-host `url` is blocked.
+   */
+  previewUrl: string | null
   copyState: boolean
   onCopyUrl: () => void
   onConfigure: () => void
@@ -36,7 +43,7 @@ export function WidgetCard({
   // the grid. Now an idle grid does zero overlay work.
   const [hasActivated, setHasActivated] = useState(false)
   const activate = () => {
-    if (!url) return
+    if (!previewUrl) return
     if (!hasActivated) setHasActivated(true)
   }
 
@@ -92,7 +99,7 @@ export function WidgetCard({
             style={{ aspectRatio: '16 / 9' }}
             onPointerEnter={activate}
           >
-            {url ? (
+            {previewUrl ? (
               <>
                 {/* Default placeholder: shown until the iframe is activated.
                     Once activated, the iframe sits on top with the same
@@ -111,7 +118,7 @@ export function WidgetCard({
                       }
                     >
                       <iframe
-                        src={appendPreviewFlag(url)}
+                        src={appendPreviewFlag(previewUrl)}
                         title={`${widget.name} preview`}
                         className="absolute left-0 top-0 border-none"
                         style={{ ...previewViewportStyle, background: 'transparent' }}
@@ -131,15 +138,15 @@ export function WidgetCard({
 
             <div
               className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[8px] font-semibold tracking-normal pointer-events-none ${
-                !url ? 'text-white/25' : hasActivated ? 'text-accent' : 'text-white/40'
+                !previewUrl ? 'text-white/25' : hasActivated ? 'text-accent' : 'text-white/40'
               }`}
             >
               <div
                 className={`w-1 h-1 rounded-full ${
-                  !url ? 'bg-white/20' : hasActivated ? 'bg-accent animate-pulse' : 'bg-white/40'
+                  !previewUrl ? 'bg-white/20' : hasActivated ? 'bg-accent animate-pulse' : 'bg-white/40'
                 }`}
               />
-              {!url ? 'Offline' : hasActivated ? 'Live' : 'Hover to load'}
+              {!previewUrl ? 'Offline' : hasActivated ? 'Live' : 'Hover to load'}
             </div>
 
             {/* Click to configure overlay (sits above the iframe so the iframe is

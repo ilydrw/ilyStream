@@ -183,6 +183,10 @@ export default function WidgetPage() {
               key={widget.id}
               widget={widget}
               url={overlayUrlFor(widget.id)}
+              // Previews render inside the app, where CSP only allows framing
+              // loopback origins — never the LAN host we advertise for OBS /
+              // external devices. The local server answers on both.
+              previewUrl={buildWidgetOverlayUrl(widget.id, overlayPort)}
               copyState={copyingId === widget.id}
               onCopyUrl={() => void copyUrl(widget.id)}
               onConfigure={() => setEditingWidget(widget)}
