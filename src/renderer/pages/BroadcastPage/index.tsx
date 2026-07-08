@@ -195,6 +195,9 @@ export default function BroadcastPage() {
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const [status, setStatus] = useState('Offline')
   const [streamError, setStreamError] = useState<string | null>(null)
+  // Per-destination health from the streaming service's status heartbeat —
+  // drives the "reconnecting / dropping frames" chip in the header.
+  const [outputHealth, setOutputHealth] = useState<Array<{ id: string; name: string; state: string; degraded: boolean }>>([])
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [widgets, setWidgets] = useState<any[]>([])
   const [platforms, setPlatforms] = useState<any[]>([])
@@ -548,6 +551,7 @@ export default function BroadcastPage() {
       setIsRecording(Boolean(next.recording))
       setRecordingStartedAt(prev => next.recording ? (prev ?? Date.now()) : null)
       setStatus(next.streaming ? 'Live' : next.recording ? 'Recording' : 'Offline')
+      if (Array.isArray(next.outputs)) setOutputHealth(next.outputs)
       if (next.state === 'error') {
         setStreamError(next.error || 'Broadcast output failed')
       }
@@ -913,6 +917,7 @@ export default function BroadcastPage() {
     <div className="flex flex-col h-full overflow-hidden bg-black relative">
       <BroadcastHeader
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
+        outputHealth={outputHealth}
         showLeftSidebar={showLeftSidebar} onToggleLeftSidebar={() => setShowLeftSidebar(!showLeftSidebar)} showRightSidebar={showRightSidebar} onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
         broadcastLayoutMode={broadcastLayoutMode} onLayoutModeChange={changeBroadcastLayoutMode}
         onApplyTikTokPreset={applyTikTokStarterLayout}

@@ -13,6 +13,8 @@ interface BroadcastHeaderProps {
   isRecording: boolean
   recordingTime: string
   status: string
+  /** Per-destination health from the streaming heartbeat (reconnecting/degraded). */
+  outputHealth?: Array<{ id: string; name: string; state: string; degraded: boolean }>
   showLeftSidebar: boolean
   onToggleLeftSidebar: () => void
   showRightSidebar: boolean
@@ -170,12 +172,40 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
         <div className="min-w-0 flex items-center gap-3 2xl:gap-6">
           <div className="flex flex-col items-center">
             <span className="hidden 2xl:block text-[11px] font-medium tracking-normal text-white/20 mb-1">Status</span>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-success animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`} />
-              <span className={`max-w-20 truncate text-[10px] 2xl:text-[11px] font-semibold tracking-tight ${isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'}`}>
-                {isStreaming ? 'Streaming' : isRecording ? 'Recording' : 'Offline'}
-              </span>
-            </div>
+            {(() => {
+              const reconnecting = isStreaming ? (props.outputHealth ?? []).filter(o => o.state === 'reconnecting') : []
+              const dropping = isStreaming ? (props.outputHealth ?? []).filter(o => o.state === 'live' && o.degraded) : []
+              const unhealthy = reconnecting.length > 0 || dropping.length > 0
+              const label = reconnecting.length > 0
+                ? 'Reconnecting'
+                : dropping.length > 0
+                  ? 'Dropping frames'
+                  : isStreaming ? 'Streaming' : isRecording ? 'Recording' : 'Offline'
+              const detail = [...reconnecting, ...dropping].map(o => o.name).join(', ')
+              const dotClass = reconnecting.length > 0
+                ? 'bg-red-500 animate-pulse'
+                : dropping.length > 0
+                  ? 'bg-warning animate-pulse'
+                  : isStreaming ? 'bg-success animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-white/10'
+              const textClass = reconnecting.length > 0
+                ? 'text-red-400'
+                : dropping.length > 0
+                  ? 'text-warning'
+                  : isStreaming ? 'text-success' : isRecording ? 'text-red-400' : 'text-white/40'
+
+              const statusBody = (
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${dotClass}`} />
+                  <span className={`max-w-24 truncate text-[10px] 2xl:text-[11px] font-semibold tracking-tight ${textClass}`}>
+                    {label}
+                  </span>
+                </div>
+              )
+
+              return unhealthy ? (
+                <Tooltip content={`${label}: ${detail}`} position="bottom">{statusBody}</Tooltip>
+              ) : statusBody
+            })()}
           </div>
 
           <div className="w-px h-7 2xl:h-8 bg-white/5" />
