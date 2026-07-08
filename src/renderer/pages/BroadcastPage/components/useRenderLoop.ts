@@ -13,6 +13,7 @@ import {
 import type { CachedMediaFrame, CanvasPreviewMode, CanvasStreamOutput, BrowserFrameSurface } from './CanvasEditor.types'
 import { useStudioStore } from '../../../stores/studio-store'
 import { segmentationService } from '../../../services/SegmentationService'
+import { applyChromaKeyGpu } from '../utils/chroma-key-gl'
 
 interface RenderLoopOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -381,8 +382,6 @@ export function useRenderLoop(options: RenderLoopOptions) {
 
           if (hasChromaKey && drawTarget !== targetCtx) {
             const cCtx = drawTarget as CanvasRenderingContext2D
-            const imgData = cCtx.getImageData(0, 0, dl.width, dl.height)
-            const data = imgData.data
 
             const hex = e.chromaKey!.color.replace('#', '')
             const kr = parseInt(hex.substring(0, 2), 16)
@@ -393,24 +392,41 @@ export function useRenderLoop(options: RenderLoopOptions) {
             const smoothness = (e.chromaKey!.smoothness || 10) / 100
             const spill = (e.chromaKey!.spill || 10) / 100
 
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i], g = data[i+1], b = data[i+2]
-              const rDiff = r - kr, gDiff = g - kg, bDiff = b - kb
-              const dist = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) / 441.6
+            // GPU path: fragment shader on a shared WebGL canvas instead of
+            // getImageData + a JS pixel loop on the render thread (~10ms+ per
+            // 1080p layer). Identical math; falls back to the CPU loop below
+            // when WebGL is unavailable or disabled via
+            // window.__ilyChromaGpu(false).
+            const keyed = applyChromaKeyGpu(cCtx.canvas, {
+              keyR: kr, keyG: kg, keyB: kb, similarity, smoothness, spill
+            })
 
-              if (dist < similarity) {
-                data[i+3] = 0
-              } else if (dist < similarity + smoothness) {
-                const alpha = (dist - similarity) / smoothness
-                data[i+3] = Math.min(data[i+3], alpha * 255)
-              }
+            if (keyed) {
+              cCtx.clearRect(0, 0, dl.width, dl.height)
+              cCtx.drawImage(keyed, 0, 0)
+            } else {
+              const imgData = cCtx.getImageData(0, 0, dl.width, dl.height)
+              const data = imgData.data
 
-              if (spill > 0 && dist < similarity + spill) {
-                const avg = (r + b) / 2
-                if (g > avg) data[i+1] = avg + (g - avg) * (dist / (similarity + spill))
+              for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i+1], b = data[i+2]
+                const rDiff = r - kr, gDiff = g - kg, bDiff = b - kb
+                const dist = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) / 441.6
+
+                if (dist < similarity) {
+                  data[i+3] = 0
+                } else if (dist < similarity + smoothness) {
+                  const alpha = (dist - similarity) / smoothness
+                  data[i+3] = Math.min(data[i+3], alpha * 255)
+                }
+
+                if (spill > 0 && dist < similarity + spill) {
+                  const avg = (r + b) / 2
+                  if (g > avg) data[i+1] = avg + (g - avg) * (dist / (similarity + spill))
+                }
               }
+              cCtx.putImageData(imgData, 0, 0)
             }
-            cCtx.putImageData(imgData, 0, 0)
           }
 
           if (hasImageMask && maskImage && drawTarget !== targetCtx) {
