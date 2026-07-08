@@ -29,6 +29,11 @@ const OUTPUT_STABILITY_RESET_MS = 60_000
 // long session isn't lost to one transient hiccup.
 const RECORDING_MAX_RESTARTS = 3
 const RECORDING_RESTART_DELAY_MS = 1500
+// While any output is live, push a status snapshot on this cadence so the UI
+// can show live health (the `degraded` flag compares drop counts between
+// consecutive snapshots — without a heartbeat it would only update on
+// start/stop/reconnect transitions).
+const OUTPUT_HEALTH_INTERVAL_MS = 2000
 
 /**
  * One multistream destination: the live ffmpeg session plus everything needed
@@ -55,14 +60,15 @@ export class StreamingService extends EventEmitter {
   private activeInputFormat: 'h264' | 'mjpeg' | null = null
   private activeRecordingPath: string | null = null
 
-  private streamManager = new FFmpegProcessManager('stream')
+  // Live streaming runs exclusively through per-destination StreamSessions in
+  // `streamOutputs` (reconnect + CFR pacing per output). FFmpegProcessManager
+  // remains for the single recording pipeline only.
   private recordingManager = new FFmpegProcessManager('recording')
   private pumper = new MediaPumper()
   private streamOutputs = new Map<string, OutputRuntime>()
   private encoderResolver = new StreamingEncoderResolver(resolvedFfmpegPath)
   private argsBuilder = new FFmpegArgsBuilder(this.encoderResolver)
 
-  private legacyStreamAudioEnabled = false
   private streamAudioEnabled = false
   private recordingAudioEnabled = false
 
@@ -75,6 +81,7 @@ export class StreamingService extends EventEmitter {
   // Snapshot of per-output drop counts from the previous status emission, used to
   // detect whether an output is *actively* dropping (not just historically).
   private lastDropSnapshot = new Map<string, { video: number; audio: number }>()
+  private outputsHeartbeat: ReturnType<typeof setInterval> | null = null
 
   constructor() {
     super()
@@ -85,19 +92,8 @@ export class StreamingService extends EventEmitter {
   }
 
   private setupManagers() {
-    this.streamManager.on('error', (err) => this.handleManagerError('stream', err))
-    this.streamManager.on('close', (code, signal, summary) => {
-      this.legacyStreamAudioEnabled = false
-      this.updateStreamingState()
-      this.checkPowerSave()
-      this.stopSilentClockIfIdle()
-      this.releaseInputFormatIfIdle()
-      this.pumper.stopWatchdog()
-      this.emit('stopped')
-      this.emitStatusChanged(code === 0 ? 'stopped' : 'error', code === 0 ? undefined : summary)
-    })
-
-    this.recordingManager.on('error', (err) => this.handleManagerError('recording', err))
+    // Route through the restart path (which handles teardown + status itself).
+    this.recordingManager.on('error', (err) => this.handleRecordingExit(true, err.message))
     // FFmpegProcessManager suppresses 'close' on an intentional stop, so any
     // close that reaches here is an UNEXPECTED exit (crash or self-EOF).
     this.recordingManager.on('close', (code, signal, summary) => {
@@ -105,20 +101,6 @@ export class StreamingService extends EventEmitter {
     })
 
     this.pumper.on('clock', (totalSamples) => this.emit('native-clock', { totalSamples }))
-  }
-
-  private handleManagerError(kind: 'stream' | 'recording', error: Error) {
-    if (kind === 'recording') {
-      // Route through the restart path (which handles teardown + status itself).
-      this.handleRecordingExit(true, error.message)
-      return
-    }
-    this.legacyStreamAudioEnabled = false
-    this.updateStreamingState()
-    this.releaseInputFormatIfIdle()
-    this.checkPowerSave()
-    this.stopSilentClockIfIdle()
-    this.emitStatusChanged('error', error.message)
   }
 
   /**
@@ -231,58 +213,15 @@ export class StreamingService extends EventEmitter {
   }
 
   public async startStream(config: StreamConfig): Promise<void> {
-    if (config.outputId) return this.startStreamOutput(config.outputId, config)
-    if (this.isStreaming) this.stopStream()
-
-    if (!this.isRecording) this.pumper.resetSamples()
-    this.ensurePowerSave()
-
-    if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
-
-    const rtmpUrl = this.normalizeRtmpUrl(config.rtmpUrl)
-    let finalKey = config.streamKey
-    const fullUrl = `${rtmpUrl.replace(/\/$/, '')}/${finalKey}`
-    const redactedFullUrl = `${rtmpUrl.replace(/\/$/, '')}/[REDACTED]`
-    const inputFormat = config.inputFormat || 'mjpeg'
-    const bestEncoder = await this.encoderResolver.getBestEncoder('h264')
-    const audioFormat = config.audioFormat || 'silent'
-
-    this.reserveInputFormat(inputFormat)
-    const args = await this.argsBuilder.buildStreamArgs(config, fullUrl, bestEncoder)
-
-    const redact = (val: string) => val.replaceAll(fullUrl, redactedFullUrl).replaceAll(config.streamKey, '[REDACTED]')
-    console.log(`[Streaming] Starting ${inputFormat} stream to ${redactedFullUrl}`)
-
-    this.legacyStreamAudioEnabled = audioFormat === 'f32le'
-    this.streamAudioEnabled = this.computeStreamAudioEnabled()
-    this.streamManager.start(resolvedFfmpegPath, args, this.legacyStreamAudioEnabled, redact)
-
-    if (inputFormat === 'mjpeg') {
-      this.pumper.startVideoPump(config.fps, (frame) => {
-        if (this.isStreaming) this.streamManager.writeVideo(frame)
-        if (this.isRecording) this.recordingManager.writeVideo(frame)
-      })
-    } else {
-      this.pumper.stopVideoPump()
-    }
-
-    this.pumper.startWatchdog('stream', () => this.streamManager.getStats())
-
-    if (audioFormat === 'silent') {
-      this.pumper.startSilentClock((totalSamples) => this.emit('native-clock', { totalSamples }))
-    }
-
-    this.updateStreamingState()
-    this.emit('started')
-    this.emitStatusChanged('started')
+    // Every destination is its own StreamSession. Callers all pass an
+    // explicit outputId today; the fallback keeps the API total.
+    return this.startStreamOutput(config.outputId || 'primary', config)
   }
 
   public stopStream(): void {
     if (this.streamOutputs.size > 0) {
       for (const id of [...this.streamOutputs.keys()]) this.stopStreamOutput(id)
     }
-    this.streamManager.stop()
-    this.legacyStreamAudioEnabled = false
     this.updateStreamingState()
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
@@ -314,7 +253,6 @@ export class StreamingService extends EventEmitter {
 
     if (inputFormat === 'mjpeg') {
       this.pumper.startVideoPump(config.fps, (frame) => {
-        if (this.isStreaming) this.streamManager.writeVideo(frame)
         if (this.isRecording) this.recordingManager.writeVideo(frame)
       })
     }
@@ -367,9 +305,8 @@ export class StreamingService extends EventEmitter {
     }
 
     this.pumper.setLatestFrame(frame.data)
-    if (this.activeInputFormat === 'h264') {
-      if (this.isStreaming) this.streamManager.writeVideo(frame.data)
-      if (this.isRecording) this.recordingManager.writeVideo(frame.data)
+    if (this.activeInputFormat === 'h264' && this.isRecording) {
+      this.recordingManager.writeVideo(frame.data)
     }
   }
 
@@ -378,17 +315,14 @@ export class StreamingService extends EventEmitter {
     const frame = normalizeAudioFramePayload(audioData)
     const framesInChunk = frame.data.byteLength / 4 / 2
 
-    let acceptedByStream = false
     let acceptedByRecording = false
-
-    if (this.isStreaming) acceptedByStream = this.streamManager.writeAudio(frame.data)
     if (this.isRecording) acceptedByRecording = this.recordingManager.writeAudio(frame.data)
 
     for (const runtime of this.streamOutputs.values()) {
       if (runtime.sessionConfig.audioEnabled) runtime.session?.pushAudioFrame(frame.data)
     }
 
-    if (acceptedByStream || acceptedByRecording || this.streamOutputs.size > 0) {
+    if (acceptedByRecording || this.streamOutputs.size > 0) {
       this.pumper.incrementSamples(framesInChunk)
     }
   }
@@ -432,8 +366,8 @@ export class StreamingService extends EventEmitter {
       if (runtime.session) waiters.push(runtime.session.stopAndWait())
     }
     this.streamOutputs.clear()
+    this.syncOutputsHeartbeat()
 
-    waiters.push(this.streamManager.stopAndWait())
     waiters.push(this.recordingManager.stopAndWait())
 
     await Promise.allSettled(waiters)
@@ -446,7 +380,6 @@ export class StreamingService extends EventEmitter {
     this.isRecording = false
     this.activeRecordingPath = null
     this.activeInputFormat = null
-    this.legacyStreamAudioEnabled = false
     this.streamAudioEnabled = false
     this.recordingAudioEnabled = false
 
@@ -509,8 +442,24 @@ export class StreamingService extends EventEmitter {
     this.streamOutputs.set(id, runtime)
     this.spawnOutputSession(runtime)
     this.updateStreamingState()
+    this.syncOutputsHeartbeat()
     this.emit('started')
     this.emitStatusChanged('started')
+  }
+
+  /** Keep a low-rate status heartbeat running exactly while outputs exist. */
+  private syncOutputsHeartbeat(): void {
+    const shouldRun = this.streamOutputs.size > 0
+    if (shouldRun && !this.outputsHeartbeat) {
+      this.outputsHeartbeat = setInterval(
+        () => this.emitStatusChanged('outputs-health'),
+        OUTPUT_HEALTH_INTERVAL_MS
+      )
+      ;(this.outputsHeartbeat as any)?.unref?.()
+    } else if (!shouldRun && this.outputsHeartbeat) {
+      clearInterval(this.outputsHeartbeat)
+      this.outputsHeartbeat = null
+    }
   }
 
   private spawnOutputSession(runtime: OutputRuntime): void {
@@ -616,6 +565,7 @@ export class StreamingService extends EventEmitter {
     this.streamOutputs.delete(id)
     this.lastDropSnapshot.delete(id)
     this.updateStreamingState()
+    this.syncOutputsHeartbeat()
     this.releaseInputFormatIfIdle()
     this.checkPowerSave()
   }
@@ -687,13 +637,12 @@ export class StreamingService extends EventEmitter {
   }
 
   private updateStreamingState(): void {
-    this.isStreaming = this.streamManager.isRunning() || this.streamOutputs.size > 0
+    this.isStreaming = this.streamOutputs.size > 0
     this.streamAudioEnabled = this.computeStreamAudioEnabled()
   }
 
   private computeStreamAudioEnabled(): boolean {
-    return this.legacyStreamAudioEnabled ||
-      Array.from(this.streamOutputs.values()).some(runtime => runtime.sessionConfig.audioEnabled)
+    return Array.from(this.streamOutputs.values()).some(runtime => runtime.sessionConfig.audioEnabled)
   }
 
   private releaseInputFormatIfIdle(): void {
