@@ -14,6 +14,7 @@ import {
   generateOverlayHtml,
   getDefaultWidgetConfig,
   injectOverlayRuntimeBootstrap,
+  injectPreviewBootstrap,
   WIDGET_ALIAS_MAP
 } from './widget-renderers'
 import type { Widget, WidgetType } from '../../shared/widgets'
@@ -525,9 +526,19 @@ export class OverlayRouter {
         deckActions: db?.getAllDeckActions() || []
       })
       if (html) {
-        // Browser sources get the SSE-with-polling-fallback runtime; the editor
-        // preview uses its own bootstrap and is served elsewhere.
-        this.writeHtml(response, isPreview ? html : injectOverlayRuntimeBootstrap(html))
+        // Browser sources get the SSE-with-polling-fallback runtime. Preview
+        // requests (widget cards + editor modal iframes) need BOTH bootstraps:
+        // the runtime, because templates reference it for state/subscriptions
+        // even when IS_PREVIEW swaps in demo data, and the preview bootstrap,
+        // which posts `ilystream:preview-ready` and accepts postMessage HTML
+        // swaps from the editor modal. Serving bare HTML here left every
+        // preview iframe blank and the modal waiting forever on READY.
+        this.writeHtml(
+          response,
+          isPreview
+            ? injectPreviewBootstrap(injectOverlayRuntimeBootstrap(html))
+            : injectOverlayRuntimeBootstrap(html)
+        )
         return true
       }
     }

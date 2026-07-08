@@ -19,6 +19,24 @@ afterEach(async () => {
 })
 
 describe('OverlayServer', () => {
+  it('serves preview pages with both the runtime and preview bootstraps', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    // Preview requests (widget cards + editor modal iframes) need the overlay
+    // runtime so templates can hydrate demo state, AND the preview bootstrap
+    // so the editor can postMessage draft HTML into the iframe.
+    const preview = await (await fetch(`${base}/overlay/chat-unified?preview=1`)).text()
+    expect(preview).toContain('ilystream-preview-bootstrap')
+    expect(preview).toContain('ilystream-overlay-runtime')
+
+    // Browser sources (OBS) get the runtime but not the editor protocol.
+    const live = await (await fetch(`${base}/overlay/chat-unified`)).text()
+    expect(live).toContain('ilystream-overlay-runtime')
+    expect(live).not.toContain('ilystream-preview-bootstrap')
+  })
+
   it('binds the LAN when started with the paired-device opt-in', async () => {
     overlayServer = new OverlayServer()
     const status = await overlayServer.start(0, { preferLan: true })
