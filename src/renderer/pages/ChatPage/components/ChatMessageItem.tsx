@@ -165,6 +165,11 @@ function appendTextSegment(
   elements.push(...renderTextSegment(text, platform, keyPrefix))
 }
 
+function formatEmoteFallback(name: string): string {
+  const label = name.replace(/^:+|:+$/g, '')
+  return label ? `:${label}:` : ':emote:'
+}
+
 function renderMessageContent(
   messageText: string,
   platform: ChatMessage['platform'],
@@ -189,19 +194,23 @@ function renderMessageContent(
         )
       }
 
-      elements.push(
-        <img
-          key={`${emote.id}-${idx}`}
-          src={emote.imageUrl}
-          alt={emote.name}
-          title={emote.name}
-          className="inline-block h-6 max-h-6 object-contain align-middle mx-0.5"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none'
-            e.currentTarget.after(emote.name)
-          }}
-        />
-      )
+      const fallbackLabel = formatEmoteFallback(emote.name)
+      if (emote.imageUrl) {
+        elements.push(
+          <img
+            key={`${emote.id}-${idx}`}
+            src={emote.imageUrl}
+            alt={emote.name}
+            title={emote.name}
+            className="mx-0.5 inline-block h-6 max-h-6 object-contain align-middle"
+            onError={(e) => {
+              e.currentTarget.replaceWith(document.createTextNode(fallbackLabel))
+            }}
+          />
+        )
+      } else {
+        appendTextSegment(elements, fallbackLabel, platform, `emote-fallback-${idx}`)
+      }
 
       lastIndex = emote.endIndex + 1
     }

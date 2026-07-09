@@ -480,6 +480,60 @@ describe('TTSEngine settings', () => {
     ])
   })
 
+  it('strips YouTube reply mentions before applying the skip-at filter', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: false,
+      skipMessagesStartingWithAt: true
+    })
+    engine.pause()
+
+    engine.processEvent(makeChatEvent({ platform: 'youtube', message: '@Queena_chaos hey murdok' }))
+
+    expect(engine.getQueue()).toEqual([
+      expect.objectContaining({
+        text: 'Alice says: hey murdok'
+      })
+    ])
+  })
+
+  it('allows required YouTube TTS commands when the spoken text starts with a reply mention', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: true,
+      commandPrefixes: ['!tts'],
+      skipMessagesStartingWithAt: true
+    })
+    engine.pause()
+
+    engine.processEvent(makeChatEvent({ platform: 'youtube', message: '!tts @Queena_chaos read this one' }))
+
+    expect(engine.getQueue()).toEqual([
+      expect.objectContaining({
+        text: 'Alice says: read this one'
+      })
+    ])
+  })
+
+  it('still skips non-YouTube leading mentions when the skip-at filter is enabled', () => {
+    const engine = new TTSEngine()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      requireCommand: false,
+      skipMessagesStartingWithAt: true
+    })
+    engine.pause()
+
+    engine.processEvent(makeChatEvent({ platform: 'tiktok', message: '@bob hello' }))
+
+    expect(engine.getQueue()).toHaveLength(0)
+  })
+
   it('does not read executable AI or song request commands aloud', () => {
     const engine = new TTSEngine()
 

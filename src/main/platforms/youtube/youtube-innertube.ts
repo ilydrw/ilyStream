@@ -306,7 +306,7 @@ function parseChatAction(action: any): InnertubeChatItem | null {
   if (membership) {
     const parsed = parseRenderer(membership, 'membership')
     if (parsed && !parsed.message) {
-      parsed.message = readRuns(membership.headerSubtext || membership.headerPrimaryText).message
+      parsed.message = readInnertubeRuns(membership.headerSubtext || membership.headerPrimaryText).message
     }
     return parsed
   }
@@ -314,7 +314,7 @@ function parseChatAction(action: any): InnertubeChatItem | null {
   const gift = item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer
   if (gift) {
     const header = gift.header?.liveChatSponsorshipsHeaderRenderer
-    const headerText = readRuns(header?.primaryText).message
+    const headerText = readInnertubeRuns(header?.primaryText).message
     const parsed: InnertubeChatItem = {
       id: gift.id || cryptoRandomId(),
       type: 'membership-gift',
@@ -340,7 +340,7 @@ function parseChatAction(action: any): InnertubeChatItem | null {
 function parseRenderer(renderer: any, type: InnertubeChatItemType): InnertubeChatItem | null {
   if (!renderer) return null
   const badges = readBadges(renderer.authorBadges)
-  const { message, emotes } = readRuns(renderer.message)
+  const { message, emotes } = readInnertubeRuns(renderer.message)
   const purchaseAmountText = readSimpleText(renderer.purchaseAmountText) || undefined
 
   return {
@@ -376,7 +376,7 @@ function readBadges(authorBadges: any): { isModerator: boolean; isOwner: boolean
   return result
 }
 
-function readRuns(message: any): { message: string; emotes: Emote[] } {
+export function readInnertubeRuns(message: any): { message: string; emotes: Emote[] } {
   const runs = message?.runs
   if (!Array.isArray(runs)) return { message: readSimpleText(message), emotes: [] }
 
@@ -393,14 +393,12 @@ function readRuns(message: any): { message: string; emotes: Emote[] } {
       const label: string = emoji.shortcuts?.[0] || emoji.searchTerms?.[0] || emoji.emojiId || ':emoji:'
       const startIndex = text.length
       text += label
-      // Only surface custom channel emojis as overlay emotes — unicode emoji
-      // render fine as text.
-      if (emoji.isCustomEmoji) {
-        const thumbnails = emoji.image?.thumbnails
+      const imageUrl = readEmojiImageUrl(emoji)
+      if (imageUrl) {
         emotes.push({
           id: String(emoji.emojiId || label),
           name: label.replace(/^:|:$/g, ''),
-          imageUrl: Array.isArray(thumbnails) ? thumbnails[thumbnails.length - 1]?.url : undefined,
+          imageUrl,
           startIndex,
           endIndex: text.length - 1
         })
@@ -409,6 +407,10 @@ function readRuns(message: any): { message: string; emotes: Emote[] } {
   }
 
   return { message: text, emotes }
+}
+
+function readEmojiImageUrl(emoji: any): string | undefined {
+  return readThumbnail(emoji?.image)
 }
 
 function readSimpleText(node: any): string {
@@ -422,7 +424,15 @@ function readSimpleText(node: any): string {
 function readThumbnail(photo: any): string | undefined {
   const thumbnails = photo?.thumbnails
   if (!Array.isArray(thumbnails) || thumbnails.length === 0) return undefined
-  return thumbnails[thumbnails.length - 1]?.url
+  return normalizeYouTubeImageUrl(thumbnails[thumbnails.length - 1]?.url)
+}
+
+function normalizeYouTubeImageUrl(url: unknown): string | undefined {
+  if (typeof url !== 'string') return undefined
+  const trimmed = url.trim()
+  if (!trimmed) return undefined
+  if (trimmed.startsWith('//')) return `https:${trimmed}`
+  return trimmed
 }
 
 function readTimestampMs(renderer: any): number {

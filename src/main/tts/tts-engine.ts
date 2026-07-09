@@ -498,20 +498,24 @@ export class TTSEngine extends EventEmitter {
       return null
     }
 
+    let matchedCommandPrefix: string | undefined
     if (this.requireCommand) {
-      const matchedPrefix = this.commandPrefixes.find((prefix) => message.startsWith(prefix))
-      if (!matchedPrefix) {
+      matchedCommandPrefix = this.commandPrefixes.find((prefix) => message.startsWith(prefix))
+      if (!matchedCommandPrefix) {
         console.log(`[TTS] Skipping: Message from "${event.user.username}" lacks required command prefix. Msg: "${message}"`)
         return null
       }
 
-      message = message.slice(matchedPrefix.length).trim()
+      message = message.slice(matchedCommandPrefix.length).trim()
     }
 
-    // NEW: Check if we should skip messages starting with @
-    // This is checked BEFORE prefix removal or AFTER depending on preference.
-    // Usually, users mean the actual message content starts with @.
-    if (this.filter.isFilterEnabled('skipMessagesStartingWithAt') && message.startsWith('@')) {
+    message = stripLeadingYouTubeReplyMention(event.platform, message)
+
+    if (
+      this.filter.isFilterEnabled('skipMessagesStartingWithAt') &&
+      message.startsWith('@') &&
+      !matchedCommandPrefix
+    ) {
       console.log(`[TTS] Skipping: Message from "${event.user.username}" starts with @ and "skip @ messages" is enabled.`)
       return null
     }
@@ -626,6 +630,12 @@ export class TTSEngine extends EventEmitter {
 
 function normalizeUsername(username: string): string {
   return username.trim().replace(/^@+/, '').toLowerCase()
+}
+
+function stripLeadingYouTubeReplyMention(platform: string, message: string): string {
+  if (platform !== 'youtube') return message
+  const match = message.match(/^@[^\s]+\s+([\s\S]+)$/)
+  return match ? match[1].trim() : message
 }
 
 function normalizeChatMessageTemplate(template: string | undefined): string {
