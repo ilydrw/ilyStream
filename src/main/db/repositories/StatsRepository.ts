@@ -1,11 +1,8 @@
 import BetterSqlite3 from 'better-sqlite3'
-import crypto from 'crypto'
 import { BaseRepository } from './BaseRepository'
 import {
-  type AudienceBadgeImageUrls,
   UserIdentity,
   UserStat,
-  type ViewerAccount,
   type ViewerAccountInput,
   type ViewerProfile,
   type ViewerProfileInput
@@ -14,58 +11,34 @@ import type { UserStatRow } from '../database'
 import { Platform } from '../../platforms/types'
 import { estimateTikTokCreatorGiftCents } from '../../../shared/tiktok-revenue'
 import { isCohostIdentity } from '../../ai/cohost-identity'
-
-type UserStatRowWithIdentity = UserStatRow & { resolved_profile_id?: string | null, is_super_fan?: number, is_moderator?: number }
-
-interface ViewerProfileRow {
-  id: string
-  display_name: string
-  profile_picture_url: string | null
-  notes: string | null
-  primary_platform: string | null
-  primary_username: string | null
-  created_at: string
-  updated_at: string
-}
-
-function calculateSimilarity(str1: string, str2: string): number {
-  if (!str1 || !str2) return 0;
-  const s1 = str1.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const s2 = str2.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!s1 || !s2) return 0;
-  if (s1 === s2) return 1;
-  
-  const matrix = Array.from({ length: s1.length + 1 }, () => new Array(s2.length + 1).fill(0));
-  for (let i = 0; i <= s1.length; i++) matrix[i][0] = i;
-  for (let j = 0; j <= s2.length; j++) matrix[0][j] = j;
-  
-  for (let i = 1; i <= s1.length; i++) {
-    for (let j = 1; j <= s2.length; j++) {
-      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
-    }
-  }
-  
-  const maxLength = Math.max(s1.length, s2.length);
-  return (maxLength - matrix[s1.length][s2.length]) / maxLength;
-}
-
-interface ViewerAccountRow {
-  profile_id: string
-  platform: string
-  username: string
-  platform_user_id: string | null
-  display_name: string
-  profile_picture_url: string | null
-  first_seen_at: string
-  last_seen_at: string
-}
+import { FollowerStatsRepository } from './FollowerStatsRepository'
+import { attachOverallRanks, fillMissingAvatar } from './StatsIdentityRanking'
+import { StatsTotalsRepository } from './StatsTotalsRepository'
+import { ViewerProfileRepository } from './ViewerProfileRepository'
+import {
+  badgeImageUrlsFromRow,
+  findBadgeImageFromRaw,
+  isFanClubBadgeLabel,
+  normalizeOptionalText,
+  normalizeOptionalUrl,
+  normalizeUsername,
+  safeDisplayName,
+  type UserStatRowWithIdentity,
+  type ViewerProfileRow
+} from './StatsRepository.helpers'
 
 export class StatsRepository extends BaseRepository {
+  private readonly followerStats: FollowerStatsRepository
+  private readonly totals: StatsTotalsRepository
+  private readonly viewerProfiles: ViewerProfileRepository
+
+  constructor(db: BetterSqlite3.Database) {
+    super(db)
+    this.followerStats = new FollowerStatsRepository(db)
+    this.totals = new StatsTotalsRepository(db)
+    this.viewerProfiles = new ViewerProfileRepository(db, (platform, username) => this.getUserStat(platform, username))
+  }
+
   getTopStats(opts: {
     sortColumn: string
     platform?: string
@@ -374,11 +347,11 @@ export class StatsRepository extends BaseRepository {
     // does — preferring the primary platform. Fixes profiles/identities showing
     // a generic initial while an account clearly has a real picture.
     for (const identity of allIdentities) {
-      this.fillMissingAvatar(identity)
+      fillMissingAvatar(identity)
     }
     // Always compute the overall ranking so the "Overall" column can render
     // even when the table is sorted by a different metric.
-    this.attachOverallRanks(allIdentities)
+    attachOverallRanks(allIdentities)
 
     const sorted = allIdentities.sort((a, b) => {
       if (isOverall) {
@@ -393,73 +366,6 @@ export class StatsRepository extends BaseRepository {
     })
 
     return sorted.slice(offset, offset + limit)
-  }
-
-  /**
-   * Assigns each identity an "overall" RANK (1 = best) by combining their
-   * standing across every engagement/contribution category. For each category
-   * we rank the audience (1 = top, ties share a position), sum each identity's
-   * positions across all categories, then order by that sum — whoever sits
-   * highest across the board lands at #1. This is a true ranking ("who's #1
-   * overall, #2, #3"), not a 0–100 rating.
-   */
-  /** Borrow an account's avatar when the identity itself has none. */
-  private fillMissingAvatar(identity: UserIdentity): void {
-    if (identity.profilePictureUrl) return
-    const accounts = identity.accounts || []
-    const primaryAcc = accounts.find((a) => a.platform === identity.primaryPlatform && a.profilePictureUrl)
-    const anyAcc = accounts.find((a) => a.profilePictureUrl)
-    identity.profilePictureUrl = primaryAcc?.profilePictureUrl ?? anyAcc?.profilePictureUrl ?? identity.profilePictureUrl
-  }
-
-  private attachOverallRanks(identities: UserIdentity[]): void {
-    const n = identities.length
-    if (n === 0) return
-
-    const CATEGORIES: Array<keyof UserIdentity> = [
-      'totalLikes',
-      'totalGifts',
-      'totalGiftValueCents',
-      'totalShares',
-      'totalRaids',
-      'totalChats',
-      'totalSongRequests'
-    ]
-
-    const rankSum = new Map<string, number>()
-    for (const identity of identities) rankSum.set(identity.id, 0)
-
-    for (const metric of CATEGORIES) {
-      const desc = [...identities].sort(
-        (a, b) => Number((b as any)[metric] || 0) - Number((a as any)[metric] || 0)
-      )
-      let i = 0
-      while (i < n) {
-        const val = Number((desc[i] as any)[metric] || 0)
-        let j = i
-        while (j + 1 < n && Number((desc[j + 1] as any)[metric] || 0) === val) j++
-        const position = i + 1 // ties share the best position in their group
-        for (let k = i; k <= j; k++) {
-          rankSum.set(desc[k].id, (rankSum.get(desc[k].id) || 0) + position)
-        }
-        i = j + 1
-      }
-    }
-
-    // Lowest combined position wins. Break ties by revenue, then recency.
-    const ordered = [...identities].sort((a, b) => {
-      const sa = rankSum.get(a.id) || 0
-      const sb = rankSum.get(b.id) || 0
-      if (sa !== sb) return sa - sb
-      if ((b.totalGiftValueCents || 0) !== (a.totalGiftValueCents || 0)) {
-        return (b.totalGiftValueCents || 0) - (a.totalGiftValueCents || 0)
-      }
-      return (b.lastSeenAt || '').localeCompare(a.lastSeenAt || '')
-    })
-
-    ordered.forEach((identity, index) => {
-      identity.overallRank = index + 1
-    })
   }
 
   getUserIdentity(id: string): UserIdentity | null {
@@ -606,7 +512,7 @@ export class StatsRepository extends BaseRepository {
       }
     }
 
-    if (identity) this.fillMissingAvatar(identity)
+    if (identity) fillMissingAvatar(identity)
 
     if (identity) {
       const all = this.getAllIdentities()
@@ -623,7 +529,7 @@ export class StatsRepository extends BaseRepository {
 
       // Overall ranking (combined positions across categories), so the profile
       // can headline "#3 overall" the same way the Top users table does.
-      this.attachOverallRanks(all)
+      attachOverallRanks(all)
       identity.overallRank = all.find(x => x.id === identity!.id)?.overallRank
 
       identity.ranks = {
@@ -714,76 +620,15 @@ export class StatsRepository extends BaseRepository {
   }
 
   getLinkSuggestions(profileId: string): Array<{ platform: Platform; username: string; displayName: string; profilePictureUrl: string | null; similarity: number; profileId: string | null }> {
-    const profile = this.getViewerProfile(profileId)
-    if (!profile) return []
-
-    // Get all usernames in this profile to check against
-    const sourceNames = profile.accounts.map(a => a.username)
-    if (profile.displayName) sourceNames.push(profile.displayName)
-
-    const allOtherAccounts = this.db.prepare(`
-      SELECT platform, username, display_name, profile_picture_url, profile_id
-      FROM user_stats
-      WHERE profile_id IS NULL OR profile_id != ?
-    `).all(profileId) as Array<{ platform: string; username: string; display_name: string; profile_picture_url: string | null; profile_id: string | null }>
-
-    const suggestions: Array<{ platform: Platform; username: string; displayName: string; profilePictureUrl: string | null; similarity: number; profileId: string | null }> = []
-
-    for (const acc of allOtherAccounts) {
-      let maxSim = 0
-      for (const src of sourceNames) {
-        maxSim = Math.max(maxSim, calculateSimilarity(src, acc.username), calculateSimilarity(src, acc.display_name))
-      }
-      
-      if (maxSim >= 0.75) {
-        suggestions.push({
-          platform: acc.platform as Platform,
-          username: acc.username,
-          displayName: acc.display_name,
-          profilePictureUrl: acc.profile_picture_url,
-          similarity: maxSim,
-          profileId: acc.profile_id
-        })
-      }
-    }
-
-    return suggestions.sort((a, b) => b.similarity - a.similarity).slice(0, 5)
+    return this.viewerProfiles.getLinkSuggestions(profileId)
   }
 
   linkAccounts(p1: string, u1: string, p2: string, u2: string): ViewerProfile | null {
-    const account1 = this.normalizeAccountInput({ platform: p1 as Platform, username: u1 })
-    const account2 = this.normalizeAccountInput({ platform: p2 as Platform, username: u2 })
-    if (!account1 || !account2) return null
-    if (account1.platform === account2.platform && account1.username === account2.username) {
-      return this.getViewerProfileByAccount(account1.platform, account1.username)
-    }
-
-    const profileId = this.getOrCreateProfileForAccount(account1)
-    const secondProfileId = this.getViewerProfileId(account2.platform, account2.username)
-    if (secondProfileId && secondProfileId !== profileId) {
-      this.mergeViewerProfiles(profileId, secondProfileId)
-    }
-    this.addAccountToProfile(profileId, account1)
-    this.addAccountToProfile(profileId, account2)
-    this.syncStatsProfileIdForProfile(profileId)
-    return this.getViewerProfile(profileId)
+    return this.viewerProfiles.linkAccounts(p1, u1, p2, u2)
   }
 
   unlinkAccount(platform: string, username: string): void {
-    const normalizedUsername = normalizeUsername(username)
-    if (!platform || !normalizedUsername) return
-
-    const account = this.db.prepare(
-      'SELECT profile_id FROM viewer_accounts WHERE platform = ? AND username = ?'
-    ).get(platform, normalizedUsername) as { profile_id: string } | undefined
-
-    this.db.prepare('DELETE FROM viewer_accounts WHERE platform = ? AND username = ?').run(platform, normalizedUsername)
-    this.db.prepare('UPDATE user_stats SET profile_id = NULL WHERE platform = ? AND LOWER(username) = ?')
-      .run(platform, normalizedUsername)
-
-    if (account?.profile_id) {
-      this.refreshViewerProfile(account.profile_id)
-    }
+    this.viewerProfiles.unlinkAccount(platform, username)
   }
 
   getViewerProfileId(
@@ -791,174 +636,31 @@ export class StatsRepository extends BaseRepository {
     username: string,
     identity: { platformUserId?: string | null; displayName?: string | null } = {}
   ): string | null {
-    const normalizedUsername = normalizeUsername(username)
-    const normalizedDisplayName = normalizeUsername(identity.displayName || undefined)
-    const normalizedPlatformUserId = normalizeOptionalText(identity.platformUserId)
-    if (!normalizedUsername && !normalizedDisplayName && !normalizedPlatformUserId) return null
-
-    if (platform && platform !== 'all') {
-      if (normalizedPlatformUserId) {
-        const accountById = this.db.prepare(
-          'SELECT profile_id FROM viewer_accounts WHERE platform = ? AND platform_user_id = ? ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, normalizedPlatformUserId) as { profile_id: string } | undefined
-        if (accountById?.profile_id) return accountById.profile_id
-
-        const statById = this.db.prepare(
-          'SELECT profile_id FROM user_stats WHERE platform = ? AND platform_user_id = ? AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, normalizedPlatformUserId) as { profile_id: string | null } | undefined
-        if (statById?.profile_id) return statById.profile_id
-      }
-
-      for (const candidate of uniqueNonEmpty([normalizedUsername, normalizedDisplayName])) {
-        const account = this.db.prepare(
-          'SELECT profile_id FROM viewer_accounts WHERE platform = ? AND (username = ? OR LOWER(display_name) = ?) ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, candidate, candidate) as { profile_id: string } | undefined
-        if (account?.profile_id) return account.profile_id
-
-        const stat = this.db.prepare(
-          'SELECT profile_id FROM user_stats WHERE platform = ? AND (LOWER(username) = ? OR LOWER(display_name) = ?) AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, candidate, candidate) as { profile_id: string | null } | undefined
-        if (stat?.profile_id) return stat.profile_id
-      }
-
-      return null
-    }
-
-    if (normalizedPlatformUserId) {
-      const accountById = this.db.prepare(
-        'SELECT profile_id FROM viewer_accounts WHERE platform_user_id = ? ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(normalizedPlatformUserId) as { profile_id: string } | undefined
-      if (accountById?.profile_id) return accountById.profile_id
-
-      const statById = this.db.prepare(
-        'SELECT profile_id FROM user_stats WHERE platform_user_id = ? AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(normalizedPlatformUserId) as { profile_id: string | null } | undefined
-      if (statById?.profile_id) return statById.profile_id
-    }
-
-    for (const candidate of uniqueNonEmpty([normalizedUsername, normalizedDisplayName])) {
-      const account = this.db.prepare(
-        'SELECT profile_id FROM viewer_accounts WHERE username = ? OR LOWER(display_name) = ? ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(candidate, candidate) as { profile_id: string } | undefined
-      if (account?.profile_id) return account.profile_id
-
-      const stat = this.db.prepare(
-        'SELECT profile_id FROM user_stats WHERE (LOWER(username) = ? OR LOWER(display_name) = ?) AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(candidate, candidate) as { profile_id: string | null } | undefined
-      if (stat?.profile_id) return stat.profile_id
-    }
-
-    return null
+    return this.viewerProfiles.getViewerProfileId(platform, username, identity)
   }
 
   getViewerProfiles(opts: { query?: string; limit?: number } = {}): ViewerProfile[] {
-    const params: unknown[] = []
-    const where: string[] = []
-    if (opts.query?.trim()) {
-      const like = `%${opts.query.trim().toLowerCase()}%`
-      where.push(`(
-        LOWER(viewer_profiles.display_name) LIKE ?
-        OR EXISTS (
-          SELECT 1 FROM viewer_accounts
-          WHERE viewer_accounts.profile_id = viewer_profiles.id
-            AND (viewer_accounts.username LIKE ? OR LOWER(viewer_accounts.display_name) LIKE ?)
-        )
-      )`)
-      params.push(like, like, like)
-    }
-    const limit = Math.max(1, Math.min(1000, Math.floor(opts.limit ?? 500)))
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    const rows = this.db.prepare(`
-      SELECT id FROM viewer_profiles
-      ${whereSql}
-      ORDER BY updated_at DESC, display_name ASC
-      LIMIT ?
-    `).all(...params, limit) as Array<{ id: string }>
-
-    return rows
-      .map((row) => this.getViewerProfile(row.id))
-      .filter((profile): profile is ViewerProfile => Boolean(profile))
+    return this.viewerProfiles.getViewerProfiles(opts)
   }
 
   getViewerProfile(profileId: string): ViewerProfile | null {
-    const row = this.db.prepare('SELECT * FROM viewer_profiles WHERE id = ?').get(profileId) as ViewerProfileRow | undefined
-    if (!row) return null
-    return {
-      id: row.id,
-      displayName: row.display_name,
-      profilePictureUrl: row.profile_picture_url,
-      notes: row.notes || '',
-      primaryPlatform: row.primary_platform as Platform | null,
-      primaryUsername: row.primary_username ?? null,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      accounts: this.getViewerAccounts(row.id)
-    }
+    return this.viewerProfiles.getViewerProfile(profileId)
   }
 
   getViewerProfileByAccount(platform: string, username: string): ViewerProfile | null {
-    const profileId = this.getViewerProfileId(platform, username)
-    return profileId ? this.getViewerProfile(profileId) : null
+    return this.viewerProfiles.getViewerProfileByAccount(platform, username)
   }
 
   createViewerProfile(input: ViewerProfileInput): ViewerProfile {
-    const firstAccount = input.accounts?.map((account) => this.normalizeAccountInput(account)).find(Boolean) || null
-    const id = crypto.randomUUID()
-    const displayName = safeDisplayName(input.displayName || firstAccount?.displayName || firstAccount?.username || 'Viewer')
-    const primaryPlatform = input.primaryPlatform || firstAccount?.platform || null
-    const profilePictureUrl = input.profilePictureUrl || firstAccount?.profilePictureUrl || null
-
-    this.db.prepare(`
-      INSERT INTO viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).run(id, displayName, profilePictureUrl, input.notes || '', primaryPlatform)
-
-    for (const account of input.accounts || []) {
-      this.addAccountToProfile(id, account)
-    }
-    this.refreshViewerProfile(id)
-    return this.getViewerProfile(id)!
+    return this.viewerProfiles.createViewerProfile(input)
   }
 
   updateViewerProfile(profileId: string, patch: Partial<ViewerProfileInput>): ViewerProfile | null {
-    const existing = this.getViewerProfile(profileId)
-    if (!existing) return null
-
-    this.db.prepare(`
-      UPDATE viewer_profiles
-      SET display_name = ?, profile_picture_url = ?, notes = ?, primary_platform = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      safeDisplayName(patch.displayName ?? existing.displayName),
-      patch.profilePictureUrl !== undefined ? patch.profilePictureUrl : existing.profilePictureUrl,
-      patch.notes ?? existing.notes,
-      patch.primaryPlatform === undefined ? existing.primaryPlatform : patch.primaryPlatform,
-      profileId
-    )
-
-    return this.getViewerProfile(profileId)
+    return this.viewerProfiles.updateViewerProfile(profileId, patch)
   }
 
   addAccountToProfile(profileId: string, accountInput: ViewerAccountInput): ViewerProfile | null {
-    const account = this.normalizeAccountInput(accountInput)
-    if (!account || !this.getViewerProfile(profileId)) return null
-
-    const existingProfileId = this.getViewerProfileId(account.platform, account.username)
-    if (existingProfileId && existingProfileId !== profileId) {
-      this.mergeViewerProfiles(profileId, existingProfileId)
-    }
-
-    const stat = this.getUserStat(account.platform, account.username)
-    this.upsertViewerAccount(profileId, {
-      ...account,
-      platformUserId: account.platformUserId ?? stat?.platform_user_id ?? null,
-      displayName: account.displayName || stat?.display_name || account.username,
-      profilePictureUrl: account.profilePictureUrl ?? stat?.profile_picture_url ?? null
-    })
-    this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE platform = ? AND LOWER(username) = ?')
-      .run(profileId, account.platform, account.username)
-    this.refreshViewerProfile(profileId)
-    return this.getViewerProfile(profileId)
+    return this.viewerProfiles.addAccountToProfile(profileId, accountInput)
   }
 
   getUserStat(platform: string, username: string): UserStatRow | null {
@@ -1142,7 +844,7 @@ export class StatsRepository extends BaseRepository {
     const profilePictureUrl = metadata.profilePictureUrl ?? target?.profile_picture_url ?? source.profile_picture_url ?? null
 
     if (source.profile_id && target?.profile_id && source.profile_id !== target.profile_id) {
-      this.mergeViewerProfiles(target.profile_id, source.profile_id)
+      this.viewerProfiles.mergeViewerProfiles(target.profile_id, source.profile_id)
     }
 
     const transaction = this.db.transaction(() => {
@@ -1233,7 +935,7 @@ export class StatsRepository extends BaseRepository {
         this.db.prepare('DELETE FROM user_stats WHERE platform = ? AND username = ?').run(platform, sourceUsername)
       }
 
-      this.mergeViewerAccountRows(platform, sourceUsername, targetUsername, {
+      this.viewerProfiles.mergeViewerAccountRows(platform, sourceUsername, targetUsername, {
         platformUserId,
         displayName,
         profilePictureUrl
@@ -1376,7 +1078,7 @@ export class StatsRepository extends BaseRepository {
     )
 
     if (profileId) {
-      this.upsertViewerAccount(profileId, {
+      this.viewerProfiles.upsertViewerAccount(profileId, {
         platform: platform as Platform,
         username: normalizedUsername,
         displayName: displayName || normalizedUsername,
@@ -1386,115 +1088,37 @@ export class StatsRepository extends BaseRepository {
   }
 
   incrementGlobalStat(key: string, amount: number): void {
-    const col = this.getGlobalStatColumn(key)
-    if (!col) return
-    this.db.prepare(`UPDATE global_stats SET ${col} = ${col} + ?`).run(amount)
+    this.totals.incrementGlobalStat(key, amount)
   }
 
   setGlobalStat(key: string, value: number): void {
-    const col = this.getGlobalStatColumn(key)
-    if (!col) return
-    this.db.prepare(`UPDATE global_stats SET ${col} = ?`).run(value)
+    this.totals.setGlobalStat(key, value)
   }
 
   setGlobalStatIfGreater(key: string, value: number): void {
-    const col = this.getGlobalStatColumn(key)
-    if (!col) return
-    this.db.prepare(`UPDATE global_stats SET ${col} = MAX(${col}, ?)`).run(value)
+    this.totals.setGlobalStatIfGreater(key, value)
   }
 
   getPlatformTotals(platform: string): any {
-    const row = this.db.prepare(`
-      SELECT
-        COALESCE(SUM(total_likes), 0) as totalLikes,
-        COALESCE(SUM(total_gifts), 0) as totalGifts,
-        COALESCE(SUM(total_gift_value_cents), 0) as totalGiftValueCents,
-        COALESCE(SUM(total_subscriptions), 0) as totalSubscriptions,
-        -- "Followers we've seen events from" — one per user, never multiplied.
-        COALESCE(SUM(CASE WHEN total_follows > 0 THEN 1 ELSE 0 END), 0) as totalFollows,
-        COALESCE(SUM(total_shares), 0) as totalShares,
-        COALESCE(SUM(total_raids), 0) as totalRaids,
-        COALESCE(SUM(total_chats), 0) as totalChats,
-        COALESCE(SUM(total_song_requests), 0) as totalSongRequests,
-        COUNT(DISTINCT username) as uniqueUserCount
-      FROM user_stats WHERE platform = ?
-    `).get(platform) as any
-
-    return row || {
-      totalLikes: 0, totalGifts: 0, totalGiftValueCents: 0,
-      totalSubscriptions: 0, totalFollows: 0, totalShares: 0,
-      totalRaids: 0, totalChats: 0, totalSongRequests: 0,
-      uniqueUserCount: 0
-    }
+    return this.totals.getPlatformTotals(platform)
   }
 
   getUniqueFollowerCount(): number {
-    return (this.db.prepare('SELECT COUNT(*) as count FROM user_stats WHERE total_follows > 0').get() as { count: number }).count
+    return this.totals.getUniqueFollowerCount()
   }
 
   getUniqueFollowerCountByPlatform(platform: string): number {
-    return (this.db.prepare('SELECT COUNT(*) as count FROM user_stats WHERE total_follows > 0 AND platform = ?').get(platform) as { count: number }).count
+    return this.totals.getUniqueFollowerCountByPlatform(platform)
   }
 
-  /**
-   * Store the platform's authoritative follower count (pulled from its public
-   * API or live-room state). Also records an hourly snapshot so we can compute
-   * growth deltas later — same hour writes are upserted so we don't bloat
-   * the snapshots table with sub-hour samples.
-   */
   setPlatformFollowerCount(platform: string, count: number): void {
-    const safeCount = Math.max(0, Math.floor(count))
-    this.db.prepare(`
-      INSERT INTO platform_follower_stats (platform, follower_count, last_synced_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(platform) DO UPDATE SET
-        follower_count = excluded.follower_count,
-        last_synced_at = CURRENT_TIMESTAMP
-    `).run(platform, safeCount)
-
-    this.snapshotFollowerCount(platform, safeCount)
+    this.followerStats.setPlatformFollowerCount(platform, count)
   }
 
-  /**
-   * Nudge a manually-tracked follower count by a delta (e.g. +1 on a live
-   * follow event for TikTok, which has no follower API). Clamped at zero and
-   * snapshotted like a regular sync so growth deltas keep working. No-ops when
-   * the platform has no row yet — we only track once the streamer has entered
-   * their starting count.
-   */
   incrementPlatformFollowerCount(platform: string, delta: number): void {
-    if (!Number.isFinite(delta) || delta === 0) return
-    const existing = this.db.prepare(
-      'SELECT follower_count FROM platform_follower_stats WHERE platform = ?'
-    ).get(platform) as { follower_count: number } | undefined
-    if (!existing) return
-
-    const next = Math.max(0, existing.follower_count + Math.trunc(delta))
-    this.db.prepare(`
-      UPDATE platform_follower_stats
-      SET follower_count = ?, last_synced_at = CURRENT_TIMESTAMP
-      WHERE platform = ?
-    `).run(next, platform)
-    this.snapshotFollowerCount(platform, next)
+    this.followerStats.incrementPlatformFollowerCount(platform, delta)
   }
 
-  /** Records the current-hour snapshot used for 24h/7d/30d growth deltas. */
-  private snapshotFollowerCount(platform: string, count: number): void {
-    const hourStart = new Date()
-    hourStart.setMinutes(0, 0, 0)
-    this.db.prepare(`
-      INSERT INTO follower_snapshots (platform, captured_at, follower_count)
-      VALUES (?, ?, ?)
-      ON CONFLICT(platform, captured_at) DO UPDATE SET
-        follower_count = excluded.follower_count
-    `).run(platform, hourStart.toISOString(), Math.max(0, Math.floor(count)))
-  }
-
-  /**
-   * For every platform we have a count for: current count + growth deltas
-   * (24 h / 7 d / 30 d). Deltas are null when we don't have a snapshot that
-   * old yet — better than reporting "0 growth" which would be misleading.
-   */
   getPlatformFollowerStats(): Record<string, {
     followerCount: number
     delta24h: number | null
@@ -1502,208 +1126,23 @@ export class StatsRepository extends BaseRepository {
     delta30d: number | null
     lastSyncedAt: string | null
   }> {
-    const rows = this.db.prepare('SELECT platform, follower_count, last_synced_at FROM platform_follower_stats').all() as Array<{
-      platform: string
-      follower_count: number
-      last_synced_at: string | null
-    }>
-
-    const result: Record<string, {
-      followerCount: number
-      delta24h: number | null
-      delta7d: number | null
-      delta30d: number | null
-      lastSyncedAt: string | null
-    }> = {}
-
-    const snapshotStmt = this.db.prepare(`
-      SELECT follower_count FROM follower_snapshots
-      WHERE platform = ? AND captured_at <= ?
-      ORDER BY captured_at DESC LIMIT 1
-    `)
-
-    const now = Date.now()
-    const delta = (platform: string, current: number, msAgo: number): number | null => {
-      const cutoff = new Date(now - msAgo).toISOString()
-      const row = snapshotStmt.get(platform, cutoff) as { follower_count: number } | undefined
-      if (!row) return null
-      return current - row.follower_count
-    }
-
-    const DAY = 24 * 60 * 60 * 1000
-    for (const row of rows) {
-      result[row.platform] = {
-        followerCount: row.follower_count,
-        delta24h: delta(row.platform, row.follower_count, DAY),
-        delta7d: delta(row.platform, row.follower_count, 7 * DAY),
-        delta30d: delta(row.platform, row.follower_count, 30 * DAY),
-        lastSyncedAt: row.last_synced_at
-      }
-    }
-
-    return result
+    return this.followerStats.getPlatformFollowerStats()
   }
 
-  /**
-   * Return raw snapshots for a platform within the requested window. Useful
-   * for sparkline charts. Capped at `limit` rows.
-   */
   getFollowerSnapshots(platform: string, sinceIso: string, limit = 720): Array<{ capturedAt: string; followerCount: number }> {
-    const rows = this.db.prepare(`
-      SELECT captured_at, follower_count FROM follower_snapshots
-      WHERE platform = ? AND captured_at >= ?
-      ORDER BY captured_at ASC LIMIT ?
-    `).all(platform, sinceIso, Math.max(1, Math.min(5000, limit))) as Array<{ captured_at: string; follower_count: number }>
-    return rows.map(r => ({ capturedAt: r.captured_at, followerCount: r.follower_count }))
+    return this.followerStats.getFollowerSnapshots(platform, sinceIso, limit)
   }
 
   getUniqueUserCount(): number {
-    return (this.db.prepare('SELECT COUNT(*) as count FROM user_stats').get() as { count: number }).count
+    return this.totals.getUniqueUserCount()
   }
 
   getAllGlobalStats(): any {
-    return this.db.prepare('SELECT * FROM global_stats LIMIT 1').get()
+    return this.totals.getAllGlobalStats()
   }
 
   purgeUserStats(username: string): void {
-    this.db.prepare('DELETE FROM user_stats WHERE username = ?').run(username)
-  }
-
-  private getViewerAccounts(profileId: string): ViewerAccount[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM viewer_accounts
-      WHERE profile_id = ?
-      ORDER BY last_seen_at DESC, platform ASC, username ASC
-    `).all(profileId) as ViewerAccountRow[]
-
-    return rows.map((row) => ({
-      profileId: row.profile_id,
-      platform: row.platform as Platform,
-      username: row.username,
-      platformUserId: row.platform_user_id,
-      displayName: row.display_name,
-      profilePictureUrl: row.profile_picture_url,
-      firstSeenAt: row.first_seen_at,
-      lastSeenAt: row.last_seen_at
-    }))
-  }
-
-  private getOrCreateProfileForAccount(account: ViewerAccountInput): string {
-    const normalized = this.normalizeAccountInput(account)
-    if (!normalized) throw new Error('Cannot create a viewer profile without a platform and username.')
-
-    const existingProfileId = this.getViewerProfileId(normalized.platform, normalized.username)
-    if (existingProfileId) {
-      this.addAccountToProfile(existingProfileId, normalized)
-      return existingProfileId
-    }
-
-    const stat = this.getUserStat(normalized.platform, normalized.username)
-    const profileId = stat?.profile_id || crypto.randomUUID()
-    this.ensureViewerProfile(
-      profileId,
-      safeDisplayName(normalized.displayName || stat?.display_name || normalized.username),
-      normalized.platform
-    )
-    this.upsertViewerAccount(profileId, {
-      ...normalized,
-      platformUserId: normalized.platformUserId ?? stat?.platform_user_id ?? null,
-      displayName: normalized.displayName || stat?.display_name || normalized.username,
-      profilePictureUrl: normalized.profilePictureUrl ?? stat?.profile_picture_url ?? null
-    })
-    this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE platform = ? AND LOWER(username) = ?')
-      .run(profileId, normalized.platform, normalized.username)
-    return profileId
-  }
-
-  private normalizeAccountInput(account: ViewerAccountInput): ViewerAccountInput | null {
-    const username = normalizeUsername(account.username)
-    const platform = String(account.platform || '').trim() as Platform
-    if (!username || !platform || platform === ('all' as Platform)) return null
-    return {
-      platform,
-      username,
-      platformUserId: normalizeOptionalText(account.platformUserId),
-      displayName: safeDisplayName(account.displayName || username),
-      profilePictureUrl: account.profilePictureUrl ?? null
-    }
-  }
-
-  private ensureViewerProfile(profileId: string, displayName: string, primaryPlatform: string | null): void {
-    this.db.prepare(`
-      INSERT OR IGNORE INTO viewer_profiles (id, display_name, primary_platform, created_at, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).run(profileId, safeDisplayName(displayName), primaryPlatform)
-  }
-
-  private upsertViewerAccount(profileId: string, accountInput: ViewerAccountInput): void {
-    const account = this.normalizeAccountInput(accountInput)
-    if (!account) return
-
-    this.ensureViewerProfile(profileId, account.displayName || account.username, account.platform)
-    this.db.prepare(`
-      INSERT INTO viewer_accounts (
-        profile_id, platform, username, platform_user_id, display_name, profile_picture_url, first_seen_at, last_seen_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      ON CONFLICT(platform, username) DO UPDATE SET
-        profile_id = excluded.profile_id,
-        platform_user_id = COALESCE(excluded.platform_user_id, viewer_accounts.platform_user_id),
-        display_name = COALESCE(NULLIF(excluded.display_name, ''), viewer_accounts.display_name),
-        profile_picture_url = COALESCE(excluded.profile_picture_url, viewer_accounts.profile_picture_url),
-        last_seen_at = CURRENT_TIMESTAMP
-    `).run(
-      profileId,
-      account.platform,
-      account.username,
-      account.platformUserId ?? null,
-      account.displayName || account.username,
-      account.profilePictureUrl ?? null
-    )
-  }
-
-  private mergeViewerProfiles(targetProfileId: string, sourceProfileId: string): void {
-    if (targetProfileId === sourceProfileId) return
-
-    const sourceAccounts = this.getViewerAccounts(sourceProfileId)
-    const transaction = this.db.transaction(() => {
-      for (const account of sourceAccounts) {
-        this.upsertViewerAccount(targetProfileId, account)
-      }
-      this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE profile_id = ?')
-        .run(targetProfileId, sourceProfileId)
-      this.db.prepare('DELETE FROM viewer_accounts WHERE profile_id = ?').run(sourceProfileId)
-      this.db.prepare('DELETE FROM viewer_profiles WHERE id = ?').run(sourceProfileId)
-    })
-    transaction()
-    this.refreshViewerProfile(targetProfileId)
-  }
-
-  private syncStatsProfileIdForProfile(profileId: string): void {
-    const accounts = this.getViewerAccounts(profileId)
-    const update = this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE platform = ? AND LOWER(username) = ?')
-    const transaction = this.db.transaction(() => {
-      for (const account of accounts) {
-        update.run(profileId, account.platform, account.username)
-      }
-    })
-    transaction()
-  }
-
-  private refreshViewerProfile(profileId: string): void {
-    const accounts = this.getViewerAccounts(profileId)
-    const latest = accounts[0]
-    if (!latest) {
-      this.db.prepare('UPDATE viewer_profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(profileId)
-      return
-    }
-
-    this.db.prepare(`
-      UPDATE viewer_profiles
-      SET primary_platform = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(latest.platform, profileId)
-    this.syncStatsProfileIdForProfile(profileId)
+    this.totals.purgeUserStats(username)
   }
 
   private mergeExistingPlatformUserIdRows(
@@ -1728,115 +1167,6 @@ export class StatsRepository extends BaseRepository {
         profilePictureUrl
       })
     }
-  }
-
-  private mergeViewerAccountRows(
-    platform: string,
-    sourceUsername: string,
-    targetUsername: string,
-    metadata: {
-      platformUserId?: string | null
-      displayName?: string
-      profilePictureUrl?: string | null
-    }
-  ): void {
-    const source = this.db.prepare(
-      'SELECT * FROM viewer_accounts WHERE platform = ? AND username = ?'
-    ).get(platform, sourceUsername) as ViewerAccountRow | undefined
-    const target = this.db.prepare(
-      'SELECT * FROM viewer_accounts WHERE platform = ? AND username = ?'
-    ).get(platform, targetUsername) as ViewerAccountRow | undefined
-
-    const platformUserId = normalizeOptionalText(metadata.platformUserId) || source?.platform_user_id || target?.platform_user_id || null
-    const displayName = safeDisplayName(metadata.displayName || target?.display_name || source?.display_name || targetUsername)
-    const profilePictureUrl = metadata.profilePictureUrl ?? target?.profile_picture_url ?? source?.profile_picture_url ?? null
-
-    if (source && target) {
-      this.db.prepare(`
-        UPDATE viewer_accounts
-        SET profile_id = COALESCE(viewer_accounts.profile_id, ?),
-            platform_user_id = COALESCE(?, viewer_accounts.platform_user_id, ?),
-            display_name = ?,
-            profile_picture_url = COALESCE(?, viewer_accounts.profile_picture_url, ?),
-            first_seen_at = CASE
-              WHEN viewer_accounts.first_seen_at IS NULL OR ? < viewer_accounts.first_seen_at THEN ?
-              ELSE viewer_accounts.first_seen_at
-            END,
-            last_seen_at = CASE
-              WHEN viewer_accounts.last_seen_at IS NULL OR ? > viewer_accounts.last_seen_at THEN ?
-              ELSE viewer_accounts.last_seen_at
-            END
-        WHERE platform = ? AND username = ?
-      `).run(
-        source.profile_id,
-        platformUserId,
-        source.platform_user_id,
-        displayName,
-        profilePictureUrl,
-        source.profile_picture_url,
-        source.first_seen_at,
-        source.first_seen_at,
-        source.last_seen_at,
-        source.last_seen_at,
-        platform,
-        targetUsername
-      )
-      this.db.prepare('DELETE FROM viewer_accounts WHERE platform = ? AND username = ?').run(platform, sourceUsername)
-      this.refreshViewerProfile(target.profile_id)
-      return
-    }
-
-    if (source && !target) {
-      this.db.prepare(`
-        UPDATE viewer_accounts
-        SET username = ?,
-            platform_user_id = COALESCE(?, platform_user_id),
-            display_name = ?,
-            profile_picture_url = COALESCE(?, profile_picture_url),
-            last_seen_at = CURRENT_TIMESTAMP
-        WHERE platform = ? AND username = ?
-      `).run(
-        targetUsername,
-        platformUserId,
-        displayName,
-        profilePictureUrl,
-        platform,
-        sourceUsername
-      )
-      this.refreshViewerProfile(source.profile_id)
-      return
-    }
-
-    if (target) {
-      this.db.prepare(`
-        UPDATE viewer_accounts
-        SET platform_user_id = COALESCE(?, platform_user_id),
-            display_name = ?,
-            profile_picture_url = COALESCE(?, profile_picture_url),
-            last_seen_at = CURRENT_TIMESTAMP
-        WHERE platform = ? AND username = ?
-      `).run(platformUserId, displayName, profilePictureUrl, platform, targetUsername)
-      this.refreshViewerProfile(target.profile_id)
-    }
-  }
-
-  private getGlobalStatColumn(key: string): string | null {
-    const map: Record<string, string> = {
-      totalLikes: 'total_likes',
-      totalGifts: 'total_gifts',
-      totalGiftValueCents: 'total_gift_value_cents',
-      totalSubscriptions: 'total_subscriptions',
-      totalFollows: 'total_follows',
-      totalShares: 'total_shares',
-      totalRaids: 'total_raids',
-      totalChats: 'total_chats',
-      totalSongRequests: 'total_song_requests',
-      totalCohostCalls: 'total_cohost_calls',
-      peakViewerCount: 'peak_viewer_count'
-    }
-    if (key.startsWith('peakViewerCount:')) return 'peak_viewer_count'
-    if (key.startsWith('peakReportedLikes:')) return 'total_likes'
-    return map[key] || null
   }
 
   profileMatchesPermission(profileId: string, permission: string): boolean {
@@ -1924,64 +1254,4 @@ export class StatsRepository extends BaseRepository {
     })
     transaction()
   }
-}
-
-function normalizeUsername(username: string | undefined): string {
-  return String(username || '').trim().replace(/^@+/, '').toLowerCase()
-}
-
-function safeDisplayName(value: string | undefined): string {
-  const normalized = String(value || '').replace(/\s+/g, ' ').trim()
-  return normalized.slice(0, 120) || 'Viewer'
-}
-
-function normalizeOptionalUrl(value: string | null | undefined): string | null {
-  const normalized = String(value || '').trim()
-  return normalized || null
-}
-
-function normalizeOptionalText(value: string | null | undefined): string | null {
-  const normalized = String(value || '').trim()
-  return normalized || null
-}
-
-function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
-}
-
-function badgeImageUrlsFromRow(row: UserStatRow): AudienceBadgeImageUrls {
-  return {
-    moderator: row.moderator_badge_image_url,
-    tiktokFanClub: row.tiktok_fan_club_badge_image_url,
-    tiktokSuperFan: row.tiktok_super_fan_badge_image_url,
-    twitchSub: row.twitch_sub_badge_image_url,
-    youtubeSuperFan: row.youtube_super_fan_badge_image_url
-  }
-}
-
-function findBadgeImageFromRaw(badges: any[], matcher: (label: string) => boolean): string | null {
-  for (const badge of badges) {
-    const label = `${badge?.id || badge?.type || ''} ${badge?.name || badge?.displayName || badge?.title || ''}`.toLowerCase()
-    const imageUrl = normalizeOptionalText(
-      badge?.imageUrl ||
-      badge?.url ||
-      badge?.icon?.urlList?.[0] ||
-      badge?.icon?.url_list?.[0] ||
-      badge?.image?.urlList?.[0] ||
-      badge?.image?.url_list?.[0] ||
-      badge?.image?.url?.[0]
-    )
-    if (matcher(label) && imageUrl) return imageUrl
-  }
-  return null
-}
-
-function isFanClubBadgeLabel(label: string): boolean {
-  return (
-    label.includes('fan club') ||
-    label.includes('fanclub') ||
-    label.includes('subscriber') ||
-    label.includes('subscription') ||
-    label.includes('member')
-  )
 }
