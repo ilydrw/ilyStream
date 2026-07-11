@@ -127,6 +127,10 @@ export class OverlayRouter {
     }
 
     if (pathname === '/overlay/deck') {
+      if (!this.authorizeDeckPage(request, url)) {
+        this.writeJson(response, { error: 'Unauthorized' }, 401, request)
+        return
+      }
       const sounds = this.getSoundboardService()?.getAllSounds('board') || []
       const actions = this.getDb()?.getAllDeckActions() || []
       this.writeHtml(response, buildDeckHtml(sounds, actions, this.deckCsrfToken), 200, request)
@@ -572,9 +576,18 @@ export class OverlayRouter {
   }
 
   private authorizeDeckAction(request: IncomingMessage, url: URL): boolean {
+    if (this.authorizeRemoteControl(request, url)) return true
+
     const deckToken = request.headers['x-ilystream-deck-token']
-    if (deckToken === this.deckCsrfToken && this.isSameOriginRequest(request)) return true
-    return this.authorizeRemoteControl(request, url)
+    return (
+      deckToken === this.deckCsrfToken &&
+      this.isLoopbackRequest(request) &&
+      this.isSameOriginRequest(request)
+    )
+  }
+
+  private authorizeDeckPage(request: IncomingMessage, url: URL): boolean {
+    return this.isLoopbackRequest(request) || this.authorizeRemoteControl(request, url)
   }
 
   private authorizeRemoteControl(request: IncomingMessage, url: URL): boolean {
@@ -592,7 +605,7 @@ export class OverlayRouter {
 
   private isSameOriginRequest(request: IncomingMessage): boolean {
     const origin = request.headers.origin
-    if (!origin) return true
+    if (!origin) return false
     const host = request.headers.host
     if (!host) return false
     try {
@@ -601,6 +614,18 @@ export class OverlayRouter {
     } catch {
       return false
     }
+  }
+
+  private isLoopbackRequest(request: IncomingMessage): boolean {
+    const address = request.socket.remoteAddress
+    if (!address) return false
+    return (
+      address === '::1' ||
+      address === '127.0.0.1' ||
+      address.startsWith('127.') ||
+      address === '::ffff:127.0.0.1' ||
+      address.startsWith('::ffff:127.')
+    )
   }
 
   private parseOverlayChannel(value: string): OverlayChannel | null {
