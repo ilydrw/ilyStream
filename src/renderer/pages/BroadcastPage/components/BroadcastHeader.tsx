@@ -1,5 +1,5 @@
 import { IconRadio, IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconCircle, IconVideo, IconSquare, IconLayoutGrid, IconKeyboard, IconSettings, IconBroadcast, IconScreenShare, IconActivity, IconSparkles } from '@tabler/icons-react'
-import { IconRefresh, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown, IconDeviceFloppy } from '../../../components/ui/icons'
+import { IconRefresh, IconPlayerPlay, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown, IconDeviceFloppy, IconPencil } from '../../../components/ui/icons'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -49,6 +49,8 @@ interface BroadcastHeaderProps {
   onCustomRtmpUrlChange: (val: string) => void
   customStreamKey: string
   onCustomStreamKeyChange: (val: string) => void
+  streamInfoTitle: string
+  onOpenStreamInfo: () => void
   onStartBroadcast: () => void
   onStopBroadcast: () => void
   onShowMultiView: () => void
@@ -70,6 +72,7 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
     virtualCameraFeed, onVirtualCameraFeedChange, virtualCameraSourceOptions,
     platforms, layoutAssignments, onToggleLayoutAssignment, onRemoveLayoutAssignment,
     customRtmpUrl, onCustomRtmpUrlChange, customStreamKey, onCustomStreamKeyChange,
+    streamInfoTitle, onOpenStreamInfo,
     onStartBroadcast, onStopBroadcast, studioMode, onToggleStudioMode, onShowMultiView,
     onToggleHotkeys, showHotkeys, onOpenRecordingSettings
   } = props
@@ -480,6 +483,18 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             buttonClassName="h-10 2xl:h-11 bg-transparent border-0 px-2 2xl:px-4 text-[12px] font-medium tracking-tight text-white/60 hover:text-white transition-all"
             placeholder="Destination"
           />
+
+          <Tooltip
+            content={streamInfoTitle ? `Stream info: "${streamInfoTitle}"` : 'Set stream title & category'}
+            position="bottom"
+          >
+            <button
+              onClick={onOpenStreamInfo}
+              className={`shrink-0 h-10 2xl:h-11 w-9 rounded-md transition-all flex items-center justify-center ${streamInfoTitle ? 'text-accent/70 hover:text-accent hover:bg-accent/10' : 'text-white/30 hover:text-white hover:bg-white/5'}`}
+            >
+              <IconPencil size={15} />
+            </button>
+          </Tooltip>
 
           <div className="w-px h-7 2xl:h-8 bg-white/10 mx-1 self-center" />
 

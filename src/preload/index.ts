@@ -12,6 +12,7 @@ import type {
   TikTokNativeAuthStatus,
   TikTokNativeLiveDestination
 } from '../shared/tiktok-native'
+import type { BroadcastStreamInfo, TwitchCategory } from '../shared/stream-info'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -127,10 +128,22 @@ const api = {
           createdBroadcast: boolean
         }>
     },
+    twitch: {
+      searchCategories: (query: string) =>
+        ipcRenderer.invoke('twitch:search-categories', { query }) as Promise<TwitchCategory[]>,
+      updateStreamInfo: (payload: { title?: string; categoryId?: string }) =>
+        ipcRenderer.invoke('twitch:update-stream-info', payload) as Promise<{ channel: string }>
+    },
     kick: {
       subscribeEvents: (payload: { clientId: string; clientSecret: string; broadcasterUserId?: string | number; channelName?: string }) =>
         ipcRenderer.invoke('kick:subscribe-events', payload)
     }
+  },
+
+  // --- Stream info (title/category applied at go-live) ---
+  streamInfo: {
+    get: () => ipcRenderer.invoke('stream-info:get') as Promise<BroadcastStreamInfo>,
+    set: (info: BroadcastStreamInfo) => ipcRenderer.invoke('stream-info:set', info) as Promise<void>
   },
 
   // --- Local event testing ---

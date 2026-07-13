@@ -16,7 +16,9 @@ import {
 import { ensureYouTubeLiveDestination } from '../../platforms/youtube/youtube-live'
 import type { YouTubeConfig } from '../../platforms/types'
 import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
-import type { TikTokConfig } from '../../platforms/types'
+import { searchTwitchCategories, updateTwitchStreamInfo } from '../../platforms/twitch/twitch-stream-info'
+import type { TikTokConfig, TwitchConfig } from '../../platforms/types'
+import { normalizeBroadcastStreamInfo, type BroadcastStreamInfo } from '../../../shared/stream-info'
 import {
   DEFAULT_TIKTOK_AUTH_BRIDGE_URL,
   DEFAULT_TIKTOK_CLIENT_KEY,
@@ -154,6 +156,34 @@ export function registerPlatformHandlers(
     )
     return destination
   })
+
+  // Stream title/category the user sets before going live. Stored as a plain
+  // DB setting so it survives restarts and prefills the next session.
+  ipcMain.handle('stream-info:get', () => {
+    return normalizeBroadcastStreamInfo(db.getSetting('broadcastStreamInfo'))
+  })
+
+  ipcMain.handle('stream-info:set', (_event, info: BroadcastStreamInfo) => {
+    db.setSetting('broadcastStreamInfo', normalizeBroadcastStreamInfo(info))
+  })
+
+  ipcMain.handle('twitch:search-categories', (_event, payload: { query: string }) => {
+    const config = db.getPlatformConfig('twitch') as TwitchConfig | null
+    return searchTwitchCategories(config, String(payload?.query || ''))
+  })
+
+  ipcMain.handle(
+    'twitch:update-stream-info',
+    async (_event, payload: { title?: string; categoryId?: string }) => {
+      const config = db.getPlatformConfig('twitch') as TwitchConfig | null
+      const result = await updateTwitchStreamInfo(config, {
+        title: payload?.title,
+        categoryId: payload?.categoryId
+      })
+      console.log(`[twitch-stream-info] Updated channel info for ${result.channel}`)
+      return result
+    }
+  )
 
   ipcMain.handle(
     'kick:subscribe-events',

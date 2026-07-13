@@ -33,6 +33,7 @@ import type {
   TikTokNativeAuthStatus,
   TikTokNativeLiveDestination
 } from '../../shared/tiktok-native'
+import type { BroadcastStreamInfo, TwitchCategory } from '../../shared/stream-info'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -80,6 +81,13 @@ export interface IpcInvokeChannels {
     broadcasterUserId?: string | number
     channelName?: string
   }) => Promise<KickEventSubscriptionResult>
+  'twitch:search-categories': (payload: { query: string }) => Promise<TwitchCategory[]>
+  'twitch:update-stream-info': (payload: {
+    title?: string
+    categoryId?: string
+  }) => Promise<{ channel: string }>
+  'stream-info:get': () => Promise<BroadcastStreamInfo>
+  'stream-info:set': (info: BroadcastStreamInfo) => Promise<void>
   'event:simulate': (payload: EventLabSimulationPayload) => Promise<AnyStreamEvent>
 
   // TTS controls

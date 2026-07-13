@@ -26,8 +26,11 @@ import { StingerConfigModal } from './components/StingerConfigModal'
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
 import { CropModal } from './components/CropModal'
+import { StreamInfoModal } from './components/StreamInfoModal'
 import { usePageVisibility } from '../../hooks/usePageVisibility'
 import { toPlatformConfigMap } from '../../lib/platform-configs'
+import { toast } from '../../components/ui/Toast'
+import { DEFAULT_BROADCAST_STREAM_INFO, type BroadcastStreamInfo } from '../../../shared/stream-info'
 import {
   LANDSCAPE_STAGE,
   PORTRAIT_STAGE,
@@ -36,6 +39,7 @@ import {
   formatDuration,
   fullStageRect,
   getAspectRatioForLayoutMode,
+  formatIpcError,
   getLayoutModeForAspectRatio,
   loadBroadcastOutputConfig,
   loadVirtualCameraFeed,
@@ -75,6 +79,8 @@ export default function BroadcastPage() {
   const [layoutAssignments, setLayoutAssignments] = useState<Record<BroadcastLayoutId, string[]>>({ horizontal: [], vertical: [] })
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [customStreamKey, setCustomStreamKey] = useState('')
+  const [streamInfo, setStreamInfo] = useState<BroadcastStreamInfo>(DEFAULT_BROADCAST_STREAM_INFO)
+  const [showStreamInfoModal, setShowStreamInfoModal] = useState(false)
   const [showSourceModal, setShowSourceModal] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenuState | null>(null)
   const [sceneContextMenu, setSceneContextMenu] = useState<{ x: number, y: number, sceneId: string } | null>(null)
@@ -384,6 +390,7 @@ export default function BroadcastPage() {
         const configs = toPlatformConfigMap(await window.api.platform.getConfigs())
         setPlatforms(buildStreamPlatforms(configs))
       }
+      if (window.api?.streamInfo) setStreamInfo(await window.api.streamInfo.get())
       if (window.api?.streaming) {
         const [streaming, recording] = await Promise.all([
           window.api.streaming.getStatus(),
@@ -606,6 +613,13 @@ export default function BroadcastPage() {
     }
   }, [activeScene, addSource, changeBroadcastLayoutMode, previewScene, store.studioMode, widgets])
 
+  const saveStreamInfo = (next: BroadcastStreamInfo) => {
+    setStreamInfo(next)
+    void window.api.streamInfo?.set(next).catch((err: unknown) => {
+      console.warn('[BroadcastPage] Failed to persist stream info:', err)
+    })
+  }
+
   // Streaming Handlers
   const completeNativeTikTokLive = async () => {
     if (!nativeTikTokLiveActiveRef.current) return
@@ -623,11 +637,28 @@ export default function BroadcastPage() {
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
+    // Apply the pre-live stream info. Twitch takes a Helix channel update;
+    // YouTube and TikTok receive the title through their prepare-live calls
+    // below. A Twitch failure shouldn't stop the broadcast, so it downgrades
+    // to a toast instead of blocking.
+    const streamTitle = streamInfo.title.trim()
+    if (destinations.some(d => d.platform?.id === 'twitch') && (streamTitle || streamInfo.twitchCategoryId)) {
+      try {
+        await window.api.platform.twitch.updateStreamInfo({
+          title: streamTitle || undefined,
+          categoryId: streamInfo.twitchCategoryId || undefined
+        })
+        console.log(`[BroadcastPage] Twitch stream info applied${streamInfo.twitchCategoryName ? ` (${streamInfo.twitchCategoryName})` : ''}`)
+      } catch (err) {
+        toast.error(`Twitch stream info not applied: ${formatIpcError(err)}`)
+      }
+    }
+
     // Resolve platform-managed, short-lived ingest credentials immediately
     // before the encoders start. Manual RTMP destinations already carry keys.
     if (destinations.some(d => d.platform?.keyProvider === 'youtube' && !d.platform.key)) {
       try {
-        const live = await window.api.platform.youtube.prepareLive()
+        const live = await window.api.platform.youtube.prepareLive({ title: streamTitle || undefined })
         console.log(`[BroadcastPage] YouTube broadcast ready: "${live.title}" ${live.watchUrl}${live.autoStart ? '' : ' — auto-start is off for this broadcast; press "Go live" in YouTube Studio if it does not start on its own'}`)
         for (const d of destinations) {
           if (d.platform?.keyProvider === 'youtube' && !d.platform.key) {
@@ -642,6 +673,7 @@ export default function BroadcastPage() {
     if (destinations.some(d => d.platform?.keyProvider === 'tiktok-native' && !d.platform.key)) {
       try {
         const live = await window.api.platform.tiktok.prepareLive({
+          title: streamTitle || undefined,
           orientation: destinations.some(d => d.platform?.keyProvider === 'tiktok-native' && d.layout === 'vertical')
             ? 'portrait'
             : 'landscape'
@@ -878,8 +910,17 @@ export default function BroadcastPage() {
           }))
         }}
         customRtmpUrl={customRtmpUrl} onCustomRtmpUrlChange={setCustomRtmpUrl} customStreamKey={customStreamKey} onCustomStreamKeyChange={setCustomStreamKey}
+        streamInfoTitle={streamInfo.title} onOpenStreamInfo={() => setShowStreamInfoModal(true)}
         onStartBroadcast={startBroadcast} onStopBroadcast={stopBroadcast}
         onShowMultiView={() => setShowMultiView(true)}
+      />
+
+      <StreamInfoModal
+        open={showStreamInfoModal}
+        onClose={() => setShowStreamInfoModal(false)}
+        value={streamInfo}
+        onSave={saveStreamInfo}
+        platformIds={platforms.map(p => p.id)}
       />
 
       {isDualLayoutMode && (

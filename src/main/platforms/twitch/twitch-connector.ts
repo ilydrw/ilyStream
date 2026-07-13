@@ -36,7 +36,9 @@ const OPTIONAL_TWITCH_SCOPES = [
   'channel:read:goals',
   'channel:read:hype_train',
   'channel:read:polls',
-  'channel:read:predictions'
+  'channel:read:predictions',
+  // Lets the Broadcast page set the stream title/category at go-live time.
+  'channel:manage:broadcast'
 ]
 
 type TwitchTokenInfo = {

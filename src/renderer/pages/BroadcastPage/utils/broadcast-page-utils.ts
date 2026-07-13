@@ -40,6 +40,12 @@ export function formatDuration(totalSeconds: number): string {
     : `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+/** Strips Electron's "Error invoking remote method '...'" wrapper so IPC errors read cleanly in the UI. */
+export function formatIpcError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '')
+}
+
 export function clampBroadcastFps(value: unknown): number {
   const fps = Number(value)
   const fallback = Number.isFinite(DEFAULT_BROADCAST_FPS) ? DEFAULT_BROADCAST_FPS : 60
