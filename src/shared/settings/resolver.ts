@@ -1,4 +1,4 @@
-import type { AppSettings, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
+import type { AppSettings, AppTheme, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
 import { DEFAULT_APP_SETTINGS } from './defaults'
 import { DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE, DEFAULT_TTS_COMMAND_PREFIXES } from './types'
 import type { RelayPlatformParticipation } from '../chat-relay'
@@ -285,6 +285,12 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     return color.toLowerCase()
   }
 
+  const APP_THEME_VALUES = new Set<AppTheme>(['dark', 'midnight', 'aurora', 'ember', 'light', 'gob', 'synthwave', 'graphite', 'custom'])
+  const normalizeTheme = (value: unknown, fallback: AppTheme): AppTheme => {
+    if (value === 'joker') return 'gob' // legacy id — re-skinned as Gob the Stopper
+    return APP_THEME_VALUES.has(value as AppTheme) ? (value as AppTheme) : fallback
+  }
+
   const normalizeViewerJoinSounds = (entries: any[] = []): ViewerJoinSound[] => {
     if (!Array.isArray(entries)) return []
     return entries
@@ -303,7 +309,7 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
 
   const nested: any = {
     ui: {
-      theme: get('theme', flatValues.ui?.theme ?? s.ui.theme),
+      theme: normalizeTheme(get('theme', flatValues.ui?.theme ?? s.ui.theme), s.ui.theme),
       accentColor: normalizeColor(get('accentColor', flatValues.ui?.accentColor ?? s.ui.accentColor), s.ui.accentColor),
       density: get('interfaceDensity', flatValues.ui?.density ?? s.ui.density),
       reducedMotion: get('reducedMotion', flatValues.ui?.reducedMotion ?? s.ui.reducedMotion),

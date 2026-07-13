@@ -24,7 +24,7 @@ function resolveAnimatedBorderStops(borderType: NowPlayingConfig['borderType']):
   }
 
   if (borderType === 'gob-the-stopper') {
-    return '#b6ff00, #f7ffe8, #050505, #ce1126, #050505, #b6ff00'
+    return '#b6ff00, #f7ffe8, #050505, #8fd400, #050505, #b6ff00'
   }
 
   return '#ff00ff, #00ffff, #ff00ff'

@@ -181,7 +181,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #ce1126, #b6ff00);
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #8fd400, #b6ff00);
         background-size: 220% 100%;
         opacity: 0.22;
         mix-blend-mode: screen;
@@ -189,7 +189,7 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
         pointer-events: none;
       }
       .progress-bar {
-        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00) !important;
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #8fd400, #b6ff00) !important;
         background-size: 200% 100% !important;
         box-shadow: 0 0 12px rgba(182, 255, 0, 0.7) !important;
         animation: gob-flow 3s linear infinite !important;

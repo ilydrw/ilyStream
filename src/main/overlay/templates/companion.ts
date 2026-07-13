@@ -18,11 +18,11 @@ export function buildCompanionHtml(data: {
   const currentSceneHtml = escapeHtml(currentScene);
   const scenesJson = jsonForScript(scenes);
 
-  // Theme logic
-  const isJoker = ui?.theme === 'joker';
-  const accent = safeHexColor(ui?.accentColor, isJoker ? '#1ddd33' : '#19c8ff');
-  const secondary = isJoker ? '#ab5dce' : '#d035f1';
-  const background = isJoker ? '#0a050c' : '#0A0C10';
+  // Theme logic ('joker' is the legacy id for the gob theme)
+  const isGob = ui?.theme === 'gob' || ui?.theme === 'joker';
+  const accent = safeHexColor(ui?.accentColor, isGob ? '#b6ff00' : '#19c8ff');
+  const secondary = isGob ? '#050505' : '#d035f1';
+  const background = isGob ? '#050505' : '#0A0C10';
   const gradient = `linear-gradient(135deg, ${accent}, ${secondary})`;
 
   return `
@@ -47,8 +47,8 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
   .device {
     width: 800px; height: 480px;
     background:
-      radial-gradient(circle at 18% 100%, rgba(171,93,206,.15), transparent 55%),
-      radial-gradient(circle at 92% 0%, rgba(29,221,51,.12), transparent 50%),
+      radial-gradient(circle at 18% 100%, ${hexToRgba(secondary, 0.15)}, transparent 55%),
+      radial-gradient(circle at 92% 0%, ${hexToRgba(accent, 0.12)}, transparent 50%),
       ${background};
     color: #fff;
     font-family: var(--font-sans);
@@ -148,9 +148,9 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
   .strip .scn { flex: 1; height: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04); display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 14px; cursor: pointer; transition: all 0.2s; }
   .strip .scn .num { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: rgba(255,255,255,.5); }
   .strip .scn .name { font-size: 15px; font-weight: 800; color: rgba(255,255,255,.85); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .strip .scn.active { background: rgba(171,93,206,.16); border-color: rgba(171,93,206,.5); box-shadow: 0 0 18px rgba(171,93,206,.28); }
+  .strip .scn.active { background: ${hexToRgba(accent, 0.16)}; border-color: ${hexToRgba(accent, 0.5)}; box-shadow: 0 0 18px ${hexToRgba(accent, 0.28)}; }
   .strip .scn.active .name { color: #fff; font-weight: 900; }
-  .strip .scn.active .num { color: #ab5dce; }
+  .strip .scn.active .num { color: ${accent}; }
 
   /* Hidden Now Playing when not active */
   .device.no-np .body { height: calc(100% - 52px - 84px); }
@@ -401,6 +401,13 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 function safeHexColor(value: unknown, fallback: string): string {

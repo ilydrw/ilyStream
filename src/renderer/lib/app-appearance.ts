@@ -12,19 +12,23 @@ interface ThemePalette {
   primaryHsl: [number, number, number]
   secondaryHsl: [number, number, number]
   iconGradient: [string, string, string]
+  /** Explicit brand-gradient end color; defaults to a lightened accent. */
+  gradientEnd?: string
 }
 
 const THEME_PALETTES: Record<Exclude<AppTheme, 'custom'>, ThemePalette> = {
+  // 'dark' is the default theme — Cyber Neon: cyan and magenta on near-black.
   dark: {
-    background: '#141518',
-    card: '#1d1f23',
-    border: '#363a42',
-    muted: '#9aa0a6',
-    secondary: '#24262b',
+    background: '#03050a',
+    card: '#090b14',
+    border: '#1c2947',
+    muted: '#8b9ac6',
+    secondary: '#0d1224',
     accent: '#19c8ff',
     primaryHsl: [194, 100, 55],
     secondaryHsl: [289, 88, 58],
-    iconGradient: ['#D035F1', '#7A8CFF', '#19C8FF']
+    iconGradient: ['#D035F1', '#7A8CFF', '#19C8FF'],
+    gradientEnd: '#d035f1'
   },
   midnight: {
     background: '#030305',
@@ -70,16 +74,40 @@ const THEME_PALETTES: Record<Exclude<AppTheme, 'custom'>, ThemePalette> = {
     secondaryHsl: [0, 0, 98],
     iconGradient: ['#A855F7', '#3B82F6', '#0EA5E9']
   },
-  joker: {
-    background: '#0a050c',
-    card: '#120a16',
-    border: '#1ddd33',
-    muted: '#71717a',
-    secondary: '#ab5dce',
-    accent: '#1ddd33',
-    primaryHsl: [127, 74, 52],
-    secondaryHsl: [281, 55, 59],
-    iconGradient: ['#1DDD33', '#AB5DCE', '#1DDD33']
+  gob: {
+    background: '#050505',
+    card: '#0c0e08',
+    border: '#8fd400',
+    muted: '#8a9660',
+    secondary: '#101208',
+    accent: '#b6ff00',
+    primaryHsl: [77, 100, 50],
+    secondaryHsl: [72, 38, 5],
+    iconGradient: ['#B6FF00', '#F7FFE8', '#8FD400'],
+    gradientEnd: '#050505'
+  },
+  synthwave: {
+    background: '#0c0514',
+    card: '#150a22',
+    border: '#2c1650',
+    muted: '#8d7ba8',
+    secondary: '#1a0d2e',
+    accent: '#f472b6',
+    primaryHsl: [329, 86, 70],
+    secondaryHsl: [262, 83, 58],
+    iconGradient: ['#F472B6', '#A855F7', '#7C3AED'],
+    gradientEnd: '#7c3aed'
+  },
+  graphite: {
+    background: '#0b0b0c',
+    card: '#131315',
+    border: '#26262a',
+    muted: '#7c7c84',
+    secondary: '#18181b',
+    accent: '#e4e4e7',
+    primaryHsl: [240, 6, 90],
+    secondaryHsl: [240, 5, 10],
+    iconGradient: ['#FAFAFA', '#A1A1AA', '#52525B']
   }
 }
 
@@ -120,7 +148,7 @@ export function applyAppAppearance(settings: AppearanceSettings): void {
   const uiScale = Number.isFinite(settings.uiScale) ? Math.min(1.3, Math.max(0.8, settings.uiScale)) : 1
   ;(root.style as CSSStyleDeclaration & { zoom: string }).zoom = uiScale === 1 ? '' : String(uiScale)
 
-  const gradientEnd = settings.theme === 'joker' ? palette.secondary : lightenHex(accent, 0.15)
+  const gradientEnd = palette.gradientEnd ?? lightenHex(accent, 0.15)
   const gradient = `linear-gradient(135deg, ${accent}, ${gradientEnd})`
 
   root.dataset.theme = settings.theme

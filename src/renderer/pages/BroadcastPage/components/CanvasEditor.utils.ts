@@ -721,7 +721,7 @@ export function applyShapeBorderStroke(
     grad.addColorStop(0, '#b6ff00')
     grad.addColorStop(0.28, '#f7ffe8')
     grad.addColorStop(0.5, '#050505')
-    grad.addColorStop(0.72, '#ce1126')
+    grad.addColorStop(0.72, '#8fd400')
     grad.addColorStop(1, '#b6ff00')
     ctx.strokeStyle = grad
     ctx.shadowBlur = 18 * reactiveScale

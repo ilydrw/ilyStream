@@ -40,12 +40,12 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
         #b6ff00,
         #f7ffe8 22%,
         #050505 42%,
-        #ce1126 62%,
+        #8fd400 62%,
         #050505 82%,
         #b6ff00 100%
       );
       filter: drop-shadow(0 0 calc(6px * var(--glow)) #b6ff00)
-              drop-shadow(0 0 calc(2px * var(--glow)) #ce1126);
+              drop-shadow(0 0 calc(2px * var(--glow)) #8fd400);
     }
     /* Custom style + any unknown style falls back to a two-color gradient
        driven by --color1 / --color2 so users can pick their own palette. */

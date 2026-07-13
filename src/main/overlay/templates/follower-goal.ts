@@ -200,7 +200,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
 
       /* Gob the Stopper Mode */
       .gob-text {
-        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00);
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #8fd400, #b6ff00);
         background-size: 220% auto;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -208,7 +208,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         animation: chroma-flow 7s linear infinite;
       }
       .gob-bg {
-        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #ce1126, #b6ff00) !important;
+        background: linear-gradient(90deg, #b6ff00, #f7ffe8, #8fd400, #b6ff00) !important;
         background-size: 420px 100% !important;
         box-shadow: 0 0 18px rgba(182, 255, 0, 0.45);
         animation: chroma-flow-fixed 7s linear infinite !important;
@@ -240,7 +240,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         --gradient-border: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1);
       }
       .card.gob-border {
-        --gradient-border: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #ce1126, #b6ff00);
+        --gradient-border: linear-gradient(90deg, #b6ff00, #f7ffe8, #050505, #8fd400, #b6ff00);
         background:
           linear-gradient(135deg, rgba(182, 255, 0, 0.08), transparent 52%),
           rgba(2, 4, 2, 0.5);

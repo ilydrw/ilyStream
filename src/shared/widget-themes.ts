@@ -94,13 +94,13 @@ export const WIDGET_THEMES: WidgetTheme[] = [
   {
     id: 'gob-the-stopper',
     name: 'Gob the Stopper',
-    description: 'Lime green and black Palestinian-inspired widget palette.',
+    description: 'High-voltage lime green on jet black.',
     style: 'gob-the-stopper',
     borderType: 'gob-the-stopper',
     colors: {
       primary: '#B6FF00',
       secondary: '#050505',
-      accent: '#CE1126',
+      accent: '#8FD400',
       background: '#020402',
       surface: '#071107',
       text: '#F7FFE8',

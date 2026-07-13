@@ -16,16 +16,18 @@ const THEME_OPTIONS: Array<{
   accent: string
   secondary: string
 }> = [
-  { value: 'dark', label: 'Noir', hint: 'Default broadcast control room.', accent: '#19c8ff', secondary: '#d035f1' },
+  { value: 'dark', label: 'Cyber Neon', hint: 'Neon cyan and magenta — the default.', accent: '#19c8ff', secondary: '#d035f1' },
   { value: 'midnight', label: 'Midnight', hint: 'Cool blue focus mode.', accent: '#60a5fa', secondary: '#7c3aed' },
   { value: 'aurora', label: 'Aurora', hint: 'Teal and green live energy.', accent: '#2dd4bf', secondary: '#22c55e' },
   { value: 'ember', label: 'Ember', hint: 'Warm alert-ready contrast.', accent: '#fb923c', secondary: '#f43f5e' },
+  { value: 'synthwave', label: 'Synthwave', hint: 'Retro pink and violet afterglow.', accent: '#f472b6', secondary: '#7c3aed' },
+  { value: 'gob', label: 'Gob the Stopper', hint: 'High-voltage lime green on jet black.', accent: '#b6ff00', secondary: '#050505' },
+  { value: 'graphite', label: 'Graphite', hint: 'Monochrome and distraction-free.', accent: '#e4e4e7', secondary: '#3f3f46' },
   { value: 'light', label: 'Daylight', hint: 'Bright control surface for lit rooms.', accent: '#0ea5e9', secondary: '#a855f7' },
-  { value: 'joker', label: 'Why So Serious?', hint: 'High-contrast chaos for the bold.', accent: '#1ddd33', secondary: '#ab5dce' },
   { value: 'custom', label: 'Custom', hint: 'Build your own palette from scratch.', accent: '#19c8ff', secondary: '#d035f1' }
 ]
 
-const ACCENT_OPTIONS = ['#19c8ff', '#a78bfa', '#2dd4bf', '#22c55e', '#fb923c', '#f43f5e']
+const ACCENT_OPTIONS = ['#19c8ff', '#a78bfa', '#2dd4bf', '#22c55e', '#b6ff00', '#fb923c', '#f43f5e']
 const UI_SCALE_OPTIONS = [
   { value: 0.85, label: '85%' },
   { value: 0.95, label: '95%' },

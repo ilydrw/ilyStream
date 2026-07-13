@@ -32,7 +32,7 @@ export interface ElevenLabsApiKeyEntry {
   apiKey: string
 }
 
-export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'joker' | 'custom'
+export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'gob' | 'synthwave' | 'graphite' | 'custom'
 export type InterfaceDensity = 'comfortable' | 'compact'
 
 export type TTSAudiencePermission = 
