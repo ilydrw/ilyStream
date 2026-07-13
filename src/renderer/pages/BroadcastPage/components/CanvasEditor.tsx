@@ -113,6 +113,23 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     bitrate: virtualCameraOutput?.bitrateKbps ?? outputBitrateKbps, width: virtualCameraOutput?.width ?? 1280, height: virtualCameraOutput?.height ?? 720, codec: virtualCameraOutput?.codec
   }, () => { if (virtualCameraOutput?.active) void window.api?.virtualCamera?.stop?.() })
 
+  // Adaptive bitrate: main watches per-output drop counters and asks the
+  // matching layout encoder to step its bitrate down/up. Reconfigure is live
+  // (WebCodecs) — no reconnect, next frame just encodes at the new rate.
+  useEffect(() => {
+    if (isPreview || !window.api?.on) return
+    return window.api.on('streaming:bitrate-adjusted', (adjustment: any) => {
+      const worker =
+        adjustment.encoderId === 'horizontal' ? horizontalEncoderWorkerRef.current :
+        adjustment.encoderId === 'vertical' ? verticalEncoderWorkerRef.current :
+        adjustment.encoderId === 'primary' ? encoderWorkerRef.current : null
+      if (!worker) return
+      worker.postMessage({ type: 'reconfigure', payload: { bitrate: adjustment.bitrateKbps * 1000 } })
+    })
+    // Worker refs are stable useRef containers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPreview])
+
   // Audio Engine
   useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady, !isPreview)
 

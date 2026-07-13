@@ -16,6 +16,7 @@ import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
 import { StreamSession, type StreamSessionConfig } from './streaming/stream-session'
 import { MediaPumper } from './streaming/media-pumper'
 import { FFmpegProcessManager } from './streaming/ffmpeg-process-manager'
+import { AdaptiveBitrateController, type EncoderHealthSample } from './streaming/adaptive-bitrate'
 
 // Consecutive failures (within a stability window) before we give up on a
 // destination. Because `retries` resets after a session stays live for
@@ -43,6 +44,8 @@ const OUTPUT_HEALTH_INTERVAL_MS = 2000
 interface OutputRuntime {
   sessionConfig: StreamSessionConfig
   session: StreamSession | null
+  /** User-configured bitrate — the baseline adaptive bitrate scales from. */
+  bitrateKbps: number
   state: StreamOutputStatus['state']
   startedAt: number
   retries: number
@@ -82,6 +85,7 @@ export class StreamingService extends EventEmitter {
   // detect whether an output is *actively* dropping (not just historically).
   private lastDropSnapshot = new Map<string, { video: number; audio: number }>()
   private outputsHeartbeat: ReturnType<typeof setInterval> | null = null
+  private adaptiveBitrate = new AdaptiveBitrateController()
 
   constructor() {
     super()
@@ -172,7 +176,8 @@ export class StreamingService extends EventEmitter {
     this.emitStatusChanged(isError ? 'error' : 'recording-stopped', isError ? summary : undefined)
   }
 
-  private emitStatusChanged(state: string, error?: string): void {
+  private emitStatusChanged(state: string, error?: string): StreamOutputStatus[] {
+    const outputs = this.getOutputsStatus()
     this.emit('status', {
       state,
       error,
@@ -180,9 +185,10 @@ export class StreamingService extends EventEmitter {
       recording: this.isRecording,
       streamAudioEnabled: this.streamAudioEnabled,
       recordingAudioEnabled: this.recordingAudioEnabled,
-      outputs: this.getOutputsStatus(),
+      outputs,
       at: Date.now()
     })
+    return outputs
   }
 
   /** Live status for every multistream destination. */
@@ -207,6 +213,7 @@ export class StreamingService extends EventEmitter {
         droppedVideoChunks: videoDrops,
         droppedAudioChunks: audioDrops,
         degraded,
+        bitrateScale: this.adaptiveBitrate.getScale(encoderIdForOutput(id)),
         lastError: runtime.lastError
       }
     })
@@ -432,6 +439,7 @@ export class StreamingService extends EventEmitter {
         redactSecret: redact
       },
       session: null,
+      bitrateKbps: config.bitrateKbps,
       state: 'live',
       startedAt: Date.now(),
       retries: 0,
@@ -451,14 +459,50 @@ export class StreamingService extends EventEmitter {
   private syncOutputsHeartbeat(): void {
     const shouldRun = this.streamOutputs.size > 0
     if (shouldRun && !this.outputsHeartbeat) {
-      this.outputsHeartbeat = setInterval(
-        () => this.emitStatusChanged('outputs-health'),
-        OUTPUT_HEALTH_INTERVAL_MS
-      )
+      this.outputsHeartbeat = setInterval(() => {
+        const outputs = this.emitStatusChanged('outputs-health')
+        this.runAdaptiveBitrate(outputs)
+      }, OUTPUT_HEALTH_INTERVAL_MS)
       ;(this.outputsHeartbeat as any)?.unref?.()
     } else if (!shouldRun && this.outputsHeartbeat) {
       clearInterval(this.outputsHeartbeat)
       this.outputsHeartbeat = null
+    }
+  }
+
+  /**
+   * Feed this heartbeat's output health into the adaptive bitrate policy and
+   * broadcast any adjustments. One renderer-side WebCodecs encoder feeds
+   * every destination of a layout, so health is aggregated per encoder and
+   * the adjustment applies to the whole layout — same trade-off as OBS's
+   * single-encoder dynamic bitrate. Only h264 outputs participate: on the
+   * mjpeg path ffmpeg owns the encode and its bitrate is fixed at spawn.
+   */
+  private runAdaptiveBitrate(outputs: StreamOutputStatus[]): void {
+    const groups = new Map<string, EncoderHealthSample>()
+
+    for (const output of outputs) {
+      const runtime = this.streamOutputs.get(output.id)
+      if (!runtime || runtime.sessionConfig.inputFormat !== 'h264') continue
+
+      const encoderId = encoderIdForOutput(output.id)
+      const degraded = output.state === 'reconnecting' || output.degraded
+      const existing = groups.get(encoderId)
+      if (existing) {
+        existing.degraded = existing.degraded || degraded
+        existing.baseBitrateKbps = Math.max(existing.baseBitrateKbps, runtime.bitrateKbps)
+      } else {
+        groups.set(encoderId, { encoderId, baseBitrateKbps: runtime.bitrateKbps, degraded })
+      }
+    }
+
+    const adjustments = this.adaptiveBitrate.observe(Array.from(groups.values()), Date.now())
+    for (const adjustment of adjustments) {
+      console.log(
+        `[AdaptiveBitrate] ${adjustment.encoderId}: ${adjustment.direction === 'down' ? 'stepping down' : 'recovering'} ` +
+        `to ${adjustment.bitrateKbps} kbps (${Math.round(adjustment.scale * 100)}% of configured)`
+      )
+      this.emit('adaptive-bitrate', adjustment)
     }
   }
 
@@ -664,6 +708,17 @@ export class StreamingService extends EventEmitter {
     if (codec === 'h265' && container === 'flv') return 'mkv'
     return RECORDING_CONTAINERS.has(container || '') ? container as 'mkv' | 'mp4' | 'mov' | 'flv' : 'mkv'
   }
+}
+
+/**
+ * The renderer runs ONE encoder per layout whose chunks fan out to every
+ * `${layout}:` destination — so bitrate decisions are keyed by the layout
+ * prefix ('horizontal:twitch' → 'horizontal'), matching the outputId the
+ * encoder worker stamps on its frames.
+ */
+function encoderIdForOutput(outputId: string): string {
+  const separator = outputId.indexOf(':')
+  return separator > 0 ? outputId.slice(0, separator) : outputId
 }
 
 function normalizeVideoFramePayload(frameData: Uint8Array | VideoFramePayload): VideoFramePayload {

@@ -56,6 +56,9 @@ export interface StreamOutputStatus {
   /** True while the output is actively dropping video/audio faster than a small
    * threshold — the UI can show a "degraded / dropping frames" warning. */
   degraded: boolean
+  /** Current adaptive-bitrate scale for this output's encoder (1 = configured
+   * bitrate; < 1 while stepped down due to sustained drops). */
+  bitrateScale?: number
   lastError?: string
 }
 

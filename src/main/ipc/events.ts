@@ -100,6 +100,13 @@ export function setupEventForwarding(
     sendToRenderer(window, 'streaming:status-changed', status)
   })
 
+  // Adaptive bitrate decisions are made in main (it owns the drop counters),
+  // but the h264 encoders live in renderer workers — forward so the matching
+  // layout encoder can reconfigure live.
+  streamingService.on('adaptive-bitrate', (payload) => {
+    sendToRenderer(window, 'streaming:bitrate-adjusted', payload)
+  })
+
   streamingService.on('native-clock', (payload) => {
     sendToRenderer(window, 'streaming:native-audio-clock', payload)
   })

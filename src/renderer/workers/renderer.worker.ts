@@ -1,6 +1,12 @@
 let offscreenCanvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 let videoEncoder: VideoEncoder | null = null
+// Last applied encoder config, kept so adaptive-bitrate reconfigures can
+// re-issue it with only the bitrate changed.
+let encoderConfig: VideoEncoderConfig | null = null
+// Force a keyframe on the first frame after a reconfigure so downstream
+// muxers/CDNs resync at the new rate immediately.
+let forceNextKeyFrame = false
 let layers: any[] = []
 let cw = 1920
 let ch = 1080
@@ -71,7 +77,7 @@ self.onmessage = async (e) => {
         error: (err) => self.postMessage({ type: 'error', message: String(err) })
       })
 
-      videoEncoder.configure({
+      encoderConfig = {
         codec: payload.codec || 'avc1.640028', // High profile, Level 4.0 (Twitch optimized)
         width: cw,
         height: ch,
@@ -80,10 +86,13 @@ self.onmessage = async (e) => {
         framerate: streamFps,
         latencyMode: 'realtime',
         avc: { format: 'annexb' }
-      })
+      }
+      videoEncoder.configure(encoderConfig)
     } else {
       videoEncoder = null
+      encoderConfig = null
     }
+    forceNextKeyFrame = false
 
     startRenderLoop()
     return
@@ -133,6 +142,26 @@ self.onmessage = async (e) => {
 
   if (type === 'remove_source') {
     cleanupSource(payload.id)
+  }
+
+  // Adaptive bitrate: re-issue the current config with a new bitrate.
+  // WebCodecs applies it between frames — no encoder teardown, no reconnect.
+  if (type === 'reconfigure') {
+    const nextBitrate = Number(payload?.bitrate)
+    if (
+      captureFormat === 'h264' &&
+      videoEncoder && videoEncoder.state === 'configured' &&
+      encoderConfig && Number.isFinite(nextBitrate) && nextBitrate > 0
+    ) {
+      try {
+        encoderConfig = { ...encoderConfig, bitrate: nextBitrate }
+        videoEncoder.configure(encoderConfig)
+        forceNextKeyFrame = true
+      } catch (err) {
+        self.postMessage({ type: 'error', message: String(err) })
+      }
+    }
+    return
   }
 
   if (type === 'shutdown') {
@@ -264,7 +293,8 @@ function renderLoop() {
       if (videoEncoder.encodeQueueSize > 10) break
       frameCountTotal++
 
-      const forceKeyFrame = frameCountTotal % (streamFps * 2) === 0
+      const forceKeyFrame = forceNextKeyFrame || frameCountTotal % (streamFps * 2) === 0
+      forceNextKeyFrame = false
       const timestampMicrosec = Math.round((frameCountTotal / streamFps) * 1_000_000);
       const frame = new VideoFrame(offscreenCanvas, { timestamp: timestampMicrosec })
 
@@ -286,7 +316,8 @@ function encodeVideoFrame(frame: VideoFrame) {
   }
 
   frameCountTotal++
-  const forceKeyFrame = frameCountTotal % (streamFps * 2) === 1
+  const forceKeyFrame = forceNextKeyFrame || frameCountTotal % (streamFps * 2) === 1
+  forceNextKeyFrame = false
 
   try {
     videoEncoder.encode(frame, { keyFrame: forceKeyFrame })
