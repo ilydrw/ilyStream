@@ -1,6 +1,17 @@
 import type { Platform } from '../../main/platforms/types'
 import type { EventLabSimulationPayload } from '../../shared/event-lab'
-import type { EventLabEntryKind } from '../stores/event-lab-store'
+
+export type EventLabEntryKind =
+  | 'stream'
+  | 'overlay'
+  | 'device'
+  | 'automation'
+  | 'alert'
+  | 'sound'
+  | 'tts'
+  | 'spotify'
+  | 'status'
+  | 'system'
 
 export const EVENT_REPLAY_SESSIONS_KEY = 'ilystream.eventReplay.sessions.v1'
 export const EVENT_REPLAY_SCHEMA_VERSION = 1

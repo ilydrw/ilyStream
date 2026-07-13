@@ -1,5 +1,6 @@
 import { LatestGifterConfig, DEFAULT_LATEST_GIFTER_CONFIG } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
   const cfg: LatestGifterConfig = { ...DEFAULT_LATEST_GIFTER_CONFIG, ...(widget?.config || {}) }
@@ -10,8 +11,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Latest Gifter</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+  ${INLINE_AVATAR_RUNTIME_SCRIPT}
   <style>
     body, html {
       margin: 0;
@@ -22,7 +22,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: "${cfg.fontFamily || 'Outfit'}", sans-serif;
+      font-family: "${cfg.fontFamily || 'Segoe UI'}", "Segoe UI", Arial, sans-serif;
     }
 
     .widget-container {
@@ -133,7 +133,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
   <div class="widget-container">
     <div class="gifter-pill" id="widget">
       <div class="avatar-circle">
-        <img src="https://via.placeholder.com/100" id="avatar" alt="">
+        <img id="avatar" alt="">
       </div>
       <div class="text-stack">
         <div class="label">${cfg.label}</div>
@@ -161,7 +161,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
 
     function updateGifter(name, avatar) {
       if (name) nameEl.innerText = name;
-      if (avatar) avatarEl.src = avatar;
+      window.__ilyAvatar.apply(avatarEl, name || '?', avatar || '');
 
       widgetEl.classList.remove('update-anim');
       void widgetEl.offsetWidth;
@@ -169,7 +169,7 @@ export function buildLatestGifterHtml(widget?: any, isPreview = false): string {
     }
 
     if (IS_PREVIEW) {
-      updateGifter('GalaxyMia', 'https://api.dicebear.com/7.x/avataaars/svg?seed=GalaxyMia');
+      updateGifter('GalaxyMia', '');
     } else {
       var src = new EventSource('/overlay/events?channel=latest-gifter');
       src.onmessage = function(e) {

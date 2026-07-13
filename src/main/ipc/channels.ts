@@ -28,6 +28,11 @@ import type {
 } from '../../shared/event-lab'
 import type { AutomationRunReceipt } from '../../shared/automation-receipts'
 import type { KickEventSubscriptionResult } from '../platforms/kick/kick-api'
+import type {
+  TikTokNativeAuthProgress,
+  TikTokNativeAuthStatus,
+  TikTokNativeLiveDestination
+} from '../../shared/tiktok-native'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -45,6 +50,17 @@ export interface IpcInvokeChannels {
     text: string
   }) => Promise<PlatformChatSendResult[]>
   'platform:restore-connections': () => Promise<void>
+  'tiktok:get-native-auth-status': () => Promise<TikTokNativeAuthStatus>
+  'tiktok:begin-native-auth': (payload?: { clientKey?: string }) => Promise<TikTokNativeAuthStatus>
+  'tiktok:cancel-native-auth': () => Promise<TikTokNativeAuthStatus>
+  'tiktok:disconnect-native-auth': () => Promise<TikTokNativeAuthStatus>
+  'tiktok:prepare-live': (payload?: {
+    title?: string
+    orientation?: 'portrait' | 'landscape'
+  }) => Promise<TikTokNativeLiveDestination>
+  'tiktok:complete-live': () => Promise<void>
+  'tiktok:open-developer-portal': () => Promise<void>
+  'tiktok:open-partner-support': () => Promise<void>
   'youtube:begin-auth': (payload: {
     clientId?: string
     clientSecret?: string
@@ -156,6 +172,7 @@ export interface IpcEventChannels {
   'platform:status-change': { platform: Platform; status: ConnectionStatus }
   'platform:error': { platform: Platform; message: string; code?: string }
   'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number; reason?: string }
+  'tiktok:native-auth-progress': TikTokNativeAuthProgress
   'settings:changed': AppSettings
   'obs:status-changed': OBSRuntimeStatus
   'voice:changed': VoiceProfile[]

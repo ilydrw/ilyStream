@@ -249,3 +249,20 @@ describe('OverlayRouter deck authorization', () => {
     })
   })
 })
+
+describe('OverlayRouter local widget assets', () => {
+  it('serves Matter.js from the local overlay origin', async () => {
+    const { router } = makeRouter()
+    const response = await dispatch(router, new TestRequest({
+      method: 'GET',
+      url: '/overlay/vendor/matter.min.js',
+      headers: { host: '127.0.0.1:8899' },
+      remoteAddress: '127.0.0.1'
+    }))
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['Content-Type']).toBe('text/javascript; charset=utf-8')
+    expect(response.text()).toContain('Matter')
+    expect(response.text().length).toBeGreaterThan(50_000)
+  })
+})

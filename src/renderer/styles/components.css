@@ -1149,6 +1149,97 @@
   white-space: nowrap;
 }
 
+.broadcast-source-summary {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.broadcast-source-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-4);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.broadcast-source-status::before,
+.broadcast-media-diagnostic-title > span {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.broadcast-source-status[data-state='live'],
+.broadcast-media-diagnostic[data-state='live'] {
+  color: #55d98b;
+}
+
+.broadcast-source-status[data-state='opening'],
+.broadcast-source-status[data-state='retrying'],
+.broadcast-media-diagnostic[data-state='opening'],
+.broadcast-media-diagnostic[data-state='retrying'] {
+  color: #54c8ff;
+}
+
+.broadcast-source-status[data-state='device-busy'],
+.broadcast-source-status[data-state='unsupported-settings'],
+.broadcast-source-status[data-state='device-missing'],
+.broadcast-media-diagnostic[data-state='device-busy'],
+.broadcast-media-diagnostic[data-state='unsupported-settings'],
+.broadcast-media-diagnostic[data-state='device-missing'] {
+  color: #f4bd50;
+}
+
+.broadcast-source-status[data-state='permission-denied'],
+.broadcast-source-status[data-state='error'],
+.broadcast-media-diagnostic[data-state='permission-denied'],
+.broadcast-media-diagnostic[data-state='error'] {
+  color: #ff7070;
+}
+
+.broadcast-media-diagnostic {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.broadcast-media-diagnostic-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.broadcast-media-diagnostic p {
+  margin: 5px 0 0 13px;
+  color: var(--fg-3);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.broadcast-media-diagnostic code {
+  display: block;
+  margin: 7px 0 0 13px;
+  color: var(--fg-4);
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .broadcast-source-actions {
   display: flex;
   align-items: center;

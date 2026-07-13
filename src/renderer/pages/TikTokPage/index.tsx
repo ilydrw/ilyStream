@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { useConnectionStore } from '../../stores/connection-store'
 import { getPlatformCapability, getPlatformConfig } from '../../lib/platform-configs'
-import type { TikTokSenderStatus } from '../../../main/platforms/tiktok/tiktok-chat-sender'
+import type { TikTokSenderStatus } from '../../../shared/tiktok-sender'
 import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import type { PlatformStats, UserStat } from '../../../shared/stats'
+import { TikTokNativeAccessCard } from './components/TikTokNativeAccessCard'
 import { 
   PlatformPageHeader, 
   Metric, 
@@ -20,6 +21,7 @@ const FIELDS = [
   { key: 'sessionId', label: 'Session ID', type: 'password', placeholder: 'Optional for sending' },
   { key: 'ttTargetIdc', label: 'tt-target-idc', type: 'text', placeholder: 'useast1a' },
   { key: 'signApiKey', label: 'Sign API key', type: 'password', placeholder: 'Optional connector signing key' },
+  { key: 'streamUrl', label: 'TikTok RTMP server URL', type: 'text', placeholder: 'TikTok-provided server URL' },
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'TikTok stream key' }
 ]
 
@@ -56,7 +58,6 @@ export default function TikTokPage() {
   })
   const [tiktokStats, setTiktokStats] = useState<PlatformStats | null>(null)
   const [topGifters, setTopGifters] = useState<UserStat[]>([])
-
   const status = statuses[PLATFORM_ID] || 'disconnected'
   const error = errors[PLATFORM_ID] || null
   const viewers = viewerCounts[PLATFORM_ID] || 0
@@ -345,11 +346,17 @@ export default function TikTokPage() {
 
       <div className="grid gap-8 xl:grid-cols-[1fr_400px]">
         <div className="flex flex-col gap-8">
+          <TikTokNativeAccessCard
+            platformConfig={config}
+            connectionEnabled={isConnected || isConnecting}
+            onClientKeyChange={(value) => updateField('oauthClientKey', value)}
+          />
+
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2>Configuration</h2>
-                <p>Authentication and stream parameters.</p>
+                <h2>Event Connector &amp; Manual RTMP</h2>
+                <p>LIVE events, host chat, and TikTok-provided RTMP fallback.</p>
               </div>
               <StatusBadge status={status} reconnect={reconnectInfo[PLATFORM_ID]} />
             </div>

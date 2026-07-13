@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconCast, IconSparkles, IconVideo, IconKeyboard, IconCrop } from '@tabler/icons-react'
-import { IconPencil, IconCopy, IconTrash, IconX } from '../../components/ui/icons'
+import { IconSquare, IconArrowsMove, IconMaximize, IconCrosshair, IconCast, IconSparkles, IconVideo, IconCrop } from '@tabler/icons-react'
+import { IconPencil, IconCopy, IconTrash } from '../../components/ui/icons'
 
 import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
 import type { LayerType, StudioLayer } from '../../../shared/studio'
-import { DEFAULT_APP_SETTINGS, resolveAppSettings } from '../../../shared/app-settings'
 import { CanvasEditor } from './components/CanvasEditor'
-import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceFitMode, VirtualCameraSourceOption } from './components/CanvasEditor.types'
+import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceOption } from './components/CanvasEditor.types'
 import { ContextMenu } from '../../components/ui/ContextMenu'
 import { AddSourceModal } from './components/AddSourceModal'
 import { getOptimizedCaptureInputFormat, pickAvcCodecString, type BroadcastLayoutId, type BroadcastLayoutMode, buildStreamPlatforms } from './utils/streaming-config'
@@ -22,162 +20,29 @@ import { SceneSidebar } from './components/SceneSidebar'
 import { SourceSidebar } from './components/SourceSidebar'
 import { MixerContainer } from './components/MixerContainer'
 import { RecordingSettingsModal } from './components/RecordingSettingsModal'
+import { HotkeyLegend } from './components/HotkeyLegend'
+import { StingerConfigModal } from './components/StingerConfigModal'
 
 import { useMediaManagement } from './hooks/useMediaManagement'
 import { EnhancementModal } from './components/EnhancementModal'
 import { CropModal } from './components/CropModal'
 import { usePageVisibility } from '../../hooks/usePageVisibility'
 import { toPlatformConfigMap } from '../../lib/platform-configs'
-
-function formatDuration(totalSeconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
-  const hours = Math.floor(safeSeconds / 3600)
-  const minutes = Math.floor((safeSeconds % 3600) / 60)
-  const seconds = safeSeconds % 60
-  return hours > 0
-    ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-    : `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
-type ProjectorAspectRatio = '16:9' | '9:16'
-const LANDSCAPE_STAGE = { width: 1920, height: 1080 }
-const PORTRAIT_STAGE = { width: 1080, height: 1920 }
-const VIRTUAL_CAMERA_FEED_STORAGE_KEY = 'ilystream-virtual-camera-feed'
-const DEFAULT_VIRTUAL_CAMERA_FEED: VirtualCameraFeedConfig = {
-  mode: 'layout',
-  layout: 'current',
-  sourceFitMode: 'cover'
-}
-
-const DEFAULT_BROADCAST_FPS = Math.min(60, Math.max(1, DEFAULT_APP_SETTINGS.streaming.fps))
-const DEFAULT_BROADCAST_BITRATE_KBPS = DEFAULT_APP_SETTINGS.streaming.bitrate
-const TWITCH_SAFE_FPS = 30
-const TWITCH_SAFE_BITRATE_KBPS = 4500
-
-function clampBroadcastFps(value: unknown): number {
-  const fps = Number(value)
-  const fallback = Number.isFinite(DEFAULT_BROADCAST_FPS) ? DEFAULT_BROADCAST_FPS : 60
-  return Math.max(1, Math.min(60, Math.round(Number.isFinite(fps) ? fps : fallback)))
-}
-
-function clampBroadcastBitrateKbps(value: unknown): number {
-  const bitrate = Number(value)
-  const fallback = Number.isFinite(DEFAULT_BROADCAST_BITRATE_KBPS) ? DEFAULT_BROADCAST_BITRATE_KBPS : 6000
-  return Math.max(500, Math.min(51000, Math.round(Number.isFinite(bitrate) ? bitrate : fallback)))
-}
-
-async function loadBroadcastOutputConfig(): Promise<{ fps: number; bitrateKbps: number }> {
-  try {
-    const settings = resolveAppSettings(await window.api.settings.getAll())
-    return {
-      fps: clampBroadcastFps(settings.streaming.fps),
-      bitrateKbps: clampBroadcastBitrateKbps(settings.streaming.bitrate)
-    }
-  } catch (err) {
-    console.warn('[BroadcastPage] Failed to load broadcast defaults; using safe fallback:', err)
-    return {
-      fps: clampBroadcastFps(DEFAULT_BROADCAST_FPS),
-      bitrateKbps: clampBroadcastBitrateKbps(DEFAULT_BROADCAST_BITRATE_KBPS)
-    }
-  }
-}
-
-function usesTwitchIngest(destination: { platform?: { id?: string; url?: string } }): boolean {
-  const id = String(destination.platform?.id || '').toLowerCase()
-  const url = String(destination.platform?.url || '').toLowerCase()
-  return id === 'twitch' || url.includes('twitch.tv') || url.includes('global-contribute.live-video.net')
-}
-
-function applyDestinationOutputCaps(
-  config: { fps: number; bitrateKbps: number },
-  destinations: Array<{ platform?: { id?: string; name?: string; url?: string } }>
-): { fps: number; bitrateKbps: number } {
-  if (!destinations.some(usesTwitchIngest)) return config
-
-  const capped = {
-    fps: Math.min(config.fps, TWITCH_SAFE_FPS),
-    bitrateKbps: Math.min(config.bitrateKbps, TWITCH_SAFE_BITRATE_KBPS)
-  }
-
-  if (capped.fps !== config.fps || capped.bitrateKbps !== config.bitrateKbps) {
-    console.warn(
-      `[BroadcastPage] Applying Twitch-safe output cap: ${capped.fps} FPS / ${capped.bitrateKbps} Kbps`
-    )
-  }
-
-  return capped
-}
-
-function isVirtualCameraSourceFitMode(value: unknown): value is VirtualCameraSourceFitMode {
-  return value === 'contain' || value === 'cover' || value === 'stretch'
-}
-
-function normalizeVirtualCameraFeed(value: unknown): VirtualCameraFeedConfig {
-  const raw = value && typeof value === 'object' ? value as Partial<VirtualCameraFeedConfig> : {}
-  const mode = raw.mode === 'source' ? 'source' : 'layout'
-  const layout =
-    raw.layout === 'landscape' || raw.layout === 'portrait' || raw.layout === 'current'
-      ? raw.layout
-      : DEFAULT_VIRTUAL_CAMERA_FEED.layout
-  const sourceFitMode = isVirtualCameraSourceFitMode(raw.sourceFitMode)
-    ? raw.sourceFitMode
-    : DEFAULT_VIRTUAL_CAMERA_FEED.sourceFitMode
-  const sourceLayerId = typeof raw.sourceLayerId === 'string' && raw.sourceLayerId.length > 0
-    ? raw.sourceLayerId
-    : undefined
-
-  return sourceLayerId
-    ? { mode, layout, sourceFitMode, sourceLayerId }
-    : { mode, layout, sourceFitMode }
-}
-
-function loadVirtualCameraFeed(): VirtualCameraFeedConfig {
-  if (typeof window === 'undefined') return DEFAULT_VIRTUAL_CAMERA_FEED
-  try {
-    const raw = window.localStorage.getItem(VIRTUAL_CAMERA_FEED_STORAGE_KEY)
-    return raw ? normalizeVirtualCameraFeed(JSON.parse(raw)) : DEFAULT_VIRTUAL_CAMERA_FEED
-  } catch {
-    return DEFAULT_VIRTUAL_CAMERA_FEED
-  }
-}
-
-function saveVirtualCameraFeed(feed: VirtualCameraFeedConfig) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(VIRTUAL_CAMERA_FEED_STORAGE_KEY, JSON.stringify(normalizeVirtualCameraFeed(feed)))
-  } catch {
-    // Renderer preference persistence is best-effort.
-  }
-}
-
-function getLayoutModeForAspectRatio(aspectRatio: ProjectorAspectRatio): BroadcastLayoutMode {
-  return aspectRatio === '9:16' ? 'vertical' : 'horizontal'
-}
-
-function getAspectRatioForLayoutMode(mode: BroadcastLayoutMode): ProjectorAspectRatio {
-  return mode === 'vertical' || mode === 'dual-portrait' ? '9:16' : '16:9'
-}
-
-function fitRect(
-  stage: { width: number; height: number },
-  sourceWidth: number,
-  sourceHeight: number,
-  fill = 0.72
-) {
-  const scale = Math.min(stage.width * fill / sourceWidth, stage.height * fill / sourceHeight)
-  const width = Math.max(1, Math.round(sourceWidth * scale))
-  const height = Math.max(1, Math.round(sourceHeight * scale))
-  return {
-    x: Math.round((stage.width - width) / 2),
-    y: Math.round((stage.height - height) / 2),
-    width,
-    height
-  }
-}
-
-function fullStageRect(stage: { width: number; height: number }) {
-  return { x: 0, y: 0, width: stage.width, height: stage.height }
-}
+import {
+  LANDSCAPE_STAGE,
+  PORTRAIT_STAGE,
+  applyDestinationOutputCaps,
+  fitRect,
+  formatDuration,
+  fullStageRect,
+  getAspectRatioForLayoutMode,
+  getLayoutModeForAspectRatio,
+  loadBroadcastOutputConfig,
+  loadVirtualCameraFeed,
+  saveVirtualCameraFeed,
+  usesTwitchIngest,
+  type ProjectorAspectRatio
+} from './utils/broadcast-page-utils'
 
 interface SourceContextMenuState {
   x: number
@@ -286,6 +151,7 @@ export default function BroadcastPage() {
   const isPageVisible = usePageVisibility()
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const canvasRef = useRef<CanvasEditorHandle>(null)
+  const nativeTikTokLiveActiveRef = useRef(false)
   const activeLayoutAssignments = useMemo(() => broadcastLayoutMode === 'horizontal' ? { horizontal: layoutAssignments.horizontal, vertical: [] } : broadcastLayoutMode === 'vertical' ? { horizontal: [], vertical: layoutAssignments.vertical } : layoutAssignments, [broadcastLayoutMode, layoutAssignments])
   const [showStingerConfig, setShowStingerConfig] = useState(false)
   const [showHotkeys, setShowHotkeys] = useState(false)
@@ -382,13 +248,19 @@ export default function BroadcastPage() {
   const [activeMirrorAspects, setActiveMirrorAspects] = useState({ horizontal: 0, vertical: 0 })
 
   const activeMediaAspectRatios = useMemo<ProjectorAspectRatio[]>(() => {
-    const ratios = new Set<ProjectorAspectRatio>([store.aspectRatio])
+    const ratios = new Set<ProjectorAspectRatio>()
+    if (broadcastLayoutMode === 'vertical' || broadcastLayoutMode === 'dual-portrait') ratios.add('9:16')
+    else if (broadcastLayoutMode === 'horizontal' || broadcastLayoutMode === 'dual-horizontal') ratios.add('16:9')
+    else {
+      ratios.add('16:9')
+      ratios.add('9:16')
+    }
     if (activeMirrorAspects.horizontal > 0) ratios.add('16:9')
     if (activeMirrorAspects.vertical > 0) ratios.add('9:16')
     return Array.from(ratios)
-  }, [store.aspectRatio, activeMirrorAspects])
+  }, [broadcastLayoutMode, activeMirrorAspects])
 
-  const { streamReady, forceRefreshMedia } = useMediaManagement({
+  const { streamReady, mediaStatuses, forceRefreshMedia } = useMediaManagement({
     activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
     updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources,
@@ -631,7 +503,11 @@ export default function BroadcastPage() {
           else store.setActiveScene(store.scenes[index].id)
         }
       } else if (e.key === 'Escape') {
+        setShowSourceModal(false)
         setShowMultiView(false)
+        setShowStingerConfig(false)
+        setShowHotkeys(false)
+        setShowRecordingSettings(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -731,26 +607,53 @@ export default function BroadcastPage() {
   }, [activeScene, addSource, changeBroadcastLayoutMode, previewScene, store.studioMode, widgets])
 
   // Streaming Handlers
+  const completeNativeTikTokLive = async () => {
+    if (!nativeTikTokLiveActiveRef.current) return
+    nativeTikTokLiveActiveRef.current = false
+    try {
+      await window.api.platform.tiktok.completeLive()
+    } catch (err) {
+      console.warn('[BroadcastPage] TikTok LIVE completion failed:', err)
+    }
+  }
+
   const startBroadcast = async () => {
     setStreamError(null)
     const destinations = (['horizontal', 'vertical'] as BroadcastLayoutId[]).flatMap(l => activeLayoutAssignments[l].map(pId => ({ layout: l, platform: platforms.find(p => p.id === pId) })))
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
-    // Destinations that resolve their key at go-live time (YouTube with a
-    // connected Google account): fetch/provision the broadcast + stream key
-    // now, once, and substitute it in before the encoders spin up.
-    if (destinations.some(d => d.platform?.autoKey && !d.platform.key)) {
+    // Resolve platform-managed, short-lived ingest credentials immediately
+    // before the encoders start. Manual RTMP destinations already carry keys.
+    if (destinations.some(d => d.platform?.keyProvider === 'youtube' && !d.platform.key)) {
       try {
         const live = await window.api.platform.youtube.prepareLive()
         console.log(`[BroadcastPage] YouTube broadcast ready: "${live.title}" ${live.watchUrl}${live.autoStart ? '' : ' — auto-start is off for this broadcast; press "Go live" in YouTube Studio if it does not start on its own'}`)
         for (const d of destinations) {
-          if (d.platform?.autoKey && !d.platform.key) {
+          if (d.platform?.keyProvider === 'youtube' && !d.platform.key) {
             d.platform = { ...d.platform, url: live.rtmpUrl, key: live.streamKey }
           }
         }
       } catch (err) {
         return setStreamError(err instanceof Error ? err.message : 'YouTube go-live setup failed')
+      }
+    }
+
+    if (destinations.some(d => d.platform?.keyProvider === 'tiktok-native' && !d.platform.key)) {
+      try {
+        const live = await window.api.platform.tiktok.prepareLive({
+          orientation: destinations.some(d => d.platform?.keyProvider === 'tiktok-native' && d.layout === 'vertical')
+            ? 'portrait'
+            : 'landscape'
+        })
+        nativeTikTokLiveActiveRef.current = true
+        for (const d of destinations) {
+          if (d.platform?.keyProvider === 'tiktok-native' && !d.platform.key) {
+            d.platform = { ...d.platform, url: live.rtmpUrl, key: live.streamKey }
+          }
+        }
+      } catch (err) {
+        return setStreamError(err instanceof Error ? err.message : 'TikTok native go-live setup failed')
       }
     }
 
@@ -768,12 +671,24 @@ export default function BroadcastPage() {
       : await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
     setLayoutInputFormats({ horizontal: hIn, vertical: vIn })
 
-    const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
-    if (res.every(r => r.success)) { setIsStreaming(true); setStatus('Live') } else setStreamError('Failed to start one or more outputs')
+    try {
+      const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
+      if (res.every(r => r.success)) {
+        setIsStreaming(true)
+        setStatus('Live')
+      } else {
+        await completeNativeTikTokLive()
+        setStreamError('Failed to start one or more outputs')
+      }
+    } catch (err) {
+      await completeNativeTikTokLive()
+      setStreamError(err instanceof Error ? err.message : 'Failed to start one or more outputs')
+    }
   }
 
   const stopBroadcast = async () => {
     await window.api.streaming.stop()
+    await completeNativeTikTokLive()
     setIsStreaming(false)
     setStatus(isRecording ? 'Recording' : 'Offline')
   }
@@ -1126,6 +1041,7 @@ export default function BroadcastPage() {
             broadcastLayoutMode={broadcastLayoutMode}
             widgets={widgets}
             devices={devices}
+            mediaStatuses={mediaStatuses}
             sidebarWidth={sidebarWidth}
             onSidebarResizeStart={() => setIsResizingSidebar(true)}
             selectionContext={selectionContext}
@@ -1159,140 +1075,9 @@ export default function BroadcastPage() {
         videoRefs={videoRefs}
       />
 
-      {/* Stinger Config Modal */}
-      {showStingerConfig && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
-          <div className="w-[400px] bg-[#0c0c0e] rounded-lg border border-white/10 shadow-2xl p-8 flex flex-col gap-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold tracking-tighter text-white">Stinger Setup</h2>
-              <button onClick={() => setShowStingerConfig(false)} className="text-white/20 hover:text-white">Close</button>
-            </div>
+      <StingerConfigModal open={showStingerConfig} onClose={() => setShowStingerConfig(false)} />
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-semibold tracking-tight text-white/40">Video File (.webm / .mp4)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={store.stingerSettings.path}
-                    readOnly
-                    placeholder="No file selected..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none"
-                  />
-                  <button
-                    onClick={async () => {
-                      const res = await (window as any).api.assets.pickFile({ filters: [{ name: 'Videos', extensions: ['webm', 'mp4', 'mov'] }] })
-                      if (res) store.setStingerPath(res)
-                    }}
-                    className="px-4 bg-accent text-white rounded-xl font-semibold text-xs"
-                  >
-                    Pick
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-semibold tracking-tight text-white/40">Total Duration (ms)</label>
-                  <input
-                    type="number"
-                    value={store.stingerSettings.duration}
-                    onChange={(e) => store.setStingerDuration(Number(e.target.value))}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none focus:border-accent"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-semibold tracking-tight text-white/40">Cut Point (ms)</label>
-                  <input
-                    type="number"
-                    value={store.stingerSettings.cutPoint}
-                    onChange={(e) => store.setStingerCutPoint(Number(e.target.value))}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/80 outline-none focus:border-accent"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-md flex gap-3 items-center">
-              <IconSparkles className="text-purple-400" size={20} />
-              <p className="text-[10px] leading-relaxed text-purple-200/60 font-medium">
-                The <span className="text-purple-300 font-semibold">Cut Point</span> is when the actual scene switch happens. Set it to when the stinger video completely covers the screen.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowStingerConfig(false)}
-              className="w-full py-4 bg-accent text-white font-semibold tracking-tight rounded-md hover:brightness-110 active:scale-95 transition-all"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Hotkey Legend Overlay */}
-      <AnimatePresence>
-        {showHotkeys && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-[#0c0c0e]/90 border border-white/10 rounded-[32px] p-10 shadow-2xl shadow-black/50 w-[800px]"
-          >
-            <div className="flex justify-between items-center mb-8">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-md bg-purple-500/20 text-purple-400">
-                  <IconKeyboard size={24} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tighter text-white">Production Shortcuts</h2>
-                  <p className="text-[10px] font-semibold tracking-tight text-white/20 mt-1">Master your broadcast with global keys</p>
-                </div>
-              </div>
-              <button onClick={() => setShowHotkeys(false)} className="p-3 rounded-xl bg-white/5 text-white/20 hover:text-white transition-all">
-                <IconX size={20} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-              {[
-                { key: 'S', label: 'Toggle Studio Mode', desc: 'Preview vs Program' },
-                { key: 'F / Space', label: 'Fade Transition', desc: 'Smooth cross-fade' },
-                { key: 'C', label: 'Cut Transition', desc: 'Hard cut switch' },
-                { key: 'T', label: 'Stinger Transition', desc: 'Professional video overlay' },
-                { key: 'M', label: 'Toggle Multi-View', desc: 'Browse all scenes' },
-                { key: 'R', label: 'Start/Stop Recording', desc: 'Local capture' },
-                { key: 'B', label: 'Start/Stop Broadcast', desc: 'Live output' },
-                { key: '1-9', label: 'Select Scene', desc: 'Direct scene jumping' },
-                { key: 'Ctrl+Z', label: 'Undo Action', desc: 'Revert last change' },
-                { key: 'Ctrl+Y', label: 'Redo Action', desc: 'Apply reverted change' },
-                { key: 'ESC', label: 'Close Overlays', desc: 'Clear active modals' },
-              ].map(hk => (
-                <div key={hk.key} className="flex items-center justify-between py-3 border-b border-white/5 group hover:border-white/10 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="min-w-[60px] h-8 flex items-center justify-center bg-white/10 rounded-lg border border-white/10 text-[11px] font-semibold font-mono text-accent">
-                      {hk.key}
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold tracking-tight text-white/80">{hk.label}</p>
-                      <p className="text-[9px] font-semibold text-white/20 tracking-tight mt-0.5">{hk.desc}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-10 p-5 rounded-md bg-purple-500/5 border border-purple-500/10 flex items-center gap-4">
-              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-                <IconSparkles size={18} />
-              </div>
-              <p className="text-[11px] text-purple-200/40 font-medium leading-relaxed italic">
-                Pro Tip: Use <span className="text-purple-400 font-semibold">Studio Mode</span> to prepare your next shot in Preview before transitioning it to the Live Program.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <HotkeyLegend open={showHotkeys} onClose={() => setShowHotkeys(false)} />
 
       <RecordingSettingsModal
         isOpen={showRecordingSettings}

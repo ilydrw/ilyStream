@@ -1,4 +1,5 @@
 import { Widget } from '../../../shared/widgets'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): string {
   const cfg = (_widget.config as any) || {}
@@ -14,6 +15,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
   <meta charset="utf-8" />
   <meta name="viewport" content="width=1920, height=1080, initial-scale=1" />
   <title>ilyStream Alerts</title>
+  ${INLINE_AVATAR_RUNTIME_SCRIPT}
   <style>
     :root {
       --cyber-blue: #00f2ff;
@@ -663,7 +665,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
           const imageLeft = clampNumber(alert.imageLeft, -1000, 1000, 0);
           const imageTop = clampNumber(alert.imageTop, -1000, 1000, 0);
           innerHtml.push('<div class="alert-image-container" style="transform: translate(' + imageLeft + 'px, ' + imageTop + 'px)">');
-          innerHtml.push('  <img class="alert-image" src="' + escapeAttr(alert.imageUrl) + '" alt="" />');
+          innerHtml.push('  <img class="alert-image" src="' + escapeAttr(window.__ilyAvatar.proxy(alert.imageUrl)) + '" alt="" />');
           innerHtml.push('</div>');
         }
 
@@ -882,7 +884,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       const meta = String(alert.meta || platformLabel(alert.platform));
       const initial = (headline.trim().charAt(0) || 'V').toUpperCase();
       const media = alert.imageUrl
-        ? '<img class="clean-alert-image" src="' + escapeAttr(alert.imageUrl) + '" alt="" />'
+        ? '<img class="clean-alert-image" data-name="' + escapeAttr(headline) + '" src="' + escapeAttr(window.__ilyAvatar.resolve(alert.imageUrl, headline)) + '" alt="" onerror="window.__ilyAvatar.fallbackImage(this, this.dataset.name)" />'
         : '<span class="clean-alert-initial">' + escapeHtml(initial) + '</span>';
 
       return ''

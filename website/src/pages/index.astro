@@ -12,7 +12,7 @@ import tiktokShot from '../assets/screenshots/tiktok-integration.png';
 import spotifyShot from '../assets/screenshots/spotify-song-requests.png';
 import aiShot from '../assets/screenshots/ai-cohost.png';
 import healthShot from '../assets/screenshots/health-center.png';
-import deskThingIcon from '../assets/deskthing.svg';
+import deskThingPair from '../assets/deskthing-pair-tight.png';
 import { deskThingReleaseUrl, deskThingVersion, latestVersion, releaseUrl, setupUrl } from '../data/site';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
@@ -202,25 +202,28 @@ const screenshots = [
 
   <section class="container section companion">
     <div>
-      <p class="eyebrow">Companion</p>
-      <h2>DeskThing stays documented separately.</h2>
+      <p class="eyebrow">Tactile companion</p>
+      <h2>Move the live controls off your main screen.</h2>
       <p>
-        The Windows app and DeskThing companion release on different schedules.
-        The download page and guide now use the correct companion version instead of guessing.
+        ilyStream Deck turns DeskThing-compatible hardware into a soundboard, action panel,
+        unified chat, audience monitor, and always-visible session display.
       </p>
       <div class="companion__actions">
-        <a class="button button--ghost" href={withBase('docs/deskthing/')}>
-          Setup guide
-          <Image src={deskThingIcon} alt="" width="18" height="18" loading="lazy" />
-        </a>
+        <a class="button button--primary" href={withBase('companion/')}>Explore the companion</a>
+        <a class="button button--ghost" href={withBase('docs/deskthing/')}>Pairing guide</a>
         <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">Companion releases</a>
       </div>
     </div>
-    <div class="release-card">
-      <span>Windows app</span>
-      <strong>v{latestVersion}</strong>
-      <span>DeskThing companion</span>
-      <strong>v{deskThingVersion}</strong>
+    <a class="companion-preview" href={withBase('companion/')} aria-label="Explore the ilyStream DeskThing companion">
+      <Image src={deskThingPair} alt="DeskThing pairing screen for ilyStream." loading="lazy" decoding="async" />
+      <div class="companion-preview__bar">
+        <span><i></i> Live sync</span>
+        <span>Soundboard</span>
+        <span>Chat</span>
+        <span>Stats</span>
+        <strong>v{deskThingVersion}</strong>
+      </div>
+    </a>
     </div>
   </section>
 
@@ -370,7 +373,7 @@ const screenshots = [
   .pillar-card,
   .doc-card,
   .screens-strip__item,
-  .release-card,
+  .companion-preview,
   .spotlight__media {
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -477,24 +480,65 @@ const screenshots = [
     backdrop-filter: blur(10px);
   }
 
-  .release-card {
-    padding: 30px;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 18px;
+  .companion-preview {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 22px 22px 64px;
+    background:
+      radial-gradient(460px 180px at 10% 0%, rgba(37, 199, 255, 0.14), transparent 70%),
+      var(--bg-raised);
+    transition: transform 180ms ease, border-color 180ms ease;
+  }
+
+  .companion-preview:hover {
+    transform: translateY(-2px);
+    border-color: rgba(37, 199, 255, 0.45);
+  }
+
+  .companion-preview img {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #090b0f;
+  }
+
+  .companion-preview__bar {
+    position: absolute;
+    left: 22px;
+    right: 22px;
+    bottom: 18px;
+    display: flex;
     align-items: center;
+    gap: 8px;
   }
 
-  .release-card span {
+  .companion-preview__bar span,
+  .companion-preview__bar strong {
+    padding: 5px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
     color: var(--muted);
+    font-size: 0.68rem;
     font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.76rem;
   }
 
-  .release-card strong {
-    font-size: 2rem;
+  .companion-preview__bar span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #bbf7d0;
+  }
+
+  .companion-preview__bar i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  .companion-preview__bar strong {
+    margin-left: auto;
     color: var(--cyan);
   }
 

@@ -9,7 +9,7 @@ interface Props {
   description?: string;
   image?: string;
   /** Section name used to highlight the active top-nav tab. */
-  active?: 'home' | 'download' | 'features' | 'docs' | 'screens' | 'none';
+  active?: 'home' | 'download' | 'features' | 'companion' | 'docs' | 'screens' | 'none';
 }
 
 const {
@@ -32,6 +32,7 @@ const detected: NonNullable<Props['active']> =
   : norm.startsWith('/docs') ? 'docs'
   : norm.startsWith('/download') ? 'download'
   : norm.startsWith('/features') ? 'features'
+  : norm.startsWith('/companion') ? 'companion'
   : norm.startsWith('/screens') ? 'screens'
   : 'none';
 const current = active ?? detected;
@@ -40,9 +41,29 @@ const navItems = [
   { id: 'home', label: 'Home', href: withBase('/') },
   { id: 'download', label: 'Download', href: withBase('download/') },
   { id: 'features', label: 'Features', href: withBase('features/') },
+  { id: 'companion', label: 'Companion', href: withBase('companion/') },
   { id: 'docs', label: 'Docs', href: withBase('docs/') },
   { id: 'screens', label: 'Screens', href: withBase('screens/') },
 ] as const;
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'ilyStream',
+  applicationCategory: 'MultimediaApplication',
+  operatingSystem: 'Windows 10, Windows 11',
+  softwareVersion: latestVersion,
+  description,
+  url: canonicalUrl.toString(),
+  image: imageUrl,
+  downloadUrl: setupUrl,
+  codeRepository: repoUrl,
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+  },
+};
 ---
 
 <!doctype html>
@@ -61,11 +82,13 @@ const navItems = [
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl.toString()} />
     <meta property="og:image" content={imageUrl} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={imageUrl} />
+    <script type="application/ld+json" set:html={JSON.stringify(structuredData)}></script>
     <title>{title}</title>
   </head>
   <body>
@@ -151,6 +174,7 @@ const navItems = [
               <li><a href={withBase('/')}>Home</a></li>
               <li><a href={withBase('download/')}>Download</a></li>
               <li><a href={withBase('features/')}>Features</a></li>
+              <li><a href={withBase('companion/')}>DeskThing companion</a></li>
               <li><a href={withBase('screens/')}>Screens</a></li>
             </ul>
           </div>
@@ -197,14 +221,28 @@ const navItems = [
         const toggle = document.querySelector('.nav__toggle');
         const mobile = document.getElementById('mobile-nav');
         if (!toggle || !mobile) return;
-        toggle.addEventListener('click', () => {
-          const open = toggle.getAttribute('aria-expanded') === 'true';
-          toggle.setAttribute('aria-expanded', String(!open));
-          if (open) {
+        const setOpen = (open) => {
+          toggle.setAttribute('aria-expanded', String(open));
+          if (!open) {
             mobile.setAttribute('hidden', '');
           } else {
             mobile.removeAttribute('hidden');
           }
+        };
+        toggle.addEventListener('click', () => {
+          setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+        });
+        mobile.addEventListener('click', (event) => {
+          if (event.target.closest('a')) setOpen(false);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true') {
+            setOpen(false);
+            toggle.focus();
+          }
+        });
+        window.addEventListener('resize', () => {
+          if (window.innerWidth > 900) setOpen(false);
         });
       })();
     </script>
@@ -359,6 +397,16 @@ const navItems = [
   .container {
     width: min(100% - 32px, var(--max));
     margin: 0 auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>
 

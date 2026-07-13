@@ -1,3 +1,5 @@
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
+
 export function buildCompanionHtml(data: {
   obsStatus: any;
   viewerCounts: Record<string, number>;
@@ -29,7 +31,7 @@ export function buildCompanionHtml(data: {
 <head>
 <meta charset="utf-8">
 <title>ilyStream — DeskThing companion</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+${INLINE_AVATAR_RUNTIME_SCRIPT}
 <style>
   :root {
     --font-sans: 'Outfit', sans-serif;
@@ -237,13 +239,7 @@ export function buildCompanionHtml(data: {
     }
 
     function safeImageUrl(value) {
-      if (typeof value !== 'string' || !value.trim()) return '';
-      try {
-        const url = new URL(value, window.location.origin);
-        return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
-      } catch {
-        return '';
-      }
+      return window.__ilyAvatar.proxy(value);
     }
 
     function updateScenes(scenes, current) {

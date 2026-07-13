@@ -7,7 +7,7 @@ import {
   type ViewerProfile,
   type ViewerProfileInput
 } from '../../../shared/stats'
-import type { UserStatRow } from '../database'
+import type { UserStatRow } from '../types'
 import { Platform } from '../../platforms/types'
 import { estimateTikTokCreatorGiftCents } from '../../../shared/tiktok-revenue'
 import { isCohostIdentity } from '../../ai/cohost-identity'

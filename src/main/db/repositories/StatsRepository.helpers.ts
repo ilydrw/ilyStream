@@ -1,7 +1,7 @@
 import type {
   AudienceBadgeImageUrls
 } from '../../../shared/stats'
-import type { UserStatRow } from '../database'
+import type { UserStatRow } from '../types'
 
 export type UserStatRowWithIdentity = UserStatRow & {
   resolved_profile_id?: string | null

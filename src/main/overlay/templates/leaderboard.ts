@@ -19,7 +19,6 @@ export function buildLeaderboardHtml(_widget: Widget, isPreview: boolean): strin
 <head>
     <meta charset="UTF-8">
     <title>Likeathon Leaderboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: rgba(10, 12, 18, ${bgOpacity});

@@ -45,7 +45,6 @@ export function buildSocialsOverlayHtml(widget?: any, isPreview = false): string
   <head>
     <meta charset="UTF-8">
     <title>Socials Overlay</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
       :root {
         --accent: ${cfg.accentColor || '#38bdf8'};

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { StudioLayer } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
 import { useStudioStore } from '../../../stores/studio-store'
+import { createMediaSourceStatus, type MediaSourceStatus } from '../utils/media-init'
 
 interface Props {
   layer: StudioLayer
@@ -13,6 +14,7 @@ interface Props {
   devices: MediaDeviceInfo[]
   broadcastLayoutMode?: string
   activeOrientation?: '16:9' | '9:16'
+  mediaStatus?: MediaSourceStatus
   onEditWidget?: () => void
 }
 
@@ -88,7 +90,7 @@ function NumericField({ label, value, onChange, min, max, step = 1 }: {
   )
 }
 
-export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLayoutMode, activeOrientation = '16:9' }: Props) {
+export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLayoutMode, activeOrientation = '16:9', mediaStatus }: Props) {
   const store = useStudioStore()
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(layer.name)
@@ -96,6 +98,12 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
   const isPortrait = activeOrientation === '9:16'
   const isAudioLayer = layer.type === 'audio'
   const layout = resolveLayerLayout(layer, activeOrientation)
+  const isMediaLayer = layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio'
+  const displayMediaStatus = isMediaLayer
+    ? ((layer.type !== 'audio' && !layout.visible)
+        ? createMediaSourceStatus('hidden')
+        : mediaStatus || createMediaSourceStatus('opening'))
+    : undefined
   const sourceFitMode = layer.config.fitMode === 'cover' || layer.config.fitMode === 'stretch' ? layer.config.fitMode : 'contain'
   const scaleModeOptions = [
     { value: 'contain', label: 'Contain' },
@@ -196,6 +204,16 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
             </div>
           </div>
         </div>
+        {displayMediaStatus && (
+          <div className="broadcast-media-diagnostic" data-state={displayMediaStatus.code}>
+            <div className="broadcast-media-diagnostic-title">
+              <span />
+              {displayMediaStatus.label}
+            </div>
+            <p>{displayMediaStatus.detail}</p>
+            {displayMediaStatus.error && <code>{displayMediaStatus.error}</code>}
+          </div>
+        )}
 
         {/* Global Layer Actions */}
         <div className={`grid gap-2 ${isAudioLayer ? 'grid-cols-1' : 'grid-cols-5'}`}>

@@ -1,5 +1,6 @@
 import { NowPlayingConfig, DEFAULT_NOW_PLAYING_CONFIG } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 const OVERLAY_POSITION_MAP: Record<string, string> = {
   'bottom-left':   'align-items:flex-end;justify-content:flex-start',
@@ -75,6 +76,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
   <head>
     <meta charset="utf-8" />
     <title>ilyStream Now Playing & Queue</title>
+    ${INLINE_AVATAR_RUNTIME_SCRIPT}
     <style>
       :root {
         color-scheme: dark;
@@ -508,13 +510,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
       }
 
       function safeImageUrl(value) {
-        if (typeof value !== 'string' || !value.trim()) return '';
-        try {
-          const url = new URL(value, window.location.origin);
-          return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
-        } catch {
-          return '';
-        }
+        return window.__ilyAvatar.proxy(value);
       }
 
       function requestJson(url) {

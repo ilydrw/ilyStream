@@ -3,6 +3,8 @@ import { IconArrowsMove, IconLock, IconLockOpen, IconVideo, IconDeviceDesktop, I
 import { IconPlus, IconEye, IconEyeOff } from '../../../components/ui/icons'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
+import { resolveLayerLayout } from '../../../../shared/studio'
+import { createMediaSourceStatus, type MediaSourceStatus } from '../utils/media-init'
 import { LayerProperties } from './LayerProperties'
 
 interface SourceSidebarProps {
@@ -17,6 +19,7 @@ interface SourceSidebarProps {
   broadcastLayoutMode: string
   widgets: any[]
   devices: any[]
+  mediaStatuses: Record<string, MediaSourceStatus>
   sidebarWidth: number
   onSidebarResizeStart: () => void
   selectionContext: '16:9' | '9:16'
@@ -47,10 +50,11 @@ interface SourceRowProps {
   onUpdateLayer: (id: string, update: any) => void
   onRenameCommit: (name: string) => void
   onRenameStart: () => void
+  mediaStatus?: MediaSourceStatus
 }
 
 function SourceRow(props: SourceRowProps) {
-  const { layer, orientation, isSelected, isRenaming, onSelect, onContextMenu, onUpdateLayer, onRenameCommit, onRenameStart } = props
+  const { layer, orientation, isSelected, isRenaming, onSelect, onContextMenu, onUpdateLayer, onRenameCommit, onRenameStart, mediaStatus } = props
   const dragControls = useDragControls()
   const [nameDraft, setNameDraft] = useState(layer.name)
 
@@ -63,6 +67,12 @@ function SourceRow(props: SourceRowProps) {
   const isVisible = isPortraitList ? (layer.portraitVisible ?? layer.visible) : layer.visible
   const isLocked = isPortraitList ? (layer.portraitLocked ?? layer.locked) : layer.locked
   const isAudioLayer = layer.type === 'audio'
+  const isMediaLayer = layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio'
+  const displayMediaStatus = isMediaLayer
+    ? ((layer.type !== 'audio' && !resolveLayerLayout(layer, orientation).visible)
+        ? createMediaSourceStatus('hidden')
+        : mediaStatus || createMediaSourceStatus('opening'))
+    : undefined
 
   return (
     <Reorder.Item
@@ -106,9 +116,20 @@ function SourceRow(props: SourceRowProps) {
           className="broadcast-source-name bg-white/10 rounded px-1.5 outline-none border border-accent/40 min-w-0"
         />
       ) : (
-        <span className="broadcast-source-name" onDoubleClick={(e) => { e.stopPropagation(); onRenameStart() }}>
-          {layer.name}
-        </span>
+        <div className="broadcast-source-summary">
+          <span className="broadcast-source-name" onDoubleClick={(e) => { e.stopPropagation(); onRenameStart() }}>
+            {layer.name}
+          </span>
+          {displayMediaStatus && (
+            <span
+              className="broadcast-source-status"
+              data-state={displayMediaStatus.code}
+              title={`${displayMediaStatus.detail}${displayMediaStatus.error ? `\n${displayMediaStatus.error}` : ''}`}
+            >
+              {displayMediaStatus.label}
+            </span>
+          )}
+        </div>
       )}
 
       {!isAudioLayer && (
@@ -145,7 +166,7 @@ function SourceRow(props: SourceRowProps) {
 export function SourceSidebar(props: SourceSidebarProps) {
   const {
     activeScene, selectedLayerId, onSelectLayer, onUpdateLayer, onReorderLayer,
-    onShowSourceModal, onContextMenu, aspectRatio, broadcastLayoutMode, widgets, devices, sidebarWidth, onSidebarResizeStart,
+    onShowSourceModal, onContextMenu, aspectRatio, broadcastLayoutMode, widgets, devices, mediaStatuses, sidebarWidth, onSidebarResizeStart,
     selectionContext, onSelectionContextChange, renamingLayerId, onRenamingLayerChange,
     onEditWidgetLayer
   } = props
@@ -240,6 +261,7 @@ export function SourceSidebar(props: SourceSidebarProps) {
                   onSelectionContextChange(orientation)
                   onRenamingLayerChange?.(layer.id)
                 }}
+                mediaStatus={mediaStatuses[layer.id]}
               />
             )
           })}
@@ -320,6 +342,7 @@ export function SourceSidebar(props: SourceSidebarProps) {
                   devices={devices}
                   broadcastLayoutMode={broadcastLayoutMode}
                   activeOrientation={selectionContext}
+                  mediaStatus={mediaStatuses[selectedLayer.id]}
                   onEditWidget={onEditWidgetLayer ? () => onEditWidgetLayer(selectedLayer) : undefined}
                 />
               </div>

@@ -6,21 +6,12 @@ import {
   replayableEntryToEvent,
   saveReplaySessions,
   type ActiveReplayState,
+  type EventLabEntryKind,
   type EventReplayRecording,
   type EventReplaySession
 } from '../lib/event-replay'
 
-export type EventLabEntryKind =
-  | 'stream'
-  | 'overlay'
-  | 'device'
-  | 'automation'
-  | 'alert'
-  | 'sound'
-  | 'tts'
-  | 'spotify'
-  | 'status'
-  | 'system'
+export type { EventLabEntryKind } from '../lib/event-replay'
 
 export interface EventLabEntry {
   id: string

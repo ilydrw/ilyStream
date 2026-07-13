@@ -7,6 +7,11 @@ import type { VideoFramePayload, AudioFramePayload } from '../main/services/stre
 import type { EventLabSimulationPayload } from '../shared/event-lab'
 import type { LightingState } from '../shared/lighting'
 import type { RazerStatus, RazerThemeSettings } from '../shared/razer'
+import { isRendererEventChannel, type RendererEventChannel } from '../shared/ipc-events'
+import type {
+  TikTokNativeAuthStatus,
+  TikTokNativeLiveDestination
+} from '../shared/tiktok-native'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -25,54 +30,10 @@ ipcRenderer.on('studio:projector:mirror-sink', (event) => {
   ;(globalThis as any).postMessage({ __ilyProjectorChannel: 'mirror-sink' }, '*', [port])
 })
 
-const allowedEventChannels = new Set([
-  'event:stream',
-  'event:overlay-broadcast',
-  'event:device-broadcast',
-  'automation:run-receipt',
-  'platform:status-change',
-  'platform:error',
-  'platform:reconnecting',
-  'settings:changed',
-  'obs:status-changed',
-  'voice:changed',
-  'tts:queue-update',
-  'tts:speak',
-  'tts:prefetch',
-  'tts:stop-speaking',
-  'tts:pause',
-  'tts:resume',
-  'sound:play',
-  'streaming:status-changed',
-  'action:play-sound',
-  'action:show-alert',
-  'overlay:status-changed',
-  'spotify:status-changed',
-  'spotify:queue-update',
-  'x:status-changed',
-  'clip:created',
-  'browser-source:frame',
-  'browser-source:error',
-  'app:close-request',
-  'system:ping',
-  'action:stop-all-sounds',
-  'spotify:now-playing',
-  'govee:status-changed',
-  'govee:ble-device-list',
-  'govee:ble-command',
-  'lighting:state-changed',
-  'razer:status-changed',
-  'streaming:native-audio-clock',
-  'system:log',
-  'virtualcamera:status-changed',
-  'system:update-status',
-  'studio:active-scene-changed'
-])
-
 const api = {
   // --- Events (main -> renderer) ---
-  on: (channel: string, callback: IpcCallback) => {
-    if (!allowedEventChannels.has(channel)) {
+  on: (channel: RendererEventChannel, callback: IpcCallback) => {
+    if (!isRendererEventChannel(channel)) {
       throw new Error(`Renderer attempted to subscribe to unknown channel: ${channel}`)
     }
 
@@ -135,6 +96,19 @@ const api = {
       closeSender: () => ipcRenderer.invoke('tiktok:close-sender'),
       getSenderStatus: () => ipcRenderer.invoke('tiktok:get-sender-status'),
       captureCredentials: () => ipcRenderer.invoke('tiktok:capture-credentials'),
+      getNativeAuthStatus: () =>
+        ipcRenderer.invoke('tiktok:get-native-auth-status') as Promise<TikTokNativeAuthStatus>,
+      beginNativeAuth: (payload?: { clientKey?: string }) =>
+        ipcRenderer.invoke('tiktok:begin-native-auth', payload) as Promise<TikTokNativeAuthStatus>,
+      cancelNativeAuth: () =>
+        ipcRenderer.invoke('tiktok:cancel-native-auth') as Promise<TikTokNativeAuthStatus>,
+      disconnectNativeAuth: () =>
+        ipcRenderer.invoke('tiktok:disconnect-native-auth') as Promise<TikTokNativeAuthStatus>,
+      prepareLive: (payload?: { title?: string; orientation?: 'portrait' | 'landscape' }) =>
+        ipcRenderer.invoke('tiktok:prepare-live', payload) as Promise<TikTokNativeLiveDestination>,
+      completeLive: () => ipcRenderer.invoke('tiktok:complete-live') as Promise<void>,
+      openDeveloperPortal: () => ipcRenderer.invoke('tiktok:open-developer-portal'),
+      openPartnerSupport: () => ipcRenderer.invoke('tiktok:open-partner-support'),
       getAutomations: () => ipcRenderer.invoke('tiktok:get-automations'),
       setAutomation: (key: string, value: boolean) =>
         ipcRenderer.invoke('tiktok:set-automation', { key, value })

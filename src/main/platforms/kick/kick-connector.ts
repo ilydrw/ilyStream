@@ -1,8 +1,12 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
+import { type IncomingMessage, type ServerResponse } from 'http'
 import { randomUUID, verify as verifySignature } from 'crypto'
 import { BaseConnector } from '../base-connector'
 import { loadOptionalModule } from '../load-optional-module'
 import { ensureKickEventSubscriptions } from './kick-api'
+import {
+  registerLoopbackRoute,
+  type LoopbackRouteRegistration
+} from '../loopback-route-server'
 import {
   Platform,
   KickConfig,
@@ -43,7 +47,7 @@ export class KickConnector extends BaseConnector {
   private client: any = null
   private ws: any = null
   private channelId: number | null = null
-  private webhookServer: Server | null = null
+  private webhookRoute: LoopbackRouteRegistration | null = null
   private webhookPort = DEFAULT_WEBHOOK_PORT
   private webhookPath = DEFAULT_WEBHOOK_PATH
   private publicKeyCache: string | null = null
@@ -126,35 +130,22 @@ export class KickConnector extends BaseConnector {
     this.webhookPort = normalizeWebhookPort(config.webhookPort)
     this.webhookPath = normalizeWebhookPath(config.webhookPath)
 
-    const server = createServer((req, res) => {
-      void this.handleWebhookRequest(req, res).catch((error) => {
-        console.error(`[kick] Webhook request failed: ${formatError(error)}`)
-        sendText(res, 500, 'Webhook receiver error')
-      })
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      let settled = false
-      const settle = (callback: () => void) => {
-        if (settled) return
-        settled = true
-        server.off('error', onListenError)
-        callback()
+    const route = await registerLoopbackRoute({
+      port: this.webhookPort,
+      paths: [this.webhookPath, '/kick/health'],
+      handle: async (req, res) => {
+        await this.handleWebhookRequest(req, res).catch((error) => {
+          console.error(`[kick] Webhook request failed: ${formatError(error)}`)
+          sendText(res, 500, 'Webhook receiver error')
+        })
+      },
+      onError: (error) => {
+        this.onRecoverableError(error, 'kick-webhook')
       }
-      const onListenError = (error: Error) => settle(() => reject(error))
-      server.once('error', onListenError)
-      server.listen(this.webhookPort, '127.0.0.1', () => {
-        const address = server.address()
-        if (address && typeof address === 'object') this.webhookPort = address.port
-        settle(resolve)
-      })
     })
 
-    server.on('error', (error) => {
-      this.onRecoverableError(error, 'kick-webhook')
-    })
-
-    this.webhookServer = server
+    this.webhookPort = route.port
+    this.webhookRoute = route
     console.log(`[kick] Webhook receiver listening on http://127.0.0.1:${this.webhookPort}${this.webhookPath}`)
   }
 
@@ -485,18 +476,16 @@ export class KickConnector extends BaseConnector {
       } catch {}
       this.ws = null
     }
-    if (this.webhookServer) {
-      const server = this.webhookServer
-      this.webhookServer = null
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve())
-      })
+    if (this.webhookRoute) {
+      const route = this.webhookRoute
+      this.webhookRoute = null
+      await route.close()
     }
     this.channelId = null
   }
 
   private handleLegacyDisconnect(reason: string): void {
-    if (this.webhookServer) {
+    if (this.webhookRoute) {
       console.warn(`[kick] ${reason}; webhook receiver remains active`)
       return
     }
@@ -504,7 +493,7 @@ export class KickConnector extends BaseConnector {
   }
 
   private handleLegacyError(error: unknown, context: string): void {
-    if (this.webhookServer) {
+    if (this.webhookRoute) {
       console.warn(`[kick] ${context}: ${formatError(error)}; webhook receiver remains active`)
       return
     }

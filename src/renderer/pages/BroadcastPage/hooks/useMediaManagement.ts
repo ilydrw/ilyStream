@@ -7,7 +7,12 @@ import {
   buildCameraConstraints,
   buildRawAudioConstraints,
   createStabilizedCameraStream,
+  classifyMediaSourceError,
+  createMediaSourceStatus,
+  formatMediaError,
   isTransientMediaError,
+  shouldInitializeLayerMedia,
+  type MediaSourceStatus,
   type ManagedMediaElement
 } from '../utils/media-init'
 
@@ -36,10 +41,12 @@ function layerShouldHaveMixerTrack(layer: StudioLayer): boolean {
 export function useMediaManagement(options: MediaManagementOptions) {
   const { 
     activeScene, devices, canvasWidth, canvasHeight, videoRefs, 
-    updateLayer, scenes, addAudioSource, removeAudioSource, audioSources 
+    updateLayer, scenes, addAudioSource, removeAudioSource, audioSources,
+    activeAspectRatios = ['16:9']
   } = options
 
   const [streamReady, setStreamReady] = useState(0)
+  const [mediaStatuses, setMediaStatuses] = useState<Record<string, MediaSourceStatus>>({})
   const pendingMedia = useRef(new Set<string>())
   const lastMediaSignatures = useRef<Record<string, string>>({})
   const sessionDisplaySourceIds = useRef(new Set<string>())
@@ -54,6 +61,18 @@ export function useMediaManagement(options: MediaManagementOptions) {
     activeSceneRef.current = activeScene
   }, [activeScene])
 
+  const updateMediaStatus = useCallback((layerId: string, status: MediaSourceStatus) => {
+    setMediaStatuses(current => {
+      const previous = current[layerId]
+      if (
+        previous?.code === status.code &&
+        previous.detail === status.detail &&
+        previous.error === status.error
+      ) return current
+      return { ...current, [layerId]: status }
+    })
+  }, [])
+
   const clearRetryTimer = useCallback((layerId: string) => {
     const timer = retryTimers.current[layerId]
     if (!timer) return
@@ -67,17 +86,37 @@ export function useMediaManagement(options: MediaManagementOptions) {
 
     const signature = passedSignature || getMediaSignature(layer, devices)
     const existing = videoRefs.current[layerId] as ManagedMediaElement | undefined
+
+    if (!shouldInitializeLayerMedia(layer, activeAspectRatios)) {
+      clearRetryTimer(layerId)
+      if (existing) {
+        disposeMediaElement(existing)
+        delete videoRefs.current[layerId]
+      }
+      delete lastMediaSignatures.current[layerId]
+      pendingMedia.current.delete(layerId)
+      updateMediaStatus(layerId, createMediaSourceStatus('hidden'))
+      return
+    }
     
     const now = Date.now()
     const lastInit = lastMediaInitTimes.current[layerId] || 0
     if (now - lastInit < 2000 && attempt === 0) return
 
-    if (pendingMedia.current.has(layerId) || (existing?.__ilySignature === signature && lastMediaSignatures.current[layerId] === signature)) {
+    if (pendingMedia.current.has(layerId)) {
+      return
+    }
+    if (existing?.__ilySignature === signature && lastMediaSignatures.current[layerId] === signature) {
+      updateMediaStatus(layerId, createMediaSourceStatus('live'))
       return
     }
     
     pendingMedia.current.add(layerId)
     lastMediaInitTimes.current[layerId] = now
+    updateMediaStatus(layerId, createMediaSourceStatus(
+      attempt === 0 ? 'opening' : 'retrying',
+      attempt === 0 ? {} : { detail: `Retry ${attempt} of 5 using safer capture settings.` }
+    ))
     const cleanupFns: Array<() => void> = []
     // Declared outside the try so the catch block can also stop the stream's
     // tracks on failure.
@@ -142,7 +181,7 @@ export function useMediaManagement(options: MediaManagementOptions) {
         }
       } else {
         const constraints = type === 'camera'
-          ? buildCameraConstraints(layer, devices)
+          ? buildCameraConstraints(layer, devices, attempt)
           : { audio: buildRawAudioConstraints(layer.config.deviceId) }
 
         stream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -166,6 +205,9 @@ export function useMediaManagement(options: MediaManagementOptions) {
           track.enabled = true
           track.onended = () => {
             lastMediaSignatures.current[layerId] = ''
+            updateMediaStatus(layerId, createMediaSourceStatus('retrying', {
+              detail: 'The media track ended unexpectedly. Reopening the source.'
+            }))
             setTimeout(() => {
               const currentLayer = activeSceneRef.current.layers.find(l => l.id === layerId)
               if (currentLayer) void initMedia(currentLayer, 0)
@@ -212,6 +254,7 @@ export function useMediaManagement(options: MediaManagementOptions) {
       clearRetryTimer(layerId)
       if (existing) disposeMediaElement(existing)
       videoRefs.current[layerId] = managed as any
+      updateMediaStatus(layerId, createMediaSourceStatus('live'))
       setStreamReady(c => c + 1)
     } catch (err) {
       console.error(`[MediaManagement] Failed to init ${type} ${layer.name}: ${err}`)
@@ -223,7 +266,11 @@ export function useMediaManagement(options: MediaManagementOptions) {
       // setTimeout retries below plus useEffect-driven retries are what made
       // these cameras work in the first place.
       if (lastMediaSignatures.current[layerId] === signature) delete lastMediaSignatures.current[layerId]
-      if (attempt < 3 && isTransientMediaError(err)) {
+      if (attempt < 5 && isTransientMediaError(err)) {
+        updateMediaStatus(layerId, createMediaSourceStatus('retrying', {
+          detail: `Retry ${attempt + 1} of 5 using safer capture settings.`,
+          error: formatMediaError(err)
+        }))
         clearRetryTimer(layerId)
         retryTimers.current[layerId] = window.setTimeout(() => {
           delete retryTimers.current[layerId]
@@ -231,16 +278,20 @@ export function useMediaManagement(options: MediaManagementOptions) {
           if (!currentLayer) return
           void initMedia(currentLayer, attempt + 1, getMediaSignature(currentLayer, devices))
         }, 1000 * (attempt + 1))
+      } else {
+        updateMediaStatus(layerId, classifyMediaSourceError(err))
       }
     } finally {
       pendingMedia.current.delete(layerId)
     }
-  }, [activeScene.id, devices, canvasWidth, canvasHeight, updateLayer, scenes, videoRefs, clearRetryTimer])
+  }, [activeScene.id, devices, canvasWidth, canvasHeight, updateLayer, scenes, videoRefs, clearRetryTimer, activeAspectRatios, updateMediaStatus])
 
   const forceRefreshMedia = useCallback(() => {
     Object.values(videoRefs.current).forEach(el => disposeMediaElement(el as ManagedMediaElement))
     videoRefs.current = {}
     pendingMedia.current.clear()
+    lastMediaInitTimes.current = {}
+    lastMediaSignatures.current = {}
     Object.keys(retryTimers.current).forEach(clearRetryTimer)
     activeScene.layers.filter(l => l.type === 'display').forEach(l => sessionDisplaySourceIds.current.add(l.id))
     setStreamReady(c => c + 1)
@@ -252,6 +303,11 @@ export function useMediaManagement(options: MediaManagementOptions) {
   useEffect(() => {
     if (!activeScene) return
     const activeLayerIds = new Set(activeScene.layers.map(layer => layer.id))
+
+    setMediaStatuses(current => {
+      const next = Object.fromEntries(Object.entries(current).filter(([layerId]) => activeLayerIds.has(layerId)))
+      return Object.keys(next).length === Object.keys(current).length ? current : next
+    })
 
     for (const [layerId, el] of Object.entries(videoRefs.current)) {
       const layer = activeScene.layers.find(item => item.id === layerId)
@@ -274,17 +330,42 @@ export function useMediaManagement(options: MediaManagementOptions) {
   useEffect(() => {
     if (!activeScene) return
     activeScene.layers.forEach(layer => {
+      const isMediaLayer = layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio'
+      if (!isMediaLayer) return
+
+      if (!shouldInitializeLayerMedia(layer, activeAspectRatios)) {
+        const existing = videoRefs.current[layer.id] as ManagedMediaElement | undefined
+        clearRetryTimer(layer.id)
+        if (existing) {
+          disposeMediaElement(existing)
+          delete videoRefs.current[layer.id]
+        }
+        delete lastMediaSignatures.current[layer.id]
+        pendingMedia.current.delete(layer.id)
+        updateMediaStatus(layer.id, createMediaSourceStatus('hidden'))
+        return
+      }
+
       const sig = getMediaSignature(layer, devices)
       const lastSig = lastMediaSignatures.current[layer.id]
       const canInitDisplay = layer.type === 'display' && (sessionDisplaySourceIds.current.has(layer.id) || !!layer.config.desktopSourceName)
       const canInitMedia = layer.type === 'camera' || layer.type === 'audio' || canInitDisplay
       if (canInitMedia && sig !== lastSig && !pendingMedia.current.has(layer.id)) {
-        if ((layer.type === 'camera' || layer.type === 'audio') && devices.length === 0) return
+        if ((layer.type === 'camera' || layer.type === 'audio') && devices.length === 0) {
+          updateMediaStatus(layer.id, createMediaSourceStatus('opening', {
+            detail: 'Waiting for Windows to report available media devices.'
+          }))
+          return
+        }
         lastMediaSignatures.current[layer.id] = sig
         void initMedia(layer, 0, sig)
+      } else if (layer.type === 'display' && !canInitDisplay) {
+        updateMediaStatus(layer.id, createMediaSourceStatus('device-missing', {
+          detail: 'The saved window or screen is no longer available. Select the display source again.'
+        }))
       }
     })
-  }, [activeScene.id, devices, initMedia])
+  }, [activeScene, devices, initMedia, activeAspectRatios, videoRefs, clearRetryTimer, updateMediaStatus])
 
   useEffect(() => () => {
     Object.keys(retryTimers.current).forEach(clearRetryTimer)
@@ -337,5 +418,5 @@ export function useMediaManagement(options: MediaManagementOptions) {
     })
   }, [activeScene.id, devices, audioSources.length, layerAudioSignature])
 
-  return { streamReady, forceRefreshMedia, initMedia }
+  return { streamReady, mediaStatuses, forceRefreshMedia, initMedia }
 }

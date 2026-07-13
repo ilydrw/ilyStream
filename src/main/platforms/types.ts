@@ -208,6 +208,13 @@ export interface TikTokConfig extends PlatformConfig {
   sessionId?: string
   ttTargetIdc?: string
   signApiKey?: string
+  /** Public Login Kit key for the ilyStream TikTok developer application. */
+  oauthClientKey?: string
+  /** Last verified native authorization state; no OAuth tokens are stored here. */
+  nativeAuthConnected?: boolean
+  nativeLiveAccess?: 'unknown' | 'pending' | 'approved' | 'rtmp-only' | 'denied'
+  /** Creator-specific TikTok RTMP ingest URL when TikTok grants manual access. */
+  streamUrl?: string
   streamKey?: string
 }
 

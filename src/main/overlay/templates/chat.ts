@@ -1,5 +1,6 @@
 import { ChatConfig, DEFAULT_CHAT_CONFIG } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: ChatConfig = { ...DEFAULT_CHAT_CONFIG, ...(widget?.config || {}) }
@@ -30,6 +31,7 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ilyStream Chat</title>
+    ${INLINE_AVATAR_RUNTIME_SCRIPT}
     <style>
       :root {
         color-scheme: dark;
@@ -263,12 +265,7 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
 
       function safeAvatarUrl(url) {
         if (typeof url !== 'string' || !url.trim()) return '';
-        try {
-          var parsed = new URL(url, window.location.origin);
-          return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
-        } catch (_) {
-          return '';
-        }
+        return window.__ilyAvatar.resolve(url, '?');
       }
 
       window.__chatAvatarFallback = function(initial) {
@@ -352,7 +349,7 @@ export function buildChatOverlayHtml(widget?: any, isPreview = false): string {
             if (rb.imageUrl) {
               var bimg = document.createElement('img');
               bimg.className = 'role-badge-icon';
-              bimg.src = rb.imageUrl;
+              bimg.src = window.__ilyAvatar.proxy(rb.imageUrl);
               bimg.alt = '';
               bimg.onerror = function () { this.remove(); };
               chip.appendChild(bimg);

@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import { PlatformManager } from '../../platforms/platform-manager'
 import { Database } from '../../db/database'
 import { ChatRelayService } from '../../chat/chat-relay-service'
@@ -16,6 +16,22 @@ import {
 import { ensureYouTubeLiveDestination } from '../../platforms/youtube/youtube-live'
 import type { YouTubeConfig } from '../../platforms/types'
 import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
+import type { TikTokConfig } from '../../platforms/types'
+import {
+  DEFAULT_TIKTOK_AUTH_BRIDGE_URL,
+  DEFAULT_TIKTOK_CLIENT_KEY,
+  cancelTikTokNativeAuth,
+  completeTikTokNativeLive,
+  disconnectTikTokNativeAuth,
+  getTikTokNativeAuthStatus,
+  initiateTikTokNativeAuth,
+  prepareTikTokNativeLive,
+  type TikTokNativeAuthOptions
+} from '../../platforms/tiktok/tiktok-native-auth'
+import type {
+  TikTokNativeAuthProgress,
+  TikTokNativeAuthStatus
+} from '../../../shared/tiktok-native'
 
 export function registerPlatformHandlers(
   platformManager: PlatformManager,
@@ -219,6 +235,62 @@ export function registerPlatformHandlers(
     return tiktokChatSender.captureAuthCredentials()
   })
 
+  ipcMain.handle('tiktok:get-native-auth-status', async () => {
+    const options = createTikTokNativeAuthOptions(db)
+    const status = await getTikTokNativeAuthStatus(options)
+    persistTikTokNativeStatus(db, status)
+    return status
+  })
+
+  ipcMain.handle(
+    'tiktok:begin-native-auth',
+    async (event, payload?: { clientKey?: string }) => {
+      const clientKey = String(payload?.clientKey || '').trim()
+      const options = createTikTokNativeAuthOptions(db, clientKey, (progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('tiktok:native-auth-progress', progress)
+        }
+      })
+      const status = await initiateTikTokNativeAuth(options)
+      persistTikTokNativeStatus(db, status, options.clientKey)
+      return status
+    }
+  )
+
+  ipcMain.handle('tiktok:cancel-native-auth', async () => {
+    await cancelTikTokNativeAuth()
+    const options = createTikTokNativeAuthOptions(db)
+    const status = await getTikTokNativeAuthStatus(options)
+    persistTikTokNativeStatus(db, status)
+    return status
+  })
+
+  ipcMain.handle('tiktok:disconnect-native-auth', async () => {
+    const options = createTikTokNativeAuthOptions(db)
+    const status = await disconnectTikTokNativeAuth(options)
+    persistTikTokNativeStatus(db, status)
+    return status
+  })
+
+  ipcMain.handle(
+    'tiktok:prepare-live',
+    async (_event, payload?: { title?: string; orientation?: 'portrait' | 'landscape' }) => {
+      return prepareTikTokNativeLive(createTikTokNativeAuthOptions(db), payload)
+    }
+  )
+
+  ipcMain.handle('tiktok:complete-live', async () => {
+    await completeTikTokNativeLive(createTikTokNativeAuthOptions(db))
+  })
+
+  ipcMain.handle('tiktok:open-developer-portal', async () => {
+    await shell.openExternal('https://developers.tiktok.com/apps/')
+  })
+
+  ipcMain.handle('tiktok:open-partner-support', async () => {
+    await shell.openExternal('https://developers.tiktok.com/support/')
+  })
+
   // Go-live automation toggles, persisted as plain DB settings. Consumed by the
   // status hook in ServiceRegistry when TikTok transitions to connected.
   ipcMain.handle('tiktok:get-automations', () => ({
@@ -237,6 +309,40 @@ export function registerPlatformHandlers(
 const TIKTOK_AUTOMATION_KEYS: Record<string, string> = {
   autoOpenSender: 'tiktokAutoOpenSender',
   autoPostGoLiveX: 'tiktokAutoPostGoLiveX'
+}
+
+const TIKTOK_NATIVE_ACCESS_TOKEN_SETTING = 'tiktokNativeAccessToken'
+
+function createTikTokNativeAuthOptions(
+  db: Database,
+  clientKeyOverride = '',
+  onProgress?: (progress: TikTokNativeAuthProgress) => void
+): TikTokNativeAuthOptions {
+  const saved = db.getPlatformConfig('tiktok') as TikTokConfig | null
+  return {
+    clientKey: clientKeyOverride.trim() || saved?.oauthClientKey?.trim() || DEFAULT_TIKTOK_CLIENT_KEY,
+    bridgeUrl: DEFAULT_TIKTOK_AUTH_BRIDGE_URL,
+    getAccessToken: () => String(db.getSetting(TIKTOK_NATIVE_ACCESS_TOKEN_SETTING) || ''),
+    setAccessToken: (token) => db.setSetting(TIKTOK_NATIVE_ACCESS_TOKEN_SETTING, token),
+    onProgress
+  }
+}
+
+function persistTikTokNativeStatus(
+  db: Database,
+  status: TikTokNativeAuthStatus,
+  clientKeyOverride = ''
+): void {
+  const existing = db.getPlatformConfig('tiktok') as TikTokConfig | null
+  db.savePlatformConfig({
+    ...existing,
+    platform: 'tiktok',
+    enabled: existing?.enabled ?? false,
+    username: existing?.username || status.account?.displayName || '',
+    oauthClientKey: clientKeyOverride.trim() || existing?.oauthClientKey || DEFAULT_TIKTOK_CLIENT_KEY,
+    nativeAuthConnected: status.state === 'connected',
+    nativeLiveAccess: status.liveAccess
+  })
 }
 
 function createSimulatedEvent(payload: {

@@ -455,8 +455,6 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Particles</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
       background: transparent; }

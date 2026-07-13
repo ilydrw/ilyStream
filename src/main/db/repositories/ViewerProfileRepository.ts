@@ -7,7 +7,7 @@ import type {
   ViewerProfile,
   ViewerProfileInput
 } from '../../../shared/stats'
-import type { UserStatRow } from '../database'
+import type { UserStatRow } from '../types'
 import type { Platform } from '../../platforms/types'
 import {
   calculateSimilarity,

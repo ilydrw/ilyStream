@@ -1,5 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { Image } from 'astro:assets';
+import pairPreview from '../assets/deskthing-pair-tight.png';
 import {
   deskThingReleaseUrl,
   deskThingVersion,
@@ -123,14 +125,28 @@ const downloads = [
   </section>
 
   <section class="container section">
-    <div class="section__heading">
-      <p class="eyebrow">Companion</p>
-      <h2>DeskThing client</h2>
-      <p>The DeskThing companion is versioned separately. Current companion release: v{deskThingVersion}.</p>
-    </div>
-    <div class="page-hero__actions">
-      <a class="button button--primary" href={deskThingZipUrl} rel="noopener">Download DeskThing .zip</a>
-      <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">DeskThing releases</a>
+    <div class="companion-download">
+      <div class="companion-download__copy">
+        <p class="eyebrow">DeskThing companion · v{deskThingVersion}</p>
+        <h2>Add a dedicated control surface.</h2>
+        <p>
+          Install the companion zip through DeskThing, then pair it to the Windows app over your LAN.
+          Your soundboard, actions, chat, stats, media, TTS, and recording state become tactile.
+        </p>
+        <ul>
+          <li>Built for 800 × 480 touch displays and physical controls</li>
+          <li>Authenticated local bridge with automatic event-stream reconnect</li>
+          <li>Pairs with the same v{latestVersion} desktop release</li>
+        </ul>
+        <div class="page-hero__actions">
+          <a class="button button--primary" href={deskThingZipUrl} rel="noopener">Download companion .zip</a>
+          <a class="button button--ghost" href={withBase('companion/')}>Explore companion</a>
+          <a class="button button--ghost" href={deskThingReleaseUrl} rel="noopener">Release notes</a>
+        </div>
+      </div>
+      <div class="companion-download__preview">
+        <Image src={pairPreview} alt="Pairing ilyStream with the DeskThing companion using a LAN address and six-digit code." loading="lazy" decoding="async" />
+      </div>
     </div>
   </section>
 
@@ -300,9 +316,69 @@ const downloads = [
   .link-arrow span { display: inline-block; margin-left: 4px; transition: transform 120ms ease; }
   .link-arrow:hover span { transform: translateX(4px); }
 
+  .companion-download {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+    align-items: center;
+    gap: 44px;
+    padding: 34px;
+    border: 1px solid rgba(37, 199, 255, 0.3);
+    border-radius: 16px;
+    background:
+      radial-gradient(600px 220px at 10% 0%, rgba(37, 199, 255, 0.16), transparent 70%),
+      linear-gradient(135deg, rgba(167, 131, 255, 0.08), transparent),
+      var(--bg-raised);
+    box-shadow: var(--shadow-card);
+  }
+
+  .companion-download h2 {
+    margin-top: 12px;
+    font-size: clamp(1.8rem, 3.2vw, 2.7rem);
+  }
+
+  .companion-download__copy > p:not(.eyebrow) {
+    margin-top: 14px;
+    color: var(--muted);
+  }
+
+  .companion-download ul {
+    margin: 20px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 9px;
+    list-style: none;
+  }
+
+  .companion-download li {
+    position: relative;
+    padding-left: 22px;
+    color: var(--muted);
+  }
+
+  .companion-download li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--cyan);
+    font-weight: 900;
+  }
+
+  .companion-download__preview {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #090b0f;
+  }
+
+  .companion-download__preview img {
+    width: 100%;
+    border-radius: 8px;
+  }
+
   @media (max-width: 900px) {
     .download-grid { grid-template-columns: 1fr; }
     .reqs { grid-template-columns: 1fr 1fr; }
+    .companion-download { grid-template-columns: 1fr; }
   }
   @media (max-width: 540px) {
     .reqs { grid-template-columns: 1fr; }

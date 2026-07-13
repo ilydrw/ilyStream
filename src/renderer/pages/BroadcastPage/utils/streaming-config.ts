@@ -7,11 +7,8 @@ export interface StreamPlatformDestination {
   name: string
   url: string
   key: string
-  /**
-   * True when the key is resolved at go-live time from the platform's API
-   * (YouTube via the connected Google account) instead of a pasted key.
-   */
-  autoKey?: boolean
+  /** Resolves short-lived ingest credentials at go-live time. */
+  keyProvider?: 'youtube' | 'tiktok-native'
 }
 
 export const CAMERA_PRESETS: Record<string, { width: number; height: number; fps: number }> = {
@@ -40,6 +37,7 @@ const AVC_LEVELS: { level: string; maxMbps: number }[] = [
 ]
 
 const DEFAULT_KICK_STREAM_URL = 'rtmps://fa723fc1b171.global-contribute.live-video.net:443/app'
+const DEFAULT_TIKTOK_STREAM_URL = 'rtmp://open-rtmp.tiktok.com/stage'
 
 export function buildStreamPlatforms(configs: any): StreamPlatformDestination[] {
   const available: StreamPlatformDestination[] = []
@@ -54,15 +52,33 @@ export function buildStreamPlatforms(configs: any): StreamPlatformDestination[] 
     String(configs.youtube?.accessToken || '').trim() ||
     String(configs.youtube?.refreshToken || '').trim()
   )
+  const tiktokNativeReady = Boolean(
+    configs.tiktok?.nativeAuthConnected && configs.tiktok?.nativeLiveAccess === 'approved'
+  )
   if (twitchKey) available.push({ id: 'twitch', name: 'Twitch', url: 'rtmp://ingest.global-contribute.live-video.net/app', key: twitchKey })
   if (youtubeKey) {
     available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: youtubeKey })
   } else if (youtubeOAuthReady) {
-    available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: '', autoKey: true })
+    available.push({ id: 'youtube', name: 'YouTube', url: 'rtmp://a.rtmp.youtube.com/live2', key: '', keyProvider: 'youtube' })
   }
-  if (tiktokKey) available.push({ id: 'tiktok', name: 'TikTok', url: 'rtmp://open-rtmp.tiktok.com/stage', key: tiktokKey })
+  if (tiktokKey) {
+    available.push({
+      id: 'tiktok',
+      name: 'TikTok',
+      url: normalizeTikTokStreamUrl(configs.tiktok?.streamUrl),
+      key: tiktokKey
+    })
+  } else if (tiktokNativeReady) {
+    available.push({ id: 'tiktok', name: 'TikTok', url: '', key: '', keyProvider: 'tiktok-native' })
+  }
   if (kickKey) available.push({ id: 'kick', name: 'Kick', url: normalizeKickStreamUrl(configs.kick?.streamUrl), key: kickKey })
   return available
+}
+
+export function normalizeTikTokStreamUrl(value: unknown): string {
+  const url = String(value || '').trim()
+  if (!url) return DEFAULT_TIKTOK_STREAM_URL
+  return url.replace(/\/+$/, '')
 }
 
 export function normalizeKickStreamUrl(value: unknown): string {

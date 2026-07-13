@@ -4,6 +4,7 @@ import {
   type Widget
 } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const numericValue = Number(value)
@@ -83,8 +84,6 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
   <meta charset="UTF-8">
   <title>Tikfinity-style Likes Leaderboard</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;700&display=swap');
-
     :root {
       --bg-color: rgba(0, 0, 0, 0);
       --tiktok-pink: #fe2c55;
@@ -433,6 +432,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     .size-warning code { background: rgba(0, 0, 0, 0.45); padding: 2px 6px; border-radius: 4px; font-size: 0.95em; }
     .size-warning .current { opacity: 0.6; font-size: clamp(10px, 2vw, 12px); }
   </style>
+  ${INLINE_AVATAR_RUNTIME_SCRIPT}
 </head>
 <body>
   <div class="leaderboard-wrapper ${showHeader ? '' : 'header-hidden'} ${showRankNumbers ? '' : 'no-ranks'}">
@@ -577,11 +577,8 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       ));
     }
 
-    function safeAvatarUrl(url) {
-      if (!url) return 'https://via.placeholder.com/36';
-      // Allow http(s) and data: only — block javascript:, etc.
-      if (/^(https?:|data:image\\/)/i.test(url)) return url;
-      return 'https://via.placeholder.com/36';
+    function safeAvatarUrl(url, name) {
+      return window.__ilyAvatar.resolve(url, name || '?');
     }
 
     function userKey(user) {
@@ -883,7 +880,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         console.log('[test] Simulating like...');
         addLike({
           displayName: 'Test User ' + Math.floor(Math.random() * 5),
-          profilePictureUrl: 'https://via.placeholder.com/36',
+          profilePictureUrl: '',
           amount: 50,
           totalLikes: totalLikes + 50
         });
@@ -911,7 +908,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
           row.innerHTML =
             '<div class="rank">#' + (index + 1) + '</div>' +
             '<div class="avatar-wrapper">' +
-              '<img class="user-avatar" src="' + escapeHtml(safeAvatarUrl(data.profilePictureUrl)) + '" />' +
+              '<img class="user-avatar" data-name="' + escapeHtml(displayName) + '" src="' + escapeHtml(safeAvatarUrl(data.profilePictureUrl, displayName)) + '" onerror="window.__ilyAvatar.fallbackImage(this, this.dataset.name)" />' +
               CROWN_MARKUP +
             '</div>' +
             '<div class="user-info">' +
@@ -939,8 +936,9 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
 
         // Keep avatar in sync if the user supplied a new profile picture.
         const avatarEl = row.querySelector('.user-avatar');
-        const desiredSrc = safeAvatarUrl(data.profilePictureUrl);
+        const desiredSrc = safeAvatarUrl(data.profilePictureUrl, displayName);
         if (avatarEl && avatarEl.getAttribute('src') !== desiredSrc) {
+          avatarEl.dataset.name = displayName;
           avatarEl.setAttribute('src', desiredSrc);
         }
 
@@ -1082,7 +1080,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       previewUsers.forEach(([displayName, amount], index) => {
         setTimeout(() => addLike({
           displayName,
-          profilePictureUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(displayName),
+          profilePictureUrl: '',
           amount,
           totalLikes: totalLikes + amount
         }), index * 250);
@@ -1092,7 +1090,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         const amount = Math.floor(Math.random() * 45) + 5;
         addLike({
           displayName: user,
-          profilePictureUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(user),
+          profilePictureUrl: '',
           amount
         });
       }, 1800);

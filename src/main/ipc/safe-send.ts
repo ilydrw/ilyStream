@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
+import type { RendererEventChannel } from '../../shared/ipc-events'
 
-export function sendToRenderer(window: BrowserWindow | null | undefined, channel: string, ...args: unknown[]): boolean {
+export function sendToRenderer(window: BrowserWindow | null | undefined, channel: RendererEventChannel, ...args: unknown[]): boolean {
   if (!window || window.isDestroyed()) return false
 
   const webContents = window.webContents

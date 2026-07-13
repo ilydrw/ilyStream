@@ -12,6 +12,7 @@ import tiktokShot from '../assets/screenshots/tiktok-integration.png';
 import spotifyShot from '../assets/screenshots/spotify-song-requests.png';
 import aiShot from '../assets/screenshots/ai-cohost.png';
 import healthShot from '../assets/screenshots/health-center.png';
+import deskThingPair from '../assets/deskthing-pair-tight.png';
 
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, '')}`;
@@ -99,6 +100,15 @@ const featureSections = [
     image: aiShot,
     bullets: ['Local or compatible chat-completions endpoint', 'Dedicated persona and speech prefix controls', 'Response depth and temperature tuning', 'Engagement context from chat velocity'],
   },
+  {
+    eyebrow: 'DeskThing companion',
+    title: 'A tactile second screen for the live session.',
+    copy: 'ilyStream Deck brings sounds, actions, chat, live stats, Spotify, TTS, recording, and connection health to DeskThing-compatible hardware.',
+    image: deskThingPair,
+    flip: true,
+    href: 'companion/',
+    bullets: ['Four physical buttons mapped to stable tabs', 'Wheel paging and chat/stat scroll', 'Authenticated LAN bridge with reconnect', 'Persistent live-session telemetry'],
+  },
 ];
 ---
 
@@ -134,6 +144,9 @@ const featureSections = [
             <ul>
               {feature.bullets.map((bullet) => <li>{bullet}</li>)}
             </ul>
+            {'href' in feature && feature.href ? (
+              <a class="feature-row__link" href={withBase(feature.href)}>Explore this feature <span aria-hidden="true">→</span></a>
+            ) : null}
           </div>
           <div class="feature-row__media">
             <Image src={feature.image} alt="" loading="lazy" decoding="async" />
@@ -242,6 +255,18 @@ const featureSections = [
     mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
     -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M6.4 11.2 3.2 8l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z'/></svg>") center / contain no-repeat;
   }
+
+  .feature-row__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 22px;
+    color: var(--cyan);
+    font-weight: 800;
+  }
+
+  .feature-row__link span { transition: transform 120ms ease; }
+  .feature-row__link:hover span { transform: translateX(4px); }
 
   .feature-row__media {
     border: 1px solid var(--line);

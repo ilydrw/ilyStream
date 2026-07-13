@@ -266,6 +266,18 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           </Tooltip>
         </div>
 
+        <Tooltip content="Keyboard shortcuts" position="bottom">
+          <button
+            type="button"
+            onClick={onToggleHotkeys}
+            aria-label="Keyboard shortcuts"
+            aria-pressed={showHotkeys}
+            className={`h-10 w-10 2xl:h-11 2xl:w-11 shrink-0 rounded-md border transition-all flex items-center justify-center ${showHotkeys ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:text-white hover:bg-white/10'}`}
+          >
+            <IconKeyboard size={18} />
+          </button>
+        </Tooltip>
+
         {/* Virtual Camera quick toggle (OBS-style) */}
         <Tooltip
           content={virtualCameraTooltip}

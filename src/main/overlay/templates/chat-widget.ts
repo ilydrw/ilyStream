@@ -1,6 +1,7 @@
 import { DEFAULT_CHAT_CONFIG, DEFAULT_CHAT_UNIFIED_CONFIG, type ChatConfig, type ChatUnifiedConfig } from '../../../shared/widgets'
 import { TIKTOK_SHORTCODE_PAIRS } from '../../../shared/tiktok-shortcode-emojis'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 type UnifiedChatRuntimeConfig = ChatConfig & ChatUnifiedConfig
 const UNIFIED_CHAT_MAX_MESSAGES = 5
@@ -44,7 +45,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ilyStream Unified Chat</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    ${INLINE_AVATAR_RUNTIME_SCRIPT}
     <style>
         :root {
             --card: rgba(11, 13, 17, ${bgOpacity});
@@ -585,7 +586,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 var title = escapeAttr(b.title || '');
                 var glyph = roleBadgeSvg(b.kind);
                 if (b.imageUrl) {
-                    html += '<img class="role-badge" src="' + escapeAttr(b.imageUrl) + '" alt="' + title + '" title="' + title + '" onerror="this.remove()">';
+                    html += '<img class="role-badge" src="' + escapeAttr(window.__ilyAvatar.proxy(b.imageUrl)) + '" alt="' + title + '" title="' + title + '" onerror="this.remove()">';
                 } else if (glyph) {
                     html += '<span class="role-badge-glyph role-badge-' + escapeAttr(b.kind || '') + '" title="' + title + '">' + glyph + '</span>';
                 }
@@ -595,12 +596,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
 
         function safeAvatarUrl(url) {
             if (typeof url !== 'string' || !url.trim()) return '';
-            try {
-                const parsed = new URL(url, window.location.origin);
-                return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
-            } catch {
-                return '';
-            }
+            return window.__ilyAvatar.resolve(url, '?');
         }
 
         function safeHexColor(value, fallback) {

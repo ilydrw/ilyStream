@@ -1,5 +1,6 @@
 import { PhysicsConfig, DEFAULT_PHYSICS_CONFIG } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
 export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string {
   const cfg: PhysicsConfig = { ...DEFAULT_PHYSICS_CONFIG, ...(widget?.config || {}) }
@@ -10,7 +11,8 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Physics Overlay</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <script src="/overlay/vendor/matter.min.js"></script>
+  ${INLINE_AVATAR_RUNTIME_SCRIPT}
   <style>
     body, html {
       margin: 0;
@@ -100,6 +102,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
 
     function spawn(payload) {
       const { imageUrl, x = 0.5, size = 60, mass = 1, restitution = 0.6 } = payload;
+      const texture = window.__ilyAvatar.resolve(imageUrl, payload.name || payload.displayName || '?');
 
       if (activeObjects.size >= cfg.maxObjects) {
         // Remove oldest
@@ -116,7 +119,7 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
         friction: cfg.friction,
         render: {
           sprite: {
-            texture: imageUrl,
+            texture,
             xScale: size / 100, // Assuming 100px base size for images
             yScale: size / 100
           }
@@ -162,7 +165,8 @@ export function buildPhysicsOverlayHtml(widget?: any, isPreview = false): string
     if (${isPreview}) {
       setInterval(() => {
         spawn({
-          imageUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + Math.random(),
+          imageUrl: '',
+          name: 'Preview',
           x: Math.random(),
           size: 40 + Math.random() * 40
         });

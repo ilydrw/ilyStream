@@ -1,3 +1,5 @@
+import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
+
 export function buildDeckHtml(sounds: any[] = [], actions: any[] = [], deckToken = ''): string {
   const actionCards = actions.map(a => {
     const payload = safePayloadJson(a.payload_json)
@@ -27,7 +29,7 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = [], deckToken
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ilyStream Control Deck</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    ${INLINE_AVATAR_RUNTIME_SCRIPT}
     <style>
         :root {
             --bg: #050505;
@@ -325,7 +327,7 @@ export function buildDeckHtml(sounds: any[] = [], actions: any[] = [], deckToken
             bar.style.display = 'flex';
             document.getElementById('track-name').textContent = payload.trackName;
             document.getElementById('artist-name').textContent = payload.artistName;
-            document.getElementById('art').src = payload.albumArtUrl || '';
+            document.getElementById('art').src = window.__ilyAvatar.proxy(payload.albumArtUrl);
         }
 
         document.querySelectorAll('[data-action-type]').forEach((node) => {

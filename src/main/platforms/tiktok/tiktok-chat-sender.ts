@@ -1,4 +1,7 @@
 import { BrowserWindow, shell } from 'electron'
+import type { TikTokSenderStatus } from '../../../shared/tiktok-sender'
+
+export type { TikTokSenderStatus } from '../../../shared/tiktok-sender'
 
 declare const document: any
 declare const window: any
@@ -33,20 +36,6 @@ const TIKTOK_AUTH_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt',
 
 export const TIKTOK_SENDER_MAX_MESSAGE_LENGTH = 150
 export const TIKTOK_SENDER_SEND_COOLDOWN_MS = 1500
-
-export interface TikTokSenderStatus {
-  isWindowOpen: boolean
-  isLoggedIn: boolean
-  isChatReady: boolean
-  isOnTikTok: boolean
-  currentUrl?: string
-  lastMessageSentAt?: number
-  nextSendAvailableAt?: number
-  lastError?: string
-  statusMessage: string
-  maxMessageLength: number
-  sendCooldownMs: number
-}
 
 export interface TikTokSenderMessageValidation {
   ok: boolean

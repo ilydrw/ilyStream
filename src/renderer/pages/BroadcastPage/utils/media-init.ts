@@ -14,6 +14,69 @@ export interface ManagedMediaElement extends HTMLMediaElement {
 
 export type MediaAspectRatio = '16:9' | '9:16'
 
+export type MediaSourceStatusCode =
+  | 'opening'
+  | 'retrying'
+  | 'live'
+  | 'hidden'
+  | 'device-busy'
+  | 'permission-denied'
+  | 'unsupported-settings'
+  | 'device-missing'
+  | 'error'
+
+export interface MediaSourceStatus {
+  code: MediaSourceStatusCode
+  label: string
+  detail: string
+  error?: string
+}
+
+const MEDIA_SOURCE_STATUS_COPY: Record<MediaSourceStatusCode, { label: string; detail: string }> = {
+  opening: { label: 'Opening', detail: 'Requesting access to this media source.' },
+  retrying: { label: 'Retrying', detail: 'The source did not open. ilyStream is retrying with safer settings.' },
+  live: { label: 'Live', detail: 'This media source is active.' },
+  hidden: { label: 'Hidden in current layout', detail: 'This source is hidden in every active canvas layout, so its device is not being opened.' },
+  'device-busy': { label: 'Device busy', detail: 'Close other apps or duplicate sources using this device, then refresh media.' },
+  'permission-denied': { label: 'Permission denied', detail: 'Allow camera and microphone access in Windows privacy settings, then refresh media.' },
+  'unsupported-settings': { label: 'Unsupported settings', detail: 'Choose a lower resolution or frame rate, then refresh media.' },
+  'device-missing': { label: 'Device not found', detail: 'Reconnect the device or select an available source, then refresh media.' },
+  error: { label: 'Capture failed', detail: 'The media source could not be opened. Check the error below and refresh media.' }
+}
+
+export function createMediaSourceStatus(
+  code: MediaSourceStatusCode,
+  options: { detail?: string; error?: string } = {}
+): MediaSourceStatus {
+  const copy = MEDIA_SOURCE_STATUS_COPY[code]
+  return {
+    code,
+    label: copy.label,
+    detail: options.detail || copy.detail,
+    ...(options.error ? { error: options.error } : {})
+  }
+}
+
+export function classifyMediaSourceError(error: unknown): MediaSourceStatus {
+  const name = String((error as any)?.name || '')
+  const message = String((error as any)?.message || '')
+  const formattedError = formatMediaError(error)
+
+  if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+    return createMediaSourceStatus('permission-denied', { error: formattedError })
+  }
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError' || name === 'TypeError') {
+    return createMediaSourceStatus('unsupported-settings', { error: formattedError })
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'TransientNotFoundError' || /not available|not found/i.test(message)) {
+    return createMediaSourceStatus('device-missing', { error: formattedError })
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    return createMediaSourceStatus('device-busy', { error: formattedError })
+  }
+  return createMediaSourceStatus('error', { error: formattedError })
+}
+
 export function shouldInitializeLayerMedia(
   layer: StudioLayer,
   activeAspectRatios: readonly MediaAspectRatio[]
@@ -262,7 +325,15 @@ export function formatMediaError(error: unknown): string {
 
 export function isTransientMediaError(error: unknown): boolean {
   const name = (error as any)?.name
-  return ['AbortError', 'NotReadableError', 'TrackStartError', 'TransientNotFoundError', 'NotFoundError'].includes(name)
+  return [
+    'AbortError',
+    'NotReadableError',
+    'TrackStartError',
+    'TransientNotFoundError',
+    'NotFoundError',
+    'OverconstrainedError',
+    'ConstraintNotSatisfiedError'
+  ].includes(name)
 }
 
 export function resolveStabilizedVideoTarget(

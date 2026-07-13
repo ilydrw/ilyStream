@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import { readFile, mkdir, stat, writeFile } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomBytes, createHash } from 'crypto'
+import { createRequire } from 'module'
 import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from '../lib/ssrf-guard'
@@ -55,6 +56,8 @@ const ALLOWED_OVERLAY_CHANNELS = new Set<OverlayChannel>([
 
 const TEST_ENDPOINTS_ENABLED = process.env.ILYSTREAM_ENABLE_TEST_ENDPOINTS === '1'
 const MAX_DECK_ACTION_BODY_BYTES = 64 * 1024
+const require = createRequire(import.meta.url)
+const MATTER_JS_PATH = require.resolve('matter-js/build/matter.min.js')
 
 const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -137,6 +140,15 @@ export class OverlayRouter {
       return
     }
 
+    if (pathname === '/overlay/vendor/matter.min.js') {
+      const source = await readFile(MATTER_JS_PATH)
+      this.writeCorsHeaders(response, 200, 'text/javascript; charset=utf-8', request, {
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      })
+      response.end(source)
+      return
+    }
+
     if (pathname === '/test/alert') {
       if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
         this.writeJson(response, { error: 'Unauthorized' }, 401, request)
@@ -181,7 +193,7 @@ export class OverlayRouter {
         platform: 'tiktok',
         type: 'like',
         timestamp: new Date(),
-        user: { username: 'tester', displayName: 'Test User', profilePictureUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=test' },
+        user: { username: 'tester', displayName: 'Test User', profilePictureUrl: '' },
         likeCount: 100,
         totalLikes: 5000,
         raw: {}

@@ -24,8 +24,4 @@ export function registerWidgetHandlers(
   ipcMain.handle('widgets:render-preview', (_event, widget) => {
     return overlayServer.renderWidgetPreview(widget)
   })
-  
-  ipcMain.on('overlay:notify-speech-state', (_event, isSpeaking, isAI) => {
-    overlayServer.broadcastSpeechState(isSpeaking, isAI)
-  })
 }
