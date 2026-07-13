@@ -1,0 +1,154 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  eyebrow: string;
+  updated: string;
+}
+
+const { title, description, eyebrow, updated } = Astro.props;
+---
+
+<Layout title={`${title} - ilyStream`} description={description} active="none">
+  <section class="legal-hero">
+    <div class="legal-shell">
+      <p class="legal-eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p class="legal-lede">{description}</p>
+      <p class="legal-updated">Last updated {updated}</p>
+    </div>
+  </section>
+
+  <section class="legal-shell legal-content">
+    <article>
+      <slot />
+    </article>
+    <aside aria-label="Legal navigation">
+      <p>ilyStream policies</p>
+      <a href={`${import.meta.env.BASE_URL}privacy/`}>Privacy Policy</a>
+      <a href={`${import.meta.env.BASE_URL}terms/`}>Terms of Service</a>
+      <a href={`${import.meta.env.BASE_URL}support/`}>Support</a>
+    </aside>
+  </section>
+</Layout>
+
+<style>
+  .legal-hero {
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(circle at 18% 0%, rgba(37, 199, 255, 0.13), transparent 34rem),
+      linear-gradient(180deg, rgba(167, 131, 255, 0.06), transparent 70%);
+  }
+
+  .legal-shell {
+    width: min(calc(100% - 40px), 1040px);
+    margin: 0 auto;
+  }
+
+  .legal-hero .legal-shell {
+    padding: 92px 0 72px;
+  }
+
+  .legal-eyebrow {
+    margin: 0 0 14px;
+    color: var(--cyan-soft);
+    font-size: 0.76rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    max-width: 760px;
+    margin: 0;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.98;
+    letter-spacing: -0.055em;
+  }
+
+  .legal-lede {
+    max-width: 700px;
+    margin: 24px 0 0;
+    color: var(--muted);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.7;
+  }
+
+  .legal-updated {
+    margin: 20px 0 0;
+    color: var(--quiet);
+    font-size: 0.82rem;
+  }
+
+  .legal-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 230px;
+    gap: 72px;
+    padding: 72px 0 110px;
+  }
+
+  article :global(h2) {
+    margin: 54px 0 14px;
+    color: var(--text);
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+  }
+
+  article :global(h2:first-child) { margin-top: 0; }
+
+  article :global(p),
+  article :global(li) {
+    color: var(--muted);
+    font-size: 0.96rem;
+    line-height: 1.85;
+  }
+
+  article :global(ul) {
+    display: grid;
+    gap: 10px;
+    padding-left: 22px;
+  }
+
+  article :global(a), aside a { color: var(--cyan-soft); }
+
+  article :global(strong) { color: var(--text); }
+
+  aside {
+    position: sticky;
+    top: calc(var(--header-h) + 32px);
+    align-self: start;
+    display: grid;
+    gap: 4px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: rgba(17, 20, 27, 0.78);
+  }
+
+  aside p {
+    margin: 0 0 8px;
+    color: var(--quiet);
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  aside a {
+    padding: 9px 10px;
+    border-radius: 7px;
+    color: var(--muted);
+    font-size: 0.86rem;
+    text-decoration: none;
+  }
+
+  aside a:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+
+  @media (max-width: 760px) {
+    .legal-hero .legal-shell { padding: 70px 0 54px; }
+    .legal-content { grid-template-columns: 1fr; gap: 42px; padding: 54px 0 80px; }
+    aside { position: static; order: -1; }
+  }
+</style>
