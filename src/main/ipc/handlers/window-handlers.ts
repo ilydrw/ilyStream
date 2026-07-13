@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import { cpus } from 'os'
 import { getWindowsSettingsUri, type WindowsSettingsTarget } from '../../system/windows-settings'
 import { installUpdate, checkForUpdatesNow } from '../../services/update-service'
 
@@ -27,6 +28,27 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
   })
   ipcMain.handle('system:open-windows-settings', async (_event, target: WindowsSettingsTarget) => {
     await shell.openExternal(getWindowsSettingsUri(target))
+  })
+
+  // Aggregate CPU/memory across every ilyStream process (main, GPU,
+  // renderers, workers) for the topbar stat — the number a user would
+  // attribute to "the app" in Task Manager. percentCPUUsage measures usage
+  // since the PREVIOUS getAppMetrics() call with 100 = one full core, so it
+  // is normalized by core count to read as share of total CPU capacity
+  // (matching how OBS / TikTok Live Studio present theirs).
+  ipcMain.handle('system:get-resource-usage', () => {
+    const metrics = app.getAppMetrics()
+    let rawCpuPercent = 0
+    let memoryKB = 0
+    for (const metric of metrics) {
+      rawCpuPercent += metric.cpu?.percentCPUUsage ?? 0
+      memoryKB += metric.memory?.workingSetSize ?? 0
+    }
+    return {
+      cpuPercent: rawCpuPercent / Math.max(1, cpus().length),
+      memoryMB: memoryKB / 1024,
+      processCount: metrics.length
+    }
   })
 
   ipcMain.handle('system:get-app-info', () => ({

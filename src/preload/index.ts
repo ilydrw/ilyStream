@@ -253,6 +253,12 @@ const api = {
     installUpdate: () => ipcRenderer.invoke('system:install-update'),
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
     getAppInfo: () => ipcRenderer.invoke('system:get-app-info'),
+    getResourceUsage: () =>
+      ipcRenderer.invoke('system:get-resource-usage') as Promise<{
+        cpuPercent: number
+        memoryMB: number
+        processCount: number
+      }>,
     setLoginItem: (enabled: boolean) => ipcRenderer.invoke('system:set-login-item', enabled),
     openAppFolder: (target: 'logs' | 'userData' | 'recordings') =>
       ipcRenderer.invoke('system:open-app-folder', target),

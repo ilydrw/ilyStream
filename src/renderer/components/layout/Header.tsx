@@ -36,6 +36,7 @@ export function Header() {
       </div>
 
       <div className="app-topbar-spacer titlebar-no-drag">
+        <SystemStats />
         <UpdateBadge />
       </div>
 
@@ -58,6 +59,64 @@ export function Header() {
       </div>
     </header>
   )
+}
+
+const RESOURCE_POLL_MS = 2000
+
+/**
+ * Small OBS-style resource readout: total CPU share and working-set memory
+ * across every ilyStream process. Polls only while the window is visible —
+ * a minimized app should not wake itself up to measure how asleep it is.
+ */
+function SystemStats() {
+  const [usage, setUsage] = useState<{ cpuPercent: number; memoryMB: number } | null>(null)
+
+  useEffect(() => {
+    const getResourceUsage = window.api?.system?.getResourceUsage
+    if (!getResourceUsage) return
+
+    let active = true
+    const poll = () => {
+      if (!active || document.hidden) return
+      void getResourceUsage()
+        .then((next) => { if (active) setUsage(next) })
+        .catch(() => {})
+    }
+
+    poll()
+    const timer = window.setInterval(poll, RESOURCE_POLL_MS)
+    // Refresh immediately when the window comes back into view instead of
+    // showing up-to-2s-stale numbers.
+    document.addEventListener('visibilitychange', poll)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', poll)
+    }
+  }, [])
+
+  if (!usage) return null
+
+  const cpu = usage.cpuPercent
+  const cpuLabel = cpu >= 9.95 ? Math.round(cpu).toString() : cpu.toFixed(1)
+  const hot = cpu >= 80
+
+  return (
+    <div
+      className="app-topbar-stats"
+      title="CPU share and memory across all ilyStream processes"
+      aria-label={`CPU ${cpuLabel} percent, memory ${formatMemory(usage.memoryMB)}`}
+    >
+      <span className={hot ? 'is-hot' : undefined}>CPU {cpuLabel}%</span>
+      <span className="app-topbar-stats-sep" aria-hidden="true" />
+      <span>{formatMemory(usage.memoryMB)}</span>
+    </div>
+  )
+}
+
+function formatMemory(memoryMB: number): string {
+  if (memoryMB >= 1024) return `${(memoryMB / 1024).toFixed(1)} GB`
+  return `${Math.round(memoryMB)} MB`
 }
 
 function WindowButton({

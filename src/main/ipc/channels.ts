@@ -106,6 +106,7 @@ export interface IpcInvokeChannels {
   'window:close': () => void
   'system:copy-to-clipboard': (text: string) => boolean
   'system:open-windows-settings': (target: WindowsSettingsTarget) => Promise<void>
+  'system:get-resource-usage': () => Promise<{ cpuPercent: number; memoryMB: number; processCount: number }>
 
   // Spotify
   'spotify:connect': (clientId: string) => Promise<SpotifyStatus>
