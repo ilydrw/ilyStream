@@ -1,0 +1,52 @@
+---
+import LegalLayout from '../layouts/LegalLayout.astro';
+---
+
+<LegalLayout
+  title="Support"
+  eyebrow="Help with ilyStream"
+  description="Report a problem, request help, or privately disclose a security issue through the official ilyStream project channels."
+  updated="July 12, 2026"
+>
+  <h2>Product support</h2>
+  <p>
+    Use the <a href="https://github.com/ilydrw/ilyStream/issues" rel="noopener">ilyStream issue tracker</a>
+    for setup questions, reproducible bugs, and feature requests. Search existing issues first so
+    related reports stay together.
+  </p>
+  <p>
+    Include your ilyStream version, Windows version, the feature involved, what you expected, what
+    happened, and the smallest sequence that reproduces the problem. Logs are useful, but review
+    them before attaching anything.
+  </p>
+
+  <h2>Protect sensitive information</h2>
+  <p>
+    GitHub issues are public. Never include passwords, OAuth codes, access or refresh tokens, stream
+    keys, session cookies, API keys, private chat, personal addresses, or unredacted logs containing
+    those values.
+  </p>
+
+  <h2>Security reports</h2>
+  <p>
+    Do not disclose an unpatched vulnerability in a public issue. Use
+    <a href="https://github.com/ilydrw/ilyStream/security/advisories/new" rel="noopener">GitHub's private vulnerability reporting flow</a>
+    so the report can be reviewed before details are published.
+  </p>
+
+  <h2>Privacy and account requests</h2>
+  <p>
+    For questions about local data, connected accounts, or an ilyStream-operated authorization
+    session, open a minimal support issue that contains no private data and request a private
+    follow-up. You can also disconnect the relevant platform directly in ilyStream and revoke the
+    application's access from that platform's account settings.
+  </p>
+
+  <h2>Useful links</h2>
+  <ul>
+    <li><a href={`${import.meta.env.BASE_URL}docs/getting-started/`}>Getting started guide</a></li>
+    <li><a href={`${import.meta.env.BASE_URL}docs/platforms/`}>Platform setup</a></li>
+    <li><a href={`${import.meta.env.BASE_URL}download/`}>Download the current release</a></li>
+    <li><a href="https://github.com/ilydrw/ilyStream" rel="noopener">Source code and releases</a></li>
+  </ul>
+</LegalLayout>

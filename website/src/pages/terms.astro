@@ -1,0 +1,86 @@
+---
+import LegalLayout from '../layouts/LegalLayout.astro';
+---
+
+<LegalLayout
+  title="Terms of Service"
+  eyebrow="Rules for using ilyStream"
+  description="These terms describe the responsibilities that come with using ilyStream and connecting it to third-party streaming platforms."
+  updated="July 12, 2026"
+>
+  <h2>Acceptance</h2>
+  <p>
+    By downloading, installing, or using ilyStream, you agree to these terms. If you do not agree,
+    do not use the application or its connected services.
+  </p>
+
+  <h2>The product</h2>
+  <p>
+    ilyStream is a Windows broadcast studio that provides scene composition, media capture,
+    recording, overlays, chat, alerts, automations, and streaming outputs. Some features depend on
+    third-party platforms, hardware, network services, or account permissions that ilyStream does
+    not control.
+  </p>
+
+  <h2>Your responsibilities</h2>
+  <ul>
+    <li>Use ilyStream only with accounts, content, devices, and services you are authorized to control.</li>
+    <li>Follow the rules, community guidelines, age requirements, and developer policies of each connected platform.</li>
+    <li>Obtain the rights needed to broadcast music, video, images, chat, personal information, and other content.</li>
+    <li>Protect account credentials and immediately disconnect or rotate them if you believe they have been exposed.</li>
+    <li>Do not use ilyStream to evade platform enforcement, scrape restricted data, impersonate others, distribute malware, harass people, or violate applicable law.</li>
+  </ul>
+
+  <h2>Accounts and permissions</h2>
+  <p>
+    Connected platforms decide whether an account may sign in, access an API, or publish a LIVE
+    stream. Authorization through ilyStream does not guarantee LIVE eligibility, stream-key access,
+    monetization, distribution, or continued platform approval. A platform may limit or revoke
+    access at any time.
+  </p>
+
+  <h2>Open-source license</h2>
+  <p>
+    The ilyStream source code is made available under the license included in its
+    <a href="https://github.com/ilydrw/ilyStream" rel="noopener">GitHub repository</a>. These terms
+    govern use of the ilyStream application and connected services; they do not replace rights
+    granted by that software license.
+  </p>
+
+  <h2>Third-party services</h2>
+  <p>
+    TikTok, Twitch, YouTube, Kick, Spotify, X, lighting providers, and other integrations are separate
+    services. Their names and marks belong to their respective owners. ilyStream is not responsible
+    for third-party downtime, policy changes, API changes, account decisions, content removal, or
+    data practices.
+  </p>
+
+  <h2>No warranty</h2>
+  <p>
+    ilyStream is provided on an “as is” and “as available” basis, without warranties of uninterrupted
+    operation, compatibility, merchantability, fitness for a particular purpose, or non-infringement
+    to the maximum extent permitted by law. Test your complete broadcast setup before relying on it
+    for a live production.
+  </p>
+
+  <h2>Limitation of liability</h2>
+  <p>
+    To the maximum extent permitted by law, ilyStream's contributors and operators are not liable for
+    indirect, incidental, special, consequential, or punitive damages; lost revenue or data; failed
+    broadcasts; platform actions; or unauthorized account access arising from use of the product.
+  </p>
+
+  <h2>Suspension and termination</h2>
+  <p>
+    Access to an ilyStream-operated authorization or integration service may be limited or terminated
+    when necessary to protect users, comply with law or platform requirements, address abuse, or
+    maintain security. You may stop using ilyStream and disconnect connected accounts at any time.
+  </p>
+
+  <h2>Changes and contact</h2>
+  <p>
+    These terms may change as the product evolves. Continued use after an updated version is posted
+    means you accept the revised terms. Questions can be submitted through the
+    <a href={`${import.meta.env.BASE_URL}support/`}>ilyStream support page</a>.
+  </p>
+</LegalLayout>

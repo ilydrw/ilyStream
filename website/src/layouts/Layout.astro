@@ -9,7 +9,7 @@ interface Props {
   description?: string;
   image?: string;
   /** Section name used to highlight the active top-nav tab. */
-  active?: 'home' | 'download' | 'features' | 'docs' | 'screens';
+  active?: 'home' | 'download' | 'features' | 'docs' | 'screens' | 'none';
 }
 
 const {
@@ -33,7 +33,7 @@ const detected: NonNullable<Props['active']> =
   : norm.startsWith('/download') ? 'download'
   : norm.startsWith('/features') ? 'features'
   : norm.startsWith('/screens') ? 'screens'
-  : 'home';
+  : 'none';
 const current = active ?? detected;
 
 const navItems = [
@@ -171,6 +171,14 @@ const navItems = [
               <li><a href={repoUrl} rel="noopener">GitHub repository</a></li>
               <li><a href={releaseUrl} rel="noopener">Latest release</a></li>
               <li><a href="https://github.com/ilydrw/ilyStream-DeskThing/releases" rel="noopener">DeskThing companion</a></li>
+            </ul>
+          </div>
+          <div class="footer__col">
+            <h4>Legal &amp; support</h4>
+            <ul>
+              <li><a href={withBase('privacy/')}>Privacy Policy</a></li>
+              <li><a href={withBase('terms/')}>Terms of Service</a></li>
+              <li><a href={withBase('support/')}>Support</a></li>
             </ul>
           </div>
         </div>
