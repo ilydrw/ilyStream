@@ -12,8 +12,10 @@ import { shell } from 'electron'
  * fixed and the URI is exported for the Kick page to display.
  */
 
-// Between YouTube auth (8790) and the Kick webhook receiver default (8792).
-export const KICK_REDIRECT_PORT = 8791
+// Loopback port for the Kick OAuth callback. Distinct from Spotify (8789),
+// YouTube (8790), X (8791), and the TikTok-native/Kick-webhook pair (8792)
+// so the flows never contend for the same socket.
+export const KICK_REDIRECT_PORT = 8793
 export const KICK_REDIRECT_URI = `http://127.0.0.1:${KICK_REDIRECT_PORT}/callback`
 
 const AUTH_URL = 'https://id.kick.com/oauth/authorize'
