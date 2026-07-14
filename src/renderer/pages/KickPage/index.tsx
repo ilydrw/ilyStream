@@ -41,6 +41,8 @@ export default function KickPage() {
   const [config, setConfig] = useState<Record<string, ConfigValue>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
   const [setupMessage, setSetupMessage] = useState<{ tone: 'success' | 'danger' | 'neutral'; text: string } | null>(null)
+  const [userAuth, setUserAuth] = useState<{ connected: boolean; redirectUri: string } | null>(null)
+  const [userAuthBusy, setUserAuthBusy] = useState(false)
 
   const status = statuses[PLATFORM_ID] || 'disconnected'
   const error = errors[PLATFORM_ID] || null
@@ -67,6 +69,8 @@ export default function KickPage() {
       const capability = getPlatformCapability(caps, PLATFORM_ID)
       if (capability) setCanSend({ canSend: capability.canSend, reason: capability.reason ?? '' })
     })
+
+    window.api.platform.kick.getUserAuthStatus().then(setUserAuth).catch(() => {})
   }, [status])
 
   const platformEvents = useMemo(
@@ -113,6 +117,32 @@ export default function KickPage() {
       const message = err instanceof Error ? err.message : String(err)
       setSetupMessage({ tone: 'danger', text: message })
     }
+  }
+
+  const handleConnectAccount = async () => {
+    try {
+      setUserAuthBusy(true)
+      setSetupMessage({ tone: 'neutral', text: 'Complete the Kick authorization in your browser...' })
+      // Persist any freshly typed client credentials first — the auth flow
+      // reads them from the saved config in the main process.
+      await window.api.platform.saveConfig(buildKickConfig(isConnected))
+      await window.api.platform.kick.beginUserAuth()
+      const status = await window.api.platform.kick.getUserAuthStatus()
+      setUserAuth(status)
+      setSetupMessage({ tone: 'success', text: 'Kick account connected — stream title and category can now be set from the Broadcast page.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setSetupMessage({ tone: 'danger', text: message })
+    } finally {
+      setUserAuthBusy(false)
+    }
+  }
+
+  const handleDisconnectAccount = async () => {
+    await window.api.platform.kick.disconnectUserAuth()
+    const status = await window.api.platform.kick.getUserAuthStatus()
+    setUserAuth(status)
+    setSetupMessage({ tone: 'neutral', text: 'Kick account disconnected.' })
   }
 
   const updateField = (key: string, value: ConfigValue) => {
@@ -234,6 +264,41 @@ export default function KickPage() {
                 />
                 Try legacy socket fallback
               </label>
+
+              <div className="md:col-span-2 rounded-xl border border-white/[0.05] bg-white/[0.02] p-6 flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Kick account</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/35">
+                      {userAuth?.connected
+                        ? 'Connected — the Broadcast page can set your stream title and category.'
+                        : 'Authorize your Kick account so ilyStream can set your stream title and category before you go live.'}
+                    </p>
+                  </div>
+                  {userAuth?.connected ? (
+                    <button
+                      onClick={handleDisconnectAccount}
+                      className="app-button-secondary !h-10 !px-6 text-xs font-semibold"
+                    >
+                      Disconnect account
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleConnectAccount}
+                      disabled={userAuthBusy || !String(config.clientId || '').trim() || !String(config.clientSecret || '').trim()}
+                      className="app-button-primary !h-10 !px-6 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {userAuthBusy ? 'Waiting for Kick…' : 'Connect Kick account'}
+                    </button>
+                  )}
+                </div>
+                {!userAuth?.connected && userAuth?.redirectUri && (
+                  <p className="text-[11px] leading-relaxed text-white/30">
+                    Requires the Client ID and Secret above, and this redirect URI registered on your Kick app:{' '}
+                    <code className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-white/55">{userAuth.redirectUri}</code>
+                  </p>
+                )}
+              </div>
             </div>
 
             {setupMessage && (

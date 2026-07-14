@@ -14,12 +14,18 @@ describe('normalizeBroadcastStreamInfo', () => {
         title: 'Late night lime zone',
         twitchCategoryId: ' 509658 ',
         twitchCategoryName: ' Just Chatting ',
+        youtubeCategoryId: '20',
+        kickCategoryId: ' 15 ',
+        kickCategoryName: 'Just Chatting',
         extra: 'dropped'
       })
     ).toEqual({
       title: 'Late night lime zone',
       twitchCategoryId: '509658',
-      twitchCategoryName: 'Just Chatting'
+      twitchCategoryName: 'Just Chatting',
+      youtubeCategoryId: '20',
+      kickCategoryId: '15',
+      kickCategoryName: 'Just Chatting'
     })
   })
 

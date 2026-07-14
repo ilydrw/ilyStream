@@ -117,7 +117,7 @@ const api = {
     youtube: {
       beginAuth: (payload: { clientId?: string; clientSecret?: string }) =>
         ipcRenderer.invoke('youtube:begin-auth', payload),
-      prepareLive: (payload?: { title?: string }) =>
+      prepareLive: (payload?: { title?: string; categoryId?: string }) =>
         ipcRenderer.invoke('youtube:prepare-live', payload) as Promise<{
           rtmpUrl: string
           streamKey: string
@@ -126,7 +126,9 @@ const api = {
           title: string
           autoStart: boolean
           createdBroadcast: boolean
-        }>
+        }>,
+      updateStreamInfo: (payload: { title?: string; categoryId?: string }) =>
+        ipcRenderer.invoke('youtube:update-stream-info', payload) as Promise<{ broadcastId: string }>
     },
     twitch: {
       searchCategories: (query: string) =>
@@ -136,7 +138,17 @@ const api = {
     },
     kick: {
       subscribeEvents: (payload: { clientId: string; clientSecret: string; broadcasterUserId?: string | number; channelName?: string }) =>
-        ipcRenderer.invoke('kick:subscribe-events', payload)
+        ipcRenderer.invoke('kick:subscribe-events', payload),
+      beginUserAuth: () =>
+        ipcRenderer.invoke('kick:begin-user-auth') as Promise<{ connected: boolean }>,
+      disconnectUserAuth: () =>
+        ipcRenderer.invoke('kick:disconnect-user-auth') as Promise<{ connected: boolean }>,
+      getUserAuthStatus: () =>
+        ipcRenderer.invoke('kick:get-user-auth-status') as Promise<{ connected: boolean; redirectUri: string }>,
+      searchCategories: (query: string) =>
+        ipcRenderer.invoke('kick:search-categories', { query }) as Promise<TwitchCategory[]>,
+      updateStreamInfo: (payload: { title?: string; categoryId?: string }) =>
+        ipcRenderer.invoke('kick:update-stream-info', payload) as Promise<{ ok: boolean }>
     }
   },
 

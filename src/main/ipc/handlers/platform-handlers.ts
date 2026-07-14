@@ -13,11 +13,13 @@ import {
   DEFAULT_YOUTUBE_CLIENT_ID,
   DEFAULT_YOUTUBE_CLIENT_SECRET
 } from '../../platforms/youtube/youtube-auth'
-import { ensureYouTubeLiveDestination } from '../../platforms/youtube/youtube-live'
+import { ensureYouTubeLiveDestination, updateYouTubeStreamInfo } from '../../platforms/youtube/youtube-live'
 import type { YouTubeConfig } from '../../platforms/types'
 import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
+import { initiateKickUserAuth, KICK_REDIRECT_URI, type KickUserTokens } from '../../platforms/kick/kick-user-auth'
+import { isKickUserConnected, searchKickCategories, updateKickStreamInfo } from '../../platforms/kick/kick-stream-info'
 import { searchTwitchCategories, updateTwitchStreamInfo } from '../../platforms/twitch/twitch-stream-info'
-import type { TikTokConfig, TwitchConfig } from '../../platforms/types'
+import type { KickConfig, TikTokConfig, TwitchConfig } from '../../platforms/types'
 import { normalizeBroadcastStreamInfo, type BroadcastStreamInfo } from '../../../shared/stream-info'
 import {
   DEFAULT_TIKTOK_AUTH_BRIDGE_URL,
@@ -137,25 +139,43 @@ export function registerPlatformHandlers(
   // stream + broadcast and returns the RTMP url/key the encoder should push
   // to. Called by the Broadcast page right before starting the YouTube
   // output, so users who signed in with Google never handle a stream key.
-  ipcMain.handle('youtube:prepare-live', async (_event, payload?: { title?: string }) => {
+  const resolveYouTubeConfig = (): YouTubeConfig => {
     const saved = db.getAllPlatformConfigs().youtube as YouTubeConfig | undefined
     if (!saved) {
       throw new Error(
         'YouTube is not configured. Open the YouTube page and use "Connect with Google" first.'
       )
     }
-    const config: YouTubeConfig = {
+    return {
       ...saved,
       clientId: saved.clientId?.trim() || DEFAULT_YOUTUBE_CLIENT_ID,
       clientSecret: saved.clientSecret?.trim() || DEFAULT_YOUTUBE_CLIENT_SECRET
     }
-    const destination = await ensureYouTubeLiveDestination(config, { title: payload?.title })
+  }
+
+  ipcMain.handle('youtube:prepare-live', async (_event, payload?: { title?: string; categoryId?: string }) => {
+    const destination = await ensureYouTubeLiveDestination(resolveYouTubeConfig(), {
+      title: payload?.title,
+      categoryId: payload?.categoryId
+    })
     console.log(
       `[youtube-live] Prepared broadcast "${destination.title}" (${destination.broadcastId}) — ` +
       `${destination.createdBroadcast ? 'created new' : 'reusing existing'}, autoStart=${destination.autoStart}`
     )
     return destination
   })
+
+  ipcMain.handle(
+    'youtube:update-stream-info',
+    async (_event, payload: { title?: string; categoryId?: string }) => {
+      const result = await updateYouTubeStreamInfo(resolveYouTubeConfig(), {
+        title: payload?.title,
+        categoryId: payload?.categoryId
+      })
+      console.log(`[youtube-live] Updated stream info on broadcast ${result.broadcastId}`)
+      return result
+    }
+  )
 
   // Stream title/category the user sets before going live. Stored as a plain
   // DB setting so it survives restarts and prefills the next session.
@@ -182,6 +202,67 @@ export function registerPlatformHandlers(
       })
       console.log(`[twitch-stream-info] Updated channel info for ${result.channel}`)
       return result
+    }
+  )
+
+  // --- Kick user-account OAuth (channel:write for title/category) ---
+
+  const persistKickUserTokens = (tokens: KickUserTokens) => {
+    const existing = db.getPlatformConfig('kick') as KickConfig | null
+    db.savePlatformConfig({
+      ...existing,
+      platform: 'kick',
+      enabled: existing?.enabled ?? false,
+      channelName: existing?.channelName || '',
+      userAccessToken: tokens.accessToken,
+      userRefreshToken: tokens.refreshToken,
+      userTokenExpiresAt: tokens.expiresAt,
+      userScopes: tokens.scopes
+    })
+  }
+
+  ipcMain.handle('kick:begin-user-auth', async () => {
+    const config = db.getPlatformConfig('kick') as KickConfig | null
+    const tokens = await initiateKickUserAuth(config?.clientId || '', config?.clientSecret || '')
+    persistKickUserTokens(tokens)
+    return { connected: true }
+  })
+
+  ipcMain.handle('kick:disconnect-user-auth', () => {
+    const existing = db.getPlatformConfig('kick') as KickConfig | null
+    if (existing) {
+      db.savePlatformConfig({
+        ...existing,
+        userAccessToken: '',
+        userRefreshToken: '',
+        userTokenExpiresAt: 0,
+        userScopes: ''
+      })
+    }
+    return { connected: false }
+  })
+
+  ipcMain.handle('kick:get-user-auth-status', () => {
+    const config = db.getPlatformConfig('kick') as KickConfig | null
+    return { connected: isKickUserConnected(config), redirectUri: KICK_REDIRECT_URI }
+  })
+
+  ipcMain.handle('kick:search-categories', (_event, payload: { query: string }) => {
+    const config = db.getPlatformConfig('kick') as KickConfig | null
+    return searchKickCategories(config, String(payload?.query || ''))
+  })
+
+  ipcMain.handle(
+    'kick:update-stream-info',
+    async (_event, payload: { title?: string; categoryId?: string }) => {
+      const config = db.getPlatformConfig('kick') as KickConfig | null
+      await updateKickStreamInfo(
+        config,
+        { title: payload?.title, categoryId: payload?.categoryId },
+        persistKickUserTokens
+      )
+      console.log('[kick-stream-info] Updated Kick channel info')
+      return { ok: true }
     }
   )
 

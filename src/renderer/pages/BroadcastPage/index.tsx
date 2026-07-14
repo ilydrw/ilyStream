@@ -620,6 +620,47 @@ export default function BroadcastPage() {
     })
   }
 
+  // Mid-stream "Save & apply": pushes title/category to every configured
+  // platform that supports live edits. Each platform fails independently.
+  const applyStreamInfoLive = async (info: BroadcastStreamInfo) => {
+    const title = info.title.trim()
+    const applied: string[] = []
+    const attempt = async (name: string, run: () => Promise<unknown>) => {
+      try {
+        await run()
+        applied.push(name)
+      } catch (err) {
+        toast.error(`${name} stream info not applied: ${formatIpcError(err)}`)
+      }
+    }
+
+    if (platforms.some(p => p.id === 'twitch') && (title || info.twitchCategoryId)) {
+      await attempt('Twitch', () => window.api.platform.twitch.updateStreamInfo({
+        title: title || undefined,
+        categoryId: info.twitchCategoryId || undefined
+      }))
+    }
+    if (platforms.some(p => p.id === 'youtube') && (title || info.youtubeCategoryId)) {
+      await attempt('YouTube', () => window.api.platform.youtube.updateStreamInfo({
+        title: title || undefined,
+        categoryId: info.youtubeCategoryId || undefined
+      }))
+    }
+    if (platforms.some(p => p.id === 'kick') && (title || info.kickCategoryId)) {
+      const kickAuth = await window.api.platform.kick.getUserAuthStatus()
+        .catch(() => ({ connected: false, redirectUri: '' }))
+      if (kickAuth.connected) {
+        await attempt('Kick', () => window.api.platform.kick.updateStreamInfo({
+          title: title || undefined,
+          categoryId: info.kickCategoryId || undefined
+        }))
+      } else {
+        toast.warning('Kick skipped — connect your Kick account on the Kick page')
+      }
+    }
+    if (applied.length > 0) toast.success(`Stream info updated on ${applied.join(', ')}`)
+  }
+
   // Streaming Handlers
   const completeNativeTikTokLive = async () => {
     if (!nativeTikTokLiveActiveRef.current) return
@@ -637,10 +678,10 @@ export default function BroadcastPage() {
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
 
-    // Apply the pre-live stream info. Twitch takes a Helix channel update;
-    // YouTube and TikTok receive the title through their prepare-live calls
-    // below. A Twitch failure shouldn't stop the broadcast, so it downgrades
-    // to a toast instead of blocking.
+    // Apply the pre-live stream info. Twitch and Kick take direct channel
+    // updates; YouTube and TikTok receive theirs through the prepare-live
+    // calls below. Failures here shouldn't stop the broadcast, so they
+    // downgrade to toasts instead of blocking.
     const streamTitle = streamInfo.title.trim()
     if (destinations.some(d => d.platform?.id === 'twitch') && (streamTitle || streamInfo.twitchCategoryId)) {
       try {
@@ -654,11 +695,31 @@ export default function BroadcastPage() {
       }
     }
 
+    if (destinations.some(d => d.platform?.id === 'kick') && (streamTitle || streamInfo.kickCategoryId)) {
+      try {
+        const kickAuth = await window.api.platform.kick.getUserAuthStatus()
+        if (kickAuth.connected) {
+          await window.api.platform.kick.updateStreamInfo({
+            title: streamTitle || undefined,
+            categoryId: streamInfo.kickCategoryId || undefined
+          })
+          console.log(`[BroadcastPage] Kick stream info applied${streamInfo.kickCategoryName ? ` (${streamInfo.kickCategoryName})` : ''}`)
+        } else {
+          console.log('[BroadcastPage] Kick stream info skipped — Kick account not connected')
+        }
+      } catch (err) {
+        toast.error(`Kick stream info not applied: ${formatIpcError(err)}`)
+      }
+    }
+
     // Resolve platform-managed, short-lived ingest credentials immediately
     // before the encoders start. Manual RTMP destinations already carry keys.
     if (destinations.some(d => d.platform?.keyProvider === 'youtube' && !d.platform.key)) {
       try {
-        const live = await window.api.platform.youtube.prepareLive({ title: streamTitle || undefined })
+        const live = await window.api.platform.youtube.prepareLive({
+          title: streamTitle || undefined,
+          categoryId: streamInfo.youtubeCategoryId || undefined
+        })
         console.log(`[BroadcastPage] YouTube broadcast ready: "${live.title}" ${live.watchUrl}${live.autoStart ? '' : ' — auto-start is off for this broadcast; press "Go live" in YouTube Studio if it does not start on its own'}`)
         for (const d of destinations) {
           if (d.platform?.keyProvider === 'youtube' && !d.platform.key) {
@@ -921,6 +982,8 @@ export default function BroadcastPage() {
         value={streamInfo}
         onSave={saveStreamInfo}
         platformIds={platforms.map(p => p.id)}
+        isStreaming={isStreaming}
+        onApplyLive={applyStreamInfoLive}
       />
 
       {isDualLayoutMode && (

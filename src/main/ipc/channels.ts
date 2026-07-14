@@ -66,7 +66,7 @@ export interface IpcInvokeChannels {
     clientId?: string
     clientSecret?: string
   }) => Promise<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string }>
-  'youtube:prepare-live': (payload?: { title?: string }) => Promise<{
+  'youtube:prepare-live': (payload?: { title?: string; categoryId?: string }) => Promise<{
     rtmpUrl: string
     streamKey: string
     broadcastId: string
@@ -75,6 +75,10 @@ export interface IpcInvokeChannels {
     autoStart: boolean
     createdBroadcast: boolean
   }>
+  'youtube:update-stream-info': (payload: {
+    title?: string
+    categoryId?: string
+  }) => Promise<{ broadcastId: string }>
   'kick:subscribe-events': (payload: {
     clientId: string
     clientSecret: string
@@ -86,6 +90,14 @@ export interface IpcInvokeChannels {
     title?: string
     categoryId?: string
   }) => Promise<{ channel: string }>
+  'kick:begin-user-auth': () => Promise<{ connected: boolean }>
+  'kick:disconnect-user-auth': () => Promise<{ connected: boolean }>
+  'kick:get-user-auth-status': () => Promise<{ connected: boolean; redirectUri: string }>
+  'kick:search-categories': (payload: { query: string }) => Promise<TwitchCategory[]>
+  'kick:update-stream-info': (payload: {
+    title?: string
+    categoryId?: string
+  }) => Promise<{ ok: boolean }>
   'stream-info:get': () => Promise<BroadcastStreamInfo>
   'stream-info:set': (info: BroadcastStreamInfo) => Promise<void>
   'event:simulate': (payload: EventLabSimulationPayload) => Promise<AnyStreamEvent>

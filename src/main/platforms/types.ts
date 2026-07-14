@@ -258,6 +258,12 @@ export interface KickConfig extends PlatformConfig {
   webhookPath?: string
   webhookPublicUrl?: string
   legacySocket?: boolean
+  /** Broadcaster OAuth tokens (channel:write) from the Kick account connect flow. */
+  userAccessToken?: string
+  userRefreshToken?: string
+  /** Epoch ms when userAccessToken expires. */
+  userTokenExpiresAt?: number
+  userScopes?: string
 }
 
 export interface XConfig extends PlatformConfig {

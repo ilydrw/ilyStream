@@ -29,10 +29,7 @@ export interface YouTubeLiveDestination {
 const DEFAULT_RTMP_URL = 'rtmp://a.rtmp.youtube.com/live2'
 const MANAGED_STREAM_TITLE = 'ilyStream'
 
-export async function ensureYouTubeLiveDestination(
-  config: YouTubeConfig,
-  options: { title?: string; privacyStatus?: 'public' | 'unlisted' | 'private' } = {}
-): Promise<YouTubeLiveDestination> {
+async function createYouTubeClient(config: YouTubeConfig): Promise<any> {
   const accessToken = config.accessToken?.trim()
   const refreshToken = config.refreshToken?.trim()
   if (!accessToken && !refreshToken) {
@@ -50,7 +47,14 @@ export async function ensureYouTubeLiveDestination(
     access_token: accessToken || undefined,
     refresh_token: refreshToken || undefined
   })
-  const youtube = google.youtube({ version: 'v3', auth: oauthClient })
+  return google.youtube({ version: 'v3', auth: oauthClient })
+}
+
+export async function ensureYouTubeLiveDestination(
+  config: YouTubeConfig,
+  options: { title?: string; categoryId?: string; privacyStatus?: 'public' | 'unlisted' | 'private' } = {}
+): Promise<YouTubeLiveDestination> {
+  const youtube = await createYouTubeClient(config)
 
   try {
     // 1. Someone already live (or mid countdown)? Ride the existing setup —
@@ -63,6 +67,7 @@ export async function ensureYouTubeLiveDestination(
         const stream = await getStreamById(youtube, boundStreamId)
         const ingest = readIngestion(stream)
         if (ingest) {
+          await applyBroadcastMetadata(youtube, broadcast, options)
           return toDestination(broadcast, ingest, { createdBroadcast: false })
         }
       }
@@ -110,10 +115,83 @@ export async function ensureYouTubeLiveDestination(
       broadcast = bound.data
     }
 
+    // 5. Stamp the user's title/category. Reused broadcasts keep their old
+    // title otherwise; created ones still need the category (the broadcast
+    // insert snippet doesn't accept categoryId — only videos.update does).
+    await applyBroadcastMetadata(youtube, broadcast, options)
+
     return toDestination(broadcast, ingest, { createdBroadcast })
   } catch (error) {
     throw new Error(describeYouTubeLiveError(error))
   }
+}
+
+/**
+ * Mid-stream (or pre-stream) title/category update: targets the active
+ * broadcast first, then the next upcoming one.
+ */
+export async function updateYouTubeStreamInfo(
+  config: YouTubeConfig,
+  input: { title?: string; categoryId?: string }
+): Promise<{ broadcastId: string }> {
+  const youtube = await createYouTubeClient(config)
+  try {
+    const broadcast = (await listBroadcasts(youtube, 'active'))[0] ??
+      (await listBroadcasts(youtube, 'upcoming'))[0]
+    if (!broadcast) {
+      throw new Error('No active or scheduled YouTube broadcast to update.')
+    }
+    const changed = await applyBroadcastMetadata(youtube, broadcast, input)
+    if (!changed) {
+      throw new Error('Nothing to update — set a title or category first.')
+    }
+    return { broadcastId: broadcast.id || '' }
+  } catch (error) {
+    throw new Error(describeYouTubeLiveError(error))
+  }
+}
+
+/**
+ * Sets title/categoryId on the broadcast's underlying video. videos.update
+ * replaces the whole snippet, so the current one is fetched and merged first —
+ * otherwise the description/tags would be wiped. Mutates `broadcast.snippet`
+ * to keep the returned destination title accurate. Returns false when there
+ * was nothing to change.
+ */
+async function applyBroadcastMetadata(
+  youtube: any,
+  broadcast: any,
+  options: { title?: string; categoryId?: string }
+): Promise<boolean> {
+  const title = options.title?.trim()
+  const categoryId = options.categoryId?.trim()
+  if (!title && !categoryId) return false
+  if (!broadcast?.id) return false
+
+  const videoResponse = await youtube.videos.list({
+    part: ['snippet'],
+    id: [broadcast.id]
+  })
+  const video = videoResponse.data.items?.[0]
+  if (!video?.snippet) return false
+
+  const snippet = video.snippet
+  const nextTitle = title || snippet.title
+  const nextCategoryId = categoryId || snippet.categoryId
+  if (snippet.title === nextTitle && snippet.categoryId === nextCategoryId) {
+    if (broadcast.snippet) broadcast.snippet.title = nextTitle
+    return true
+  }
+
+  await youtube.videos.update({
+    part: ['snippet'],
+    requestBody: {
+      id: broadcast.id,
+      snippet: { ...snippet, title: nextTitle, categoryId: nextCategoryId }
+    }
+  })
+  if (broadcast.snippet) broadcast.snippet.title = nextTitle
+  return true
 }
 
 interface IngestionInfo {
