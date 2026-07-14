@@ -14,7 +14,7 @@ import {
   DiagnosticLine,
   StatusBadge
 } from '../../components/platforms/PlatformPageLayout'
-import { DEFAULT_X_GO_LIVE_TEMPLATE, type XPostResult, type XStatus } from '../../../shared/x-types'
+import { DEFAULT_X_GO_LIVE_TEMPLATE, renderGoLiveTemplate, type XPostResult, type XStatus } from '../../../shared/x-types'
 
 const PLATFORM_ID = 'x'
 const MAX_TWEET_LENGTH = 280
@@ -33,11 +33,13 @@ export default function XPage() {
   const [copiedRedirect, setCopiedRedirect] = useState(false)
   const [autoPostGoLiveX, setAutoPostGoLiveX] = useState(false)
   const [isSavingAutomation, setIsSavingAutomation] = useState(false)
+  const [streamTitle, setStreamTitle] = useState('')
 
   useEffect(() => {
     window.api.x.getTemplate().then((savedTemplate) => {
       setTweet(savedTemplate || DEFAULT_X_GO_LIVE_TEMPLATE)
     })
+    window.api.streamInfo?.get().then((info) => setStreamTitle(info.title)).catch(() => {})
     window.api.x.getStatus().then(setApiStatus)
     window.api.platform.tiktok?.getAutomations?.().then((automations) => {
       setAutoPostGoLiveX(Boolean(automations?.autoPostGoLiveX))
@@ -47,8 +49,11 @@ export default function XPage() {
     return () => unsubscribe?.()
   }, [])
 
-  const trimmedTweet = tweet.trim()
-  const remaining = MAX_TWEET_LENGTH - tweet.length
+  // {title} resolves against the Broadcast page's stream info — the resolved
+  // text is what actually gets posted, so the counter and limits track it.
+  const resolvedTweet = useMemo(() => renderGoLiveTemplate(tweet, { title: streamTitle }), [tweet, streamTitle])
+  const trimmedTweet = resolvedTweet
+  const remaining = MAX_TWEET_LENGTH - resolvedTweet.length
   const overLimit = remaining < 0
   const canUseComposer = trimmedTweet.length > 0 && !overLimit
   const canPostWithApi = apiStatus.connected && canUseComposer && !isPosting
@@ -118,7 +123,7 @@ export default function XPage() {
     setIsPosting(true)
     try {
       await window.api.x.setTemplate(tweet)
-      const result = await window.api.x.post(tweet)
+      const result = await window.api.x.post(resolvedTweet)
       setLastPost(result)
       showFeedback('Posted through X API')
     } catch (error) {
@@ -192,6 +197,18 @@ export default function XPage() {
                 {remaining}
               </span>
             </div>
+
+            <p className="text-[11px] leading-relaxed text-white/25 -mt-3">
+              <code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-[10px] text-white/45">{'{title}'}</code>{' '}
+              inserts the stream title set on the Broadcast page.
+            </p>
+
+            {resolvedTweet !== tweet.trim() && (
+              <div className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.05]">
+                <p className="text-[10px] font-semibold tracking-tight text-white/25 mb-1">Will post as</p>
+                <p className="text-xs leading-relaxed text-white/60">{resolvedTweet || '(empty)'}</p>
+              </div>
+            )}
 
             {overLimit && (
               <div className="px-4 py-3 rounded-lg bg-danger/10 border border-danger/20">

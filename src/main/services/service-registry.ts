@@ -16,6 +16,8 @@ import { OBSService } from '../obs/obs-service'
 import { ChatRelayService } from '../chat/chat-relay-service'
 import { CoHostService } from '../ai/co-host-service'
 import { resolveAppSettings } from '../../shared/app-settings'
+import { normalizeBroadcastStreamInfo } from '../../shared/stream-info'
+import { renderGoLiveTemplate } from '../../shared/x-types'
 import { EventOrchestrator } from './event-orchestrator'
 import { AutomationService } from '../automation/automation-service'
 import { VoicemodService } from './voicemod-service'
@@ -348,7 +350,8 @@ export class ServiceRegistry {
     }
 
     if (autoPostGoLiveX && this.xService.getStatus().connected) {
-      const text = this.xService.getTemplate().trim()
+      const streamInfo = normalizeBroadcastStreamInfo(this.db.getSetting('broadcastStreamInfo'))
+      const text = renderGoLiveTemplate(this.xService.getTemplate(), { title: streamInfo.title })
       if (text) {
         this.xService.postTweet(text).catch((err) => {
           console.warn('[services] TikTok go-live: X auto-post failed:', err)
