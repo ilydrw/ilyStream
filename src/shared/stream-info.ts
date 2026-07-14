@@ -65,3 +65,24 @@ export function normalizeBroadcastStreamInfo(value: unknown): BroadcastStreamInf
     kickCategoryName: String(record.kickCategoryName ?? '').trim()
   }
 }
+
+/** A named title/category combo — "variety night", "dev stream" — applied with one click. */
+export interface StreamInfoPreset {
+  id: string
+  name: string
+  info: BroadcastStreamInfo
+}
+
+export const MAX_STREAM_INFO_PRESETS = 20
+
+export function normalizeStreamInfoPresets(value: unknown): StreamInfoPreset[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .slice(0, MAX_STREAM_INFO_PRESETS)
+    .map((entry: any, index: number) => ({
+      id: String(entry.id || `preset-${index + 1}`),
+      name: String(entry.name ?? '').trim().slice(0, 60) || `Preset ${index + 1}`,
+      info: normalizeBroadcastStreamInfo(entry.info)
+    }))
+}

@@ -12,7 +12,7 @@ import type {
   TikTokNativeAuthStatus,
   TikTokNativeLiveDestination
 } from '../shared/tiktok-native'
-import type { BroadcastStreamInfo, TwitchCategory } from '../shared/stream-info'
+import type { BroadcastStreamInfo, StreamInfoPreset, TwitchCategory } from '../shared/stream-info'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -155,7 +155,10 @@ const api = {
   // --- Stream info (title/category applied at go-live) ---
   streamInfo: {
     get: () => ipcRenderer.invoke('stream-info:get') as Promise<BroadcastStreamInfo>,
-    set: (info: BroadcastStreamInfo) => ipcRenderer.invoke('stream-info:set', info) as Promise<void>
+    set: (info: BroadcastStreamInfo) => ipcRenderer.invoke('stream-info:set', info) as Promise<void>,
+    getPresets: () => ipcRenderer.invoke('stream-info:get-presets') as Promise<StreamInfoPreset[]>,
+    setPresets: (presets: StreamInfoPreset[]) =>
+      ipcRenderer.invoke('stream-info:set-presets', presets) as Promise<void>
   },
 
   // --- Local event testing ---

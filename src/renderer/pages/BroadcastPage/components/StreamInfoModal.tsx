@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconSearch, IconX } from '@tabler/icons-react'
+import { IconBookmark, IconCheck, IconSearch, IconX } from '@tabler/icons-react'
 
 import { Modal } from '../../../components/ui/Modal'
 import { Select } from '../../../components/ui/Select'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import {
+  MAX_STREAM_INFO_PRESETS,
   YOUTUBE_CATEGORIES,
   type BroadcastStreamInfo,
-  type StreamCategory
+  type StreamCategory,
+  type StreamInfoPreset
 } from '../../../../shared/stream-info'
 import { formatIpcError } from '../utils/broadcast-page-utils'
 
@@ -40,6 +42,9 @@ export function StreamInfoModal({
   const [draft, setDraft] = useState<BroadcastStreamInfo>(value)
   const [applying, setApplying] = useState(false)
   const [kickUserConnected, setKickUserConnected] = useState(false)
+  const [presets, setPresets] = useState<StreamInfoPreset[]>([])
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [presetName, setPresetName] = useState('')
 
   const hasTwitch = platformIds.includes('twitch')
   const hasKick = platformIds.includes('kick')
@@ -49,6 +54,9 @@ export function StreamInfoModal({
     if (!open) return
     setDraft(value)
     setApplying(false)
+    setSavingPreset(false)
+    setPresetName('')
+    window.api.streamInfo.getPresets().then(setPresets).catch(() => setPresets([]))
   }, [open, value])
 
   useEffect(() => {
@@ -59,6 +67,35 @@ export function StreamInfoModal({
   }, [open, hasKick])
 
   const normalizedDraft = () => ({ ...draft, title: draft.title.trim() })
+
+  const persistPresets = (next: StreamInfoPreset[]) => {
+    setPresets(next)
+    void window.api.streamInfo.setPresets(next).catch((err: unknown) => {
+      console.warn('[StreamInfoModal] Failed to persist presets:', err)
+    })
+  }
+
+  const applyPreset = (preset: StreamInfoPreset) => {
+    setDraft(preset.info)
+  }
+
+  const deletePreset = (id: string) => {
+    persistPresets(presets.filter(preset => preset.id !== id))
+  }
+
+  const savePreset = () => {
+    const name = presetName.trim().slice(0, 60)
+    if (!name) return
+    const preset: StreamInfoPreset = { id: crypto.randomUUID(), name, info: normalizedDraft() }
+    // Same name replaces in place; new names append (capped by the shared limit).
+    const existingIndex = presets.findIndex(p => p.name.toLowerCase() === name.toLowerCase())
+    const next = existingIndex >= 0
+      ? presets.map((p, i) => (i === existingIndex ? { ...preset, id: p.id } : p))
+      : [...presets, preset].slice(0, MAX_STREAM_INFO_PRESETS)
+    persistPresets(next)
+    setSavingPreset(false)
+    setPresetName('')
+  }
 
   const save = () => {
     onSave(normalizedDraft())
@@ -92,6 +129,84 @@ export function StreamInfoModal({
   return (
     <Modal open={open} onClose={onClose} title="Stream info" className="max-w-lg">
       <div className="p-5 flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-[12px] font-medium tracking-tight text-white/40">Presets</label>
+            {!savingPreset && (
+              <button
+                onClick={() => { setSavingPreset(true); setPresetName(draft.title.trim().slice(0, 60)) }}
+                disabled={presets.length >= MAX_STREAM_INFO_PRESETS}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-white/35 hover:text-accent transition-colors disabled:opacity-30"
+              >
+                <IconBookmark size={12} /> Save as preset
+              </button>
+            )}
+          </div>
+          {savingPreset && (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={presetName}
+                maxLength={60}
+                autoFocus
+                onChange={(event) => setPresetName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') savePreset()
+                  if (event.key === 'Escape') { setSavingPreset(false); setPresetName('') }
+                }}
+                placeholder="Preset name — e.g. variety night"
+                className="h-9 flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-[12px] text-white placeholder:text-white/20 focus:border-accent/50 focus:outline-none transition-colors"
+              />
+              <button
+                onClick={savePreset}
+                disabled={!presetName.trim()}
+                className="h-9 w-9 shrink-0 grid place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-30"
+                title="Save preset"
+              >
+                <IconCheck size={14} />
+              </button>
+              <button
+                onClick={() => { setSavingPreset(false); setPresetName('') }}
+                className="h-9 w-9 shrink-0 grid place-items-center rounded-lg border border-white/10 bg-white/[0.03] text-white/40 hover:text-white transition-colors"
+                title="Cancel"
+              >
+                <IconX size={14} />
+              </button>
+            </div>
+          )}
+          {presets.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {presets.map((preset) => (
+                <span
+                  key={preset.id}
+                  className="group inline-flex items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.03] hover:border-accent/40 transition-colors"
+                >
+                  <button
+                    onClick={() => applyPreset(preset)}
+                    className="px-3 py-1.5 text-[11px] font-medium text-white/60 group-hover:text-white transition-colors"
+                    title={preset.info.title || preset.name}
+                  >
+                    {preset.name}
+                  </button>
+                  <button
+                    onClick={() => deletePreset(preset.id)}
+                    className="pr-2 pl-0.5 py-1.5 text-white/20 hover:text-danger transition-colors"
+                    title={`Delete "${preset.name}"`}
+                  >
+                    <IconX size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            !savingPreset && (
+              <p className="text-[11px] text-white/20">
+                Save the current title and categories as a one-click preset.
+              </p>
+            )
+          )}
+        </div>
+
         <div className="flex flex-col gap-2">
           <label className="text-[12px] font-medium tracking-tight text-white/40">Stream title</label>
           <input

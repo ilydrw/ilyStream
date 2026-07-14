@@ -20,7 +20,12 @@ import { initiateKickUserAuth, KICK_REDIRECT_URI, type KickUserTokens } from '..
 import { isKickUserConnected, searchKickCategories, updateKickStreamInfo } from '../../platforms/kick/kick-stream-info'
 import { searchTwitchCategories, updateTwitchStreamInfo } from '../../platforms/twitch/twitch-stream-info'
 import type { KickConfig, TikTokConfig, TwitchConfig } from '../../platforms/types'
-import { normalizeBroadcastStreamInfo, type BroadcastStreamInfo } from '../../../shared/stream-info'
+import {
+  normalizeBroadcastStreamInfo,
+  normalizeStreamInfoPresets,
+  type BroadcastStreamInfo,
+  type StreamInfoPreset
+} from '../../../shared/stream-info'
 import {
   DEFAULT_TIKTOK_AUTH_BRIDGE_URL,
   DEFAULT_TIKTOK_CLIENT_KEY,
@@ -185,6 +190,14 @@ export function registerPlatformHandlers(
 
   ipcMain.handle('stream-info:set', (_event, info: BroadcastStreamInfo) => {
     db.setSetting('broadcastStreamInfo', normalizeBroadcastStreamInfo(info))
+  })
+
+  ipcMain.handle('stream-info:get-presets', () => {
+    return normalizeStreamInfoPresets(db.getSetting('broadcastStreamInfoPresets'))
+  })
+
+  ipcMain.handle('stream-info:set-presets', (_event, presets: StreamInfoPreset[]) => {
+    db.setSetting('broadcastStreamInfoPresets', normalizeStreamInfoPresets(presets))
   })
 
   ipcMain.handle('twitch:search-categories', (_event, payload: { query: string }) => {
