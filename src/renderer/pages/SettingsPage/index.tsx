@@ -13,7 +13,12 @@ import {
 import { IconDeviceFloppy } from '../../components/ui/icons'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Toggle } from '../../components/ui/Inputs'
-import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../../../shared/app-settings'
+import {
+  DEFAULT_APP_SETTINGS,
+  getAppThemeLabel,
+  resolveAppSettings,
+  type AppSettings
+} from '../../../shared/app-settings'
 import type { OBSRuntimeStatus } from '../../../shared/obs'
 import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { applyAppAppearance } from '../../lib/app-appearance'
@@ -205,7 +210,7 @@ export default function SettingsPage() {
       />
 
       <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 mb-20">
-        <Metric icon={<IconPalette size={24} className="text-accent" />} label="Theme" value={settings.theme} />
+        <Metric icon={<IconPalette size={24} className="text-accent" />} label="Theme" value={getAppThemeLabel(settings.theme)} />
         <Metric icon={<IconDatabase size={24} className="text-success" />} label="Message Buffer" value={`${settings.chatMaxMessages}`} />
         <Metric icon={<IconWifi size={24} className="text-warning" />} label="OBS Remote" value={`${settings.obsHost}`} />
         <Metric icon={<IconMovie size={24} className="text-accent" />} label="Broadcast" value={`${settings.streamingWidth}x${settings.streamingHeight}`} />

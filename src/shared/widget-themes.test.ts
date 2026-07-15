@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyWidgetThemeConfig, getWidgetTheme } from './widget-themes'
+import { applyWidgetThemeConfig, getWidgetTheme, WIDGET_THEMES } from './widget-themes'
 
 describe('applyWidgetThemeConfig', () => {
   it('applies the Gob the Stopper palette to common and nested widget color fields', () => {
@@ -69,5 +69,10 @@ describe('applyWidgetThemeConfig', () => {
     expect(chroma.colors.primary).not.toBe(cyber.colors.primary)
     expect(chroma.colors.secondary).not.toBe(cyber.colors.secondary)
     expect(chroma.colors.border).not.toBe(cyber.colors.border)
+  })
+
+  it('does not expose the removed Classic preset and falls legacy ids back to Cyber', () => {
+    expect(WIDGET_THEMES.some((theme) => theme.id === ('classic' as string))).toBe(false)
+    expect(getWidgetTheme('classic').id).toBe('cyber')
   })
 })

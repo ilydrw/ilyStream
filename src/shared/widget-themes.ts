@@ -1,4 +1,4 @@
-export type WidgetThemeId = 'classic' | 'chroma' | 'cyber' | 'solid' | 'gob-the-stopper'
+export type WidgetThemeId = 'chroma' | 'cyber' | 'solid' | 'gob-the-stopper'
 export type WidgetThemeStyle = 'classic' | 'chroma' | 'cyber' | 'gob-the-stopper'
 export type WidgetThemeBorderType = 'solid' | 'chroma' | 'cyber' | 'gob-the-stopper'
 
@@ -23,23 +23,6 @@ export interface WidgetTheme {
 }
 
 export const WIDGET_THEMES: WidgetTheme[] = [
-  {
-    id: 'classic',
-    name: 'Classic',
-    description: 'Clean glass panels with warm ilyStream accent colors.',
-    style: 'classic',
-    borderType: 'solid',
-    colors: {
-      primary: '#FF7A45',
-      secondary: '#38BDF8',
-      accent: '#D035F1',
-      background: '#0B0D10',
-      surface: '#111318',
-      text: '#FFFFFF',
-      muted: '#94A3B8',
-      border: '#FF7A45'
-    }
-  },
   {
     id: 'chroma',
     name: 'Chroma',
@@ -160,8 +143,9 @@ function applyThemeToValue(value: unknown, theme: WidgetTheme): unknown {
   )
 }
 
-export function getWidgetTheme(themeId: WidgetThemeId): WidgetTheme {
-  return WIDGET_THEMES.find((theme) => theme.id === themeId) ?? WIDGET_THEMES[0]
+export function getWidgetTheme(themeId: string): WidgetTheme {
+  return WIDGET_THEMES.find((theme) => theme.id === themeId)
+    ?? WIDGET_THEMES.find((theme) => theme.id === 'cyber')!
 }
 
 export function applyWidgetThemeConfig(config: unknown, themeId: WidgetThemeId): Record<string, unknown> {

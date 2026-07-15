@@ -2,6 +2,26 @@ import { describe, expect, it, vi } from 'vitest'
 import { AlertManager } from './alert-manager'
 
 describe('AlertManager', () => {
+  it('converts viewer-controlled alert templates to safe text before broadcasting', () => {
+    const sse = { broadcast: vi.fn() }
+    const manager = new AlertManager(sse as any)
+
+    manager.pushAlert({
+      template: '<img src=x onerror="document.body.dataset.pwned=1">Viewer hit level 2!',
+      durationMs: 4200,
+      animationIn: 'zoom',
+      animationOut: 'fade'
+    }, 'all')
+
+    expect(manager.getHistory()[0].html).toBe('Viewer hit level 2!')
+    expect(sse.broadcast).toHaveBeenCalledWith(
+      'alerts',
+      expect.objectContaining({
+        payload: expect.objectContaining({ html: 'Viewer hit level 2!' })
+      })
+    )
+  })
+
   it('rewrites alert sound ids to overlay-served sound URLs', () => {
     const sse = { broadcast: vi.fn() }
     const manager = new AlertManager(sse as any)

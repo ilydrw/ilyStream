@@ -90,6 +90,45 @@
   transform: translateY(0.5px);
 }
 
+.app-segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+  background: var(--theme-surface);
+  padding: 4px;
+}
+
+.app-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.app-segment-btn:hover {
+  background: var(--theme-surface-hover);
+  color: var(--theme-text);
+}
+
+.app-segment-btn.is-active {
+  border-color: rgba(var(--accent-rgb), 0.32);
+  background: var(--theme-selection);
+  color: var(--theme-text);
+}
+
+.app-segment-btn.is-active svg {
+  color: var(--theme-accent);
+}
+
 .app-input, .app-textarea {
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--line);

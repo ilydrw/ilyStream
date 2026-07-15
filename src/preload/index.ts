@@ -73,8 +73,12 @@ const api = {
     getAll: () => ipcRenderer.invoke('widgets:get-all'),
     save: (widget: any) => ipcRenderer.invoke('widgets:save', widget),
     delete: (id: string) => ipcRenderer.invoke('widgets:delete', id),
-    renderPreview: (widget: any): Promise<string | null> =>
-      ipcRenderer.invoke('widgets:render-preview', widget)
+    createPreviewSession: (widgetId: string): Promise<string> =>
+      ipcRenderer.invoke('widgets:create-preview-session', widgetId),
+    releasePreviewSession: (previewToken: string): Promise<void> =>
+      ipcRenderer.invoke('widgets:release-preview-session', previewToken),
+    renderPreview: (widget: any, previewToken: string): Promise<string | null> =>
+      ipcRenderer.invoke('widgets:render-preview', widget, previewToken)
   },
 
   // --- Platform ---

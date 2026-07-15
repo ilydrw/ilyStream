@@ -4,10 +4,10 @@ import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 
 export function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-4 py-8 border-b border-white/[0.03] last:border-0 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-4 border-b border-border py-8 last:border-0 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0 md:pr-10">
-        <h4 className="text-sm font-semibold text-white mb-1">{label}</h4>
-        {hint && <p className="text-xs text-white/20 leading-relaxed">{hint}</p>}
+        <h4 className="mb-1 text-sm font-semibold text-foreground">{label}</h4>
+        {hint && <p className="text-xs leading-relaxed text-muted">{hint}</p>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
@@ -76,13 +76,13 @@ export function Metric({
   value: string
 }) {
   return (
-    <div className="app-section-card glass p-6 flex flex-col items-start gap-4 hover:bg-white/[0.02] transition-all group">
-      <div className="flex items-center justify-center text-white/20 group-hover:text-accent transition-all">
+    <div className="app-section-card glass group flex flex-col items-start gap-4 p-6 transition-all hover:!bg-[var(--theme-surface-hover)]">
+      <div className="flex items-center justify-center text-muted transition-all group-hover:text-accent">
         {icon}
       </div>
       <div>
-        <p className="text-[10px] font-medium tracking-normal text-white/30 mb-1">{label}</p>
-        <p className="text-xl font-semibold text-white tracking-tight">{value}</p>
+        <p className="mb-1 text-[10px] font-medium tracking-normal text-muted">{label}</p>
+        <p className="text-xl font-semibold tracking-tight text-foreground">{value}</p>
       </div>
     </div>
   )
@@ -91,8 +91,8 @@ export function Metric({
 export function RuntimeValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-xs font-medium">
-      <span className="text-white/20 tracking-tight">{label}</span>
-      <span className="text-white/60 font-mono truncate ml-4">{value}</span>
+      <span className="tracking-tight text-muted">{label}</span>
+      <span className="ml-4 truncate font-mono text-foreground">{value}</span>
     </div>
   )
 }

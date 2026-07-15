@@ -18,10 +18,19 @@ export function registerWidgetHandlers(
     }
   })
 
-  // Render a widget's preview HTML for the live editor. The renderer pushes the
-  // result into the iframe via postMessage so config changes apply without
-  // reloading the page.
-  ipcMain.handle('widgets:render-preview', (_event, widget) => {
-    return overlayServer.renderWidgetPreview(widget)
+  ipcMain.handle('widgets:create-preview-session', (_event, widgetId) => {
+    return overlayServer.createWidgetPreviewSession(String(widgetId || ''))
+  })
+  ipcMain.handle('widgets:release-preview-session', (_event, previewToken) => {
+    if (typeof previewToken === 'string') {
+      overlayServer.releaseWidgetPreviewSession(previewToken)
+    }
+  })
+
+  // Render a widget's preview HTML for the live editor. Both the IPC request
+  // and iframe protocol require the same main-process-issued capability.
+  ipcMain.handle('widgets:render-preview', (_event, widget, previewToken) => {
+    if (typeof previewToken !== 'string') return null
+    return overlayServer.renderWidgetPreview(widget, previewToken)
   })
 }

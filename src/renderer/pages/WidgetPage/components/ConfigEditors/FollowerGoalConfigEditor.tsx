@@ -153,7 +153,7 @@ export function FollowerGoalConfigEditor({
             label="Border style"
             value={config.style}
             options={[
-              { value: 'classic', label: 'Classic' },
+              { value: 'classic', label: 'Solid' },
               { value: 'chroma', label: 'Chroma' },
               { value: 'cyber', label: 'Cyber' },
               { value: 'gob-the-stopper', label: 'Gob' }

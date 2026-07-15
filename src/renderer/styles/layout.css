@@ -959,30 +959,30 @@
 
 .app-shell {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.024), transparent 120px),
-    linear-gradient(180deg, #17191d 0%, var(--bg-base) 42%, var(--bg-deep) 100%);
+    linear-gradient(180deg, rgba(var(--theme-text-rgb), 0.024), transparent 120px),
+    linear-gradient(180deg, var(--theme-sidebar) 0%, var(--theme-canvas) 42%, var(--theme-canvas-deep) 100%);
   color: var(--fg-1);
 }
 
 .app-shell::before {
   opacity: 0.18;
   background-image:
-    linear-gradient(rgba(232, 234, 237, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 234, 237, 0.035) 1px, transparent 1px);
+    linear-gradient(var(--line-hairline) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-hairline) 1px, transparent 1px);
   background-size: 32px 32px;
   mix-blend-mode: normal;
 }
 
 .app-main {
   background:
-    linear-gradient(90deg, rgba(25, 200, 255, 0.014), transparent 26%),
-    linear-gradient(270deg, rgba(208, 53, 241, 0.014), transparent 30%),
-    var(--bg-base);
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.026), transparent 26%),
+    linear-gradient(270deg, rgba(var(--theme-secondary-rgb), 0.024), transparent 30%),
+    var(--theme-canvas);
 }
 
 .app-topbar {
   border-bottom: 1px solid var(--line);
-  background: rgba(23, 25, 29, 0.96);
+  background: var(--theme-chrome);
   backdrop-filter: blur(18px) saturate(130%);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.045);
 }
@@ -1005,20 +1005,20 @@
 
 .app-topbar-version {
   border-color: var(--line-soft);
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--bg-elev);
   color: var(--fg-5);
 }
 
 .app-topbar-route {
   border-color: var(--line);
   border-radius: 8px;
-  background: #1d1f23;
+  background: var(--theme-surface);
   color: var(--fg-3);
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.14);
 }
 
 .app-topbar-route-icon {
-  background: rgba(25, 200, 255, 0.12);
+  background: var(--theme-accent-soft);
   color: var(--color-accent);
 }
 
@@ -1027,31 +1027,31 @@
 }
 
 .app-window-button:hover {
-  background: #24262b;
+  background: var(--theme-surface-hover);
   color: var(--fg-1);
 }
 
 .app-sidebar {
   border-right: 1px solid var(--line);
-  background: #17191d;
+  background: var(--theme-sidebar);
 }
 
 .app-sidebar-rail {
   border-right: 1px solid var(--line);
-  background: #17191d;
+  background: var(--theme-sidebar);
   backdrop-filter: none;
   box-shadow: none;
 }
 
 .app-sidebar-drawer {
   border-right: 1px solid var(--line);
-  background: #17191d;
+  background: var(--theme-sidebar);
   backdrop-filter: none;
 }
 
 .app-sidebar-brand {
   border-bottom: 1px solid var(--line-soft);
-  background: #17191d;
+  background: var(--theme-sidebar);
 }
 
 .app-sidebar-brand h1 {
@@ -1075,18 +1075,16 @@
 .app-rail-item:hover .app-rail-icon-wrapper,
 .app-drawer-item:hover {
   border-color: var(--line-soft);
-  background: #24262b;
+  background: var(--theme-surface-hover);
   color: var(--fg-1);
 }
 
 .app-rail-item.is-active .app-rail-icon-wrapper,
 .app-drawer-item.is-active {
-  border-color: rgba(25, 200, 255, 0.28);
-  background:
-    linear-gradient(90deg, rgba(25, 200, 255, 0.14), rgba(208, 53, 241, 0.08)),
-    #24262b;
+  border-color: rgba(var(--accent-rgb), 0.34);
+  background: var(--theme-selection);
   color: var(--fg-1);
-  box-shadow: 0 0 0 1px rgba(25, 200, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.08);
 }
 
 .app-drawer-item.is-active svg,
@@ -1126,9 +1124,7 @@
 .app-page-title-icon {
   border-color: var(--line);
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(25, 200, 255, 0.14), rgba(208, 53, 241, 0.10)),
-    #24262b;
+  background: var(--theme-selection);
   color: var(--color-accent);
   box-shadow: none;
 }
@@ -1141,10 +1137,10 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb,
 .custom-scrollbar-slim::-webkit-scrollbar-thumb {
-  background: rgba(232, 234, 237, 0.16);
+  background: var(--theme-scrollbar);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover,
 .custom-scrollbar-slim::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 234, 237, 0.28);
+  background: var(--theme-scrollbar-hover);
 }

@@ -1,23 +1,23 @@
 /* ============================================================
-   ilyStream Google Gray interface refresh
-   Imported last so shared page components, older TTS styles, and
-   utility-heavy screens settle into one neutral gray surface system.
+   ilyStream semantic workbench compatibility layer
+   Imported last so shared components and utility-heavy legacy screens
+   resolve through the active segmented theme palette.
    ============================================================ */
 
 :root {
-  --google-gray-bg: #141518;
-  --google-gray-shell: #17191d;
-  --google-gray-surface: #1d1f23;
-  --google-gray-surface-2: #24262b;
-  --google-gray-surface-3: #2c2f35;
-  --google-gray-line: #363a42;
-  --google-gray-line-soft: rgba(232, 234, 237, 0.1);
-  --google-gray-text: #f1f3f4;
-  --google-gray-muted: #bdc1c6;
-  --google-gray-subtle: #8f959d;
-  --icon-gradient-from: #d035f1;
-  --icon-gradient-via: #7a8cff;
-  --icon-gradient-to: #19c8ff;
+  --google-gray-bg: var(--theme-canvas);
+  --google-gray-shell: var(--theme-sidebar);
+  --google-gray-surface: var(--theme-surface);
+  --google-gray-surface-2: var(--theme-surface-raised);
+  --google-gray-surface-3: var(--theme-surface-hover);
+  --google-gray-line: var(--theme-border);
+  --google-gray-line-soft: var(--line-soft);
+  --google-gray-text: var(--theme-text);
+  --google-gray-muted: var(--theme-text-muted);
+  --google-gray-subtle: var(--theme-text-subtle);
+  --icon-gradient-from: var(--theme-secondary);
+  --icon-gradient-via: color-mix(in srgb, var(--theme-secondary), var(--theme-accent));
+  --icon-gradient-to: var(--theme-accent);
 }
 
 .tracking-tighter,
@@ -120,35 +120,34 @@
 }
 
 .pro-channel-button-row button.is-solo {
-  border-color: rgba(25, 200, 255, 0.42) !important;
+  border-color: rgba(var(--accent-rgb), 0.42) !important;
   background:
-    linear-gradient(180deg, rgba(25, 200, 255, 0.2), rgba(25, 200, 255, 0.1)),
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.1)),
     var(--google-gray-surface-2) !important;
   color: var(--color-accent) !important;
-  box-shadow: inset 0 0 0 1px rgba(25, 200, 255, 0.2) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.2) !important;
 }
 
 .app-input:focus,
 .app-textarea:focus,
 .app-select:focus,
 .tts-special-select:focus {
-  border-color: rgba(25, 200, 255, 0.62) !important;
-  background: #24262b !important;
-  box-shadow: 0 0 0 3px rgba(25, 200, 255, 0.12) !important;
+  border-color: rgba(var(--accent-rgb), 0.62) !important;
+  background: var(--theme-surface-hover) !important;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12) !important;
 }
 
 .app-input::placeholder,
 .app-textarea::placeholder {
-  color: #80868b !important;
+  color: var(--theme-text-subtle) !important;
 }
 
 .app-button-primary {
-  border: 1px solid rgba(25, 200, 255, 0.38) !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.38) !important;
   border-radius: 8px !important;
-  background:
-    linear-gradient(135deg, rgba(25, 200, 255, 0.94), rgba(208, 53, 241, 0.88)) !important;
-  color: #101114 !important;
-  box-shadow: 0 8px 20px rgba(25, 200, 255, 0.16), 0 8px 20px rgba(208, 53, 241, 0.10) !important;
+  background: var(--grad-brand) !important;
+  color: var(--theme-on-accent) !important;
+  box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.16), 0 8px 20px rgba(var(--theme-secondary-rgb), 0.1) !important;
   letter-spacing: 0 !important;
 }
 
@@ -163,15 +162,15 @@
 
 .app-rail-item:not(.is-active) svg:not([class^='brand-icon-']):not(.youtube-icon),
 .app-drawer-item:not(.is-active) svg:not([class^='brand-icon-']):not(.youtube-icon) {
-  stroke: #9aa0a6 !important;
-  color: #9aa0a6 !important;
+  stroke: var(--theme-text-subtle) !important;
+  color: var(--theme-text-subtle) !important;
   opacity: 0.88;
 }
 
 .app-rail-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon),
 .app-drawer-item.is-active svg:not([class^='brand-icon-']):not(.youtube-icon) {
   opacity: 1;
-  filter: drop-shadow(0 0 8px rgba(25, 200, 255, 0.18));
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.18));
 }
 
 .bg-accent,
@@ -180,7 +179,7 @@
 }
 
 .app-range {
-  background: #363a42 !important;
+  background: var(--theme-border) !important;
 }
 
 .app-setting-row,
@@ -211,11 +210,9 @@
 .tts-profile-card[data-active='true'],
 .broadcast-source-row.is-selected,
 .pro-channel-strip.is-selected {
-  border-color: rgba(25, 200, 255, 0.36) !important;
-  background:
-    linear-gradient(90deg, rgba(25, 200, 255, 0.12), rgba(208, 53, 241, 0.08)),
-    var(--google-gray-surface-2) !important;
-  box-shadow: 0 0 0 1px rgba(25, 200, 255, 0.08) !important;
+  border-color: rgba(var(--accent-rgb), 0.36) !important;
+  background: var(--theme-selection) !important;
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.08) !important;
 }
 
 .titlebar-no-drag[role="listbox"] {
@@ -236,9 +233,7 @@
 }
 
 .titlebar-no-drag[role="listbox"] [aria-selected="true"] {
-  background:
-    linear-gradient(90deg, rgba(25, 200, 255, 0.14), rgba(208, 53, 241, 0.08)),
-    var(--google-gray-surface-3) !important;
+  background: var(--theme-selection) !important;
   color: var(--google-gray-text) !important;
 }
 
@@ -272,22 +267,22 @@
 
 .shadow-\[0_0_18px_rgba\(var\(--accent-rgb\)\,0\.08\)\],
 .shadow-\[0_0_15px_rgba\(var\(--accent-rgb\)\,0\.5\)\] {
-  box-shadow: 0 0 0 1px rgba(25, 200, 255, 0.20), 0 8px 18px rgba(25, 200, 255, 0.08) !important;
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2), 0 8px 18px rgba(var(--accent-rgb), 0.08) !important;
 }
 
 .dashboard-hero-panel::after,
 .dashboard-metric-card::before {
-  background: linear-gradient(90deg, rgba(25, 200, 255, 0.36), rgba(208, 53, 241, 0.32)) !important;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.36), rgba(var(--theme-secondary-rgb), 0.32)) !important;
 }
 
 .pro-meter-bar,
 .pro-pan-input {
-  background: #141518 !important;
+  background: var(--theme-canvas) !important;
 }
 
 .pro-pan-knob {
   border-color: var(--google-gray-line) !important;
-  background: linear-gradient(180deg, #363a42, #141518) !important;
+  background: linear-gradient(180deg, var(--theme-border), var(--theme-canvas)) !important;
 }
 
 /* Navigation icon hardening */
@@ -667,14 +662,14 @@
 }
 
 .razer-theme-button:hover:not(:disabled) {
-  border-color: rgba(25, 200, 255, 0.36);
+  border-color: rgba(var(--accent-rgb), 0.36);
   background: var(--google-gray-surface-3);
   color: var(--google-gray-text);
 }
 
 .razer-theme-button.is-active {
   border-color: rgba(68, 214, 44, 0.36);
-  background: linear-gradient(90deg, rgba(68, 214, 44, 0.12), rgba(25, 200, 255, 0.06)), var(--google-gray-surface-2);
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.12), rgba(var(--accent-rgb), 0.06)), var(--google-gray-surface-2);
   color: var(--google-gray-text);
 }
 
@@ -837,7 +832,7 @@
 
 .razer-target.is-active {
   border-color: rgba(68, 214, 44, 0.28);
-  background: linear-gradient(90deg, rgba(68, 214, 44, 0.08), rgba(25, 200, 255, 0.045)), var(--google-gray-surface-2);
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.08), rgba(var(--accent-rgb), 0.045)), var(--google-gray-surface-2);
 }
 
 .razer-target.is-active > div,
@@ -877,16 +872,16 @@
   }
 }
 
-/* Dashboard hero keeps the product accent treatment even in gray mode. */
+/* Dashboard hero follows the active workbench accent pair. */
 .app-page.dashboard-pro .dashboard-hero-panel {
   position: relative;
   isolation: isolate;
-  border-color: rgba(25, 200, 255, 0.34) !important;
-  background: #1b1e24 !important;
+  border-color: rgba(var(--accent-rgb), 0.34) !important;
+  background: var(--theme-surface-raised) !important;
   box-shadow:
-    0 0 0 1px rgba(25, 200, 255, 0.08),
-    0 12px 30px rgba(25, 200, 255, 0.10),
-    0 12px 30px rgba(208, 53, 241, 0.08) !important;
+    0 0 0 1px rgba(var(--accent-rgb), 0.08),
+    0 12px 30px rgba(var(--accent-rgb), 0.1),
+    0 12px 30px rgba(var(--theme-secondary-rgb), 0.08) !important;
 }
 
 .app-page.dashboard-pro .dashboard-hero-panel::before {
@@ -896,9 +891,9 @@
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(115deg, rgba(25, 200, 255, 0.42) 0%, rgba(42, 83, 133, 0.34) 44%, rgba(208, 53, 241, 0.40) 100%),
-    radial-gradient(circle at 8% 18%, rgba(25, 200, 255, 0.24), transparent 42%),
-    radial-gradient(circle at 94% 10%, rgba(208, 53, 241, 0.22), transparent 38%);
+    linear-gradient(115deg, rgba(var(--accent-rgb), 0.42) 0%, rgba(var(--accent-rgb), 0.16) 44%, rgba(var(--theme-secondary-rgb), 0.4) 100%),
+    radial-gradient(circle at 8% 18%, rgba(var(--accent-rgb), 0.24), transparent 42%),
+    radial-gradient(circle at 94% 10%, rgba(var(--theme-secondary-rgb), 0.22), transparent 38%);
   pointer-events: none;
 }
 
@@ -912,10 +907,8 @@
 }
 
 .app-page.dashboard-pro .dashboard-chart-panel {
-  border-color: rgba(232, 234, 237, 0.10) !important;
-  background:
-    linear-gradient(180deg, rgba(20, 21, 24, 0.98), rgba(18, 19, 23, 0.96)),
-    var(--google-gray-bg) !important;
+  border-color: var(--line-soft) !important;
+  background: linear-gradient(180deg, var(--theme-surface), var(--theme-canvas)) !important;
 }
 
 .app-page.dashboard-pro .dashboard-metric-card {
@@ -934,8 +927,8 @@
   inset: 0;
   z-index: 0;
   background:
-    linear-gradient(135deg, rgba(25, 200, 255, 0.18), rgba(208, 53, 241, 0.16)),
-    radial-gradient(circle at 20% 0%, rgba(25, 200, 255, 0.16), transparent 42%);
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.18), rgba(var(--theme-secondary-rgb), 0.16)),
+    radial-gradient(circle at 20% 0%, rgba(var(--accent-rgb), 0.16), transparent 42%);
   opacity: 0;
   transition: opacity 140ms ease;
   pointer-events: none;
@@ -943,7 +936,7 @@
 
 .app-page.dashboard-pro .dashboard-metric-card:hover,
 .app-page.dashboard-pro .dashboard-metric-card:focus-within {
-  border-color: rgba(25, 200, 255, 0.38) !important;
+  border-color: rgba(var(--accent-rgb), 0.38) !important;
 }
 
 .app-page.dashboard-pro .dashboard-metric-card:hover::after,

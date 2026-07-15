@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createServer as createNetServer } from 'node:net'
 import { OverlayServer } from './overlay-server'
 import { DeviceApi } from './device-api'
 import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
@@ -19,29 +20,95 @@ afterEach(async () => {
 })
 
 describe('OverlayServer', () => {
-  it('serves preview pages with both the runtime and preview bootstraps', async () => {
+  it('requires a scoped preview session before serving the executable preview protocol', async () => {
     overlayServer = new OverlayServer()
     const status = await overlayServer.start(0)
     const base = `http://127.0.0.1:${status.port}`
 
-    // Preview requests (widget cards + editor modal iframes) need the overlay
-    // runtime so templates can hydrate demo state, AND the preview bootstrap
-    // so the editor can postMessage draft HTML into the iframe.
-    const preview = await (await fetch(`${base}/overlay/chat-unified?preview=1`)).text()
+    const staticPreview = await fetch(`${base}/overlay/chat-unified?preview=1`)
+    const staticPreviewHtml = await staticPreview.text()
+    expect(staticPreview.status).toBe(200)
+    expect(staticPreviewHtml).toContain('ilystream-overlay-runtime')
+    expect(staticPreviewHtml).not.toContain('ilystream-preview-bootstrap')
+
+    const invalidSession = await fetch(`${base}/overlay/chat-unified?preview=1&previewToken=attacker-selected`)
+    expect(invalidSession.status).toBe(403)
+
+    const previewToken = overlayServer.createWidgetPreviewSession('chat-unified')
+    const previewResponse = await fetch(
+      `${base}/overlay/chat-unified?preview=1&previewToken=${encodeURIComponent(previewToken)}`
+    )
+    const preview = await previewResponse.text()
+
+    expect(previewResponse.status).toBe(200)
+    expect(previewResponse.headers.get('referrer-policy')).toBe('no-referrer')
     expect(preview).toContain('ilystream-preview-bootstrap')
     expect(preview).toContain('ilystream-overlay-runtime')
+    expect(preview).toContain(JSON.stringify(previewToken))
+    expect(preview).toContain('event.source !== window.parent')
+    expect(preview).toContain('data.previewToken !== PREVIEW_TOKEN')
+
+    const wrongWidget = await fetch(
+      `${base}/overlay/screen-border?preview=1&previewToken=${encodeURIComponent(previewToken)}`
+    )
+    expect(wrongWidget.status).toBe(403)
 
     // Browser sources (OBS) get the runtime but not the editor protocol.
     const live = await (await fetch(`${base}/overlay/chat-unified`)).text()
     expect(live).toContain('ilystream-overlay-runtime')
     expect(live).not.toContain('ilystream-preview-bootstrap')
+
+    overlayServer.releaseWidgetPreviewSession(previewToken)
+    const releasedSession = await fetch(
+      `${base}/overlay/chat-unified?preview=1&previewToken=${encodeURIComponent(previewToken)}`
+    )
+    expect(releasedSession.status).toBe(403)
   })
 
-  it('binds the LAN when started with the paired-device opt-in', async () => {
+  it('keeps overlays on loopback when starting the isolated LAN device listener', async () => {
     overlayServer = new OverlayServer()
     const status = await overlayServer.start(0, { preferLan: true })
     expect(status.running).toBe(true)
-    expect(status.listenHost).toBe('0.0.0.0')
+    expect(status.listenHost).toBe('127.0.0.1')
+
+    const deviceBase = getLoopbackDeviceBase(status)
+    expect(deviceBase).not.toBe(`http://127.0.0.1:${status.port}`)
+
+    for (const pathname of ['/overlay/chat/state', '/overlay/chat', '/overlay/health', '/debug/server']) {
+      const response = await fetch(`${deviceBase}${pathname}`)
+      expect(response.status, pathname).toBe(404)
+    }
+  })
+
+  it('keeps the overlay online when the preferred companion port is occupied', async () => {
+    overlayServer = new OverlayServer()
+    overlayServer.setDeviceApi(new DeviceApi({} as any, {} as any, {} as any, () => undefined))
+    const localStatus = await overlayServer.start(0)
+    const overlayPort = localStatus.port!
+    const blockedDevicePort = overlayPort === 65535 ? 1024 : overlayPort + 1
+    const blocker = createNetServer()
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject)
+      blocker.listen(blockedDevicePort, '0.0.0.0', resolve)
+    })
+
+    try {
+      const deviceStatus = await overlayServer.ensureLanAccess()
+
+      expect(deviceStatus.running).toBe(true)
+      expect(deviceStatus.port).toBe(overlayPort)
+      expect(deviceStatus.devicePort).not.toBe(blockedDevicePort)
+      expect(deviceStatus.devicePort).not.toBe(overlayPort)
+
+      const overlayHealth = await fetch(`http://127.0.0.1:${overlayPort}/overlay/health`)
+      expect(overlayHealth.status).toBe(200)
+
+      const deviceHealth = await fetch(`${getLoopbackDeviceBase(deviceStatus)}/api/v1/health`)
+      expect(deviceHealth.status).toBe(200)
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()))
+    }
   })
 
   it('serves local overlay health and chat state endpoints', async () => {
@@ -54,8 +121,8 @@ describe('OverlayServer', () => {
     expect(status.healthUrl).toBeTruthy()
     expect(status.chatUrl).toBeTruthy()
     expect(status.goalsUrl).toBeTruthy()
-    expect(status.deviceHosts).toContain(`127.0.0.1:${status.port}`)
-    expect(status.devicePairUrl).toContain('/api/v1/pair/complete')
+    expect(status.deviceHosts).toEqual([])
+    expect(status.devicePairUrl).toBeNull()
 
     const healthResponse = await fetch(status.healthUrl!)
     const health = await healthResponse.json()
@@ -281,9 +348,10 @@ describe('OverlayServer', () => {
 
   it('allows DeskThing clients from a LAN origin to preflight the device API', async () => {
     overlayServer = new OverlayServer()
-    const status = await overlayServer.start(0)
+    const status = await overlayServer.start(0, { preferLan: true })
+    const deviceBase = getLoopbackDeviceBase(status)
 
-    const response = await fetch(`http://127.0.0.1:${status.port}/api/v1/pair/complete`, {
+    const response = await fetch(`${deviceBase}/api/v1/pair/complete`, {
       method: 'OPTIONS',
       headers: {
         Origin: 'http://192.168.1.42:5173',
@@ -297,7 +365,7 @@ describe('OverlayServer', () => {
     expect(response.headers.get('access-control-allow-headers')).toContain('Authorization')
   })
 
-  it('can restart a loopback-only server for DeskThing LAN pairing', async () => {
+  it('starts DeskThing LAN access without rebinding or interrupting the overlay listener', async () => {
     const originalHost = process.env.ILYSTREAM_OVERLAY_HOST
     process.env.ILYSTREAM_OVERLAY_HOST = '127.0.0.1'
 
@@ -305,19 +373,25 @@ describe('OverlayServer', () => {
       overlayServer = new OverlayServer()
       const loopbackStatus = await overlayServer.start(0)
       expect(loopbackStatus.listenHost).toBe('127.0.0.1')
-      expect(loopbackStatus.deviceHosts).toEqual([`127.0.0.1:${loopbackStatus.port}`])
+      expect(loopbackStatus.deviceHosts).toEqual([])
 
       const lanStatus = await overlayServer.ensureLanAccess()
-      expect(lanStatus.listenHost).toBe('0.0.0.0')
-      expect(lanStatus.deviceHosts).toContain(`127.0.0.1:${lanStatus.port}`)
+      expect(lanStatus.listenHost).toBe('127.0.0.1')
+      expect(lanStatus.port).toBe(loopbackStatus.port)
+
+      const deviceBase = getLoopbackDeviceBase(lanStatus)
+      expect(deviceBase).not.toBe(`http://127.0.0.1:${lanStatus.port}`)
 
       const healthResponse = await fetch(`http://127.0.0.1:${lanStatus.port}/overlay/health`)
       await expect(healthResponse.json()).resolves.toEqual(
         expect.objectContaining({
           running: true,
-          listenHost: '0.0.0.0'
+          listenHost: '127.0.0.1'
         })
       )
+
+      const blockedOverlayResponse = await fetch(`${deviceBase}/overlay/health`)
+      expect(blockedOverlayResponse.status).toBe(404)
     } finally {
       if (originalHost === undefined) {
         delete process.env.ILYSTREAM_OVERLAY_HOST
@@ -343,11 +417,12 @@ describe('OverlayServer', () => {
     const deviceApi = new DeviceApi({} as any, { getAllSounds: () => [] } as any, authService as any, () => undefined)
     overlayServer.setDeviceApi(deviceApi)
 
-    const status = await overlayServer.start(0)
+    const status = await overlayServer.start(0, { preferLan: true })
+    const deviceBase = getLoopbackDeviceBase(status)
     const pair = deviceApi.startPairCode()
     const origin = 'http://192.168.1.42:5173'
 
-    const pairResponse = await fetch(`http://127.0.0.1:${status.port}/api/v1/pair/complete`, {
+    const pairResponse = await fetch(`${deviceBase}/api/v1/pair/complete`, {
       method: 'POST',
       headers: {
         Origin: origin,
@@ -362,7 +437,7 @@ describe('OverlayServer', () => {
     expect(pairBody.token).toBe('desk-token')
 
     const eventsController = new AbortController()
-    const eventsResponse = await fetch(`http://127.0.0.1:${status.port}/api/v1/events?token=${pairBody.token}`, {
+    const eventsResponse = await fetch(`${deviceBase}/api/v1/events?token=${pairBody.token}`, {
       headers: { Origin: origin },
       signal: eventsController.signal
     })
@@ -475,6 +550,12 @@ describe('OverlayServer', () => {
     }))
   })
 })
+
+function getLoopbackDeviceBase(status: { deviceHosts?: string[] }): string {
+  const host = status.deviceHosts?.find((candidate) => candidate.startsWith('127.0.0.1:'))
+  if (!host) throw new Error('Expected an isolated loopback path to the device listener')
+  return `http://${host}`
+}
 
 function makeGiftEvent(isCombo: boolean): GiftEvent {
   return {

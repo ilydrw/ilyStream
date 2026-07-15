@@ -1,6 +1,4 @@
 import { Database } from '../db/database'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { PlatformManager } from '../platforms/platform-manager'
 import { SpotifyService } from '../spotify/spotify-service'
 import { XService } from '../x/x-service'
@@ -209,57 +207,12 @@ export class ServiceRegistry {
     if (this.initialized) return
     if (this.initializationPromise) return this.initializationPromise
 
-    // Kill any existing instances on our primary port before starting
-    await this.killZombieProcesses()
-
     this.initializationPromise = this.initializeCoreServices()
     try {
       await this.initializationPromise
       this.initialized = true
     } finally {
       this.initializationPromise = null
-    }
-  }
-
-  private async killZombieProcesses(): Promise<void> {
-    if (process.platform !== 'win32') return
-
-    const settings = resolveAppSettings(this.db.getAllSettings())
-    const configuredPort = Number(settings.overlay.port || 8899)
-    const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
-      ? configuredPort
-      : 8899
-    const execFileAsync = promisify(execFile)
-
-    try {
-      // Find the PID of whatever is listening on our port without shell interpolation.
-      const { stdout } = await execFileAsync('netstat', ['-ano'])
-      const lines = stdout.split('\n')
-      const pidsToKill = new Set<string>()
-
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/)
-        const localAddress = parts[1]
-        const state = parts[3]
-        const pid = parts[4]
-        if (parts.length >= 5 && localAddress.endsWith(`:${port}`) && state === 'LISTENING') {
-          const pidNumber = Number(pid)
-          if (pid && pid !== '0' && Number.isInteger(pidNumber) && pidNumber !== process.pid) {
-            pidsToKill.add(pid)
-          }
-        }
-      }
-
-      for (const pid of pidsToKill) {
-        try {
-          console.log(`[services] Killing zombie process ${pid} on port ${port}...`)
-          await execFileAsync('taskkill', ['/F', '/PID', pid])
-        } catch {
-          // Another row may have referenced a process that already exited.
-        }
-      }
-    } catch (err) {
-      // Netstat fails if no process is found, which is fine
     }
   }
 
@@ -295,10 +248,10 @@ export class ServiceRegistry {
     // Start OverlayServer first (critical for renderer)
     try {
       const port = settings.overlay.port || 8899;
-      // Only expose the server to the LAN at startup if the user has already
-      // paired a device — otherwise bind loopback (secure by default).
+      // Existing pairings start the isolated companion API listener. Browser-
+      // source routes remain on the local overlay listener.
       const preferLan = this.deviceApi.listPairedDevices().length > 0
-      console.log(`[services] Starting OverlayServer on port ${port}${preferLan ? ' (LAN — paired devices present)' : ' (loopback)'}...`)
+      console.log(`[services] Starting OverlayServer on port ${port}${preferLan ? ' with companion API' : ''}...`)
       await this.overlayServer.start(port, { preferLan })
       console.log('[services] OverlayServer ready.')
     } catch (err) {

@@ -52,7 +52,7 @@ export function OverlayHubSection({ settings, overlayStatus, onUpdate }: Overlay
                 <span className="text-white/25 font-semibold">Server origin</span>
                 <span className="font-mono text-white/55 truncate">
                   {overlayStatus?.running && overlayStatus.port
-                    ? `http://${overlayStatus.deviceHost || `127.0.0.1:${overlayStatus.port}`}`
+                    ? `http://127.0.0.1:${overlayStatus.port}`
                     : `http://127.0.0.1:${settings.overlay.port}`}
                 </span>
               </div>

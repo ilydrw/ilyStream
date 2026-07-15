@@ -7,6 +7,31 @@
 :root {
   color-scheme: dark;
 
+  /* Runtime themes replace these segmented workbench defaults inline. */
+  --theme-canvas: #05070d;
+  --theme-canvas-deep: #020308;
+  --theme-chrome: #080b13;
+  --theme-sidebar: #090d17;
+  --theme-surface: #0d1321;
+  --theme-surface-raised: #121a2b;
+  --theme-surface-hover: #19243a;
+  --theme-border: #253557;
+  --theme-border-strong: #365179;
+  --theme-text: #f5f8ff;
+  --theme-text-rgb: 245, 248, 255;
+  --theme-text-muted: #9aabd0;
+  --theme-text-subtle: #65769d;
+  --theme-accent: #19c8ff;
+  --theme-accent-rgb: 25, 200, 255;
+  --theme-secondary: #d035f1;
+  --theme-secondary-rgb: 208, 53, 241;
+  --theme-on-accent: #111827;
+  --theme-selection: linear-gradient(90deg, rgba(25, 200, 255, 0.15), rgba(208, 53, 241, 0.09)), #121a2b;
+  --theme-accent-soft: rgba(25, 200, 255, 0.13);
+  --theme-secondary-soft: rgba(208, 53, 241, 0.09);
+  --theme-scrollbar: rgba(245, 248, 255, 0.17);
+  --theme-scrollbar-hover: rgba(245, 248, 255, 0.29);
+
   /* ---------- Brand Gradient ---------- */
   --grad-brand:        linear-gradient(135deg, #19C8FF 0%, #D035F1 100%);
   --grad-brand-soft:   linear-gradient(135deg, rgba(25,200,255,0.16) 0%, rgba(208,53,241,0.10) 100%);
@@ -398,6 +423,6 @@ html[data-density="compact"] {
 }
 
 ::selection {
-  background: rgba(25, 200, 255, 0.28);
-  color: #f8fbff;
+  background: rgba(var(--accent-rgb), 0.28);
+  color: var(--theme-text);
 }
