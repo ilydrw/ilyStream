@@ -162,8 +162,8 @@ body {
 }
 
 option {
-  background: #1d1f23;
-  color: #f1f3f4;
+  background: var(--theme-surface);
+  color: var(--theme-text);
 }
 
 #root {
@@ -181,12 +181,12 @@ option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(232, 234, 237, 0.16);
+  background: var(--theme-scrollbar);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 234, 237, 0.28);
+  background: var(--theme-scrollbar-hover);
 }
 
 .titlebar-drag {

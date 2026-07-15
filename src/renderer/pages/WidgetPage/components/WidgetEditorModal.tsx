@@ -28,6 +28,7 @@ export function WidgetEditorModal({
 }) {
   const [draft, setDraft] = useState<Widget>(widget)
   const [previewOverride, setPreviewOverride] = useState<Widget | null>(null)
+  const [previewSessionToken, setPreviewSessionToken] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Iframe identity. Bumping this remounts the iframe (full reload — used for
   // the Refresh button and after Save in case the saved state diverged).
@@ -47,35 +48,77 @@ export function WidgetEditorModal({
     viewportStyle: previewViewportStyle
   } = usePreviewViewportScale(previewFrame)
 
+  useEffect(() => {
+    let disposed = false
+    let issuedToken: string | null = null
+
+    setPreviewSessionToken(null)
+    iframeReadyRef.current = false
+    pendingWidgetRef.current = null
+    renderRequestSeqRef.current += 1
+
+    if (!overlayPort) return
+
+    void window.api.widgets.createPreviewSession(widget.id)
+      .then((previewToken) => {
+        issuedToken = previewToken
+        if (disposed) {
+          void window.api.widgets.releasePreviewSession(previewToken).catch(() => {})
+          return
+        }
+        setPreviewSessionToken(previewToken)
+      })
+      .catch((err) => {
+        if (!disposed) console.error('Failed to create widget preview session', err)
+      })
+
+    return () => {
+      disposed = true
+      iframeReadyRef.current = false
+      pendingWidgetRef.current = null
+      renderRequestSeqRef.current += 1
+      if (issuedToken) {
+        void window.api.widgets.releasePreviewSession(issuedToken).catch(() => {})
+      }
+    }
+  }, [widget.id, overlayPort])
+
   // URL is stable for the lifetime of this widget+port pairing. The iframe
   // only reloads when the user explicitly hits Refresh (which bumps iframeKey).
   const previewUrl = useMemo(
-    () => buildWidgetPreviewUrl(previewWidget, overlayPort),
-    [previewWidget.id, overlayPort]
+    () => buildWidgetPreviewUrl(previewWidget, overlayPort, previewSessionToken),
+    [previewWidget.id, overlayPort, previewSessionToken]
+  )
+  const previewOrigin = useMemo(
+    () => previewUrl ? new URL(previewUrl).origin : null,
+    [previewUrl]
   )
 
   const renderAndPostPreviewHtml = useCallback(async (
     target: Widget,
     shouldPost: () => boolean = () => true
   ) => {
-    if (!iframeReadyRef.current) return
+    if (!iframeReadyRef.current || !previewSessionToken || !previewOrigin) return
     const iframe = iframeRef.current
     if (!iframe || !iframe.contentWindow) return
 
     const requestSeq = ++renderRequestSeqRef.current
 
     try {
-      const html = await window.api.widgets.renderPreview(target)
+      const html = await window.api.widgets.renderPreview(target, previewSessionToken)
       if (!html) return
       if (requestSeq !== renderRequestSeqRef.current) return
       if (!shouldPost()) return
       const currentIframe = iframeRef.current
       if (currentIframe !== iframe || !currentIframe.contentWindow) return
-      currentIframe.contentWindow.postMessage({ type: PREVIEW_HTML_MSG, html }, '*')
+      currentIframe.contentWindow.postMessage(
+        { type: PREVIEW_HTML_MSG, html, previewToken: previewSessionToken },
+        previewOrigin
+      )
     } catch (err) {
       console.error('Failed to render widget preview', err)
     }
-  }, [])
+  }, [previewOrigin, previewSessionToken])
 
   // Push the current draft into the iframe. Throttled to coalesce typing bursts.
   // Always render full draft HTML so the preview is an exact pre-Apply view,
@@ -125,14 +168,17 @@ export function WidgetEditorModal({
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return
-      if (event.data?.type === PREVIEW_READY_MSG) {
-        iframeReadyRef.current = true
-        void renderAndPostPreviewHtml(previewWidget)
-      }
+      if (!previewSessionToken || !previewOrigin) return
+      if (event.origin !== previewOrigin) return
+      if (event.data?.previewToken !== previewSessionToken) return
+      if (event.data?.type !== PREVIEW_READY_MSG) return
+
+      iframeReadyRef.current = true
+      void renderAndPostPreviewHtml(previewWidget)
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [renderAndPostPreviewHtml, previewWidget])
+  }, [previewOrigin, previewSessionToken, renderAndPostPreviewHtml, previewWidget])
 
   // Push fresh HTML when anything the overlay HTML depends on changes. We
   // deliberately key off (type, config) rather than the widget object so
@@ -189,7 +235,8 @@ export function WidgetEditorModal({
     <Modal
       open={true}
       onClose={onClose}
-      className="max-w-6xl h-[90vh]"
+      className="max-w-6xl h-[90vh] min-h-0"
+      noScroll
       headerActions={
         <div className="flex items-center gap-3">
           <input
@@ -205,9 +252,9 @@ export function WidgetEditorModal({
         </div>
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] h-full">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:grid-rows-1">
         {/* Config */}
-        <div className="border-r border-white/5 overflow-y-auto custom-scrollbar p-8 bg-black/20">
+        <div className="min-w-0 overflow-x-hidden overflow-y-auto border-r border-white/5 bg-black/20 p-6 custom-scrollbar">
           <div className="mb-8">
             <WidgetThemeSection draft={draft} onChange={handleDraftChange} />
           </div>
@@ -255,6 +302,7 @@ export function WidgetEditorModal({
                     ref={iframeRef}
                     src={previewUrl}
                     title="Widget preview"
+                    referrerPolicy="no-referrer"
                     className="absolute left-0 top-0"
                     style={{
                       ...previewViewportStyle,
@@ -277,8 +325,14 @@ export function WidgetEditorModal({
                 <div className="w-16 h-16 rounded-lg bg-white/[0.03] border border-white/5 flex items-center justify-center text-white/10 mb-2">
                   <IconRefresh size={32} />
                 </div>
-                <div className="text-sm font-semibold text-white/30">Overlay Server Offline</div>
-                <div className="text-xs text-white/10 max-w-[200px]">Start the server from Settings to enable live preview.</div>
+                <div className="text-sm font-semibold text-white/30">
+                  {overlayPort ? 'Preparing secure preview…' : 'Overlay Server Offline'}
+                </div>
+                <div className="text-xs text-white/10 max-w-[200px]">
+                  {overlayPort
+                    ? 'Creating an isolated editor session.'
+                    : 'Start the server from Settings to enable live preview.'}
+                </div>
               </div>
             )}
           </div>

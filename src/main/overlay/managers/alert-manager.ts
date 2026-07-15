@@ -4,6 +4,8 @@ import { ALERT_HISTORY_LIMIT } from '../types'
 import type { SSEManager } from '../sse-manager'
 import { EventEmitter } from 'events'
 
+type OverlayAlertPayload = Parameters<typeof createOverlayAlertItem>[0]
+
 export class AlertManager extends EventEmitter {
   private history: OverlayAlertItem[] = []
   private sse: SSEManager
@@ -17,7 +19,7 @@ export class AlertManager extends EventEmitter {
     return this.history
   }
 
-  pushAlert(payload: Partial<OverlayAlertItem>, platform: string): void {
+  pushAlert(payload: Partial<OverlayAlertPayload>, platform: string): void {
     const finalPayload = { ...payload }
 
     if (finalPayload.audioUrl && !finalPayload.audioUrl.startsWith('http') && !finalPayload.audioUrl.startsWith('data:')) {

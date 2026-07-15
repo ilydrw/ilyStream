@@ -12,8 +12,6 @@ import { buildWidgetOverlayUrl, createWidgetFromTemplate } from './widget-custom
 interface OverlayStatusSnapshot {
   port: number | null
   running: boolean
-  deviceHost?: string | null
-  deviceHosts?: string[]
 }
 
 export default function WidgetPage() {
@@ -23,7 +21,6 @@ export default function WidgetPage() {
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [overlayPort, setOverlayPort] = useState<number | null>(null)
-  const [overlayHost, setOverlayHost] = useState<string | null>(null)
   const [overlayRunning, setOverlayRunning] = useState(false)
 
   useEffect(() => {
@@ -54,8 +51,6 @@ export default function WidgetPage() {
       const status = (await window.api.overlay.getStatus()) as {
         port: number | null
         running: boolean
-        deviceHost?: string | null
-        deviceHosts?: string[]
       }
       applyOverlayStatus(status)
     } catch (error) {
@@ -65,7 +60,6 @@ export default function WidgetPage() {
 
   const applyOverlayStatus = (status: OverlayStatusSnapshot) => {
     setOverlayPort(status.port ?? null)
-    setOverlayHost(status.deviceHost || status.deviceHosts?.[0] || null)
     setOverlayRunning(Boolean(status.running))
   }
 
@@ -123,7 +117,7 @@ export default function WidgetPage() {
   }
 
   const overlayUrlFor = (id: string) => {
-    return buildWidgetOverlayUrl(id, overlayPort, overlayHost)
+    return buildWidgetOverlayUrl(id, overlayPort)
   }
 
   const copyUrl = async (id: string) => {
@@ -148,7 +142,7 @@ export default function WidgetPage() {
         description="Create browser-source graphics that stay wired to live events, chat, Spotify, stats, and the overlay server."
         actions={
           <>
-          <OverlayStatusPill running={overlayRunning} port={overlayPort} host={overlayHost} />
+          <OverlayStatusPill running={overlayRunning} port={overlayPort} />
           <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-semibold">
             <IconPlus size={16} className="mr-2" />
             New Widget
@@ -166,7 +160,7 @@ export default function WidgetPage() {
         <div className="widget-command-strip__stat">
           <IconDeviceDesktop size={18} />
           <span>Overlay server</span>
-          <strong>{overlayRunning && overlayPort ? (overlayHost || `127.0.0.1:${overlayPort}`) : 'Offline'}</strong>
+          <strong>{overlayRunning && overlayPort ? `127.0.0.1:${overlayPort}` : 'Offline'}</strong>
         </div>
       </section>
 
@@ -243,13 +237,13 @@ async function copyText(value: string): Promise<void> {
   if (!copied) throw new Error('Clipboard copy was rejected')
 }
 
-function OverlayStatusPill({ running, port, host }: { running: boolean; port: number | null; host: string | null }) {
+function OverlayStatusPill({ running, port }: { running: boolean; port: number | null }) {
   return (
     <div
       className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-semibold ${ running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40' }`}
     >
       <span className={`h-2 w-2 rounded-full ${running ? 'bg-success' : 'bg-white/30'}`} />
-      {running && port ? (host || `127.0.0.1:${port}`) : 'Overlay server offline'}
+      {running && port ? `127.0.0.1:${port}` : 'Overlay server offline'}
     </div>
   )
 }

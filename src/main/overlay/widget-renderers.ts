@@ -263,8 +263,12 @@ function escapeHtml(value: string): string {
 //     Sent when the iframe receives a `preview-config` but has no
 //     `__ilystreamApplyConfig` to handle it. Parent should switch to the
 //     HTML-swap path for this iframe.
-const PREVIEW_BOOTSTRAP_SCRIPT = `<script id="ilystream-preview-bootstrap">
+function buildPreviewBootstrapScript(previewToken: string): string {
+  const serializedToken = JSON.stringify(previewToken)
+  return `<script id="ilystream-preview-bootstrap">
 (function(){
+  var PREVIEW_TOKEN=${serializedToken};
+  var trustedParentOrigin=null;
   var APPLY_HTML='ilystream:preview-html';
   var APPLY_CONFIG='ilystream:preview-config';
   var READY='ilystream:preview-ready';
@@ -316,12 +320,16 @@ const PREVIEW_BOOTSTRAP_SCRIPT = `<script id="ilystream-preview-bootstrap">
   function postToParent(message){
     var p = window.parent;
     if (p && p !== window) {
+      message.previewToken = PREVIEW_TOKEN;
       try { p.postMessage(message, '*'); } catch (e) {}
     }
   }
   window.addEventListener('message', function(event){
+    if (event.source !== window.parent) return;
     var data = event && event.data;
-    if (!data) return;
+    if (!data || data.previewToken !== PREVIEW_TOKEN) return;
+    if (trustedParentOrigin === null) trustedParentOrigin = event.origin;
+    if (event.origin !== trustedParentOrigin) return;
     if (data.type === APPLY_HTML && typeof data.html === 'string') {
       applyHtml(data.html);
       return;
@@ -340,6 +348,7 @@ const PREVIEW_BOOTSTRAP_SCRIPT = `<script id="ilystream-preview-bootstrap">
   }
 })();
 </script>`
+}
 
 const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime">
 (function(){
@@ -517,11 +526,12 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
  * Inserted just before `</head>` so it runs before any body scripts. If there
  * is no `</head>` the script is prepended so it still runs first.
  */
-export function injectPreviewBootstrap(html: string): string {
+export function injectPreviewBootstrap(html: string, previewToken: string): string {
   if (!html) return html
+  const previewBootstrapScript = buildPreviewBootstrapScript(previewToken)
   const idx = html.toLowerCase().indexOf('</head>')
-  if (idx === -1) return PREVIEW_BOOTSTRAP_SCRIPT + html
-  return html.slice(0, idx) + PREVIEW_BOOTSTRAP_SCRIPT + html.slice(idx)
+  if (idx === -1) return previewBootstrapScript + html
+  return html.slice(0, idx) + previewBootstrapScript + html.slice(idx)
 }
 
 /**
@@ -541,8 +551,12 @@ export function injectOverlayRuntimeBootstrap(html: string): string {
  * Render a widget's preview HTML with the bootstrap pre-injected. Returns
  * `null` if the widget type has no renderer (matches `generateOverlayHtml`).
  */
-export function renderWidgetPreviewHtml(widget: Widget, context: OverlayRendererContext): string | null {
+export function renderWidgetPreviewHtml(
+  widget: Widget,
+  context: OverlayRendererContext,
+  previewToken: string
+): string | null {
   const html = generateOverlayHtml(widget, true, context)
   if (!html) return null
-  return injectPreviewBootstrap(html)
+  return injectPreviewBootstrap(html, previewToken)
 }

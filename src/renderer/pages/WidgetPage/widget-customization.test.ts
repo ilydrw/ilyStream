@@ -48,17 +48,22 @@ describe('widget customization helpers', () => {
       id: 'preview-widget',
       config: { aspectRatio: 'tiktok', title: 'Hi moon' }
     } as Widget
-    const url = buildWidgetPreviewUrl(widget, 4211)
+    const url = buildWidgetPreviewUrl(widget, 4211, 'preview-session-token')
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.pathname).toBe('/overlay/preview-widget')
     expect(parsed.searchParams.get('preview')).toBe('1')
+    expect(parsed.searchParams.get('previewToken')).toBe('preview-session-token')
     expect(parsed.searchParams.get('config')).toBeNull()
   })
 
   it('returns null when the overlay server is offline', () => {
-    expect(buildWidgetPreviewUrl({ id: 'whatever' }, null)).toBeNull()
+    expect(buildWidgetPreviewUrl({ id: 'whatever' }, null, 'preview-session-token')).toBeNull()
+  })
+
+  it('returns null until a trusted preview session is available', () => {
+    expect(buildWidgetPreviewUrl({ id: 'whatever' }, 4211, null)).toBeNull()
   })
 
   it('honors explicit aspect-ratio overrides in config', () => {

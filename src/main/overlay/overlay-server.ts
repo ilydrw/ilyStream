@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { EventEmitter } from 'events'
 import { networkInterfaces } from 'os'
 import type { AnyStreamEvent } from '../platforms/types'
@@ -19,12 +19,13 @@ import { shouldBroadcastParticleEvent } from './overlay-payloads'
 import { renderWidgetPreviewHtml } from './widget-renderers'
 import type { Widget } from '../../shared/widgets'
 
-// Secure by default: bind to loopback so the overlay/state/deck/device endpoints
-// are NOT exposed to the whole LAN unless the user opts in. LAN access is enabled
-// explicitly when a device is paired (ensureLanAccess) or, at startup, when paired
-// devices already exist (see ServiceRegistry). Power users can still override via
-// ILYSTREAM_OVERLAY_HOST.
+// Browser-source routes stay on their local listener. Companion pairing starts a
+// separate deny-by-default listener that admits only the device API namespace.
+// Power users can still explicitly override the local listener through
+// ILYSTREAM_OVERLAY_HOST; pairing itself never widens that listener.
 const DEFAULT_LISTEN_HOST = '127.0.0.1'
+const DEVICE_LISTEN_HOST = '0.0.0.0'
+const DEVICE_PORT_SEARCH_LIMIT = 20
 const ALLOWED_LISTEN_HOSTS = new Set(['0.0.0.0', '127.0.0.1', 'localhost', '::1', '::'])
 
 function resolveListenHost(): string {
@@ -69,16 +70,23 @@ function isVirtualNetworkInterface(name: string): boolean {
   return /\b(vmware|virtualbox|vbox|hyper-v|vethernet|docker|wsl|loopback)\b/i.test(name)
 }
 
-function isWildcardHost(host: string): boolean {
-  return host === '0.0.0.0' || host === '::'
-}
-
-function isLoopbackHost(host: string): boolean {
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
-}
-
 function formatHostPort(host: string, port: number): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]:${port}` : `${host}:${port}`
+}
+
+function getDevicePortCandidates(overlayPort: number): number[] {
+  const candidates: number[] = []
+  let offset = 1
+
+  while (candidates.length < DEVICE_PORT_SEARCH_LIMIT) {
+    let candidate = overlayPort + offset
+    if (candidate > 65535) candidate = 1024 + (candidate - 65536)
+    offset += 1
+    if (candidate === overlayPort || candidates.includes(candidate)) continue
+    candidates.push(candidate)
+  }
+
+  return candidates
 }
 
 export class OverlayServer extends EventEmitter {
@@ -92,8 +100,10 @@ export class OverlayServer extends EventEmitter {
   private statsService: any | null = null
   private economyService: any | null = null
   private server: Server | null = null
+  private deviceServer: Server | null = null
+  private devicePort: number | null = null
   private listenHost = DEFAULT_LISTEN_HOST
-  private forceLanBinding = false
+  private deviceLanEnabled = false
 
   private sse: SSEManager
   private router: OverlayRouter
@@ -108,6 +118,9 @@ export class OverlayServer extends EventEmitter {
     port: null,
     requestedPort: null,
     listenHost: null,
+    devicePort: null,
+    deviceListenHost: null,
+    deviceLastError: null,
     deviceHost: null,
     deviceHosts: [],
     devicePairUrl: null,
@@ -187,16 +200,37 @@ export class OverlayServer extends EventEmitter {
   setEconomyService(economyService: any): void { this.economyService = economyService }
 
   async ensureLanAccess(): Promise<OverlayRuntimeStatus> {
-    this.forceLanBinding = true
+    this.deviceLanEnabled = true
     const port = this.status.port || this.status.requestedPort || DEFAULT_PORT
 
-    if (this.status.running && isWildcardHost(this.listenHost)) {
+    if (this.status.running && this.deviceServer) {
       return this.getStatus()
     }
 
     return this.enqueue(async () => {
-      await this.stopInternal()
-      await this.startInternal(port)
+      if (!this.status.running) {
+        await this.startInternal(port)
+      } else if (!this.deviceServer) {
+        try {
+          await this.startDeviceServer(this.status.port || port)
+          this.status.deviceLastError = null
+          this.updateDeviceStatus()
+          this.emit('status', this.getStatus())
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          this.status.deviceLastError = message
+          this.updateDeviceStatus()
+          this.emit('status', this.getStatus())
+          throw error
+        }
+      }
+
+      if (!this.status.running) {
+        throw new Error(this.status.lastError || 'Overlay server is unavailable')
+      }
+      if (!this.deviceServer) {
+        throw new Error(this.status.deviceLastError || 'Device API listener is unavailable')
+      }
       return this.getStatus()
     })
   }
@@ -220,26 +254,34 @@ export class OverlayServer extends EventEmitter {
 
   getGoalState() { return this.goals.getState() }
 
+  createWidgetPreviewSession(widgetId: string): string {
+    return this.router.createWidgetPreviewSession(widgetId)
+  }
+
+  releaseWidgetPreviewSession(previewToken: string): void {
+    this.router.releaseWidgetPreviewSession(previewToken)
+  }
+
   /**
-   * Render a widget's preview HTML (with the preview-bootstrap script injected)
-   * using the same context the HTTP overlay route uses. The renderer-side
-   * WidgetEditorModal pushes the result over postMessage to the live iframe,
-   * which lets config tweaks apply in-place without reloading the page.
+   * Render capability-bound preview HTML using the same context as the HTTP
+   * overlay route. The session is scoped to the widget so a renderer cannot
+   * reuse a token to render or control a different preview.
    */
-  renderWidgetPreview(widget: Widget): string | null {
+  renderWidgetPreview(widget: Widget, previewToken: string): string | null {
+    if (!this.router.validateWidgetPreviewSession(previewToken, widget.id)) return null
+
     return renderWidgetPreviewHtml(widget, {
       settings: this.db?.getAllSettings() || {},
       boardSounds: this.soundboardService?.getAllSounds('board') || [],
       deckActions: this.db?.getAllDeckActions() || []
-    })
+    }, previewToken)
   }
 
   start(port: number = DEFAULT_PORT, options?: { preferLan?: boolean }): Promise<OverlayRuntimeStatus> {
     return this.enqueue(async () => {
-      // Persisted LAN opt-in: if the user already has paired devices, keep LAN
-      // binding across restarts (otherwise DeskThing/Car Thing would be unable to
-      // reach the server after every launch until re-paired).
-      if (options?.preferLan) this.forceLanBinding = true
+      // Persisted pairing starts the companion listener across app restarts;
+      // the browser-source listener remains unchanged.
+      if (options?.preferLan) this.deviceLanEnabled = true
       await this.startInternal(port)
       return this.getStatus()
     })
@@ -424,7 +466,7 @@ export class OverlayServer extends EventEmitter {
   private async startInternal(port: number): Promise<void> {
     this.status.requestedPort = port
     try {
-      this.listenHost = this.forceLanBinding ? '0.0.0.0' : resolveListenHost()
+      this.listenHost = resolveListenHost()
       this.server = createServer((req, res) => this.router.handleRequest(req, res))
       await new Promise<void>((resolve, reject) => {
         this.server?.listen(port, this.listenHost, () => resolve())
@@ -432,16 +474,26 @@ export class OverlayServer extends EventEmitter {
       })
       const addr = this.server?.address()
       const actualPort = typeof addr === 'object' && addr ? addr.port : port
+
+      if (this.deviceLanEnabled) {
+        try {
+          await this.startDeviceServer(actualPort)
+          this.status.deviceLastError = null
+        } catch (error) {
+          this.status.deviceLastError = error instanceof Error ? error.message : String(error)
+          console.error('[OverlayServer] Device API listener failed:', error)
+        }
+      }
+
       this.markRunning(actualPort)
       this.sse.startPingLoop()
     } catch (error: any) {
-      this.status.running = false
-      this.status.listenHost = null
-      this.status.deviceHost = null
-      this.status.deviceHosts = []
-      this.status.devicePairUrl = null
-      this.status.devicePairUrls = []
-      this.status.lastError = error.message
+      if (!this.server?.listening) {
+        this.status.running = false
+        this.status.listenHost = null
+        this.status.lastError = error.message
+      }
+      this.updateDeviceStatus()
     }
     this.emit('status', this.getStatus())
   }
@@ -449,6 +501,13 @@ export class OverlayServer extends EventEmitter {
   private async stopInternal(): Promise<void> {
     this.sse.closeAll()
     this.router.closeAllClients()
+    this.deviceApi?.closeAllClients?.()
+    if (this.deviceServer) {
+      const deviceServer = this.deviceServer
+      this.deviceServer = null
+      await new Promise<void>((resolve) => deviceServer.close(() => resolve()))
+    }
+    this.devicePort = null
     if (this.server) {
       const s = this.server
       this.server = null
@@ -456,28 +515,19 @@ export class OverlayServer extends EventEmitter {
     }
     this.status.running = false
     this.status.listenHost = null
-    this.status.deviceHost = null
-    this.status.deviceHosts = []
-    this.status.devicePairUrl = null
-    this.status.devicePairUrls = []
+    this.updateDeviceStatus()
     this.emit('status', this.getStatus())
   }
 
   private markRunning(port: number): void {
-    const deviceHosts = this.getReachableDeviceHosts(port)
-    const devicePairUrls = deviceHosts.map((host) => `http://${host}/api/v1/pair/complete`)
-
     this.status.running = true
     this.status.port = port
     this.status.listenHost = this.listenHost
-    this.status.deviceHost = deviceHosts[0] || null
-    this.status.deviceHosts = deviceHosts
-    this.status.devicePairUrl = devicePairUrls[0] || null
-    this.status.devicePairUrls = devicePairUrls
+    this.status.lastError = null
+    this.updateDeviceStatus()
     this.status.startedAt = this.status.startedAt || new Date().toISOString()
     const localHost = formatHostPort('127.0.0.1', port)
-    const overlayHost = deviceHosts.includes(localHost) ? localHost : (deviceHosts[0] || localHost)
-    const base = `http://${overlayHost}`
+    const base = `http://${localHost}`
     this.status.chatUrl = `${base}/overlay/chat.html`
     this.status.alertsUrl = `${base}/overlay/alerts.html`
     this.status.goalsUrl = `${base}/overlay/goals.html`
@@ -487,24 +537,123 @@ export class OverlayServer extends EventEmitter {
     this.status.dualVerticalUrl = `${base}/overlay/dual-vertical.html`
   }
 
-  private getReachableDeviceHosts(port: number): string[] {
+  private updateDeviceStatus(): void {
+    const deviceHosts = this.getReachableDeviceHosts()
+    const devicePairUrls = deviceHosts.map((host) => `http://${host}/api/v1/pair/complete`)
+
+    this.status.devicePort = this.devicePort
+    this.status.deviceListenHost = this.deviceServer ? DEVICE_LISTEN_HOST : null
+    this.status.deviceHost = deviceHosts[0] || null
+    this.status.deviceHosts = deviceHosts
+    this.status.devicePairUrl = devicePairUrls[0] || null
+    this.status.devicePairUrls = devicePairUrls
+  }
+
+  private getReachableDeviceHosts(): string[] {
+    if (!this.deviceServer || !this.devicePort) return []
     const hosts = new Set<string>()
 
-    if (isWildcardHost(this.listenHost)) {
-      for (const address of getLanIPv4Addresses()) {
-        hosts.add(formatHostPort(address, port))
-      }
-      hosts.add(formatHostPort('127.0.0.1', port))
-    } else if (isLoopbackHost(this.listenHost)) {
-      hosts.add(formatHostPort('127.0.0.1', port))
-    } else {
-      hosts.add(formatHostPort(this.listenHost, port))
+    for (const address of getLanIPv4Addresses()) {
+      hosts.add(formatHostPort(address, this.devicePort))
     }
+    hosts.add(formatHostPort('127.0.0.1', this.devicePort))
 
     return [...hosts]
+  }
+
+  private async startDeviceServer(overlayPort: number): Promise<void> {
+    if (this.deviceServer) return
+
+    let lastError: unknown = null
+    for (const candidatePort of getDevicePortCandidates(overlayPort)) {
+      const server = createServer((request, response) => {
+        void this.handleDeviceRequest(request, response).catch((error) => {
+          console.error('[OverlayServer] Device boundary request failed:', error)
+          if (!response.headersSent) {
+            writeBoundaryJson(response, 500, { error: 'Internal error' })
+          } else {
+            response.destroy(error instanceof Error ? error : undefined)
+          }
+        })
+      })
+
+      try {
+        await listen(server, candidatePort, DEVICE_LISTEN_HOST)
+        this.deviceServer = server
+        this.devicePort = candidatePort
+        return
+      } catch (error: any) {
+        lastError = error
+        server.removeAllListeners()
+        if (error?.code !== 'EADDRINUSE' && error?.code !== 'EACCES') throw error
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('No companion API port is available')
+  }
+
+  private async handleDeviceRequest(
+    request: IncomingMessage,
+    response: ServerResponse<IncomingMessage>
+  ): Promise<void> {
+    const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
+    const pathname = url.pathname
+
+    if (!pathname.startsWith('/api/v1/')) {
+      writeBoundaryJson(response, 404, { error: 'Device API route not found' })
+      return
+    }
+
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '86400',
+        'Cache-Control': 'no-store'
+      })
+      response.end()
+      return
+    }
+
+    if (!this.deviceApi) {
+      writeBoundaryJson(response, 503, { error: 'Device API unavailable' })
+      return
+    }
+
+    const handled = await this.deviceApi.handleRequest(request, response, pathname)
+    if (!handled) writeBoundaryJson(response, 404, { error: 'Device API route not found' })
   }
 
   private updateClientCounts(): void {
     this.emit('status', this.getStatus())
   }
+}
+
+function listen(server: Server, port: number, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => reject(error)
+    server.once('error', onError)
+    server.listen(port, host, () => {
+      server.off('error', onError)
+      resolve()
+    })
+  })
+}
+
+function writeBoundaryJson(
+  response: ServerResponse<IncomingMessage>,
+  statusCode: number,
+  payload: Record<string, unknown>
+): void {
+  if (response.writableEnded) return
+  const json = JSON.stringify(payload)
+  response.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(json),
+    'Cache-Control': 'no-store'
+  })
+  response.end(json)
 }

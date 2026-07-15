@@ -56,6 +56,8 @@ const ALLOWED_OVERLAY_CHANNELS = new Set<OverlayChannel>([
 
 const TEST_ENDPOINTS_ENABLED = process.env.ILYSTREAM_ENABLE_TEST_ENDPOINTS === '1'
 const MAX_DECK_ACTION_BODY_BYTES = 64 * 1024
+const PREVIEW_SESSION_TTL_MS = 30 * 60_000
+const MAX_PREVIEW_SESSIONS = 64
 const require = createRequire(import.meta.url)
 const MATTER_JS_PATH = require.resolve('matter-js/build/matter.min.js')
 
@@ -79,6 +81,7 @@ export class OverlayRouter {
   private dualVerticalClients = new Set<ServerResponse>()
   private dualVerticalLastFrame: Buffer | null = null
   private deckCsrfToken = randomBytes(32).toString('base64url')
+  private previewSessions = new Map<string, { widgetId: string; expiresAt: number }>()
   private avatarCacheDir = join(app.getPath('userData'), 'avatar_cache')
 
   constructor(
@@ -101,6 +104,55 @@ export class OverlayRouter {
     private getStatsService: () => any = () => null,
     private getLeaderboard: () => Array<{ username: string; score: number }> = () => []
   ) {}
+
+  createWidgetPreviewSession(widgetId: string): string {
+    const normalizedWidgetId = widgetId.trim()
+    if (!normalizedWidgetId) throw new Error('Widget id is required for a preview session')
+
+    this.pruneExpiredPreviewSessions()
+    while (this.previewSessions.size >= MAX_PREVIEW_SESSIONS) {
+      const oldestToken = this.previewSessions.keys().next().value as string | undefined
+      if (!oldestToken) break
+      this.previewSessions.delete(oldestToken)
+    }
+
+    const previewToken = randomBytes(32).toString('base64url')
+    this.previewSessions.set(previewToken, {
+      widgetId: normalizedWidgetId,
+      expiresAt: Date.now() + PREVIEW_SESSION_TTL_MS
+    })
+    return previewToken
+  }
+
+  releaseWidgetPreviewSession(previewToken: string): void {
+    this.previewSessions.delete(previewToken)
+  }
+
+  validateWidgetPreviewSession(previewToken: string | null | undefined, widgetId: string): boolean {
+    if (!previewToken) return false
+    const session = this.previewSessions.get(previewToken)
+    if (!session) return false
+    if (session.expiresAt <= Date.now()) {
+      this.previewSessions.delete(previewToken)
+      return false
+    }
+    if (session.widgetId !== widgetId) return false
+
+    // Keep an actively edited preview alive while preserving a hard idle expiry.
+    this.previewSessions.delete(previewToken)
+    this.previewSessions.set(previewToken, {
+      ...session,
+      expiresAt: Date.now() + PREVIEW_SESSION_TTL_MS
+    })
+    return true
+  }
+
+  private pruneExpiredPreviewSessions(): void {
+    const now = Date.now()
+    for (const [previewToken, session] of this.previewSessions) {
+      if (session.expiresAt <= now) this.previewSessions.delete(previewToken)
+    }
+  }
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
@@ -336,7 +388,7 @@ export class OverlayRouter {
     }
 
     if (pathname.toLowerCase().startsWith('/overlay/') || pathname.toLowerCase().startsWith('/widget/')) {
-      const handled = await this.serveOverlay(pathname, url, response)
+      const handled = await this.serveOverlay(pathname, url, request, response)
       if (handled) return
     }
 
@@ -495,7 +547,12 @@ export class OverlayRouter {
     this.writeJson(response, { error: 'Asset not found' }, 404, request)
   }
 
-  private async serveOverlay(pathname: string, url: URL, response: ServerResponse): Promise<boolean> {
+  private async serveOverlay(
+    pathname: string,
+    url: URL,
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<boolean> {
     const segments = pathname.split('/').filter(Boolean)
     let widgetId = segments[segments.length - 1]?.replace('.html', '').replace('.htm', '').toLowerCase().trim()
 
@@ -536,24 +593,29 @@ export class OverlayRouter {
 
     if (widget) {
       const isPreview = url.searchParams.has('preview')
+      const previewToken = url.searchParams.get('previewToken')
+      const hasPreviewCapability = previewToken !== null
+      if (isPreview && hasPreviewCapability && !this.validateWidgetPreviewSession(previewToken, widgetId)) {
+        this.writeJson(response, { error: 'Invalid preview session' }, 403, request)
+        return true
+      }
       const html = generateOverlayHtml(widget, isPreview, {
         settings: db?.getAllSettings() || {},
         boardSounds: this.getSoundboardService()?.getAllSounds('board') || [],
         deckActions: db?.getAllDeckActions() || []
       })
       if (html) {
-        // Browser sources get the SSE-with-polling-fallback runtime. Preview
-        // requests (widget cards + editor modal iframes) need BOTH bootstraps:
-        // the runtime, because templates reference it for state/subscriptions
-        // even when IS_PREVIEW swaps in demo data, and the preview bootstrap,
-        // which posts `ilystream:preview-ready` and accepts postMessage HTML
-        // swaps from the editor modal. Serving bare HTML here left every
-        // preview iframe blank and the modal waiting forever on READY.
+        // Browser sources and static card previews get the SSE-with-polling-
+        // fallback runtime. Only a main-process-issued capability enables the
+        // editor's executable postMessage bootstrap.
         this.writeHtml(
           response,
-          isPreview
-            ? injectPreviewBootstrap(injectOverlayRuntimeBootstrap(html))
-            : injectOverlayRuntimeBootstrap(html)
+          isPreview && hasPreviewCapability
+            ? injectPreviewBootstrap(injectOverlayRuntimeBootstrap(html), previewToken!)
+            : injectOverlayRuntimeBootstrap(html),
+          200,
+          request,
+          isPreview ? { 'Referrer-Policy': 'no-referrer' } : undefined
         )
         return true
       }
@@ -678,7 +740,13 @@ export class OverlayRouter {
     response.end(json)
   }
 
-  private writeHtml(response: ServerResponse, html: string, statusCode = 200, request?: IncomingMessage): void {
+  private writeHtml(
+    response: ServerResponse,
+    html: string,
+    statusCode = 200,
+    request?: IncomingMessage,
+    extraHeaders?: Record<string, string>
+  ): void {
     // Overlay widget pages are dynamic and updated with the app. Without an
     // explicit no-cache, OBS/TikTok Live Studio's embedded Chromium caches the
     // page indefinitely and keeps rendering a stale (possibly broken) build even
@@ -686,7 +754,8 @@ export class OverlayRouter {
     this.writeCorsHeaders(response, statusCode, 'text/html; charset=utf-8', request, {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       Pragma: 'no-cache',
-      Expires: '0'
+      Expires: '0',
+      ...(extraHeaders || {})
     })
     response.end(html)
   }

@@ -169,6 +169,18 @@ export class DeviceApi {
     this.authService.revokeTokenByIdOrToken(id)
   }
 
+  closeAllClients(): void {
+    for (const client of this.eventClients) {
+      try {
+        client.end()
+      } catch {
+        client.destroy()
+      }
+    }
+    this.eventClients.clear()
+    this.stopPingLoop()
+  }
+
   // --- HTTP routing (called from OverlayServer.handleRequest) ---
 
   /**

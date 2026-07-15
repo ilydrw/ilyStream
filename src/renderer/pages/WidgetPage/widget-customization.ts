@@ -103,11 +103,13 @@ export function buildWidgetOverlayUrl(
  */
 export function buildWidgetPreviewUrl(
   widget: Pick<Widget, 'id'>,
-  overlayPort: number | null
+  overlayPort: number | null,
+  previewToken: string | null
 ): string | null {
+  if (!previewToken) return null
   const baseUrl = buildWidgetOverlayUrl(widget.id, overlayPort)
   if (!baseUrl) return null
-  return appendPreviewFlag(baseUrl)
+  return `${appendPreviewFlag(baseUrl)}&previewToken=${encodeURIComponent(previewToken)}`
 }
 
 export function normalizeOverlayHost(host: string | null | undefined, port: number): string {

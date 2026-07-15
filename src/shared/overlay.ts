@@ -79,6 +79,9 @@ export interface OverlayRuntimeStatus {
   port: number | null
   requestedPort: number | null
   listenHost?: string | null
+  devicePort?: number | null
+  deviceListenHost?: string | null
+  deviceLastError?: string | null
   deviceHost?: string | null
   deviceHosts?: string[]
   devicePairUrl?: string | null
