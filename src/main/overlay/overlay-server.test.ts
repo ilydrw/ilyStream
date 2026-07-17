@@ -3,6 +3,7 @@ import { createServer as createNetServer } from 'node:net'
 import { OverlayServer } from './overlay-server'
 import { DeviceApi } from './device-api'
 import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
+import { DEFAULT_APP_SETTINGS } from '../../shared/settings/defaults'
 
 vi.mock('electron', () => ({
   app: {
@@ -436,6 +437,11 @@ describe('OverlayServer', () => {
     expect(pairResponse.headers.get('access-control-allow-origin')).toBe('*')
     expect(pairBody.token).toBe('desk-token')
 
+    overlayServer.broadcastAppTheme({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'ember'
+    })
+
     const eventsController = new AbortController()
     const eventsResponse = await fetch(`${deviceBase}/api/v1/events?token=${pairBody.token}`, {
       headers: { Origin: origin },
@@ -466,6 +472,8 @@ describe('OverlayServer', () => {
     })
 
     const eventsStream = await readStreamUntil(eventsResponse, '"chatBacklog"', eventsController)
+    expect(eventsStream).toContain('"type":"appTheme"')
+    expect(eventsStream).toContain('"theme":"ember"')
     expect(eventsStream).toContain('"message":"deskthing hello"')
   })
 
@@ -515,6 +523,31 @@ describe('OverlayServer', () => {
       })
     ])
     expect(chatPoll.cursor).toBeGreaterThan(0)
+    expect(chatPoll.generation).toEqual(expect.any(String))
+    expect(chatPoll.reset).toBe(false)
+
+    const staleCursorResponse = await fetch(
+      `${base}/overlay/events/poll?channel=chat&after=999999`
+    )
+    const staleCursorPoll = await staleCursorResponse.json() as any
+    expect(staleCursorPoll.reset).toBe(true)
+    expect(staleCursorPoll.generation).toBe(chatPoll.generation)
+    expect(staleCursorPoll.events).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'reload',
+          reason: 'overlay-server-restarted'
+        })
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'snapshot',
+          payload: expect.arrayContaining([
+            expect.objectContaining({ message: 'poll me' })
+          ])
+        })
+      })
+    ])
 
     overlayServer.broadcast('screen-border', { type: 'reload', id: 'border-widget' })
 

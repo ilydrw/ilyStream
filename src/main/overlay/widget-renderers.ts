@@ -165,7 +165,7 @@ export function buildOverlayDirectoryHtml(widgetId?: string): string {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>IlyStream | Overlay Directory</title>
+      <title>ilyStream | Overlay Directory</title>
       <style>
         body {
           margin: 0;
@@ -237,9 +237,12 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-// Bootstrap script injected into preview HTML so the WidgetEditorModal can
-// update the preview via postMessage instead of changing the iframe `src`
-// (which would tear down the document and restart all timers/animations).
+// Preview shell used by WidgetEditorModal. The shell keeps the outer iframe
+// URL stable while rendering widget HTML inside a child `srcdoc` iframe.
+// Replacing `srcdoc` creates a fresh JavaScript realm for every full preview
+// update, so top-level `let`/`const` declarations cannot collide and timers,
+// animation frames, and EventSource connections from the previous render are
+// torn down with the old child document.
 //
 // Protocol:
 //   parent -> iframe: { type: 'ilystream:preview-config', config: object }
@@ -250,11 +253,8 @@ function escapeHtml(value: string): string {
 //     back to the HTML-swap path for that iframe.
 //
 //   parent -> iframe: { type: 'ilystream:preview-html', html: string }
-//     Full HTML replacement. Used when a template hasn't opted into the
-//     live-config protocol. Head children (other than this bootstrap) are
-//     replaced, body innerHTML is swapped, and inline <script>s are
-//     re-executed via the clone-and-replace dance (innerHTML alone doesn't
-//     run them).
+//     Full HTML replacement. The child iframe navigates to a new `srcdoc`
+//     document so its scripts execute once in a clean scope.
 //
 //   iframe -> parent: { type: 'ilystream:preview-ready' }
 //     Sent once on load so the parent knows to push the initial draft.
@@ -263,56 +263,100 @@ function escapeHtml(value: string): string {
 //     Sent when the iframe receives a `preview-config` but has no
 //     `__ilystreamApplyConfig` to handle it. Parent should switch to the
 //     HTML-swap path for this iframe.
-function buildPreviewBootstrapScript(previewToken: string): string {
-  const serializedToken = JSON.stringify(previewToken)
-  return `<script id="ilystream-preview-bootstrap">
+function serializePreviewScriptValue(value: string): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+function buildPreviewShell(previewToken: string, initialHtml: string): string {
+  const serializedToken = serializePreviewScriptValue(previewToken)
+  const serializedInitialHtml = serializePreviewScriptValue(initialHtml)
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  html, body, #ilystream-preview-stage, .ilystream-preview-frame {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+  #ilystream-preview-stage { position: relative; }
+  .ilystream-preview-frame {
+    position: absolute;
+    inset: 0;
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+  }
+  .ilystream-preview-frame.is-active {
+    opacity: 1;
+    visibility: visible;
+  }
+</style>
+<script id="ilystream-preview-bootstrap">
 (function(){
   var PREVIEW_TOKEN=${serializedToken};
+  var INITIAL_HTML=${serializedInitialHtml};
   var trustedParentOrigin=null;
   var APPLY_HTML='ilystream:preview-html';
   var APPLY_CONFIG='ilystream:preview-config';
   var READY='ilystream:preview-ready';
   var NEEDS_HTML='ilystream:preview-needs-html';
-  function reexecScripts(root){
-    var scripts = root.querySelectorAll('script');
-    for (var i=0; i<scripts.length; i++){
-      var old = scripts[i];
-      var ns = document.createElement('script');
-      for (var j=0; j<old.attributes.length; j++){
-        var a = old.attributes[j];
-        ns.setAttribute(a.name, a.value);
-      }
-      ns.textContent = old.textContent || '';
-      old.parentNode && old.parentNode.replaceChild(ns, old);
+  var FRAME_IDS=['ilystream-preview-frame-a','ilystream-preview-frame-b'];
+  var activeFrameId=null;
+  var htmlRevision=0;
+  function getFrameById(id){
+    return id ? document.getElementById(id) : null;
+  }
+  function getActiveFrame(){
+    return getFrameById(activeFrameId);
+  }
+  function getInactiveFrame(){
+    return getFrameById(activeFrameId === FRAME_IDS[0] ? FRAME_IDS[1] : FRAME_IDS[0]);
+  }
+  function isPreviewFrameSource(source){
+    for (var i=0; i<FRAME_IDS.length; i++) {
+      var frame = getFrameById(FRAME_IDS[i]);
+      if (frame && source === frame.contentWindow) return true;
     }
+    return false;
   }
   function applyHtml(htmlString){
     try {
-      var doc = new DOMParser().parseFromString(htmlString, 'text/html');
-      var newHead = doc.head;
-      var newBody = doc.body;
-      if (!newHead || !newBody) return;
-      var bootstrap = document.getElementById('ilystream-preview-bootstrap');
-      var head = document.head;
-      var keep = bootstrap;
-      while (head.firstChild) head.removeChild(head.firstChild);
-      var heads = Array.prototype.slice.call(newHead.childNodes);
-      for (var i=0; i<heads.length; i++) {
-        var node = heads[i];
-        if (node && node.nodeType === 1 && node.id === 'ilystream-preview-bootstrap') continue;
-        head.appendChild(document.importNode(node, true));
-      }
-      if (keep) head.appendChild(keep);
-      document.body.innerHTML = newBody.innerHTML;
-      reexecScripts(document.body);
+      var previous = getActiveFrame();
+      var frame = getInactiveFrame();
+      if (!frame) return;
+      var revision = ++htmlRevision;
+      frame.onload = function(){
+        if (revision !== htmlRevision) return;
+        frame.onload = null;
+        frame.classList.add('is-active');
+        if (previous && previous !== frame) {
+          previous.classList.remove('is-active');
+          previous.srcdoc = '<!DOCTYPE html><html><body></body></html>';
+        }
+        activeFrameId = frame.id;
+      };
+      frame.srcdoc = htmlString;
     } catch (err) {
       console.error('[ilystream-preview] apply HTML failed', err);
     }
   }
   function applyConfig(config){
-    var fn = window.__ilystreamApplyConfig;
+    var frame = getActiveFrame();
+    var fn = null;
+    try { fn = frame && frame.contentWindow && frame.contentWindow.__ilystreamApplyConfig; }
+    catch (err) {}
     if (typeof fn === 'function') {
-      try { fn(config); return true; }
+      try { fn.call(frame.contentWindow, config); return true; }
       catch (err) { console.error('[ilystream-preview] applyConfig failed', err); return true; }
     }
     return false;
@@ -324,7 +368,24 @@ function buildPreviewBootstrapScript(previewToken: string): string {
       try { p.postMessage(message, '*'); } catch (e) {}
     }
   }
+  function forwardToParent(data){
+    if (!data || typeof data !== 'object') return;
+    var message = {};
+    for (var key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) message[key] = data[key];
+    }
+    message.previewToken = PREVIEW_TOKEN;
+    var p = window.parent;
+    if (p && p !== window) {
+      try { p.postMessage(message, trustedParentOrigin || '*'); } catch (e) {}
+    }
+  }
   window.addEventListener('message', function(event){
+    var frame = getActiveFrame();
+    if (isPreviewFrameSource(event.source)) {
+      forwardToParent(event.data);
+      return;
+    }
     if (event.source !== window.parent) return;
     var data = event && event.data;
     if (!data || data.previewToken !== PREVIEW_TOKEN) return;
@@ -339,15 +400,38 @@ function buildPreviewBootstrapScript(previewToken: string): string {
       if (!handled) postToParent({ type: NEEDS_HTML });
       return;
     }
+    if (frame && frame.contentWindow) {
+      try { frame.contentWindow.postMessage(data, '*'); } catch (e) {}
+    }
   });
-  function postReady(){ postToParent({ type: READY }); }
+  try {
+    Object.defineProperty(window, '__masterVolume', {
+      configurable: true,
+      get: function(){
+        try { return window.parent.__masterVolume || 0; }
+        catch (err) { return 0; }
+      }
+    });
+  } catch (err) {}
+  function initialize(){
+    applyHtml(INITIAL_HTML);
+    postToParent({ type: READY });
+  }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    postReady();
+    initialize();
   } else {
-    document.addEventListener('DOMContentLoaded', postReady, { once: true });
+    document.addEventListener('DOMContentLoaded', initialize, { once: true });
   }
 })();
-</script>`
+</script>
+</head>
+<body>
+  <div id="ilystream-preview-stage">
+    <iframe id="ilystream-preview-frame-a" class="ilystream-preview-frame" title="Widget preview content" referrerpolicy="no-referrer"></iframe>
+    <iframe id="ilystream-preview-frame-b" class="ilystream-preview-frame" title="Widget preview content buffer" referrerpolicy="no-referrer"></iframe>
+  </div>
+</body>
+</html>`
 }
 
 const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime">
@@ -391,7 +475,10 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
     this._listeners = { open: [], message: [], error: [] };
     this._native = null;
     this._pollTimer = null;
+    this._pollInFlight = false;
+    this._pollOpened = false;
     this._lastEventId = 0;
+    this._serverGeneration = null;
     this._closed = false;
     this._startNative();
   }
@@ -484,17 +571,32 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
   RuntimeEventSource.prototype._startPolling = function(reason){
     var self = this;
     if (this._pollTimer || this._closed) return;
-    this.readyState = RuntimeEventSource.OPEN;
+    this.readyState = RuntimeEventSource.CONNECTING;
     console.warn('[ilystream-overlay] ' + reason + '; using polling transport for ' + this._readChannel() + '.');
-    this._dispatch('open', { type: 'open' });
     var poll = function(){
-      if (self._closed) return;
+      if (self._closed || self._pollInFlight) return;
+      self._pollInFlight = true;
       var url = new URL('/overlay/events/poll', window.location.href);
       url.searchParams.set('channel', self._readChannel());
       url.searchParams.set('after', String(self._lastEventId || 0));
       url.searchParams.set('limit', '80');
       url.searchParams.set('t', String(Date.now()));
       requestJson(url.href).then(function(result){
+        var generation = result && result.generation ? String(result.generation) : '';
+        var generationChanged = Boolean(
+          generation &&
+          self._serverGeneration &&
+          generation !== self._serverGeneration
+        );
+        if (generation) self._serverGeneration = generation;
+        if (generationChanged || Boolean(result && result.reset)) {
+          self._lastEventId = 0;
+        }
+        if (!self._pollOpened) {
+          self._pollOpened = true;
+          self.readyState = RuntimeEventSource.OPEN;
+          self._dispatch('open', { type: 'open' });
+        }
         var events = Array.isArray(result && result.events) ? result.events : [];
         for (var i = 0; i < events.length; i++) {
           var item = events[i];
@@ -505,7 +607,11 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
         var cursor = Number(result && result.cursor);
         if (Number.isFinite(cursor) && cursor > self._lastEventId) self._lastEventId = cursor;
       }).catch(function(err){
+        self.readyState = RuntimeEventSource.CONNECTING;
+        self._pollOpened = false;
         console.warn('[ilystream-overlay] polling transport failed', err);
+      }).then(function(){
+        self._pollInFlight = false;
       });
     };
     poll();
@@ -522,16 +628,13 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
 </script>`
 
 /**
- * Inject the preview-bootstrap script into a rendered widget HTML string.
- * Inserted just before `</head>` so it runs before any body scripts. If there
- * is no `</head>` the script is prepended so it still runs first.
+ * Wrap rendered widget HTML in the stable preview shell. The widget itself is
+ * loaded into a child browsing context so every full update gets a fresh
+ * script scope while the parent-facing postMessage endpoint remains stable.
  */
 export function injectPreviewBootstrap(html: string, previewToken: string): string {
   if (!html) return html
-  const previewBootstrapScript = buildPreviewBootstrapScript(previewToken)
-  const idx = html.toLowerCase().indexOf('</head>')
-  if (idx === -1) return previewBootstrapScript + html
-  return html.slice(0, idx) + previewBootstrapScript + html.slice(idx)
+  return buildPreviewShell(previewToken, html)
 }
 
 /**

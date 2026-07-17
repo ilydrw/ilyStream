@@ -1,12 +1,22 @@
 import { once } from 'events'
+import { createHash } from 'crypto'
+import { mkdtemp, readFile, rm } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { Readable, Writable } from 'stream'
 import { describe, expect, it, vi } from 'vitest'
+import { app } from 'electron'
 import { OverlayRouter } from './overlay-router'
 
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '')
   }
+}))
+
+vi.mock('../lib/ssrf-guard', () => ({
+  assertSafePublicHttpUrl: vi.fn(async (rawUrl: string) => new URL(rawUrl)),
+  MAX_AVATAR_BYTES: 8 * 1024 * 1024
 }))
 
 class TestRequest extends Readable {
@@ -81,6 +91,10 @@ class TestResponse extends Writable {
 
   text(): string {
     return Buffer.concat(this.chunks).toString('utf8')
+  }
+
+  bytes(): Buffer {
+    return Buffer.concat(this.chunks)
   }
 }
 
@@ -264,5 +278,57 @@ describe('OverlayRouter local widget assets', () => {
     expect(response.headers['Content-Type']).toBe('text/javascript; charset=utf-8')
     expect(response.text()).toContain('Matter')
     expect(response.text().length).toBeGreaterThan(50_000)
+  })
+})
+
+describe('OverlayRouter avatar cache', () => {
+  it('serves fresh and cached WebP avatars with the correct response headers', async () => {
+    const userDataPath = await mkdtemp(join(tmpdir(), 'ilystream-avatar-test-'))
+    const remoteUrl = 'https://p16-webcast.tiktokcdn.com/avatar.webp'
+    const encodedUrl = Buffer.from(remoteUrl).toString('base64url')
+    const cachePath = join(
+      userDataPath,
+      'avatar_cache',
+      createHash('sha256').update(remoteUrl).digest('hex')
+    )
+    const webp = Buffer.from('52494646040000005745425056503820', 'hex')
+    const fetchMock = vi.fn(async () => new Response(webp, {
+      status: 200,
+      headers: { 'Content-Type': 'image/webp' }
+    }))
+
+    vi.mocked(app.getPath).mockReturnValue(userDataPath)
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const { router } = makeRouter()
+      const requestOptions = {
+        method: 'GET',
+        url: `/avatar/${encodedUrl}`,
+        headers: { host: '127.0.0.1:8899' },
+        remoteAddress: '127.0.0.1'
+      }
+
+      const freshResponse = await dispatch(router, new TestRequest(requestOptions))
+      expect(freshResponse.statusCode).toBe(200)
+      expect(freshResponse.headers['Content-Type']).toBe('image/webp')
+      expect(freshResponse.headers['Cache-Control']).toBe('public, max-age=31536000')
+      expect(freshResponse.bytes()).toEqual(webp)
+
+      await vi.waitFor(async () => {
+        expect(await readFile(cachePath)).toEqual(webp)
+      })
+
+      const cachedResponse = await dispatch(router, new TestRequest(requestOptions))
+      expect(cachedResponse.statusCode).toBe(200)
+      expect(cachedResponse.headers['Content-Type']).toBe('image/webp')
+      expect(cachedResponse.headers['Cache-Control']).toBe('public, max-age=31536000')
+      expect(cachedResponse.bytes()).toEqual(webp)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.mocked(app.getPath).mockReturnValue('')
+      await rm(userDataPath, { recursive: true, force: true })
+    }
   })
 })

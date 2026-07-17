@@ -37,7 +37,11 @@ export const INLINE_AVATAR_RUNTIME_SCRIPT = `<script id="ilystream-avatar-runtim
       var parsed = new URL(value, window.location.href);
       if (parsed.origin === window.location.origin) return parsed.href;
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-      return new URL('/avatar/' + encodeRemoteUrl(parsed.href), window.location.href).href;
+      var proxyUrl = new URL('/avatar/' + encodeRemoteUrl(parsed.href), window.location.href);
+      // Version the browser-facing URL so long-lived OBS sources cannot retain
+      // avatar responses cached before content-type detection was corrected.
+      proxyUrl.searchParams.set('v', '2');
+      return proxyUrl.href;
     } catch (err) {
       return '';
     }

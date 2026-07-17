@@ -182,6 +182,12 @@ export class ServiceRegistry {
       this.overlayServer.broadcastRecordingState(status.recording, this.streamingService.getRecordingOutputPath() || undefined)
     })
 
+    // Push OBS scene/stream/recording state to LAN companions over the deck
+    // channel — before this, companions only saw OBS state at page load.
+    this.obsService.on('status', (status) => {
+      this.overlayServer.broadcast('deck', { type: 'obs-status', payload: status })
+    })
+
     this.platformManager.on('event', (event) => {
       this.streamIntelligenceService.recordEvent(event)
       this.streamerbotBridgeService.forwardEvent(event)
@@ -233,7 +239,11 @@ export class ServiceRegistry {
       ['voicemod settings', () => this.voicemodService.applySettings(settings)],
       ['vtube settings', () => this.vtubeService.applySettings(settings)],
       ['streamerbot settings', () => this.streamerbotBridgeService.applySettings(settings.integrations.streamerbot)],
-      ['recordings folder', () => this.streamingService.setRecordingsFolder(settings.recordingsFolder)],
+      ['recordings folder', () => {
+        this.streamingService.setRecordingsFolder(settings.recordingsFolder)
+        this.recordingsService.setRecordingsFolder(settings.recordingsFolder)
+      }],
+      ['companion theme', () => this.overlayServer.broadcastAppTheme(settings.ui)],
       ['voice profiles', () => this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())]
     ]
 

@@ -8,6 +8,7 @@ import { createRequire } from 'module'
 import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from '../lib/ssrf-guard'
+import { detectAvatarContentType, resolveAvatarContentType } from '../lib/avatar-content-type'
 import { buildDeckHtml } from './templates/deck'
 import { buildCompanionHtml } from './templates/companion'
 import {
@@ -81,6 +82,7 @@ export class OverlayRouter {
   private dualVerticalClients = new Set<ServerResponse>()
   private dualVerticalLastFrame: Buffer | null = null
   private deckCsrfToken = randomBytes(32).toString('base64url')
+  private runtimeGeneration = randomBytes(16).toString('base64url')
   private previewSessions = new Map<string, { widgetId: string; expiresAt: number }>()
   private avatarCacheDir = join(app.getPath('userData'), 'avatar_cache')
 
@@ -319,12 +321,46 @@ export class OverlayRouter {
       const limit = Number.isFinite(limitRaw) ? limitRaw : 80
 
       const snapshot = this.computeChannelSnapshot(channel)
+      const currentCursor = this.sse.getLastEventId(channel)
+
+      // Browser documents can outlive the ilyStream process in OBS. A relaunched
+      // server starts event IDs from zero, so a client carrying an old high
+      // cursor would otherwise poll forever without receiving another update.
+      // Include both a reload signal (for legacy runtimes) and a snapshot (for
+      // widgets that hydrate in place), then let current runtimes reset their
+      // cursor to this server generation.
+      if (after > currentCursor) {
+        const events: Array<{ id: number; data: unknown }> = [
+          { id: 0, data: { type: 'reload', reason: 'overlay-server-restarted' } }
+        ]
+        if (snapshot !== null && snapshot !== undefined) {
+          events.push({ id: 0, data: { type: 'snapshot', payload: snapshot } })
+        }
+        this.writeJson(
+          response,
+          {
+            events,
+            cursor: currentCursor,
+            generation: this.runtimeGeneration,
+            reset: true
+          },
+          200,
+          request
+        )
+        return
+      }
+
       if (after <= 0 && snapshot !== null && snapshot !== undefined) {
         // Full snapshot represents current state; skip incremental history so
         // the initial render isn't duplicated by already-reflected events.
         this.writeJson(
           response,
-          { events: [{ id: 0, data: { type: 'snapshot', payload: snapshot } }], cursor: this.sse.getLastEventId(channel) },
+          {
+            events: [{ id: 0, data: { type: 'snapshot', payload: snapshot } }],
+            cursor: currentCursor,
+            generation: this.runtimeGeneration,
+            reset: false
+          },
           200,
           request
         )
@@ -334,7 +370,17 @@ export class OverlayRouter {
       const since = this.sse.getEventsSince(channel, after, limit)
       const events = since.map((entry) => ({ id: entry.id, data: entry.payload }))
       const cursor = events.length ? events[events.length - 1].id : after
-      this.writeJson(response, { events, cursor }, 200, request)
+      this.writeJson(
+        response,
+        {
+          events,
+          cursor,
+          generation: this.runtimeGeneration,
+          reset: false
+        },
+        200,
+        request
+      )
       return
     }
 
@@ -369,7 +415,7 @@ export class OverlayRouter {
       const html = buildCompanionHtml({
         obsStatus: this.getObsStatus(),
         viewerCounts: this.getViewerCounts(),
-        latestAlerts: this.alerts.getHistory().slice(0, 5),
+        latestAlerts: this.alerts.getHistory().slice(-4).reverse(),
         nowPlaying: this.nowPlaying.getState(),
         ui: settings?.ui || null
       })
@@ -848,7 +894,13 @@ export class OverlayRouter {
         const fileStats = await stat(cachePath)
         if (fileStats.isFile()) {
           const data = await readFile(cachePath)
-          this.writeCorsHeaders(response, 200, 'image/jpeg', request)
+          this.writeCorsHeaders(
+            response,
+            200,
+            detectAvatarContentType(data) || 'application/octet-stream',
+            request,
+            { 'Cache-Control': 'public, max-age=31536000' }
+          )
           response.end(data)
           return
         }
@@ -868,8 +920,8 @@ export class OverlayRouter {
         return
       }
 
-      const contentType = res.headers.get('Content-Type') || 'image/jpeg'
-      if (!contentType.toLowerCase().startsWith('image/')) {
+      const declaredContentType = res.headers.get('Content-Type') || ''
+      if (!declaredContentType.toLowerCase().startsWith('image/')) {
         this.writeJson(response, { error: 'Not an image' }, 415, request)
         return
       }
@@ -881,9 +933,11 @@ export class OverlayRouter {
       }
 
       writeFile(cachePath, buffer).catch(err => console.error('[OverlayRouter] Failed to cache avatar', err))
+      const contentType = resolveAvatarContentType(buffer, declaredContentType) || 'application/octet-stream'
 
-      this.writeCorsHeaders(response, 200, contentType, request)
-      response.setHeader('Cache-Control', 'public, max-age=31536000')
+      this.writeCorsHeaders(response, 200, contentType, request, {
+        'Cache-Control': 'public, max-age=31536000'
+      })
       response.end(buffer)
     } catch (err) {
       console.error('[OverlayRouter] Avatar proxy error:', err)

@@ -18,6 +18,9 @@ import { DEFAULT_PORT, type OverlayChannel } from './types'
 import { shouldBroadcastParticleEvent } from './overlay-payloads'
 import { renderWidgetPreviewHtml } from './widget-renderers'
 import type { Widget } from '../../shared/widgets'
+import type { UISettings } from '../../shared/app-settings'
+import { resolveAppThemePalette } from '../../shared/app-themes'
+import type { DeviceThemeState } from '../../shared/device-api'
 
 // Browser-source routes stay on their local listener. Companion pairing starts a
 // separate deny-by-default listener that admits only the device API namespace.
@@ -315,6 +318,14 @@ export class OverlayServer extends EventEmitter {
 
   broadcastRecordingState(isRecording: boolean, path?: string): void {
     this.deviceApi?.broadcast('recordingState', { isRecording, path })
+  }
+
+  broadcastAppTheme(settings: UISettings): void {
+    const payload: DeviceThemeState = {
+      theme: settings.theme,
+      ...resolveAppThemePalette(settings)
+    }
+    this.deviceApi?.broadcast('appTheme', payload)
   }
 
   broadcast(channel: any, payload: any): void {

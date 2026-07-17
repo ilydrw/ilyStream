@@ -35,6 +35,7 @@ export type DeviceEventType =
   | 'recordingState'
   | 'viewerCount'
   | 'likes'
+  | 'appTheme'
 
 interface DeviceEventEnvelope {
   type: DeviceEventType

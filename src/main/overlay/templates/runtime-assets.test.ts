@@ -25,6 +25,7 @@ describe('inline avatar runtime', () => {
 
     expect(proxied).toMatch(/^http:\/\/127\.0\.0\.1:8899\/avatar\//)
     expect(proxied).not.toContain('example.com')
+    expect(new URL(proxied).searchParams.get('v')).toBe('2')
   })
 
   it('keeps same-origin assets local', () => {
