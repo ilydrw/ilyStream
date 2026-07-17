@@ -211,6 +211,98 @@ static Napi::Value EngineCreateSpriteProgram(const Napi::CallbackInfo& info) {
     return Napi::BigInt::New(env, ResourceHandleToUint64(outProgramHandle));
 }
 
+// Unpack a JS transform object ({position,rotation,scale,anchor,pivot,crop,
+// visibility,opacity}) into an IlyTransform.
+static void UnpackTransform(const Napi::Object& tObj, IlyTransform& transform) {
+    Napi::Object posObj = tObj.Get("position").As<Napi::Object>();
+    transform.position.x = posObj.Get("x").As<Napi::Number>().FloatValue();
+    transform.position.y = posObj.Get("y").As<Napi::Number>().FloatValue();
+    transform.position.z = posObj.Get("z").As<Napi::Number>().FloatValue();
+
+    Napi::Object rotObj = tObj.Get("rotation").As<Napi::Object>();
+    transform.rotation.x = rotObj.Get("x").As<Napi::Number>().FloatValue();
+    transform.rotation.y = rotObj.Get("y").As<Napi::Number>().FloatValue();
+    transform.rotation.z = rotObj.Get("z").As<Napi::Number>().FloatValue();
+
+    Napi::Object scaleObj = tObj.Get("scale").As<Napi::Object>();
+    transform.scale.x = scaleObj.Get("x").As<Napi::Number>().FloatValue();
+    transform.scale.y = scaleObj.Get("y").As<Napi::Number>().FloatValue();
+    transform.scale.z = scaleObj.Get("z").As<Napi::Number>().FloatValue();
+
+    Napi::Object anchorObj = tObj.Get("anchor").As<Napi::Object>();
+    transform.anchor.x = anchorObj.Get("x").As<Napi::Number>().FloatValue();
+    transform.anchor.y = anchorObj.Get("y").As<Napi::Number>().FloatValue();
+
+    Napi::Object pivotObj = tObj.Get("pivot").As<Napi::Object>();
+    transform.pivot.x = pivotObj.Get("x").As<Napi::Number>().FloatValue();
+    transform.pivot.y = pivotObj.Get("y").As<Napi::Number>().FloatValue();
+
+    Napi::Object cropObj = tObj.Get("crop").As<Napi::Object>();
+    transform.crop.left = cropObj.Get("left").As<Napi::Number>().FloatValue();
+    transform.crop.top = cropObj.Get("top").As<Napi::Number>().FloatValue();
+    transform.crop.right = cropObj.Get("right").As<Napi::Number>().FloatValue();
+    transform.crop.bottom = cropObj.Get("bottom").As<Napi::Number>().FloatValue();
+
+    transform.visibility = tObj.Get("visibility").As<Napi::Boolean>().Value();
+    transform.opacity = tObj.Get("opacity").As<Napi::Number>().FloatValue();
+}
+
+// engineSetLayers(engineHandle: BigInt, layers: Array<{texture, transform,
+// opacity, blendMode}>) -> IlyResult code
+static Napi::Value EngineSetLayers(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsBigInt() || !info[1].IsArray()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Array)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    Napi::Array arr = info[1].As<Napi::Array>();
+    uint32_t count = arr.Length();
+
+    std::vector<IlyLayer> layers(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        Napi::Object lo = arr.Get(i).As<Napi::Object>();
+        IlyLayer& layer = layers[i];
+        uint64_t texVal = lo.Get("texture").As<Napi::BigInt>().Uint64Value(&lossless);
+        layer.texture = Uint64ToResourceHandle(texVal);
+        UnpackTransform(lo.Get("transform").As<Napi::Object>(), layer.transform);
+        layer.opacity = lo.Has("opacity") ? lo.Get("opacity").As<Napi::Number>().FloatValue() : 1.0f;
+        layer.blendMode = static_cast<IlyBlendMode>(
+            lo.Has("blendMode") ? lo.Get("blendMode").As<Napi::Number>().Uint32Value()
+                                : static_cast<uint32_t>(ILY_BLEND_ALPHA));
+    }
+
+    IlyResult res = IlyEngineSetLayers(Uint64ToResourceHandle(engineVal),
+                                       count > 0 ? layers.data() : nullptr, count);
+    return Napi::Number::New(env, static_cast<double>(res));
+}
+
+// engineReadPixels(engineHandle: BigInt, buffer: Buffer) ->
+// { result, width, height }. buffer is filled with tightly packed RGBA8.
+static Napi::Value EngineReadPixels(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsBigInt() || !info[1].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Buffer)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    Napi::Buffer<uint8_t> buf = info[1].As<Napi::Buffer<uint8_t>>();
+
+    uint32_t width = 0;
+    uint32_t height = 0;
+    IlyResult res = IlyEngineReadPixels(Uint64ToResourceHandle(engineVal),
+                                        buf.Data(), static_cast<uint32_t>(buf.Length()),
+                                        &width, &height);
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("result", Napi::Number::New(env, static_cast<double>(res)));
+    result.Set("width", Napi::Number::New(env, width));
+    result.Set("height", Napi::Number::New(env, height));
+    return result;
+}
+
 static Napi::Value EngineDrawQuad(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 5 || !info[0].IsBigInt() || !info[1].IsBigInt() || !info[2].IsObject() || !info[3].IsNumber() || !info[4].IsNumber()) {
@@ -303,6 +395,10 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineCreateColorTexture", Napi::Function::New(env, EngineCreateColorTexture));
     exports.Set("engineCreateSpriteProgram", Napi::Function::New(env, EngineCreateSpriteProgram));
     exports.Set("engineDrawQuad", Napi::Function::New(env, EngineDrawQuad));
+
+    // Compositor present surface
+    exports.Set("engineSetLayers", Napi::Function::New(env, EngineSetLayers));
+    exports.Set("engineReadPixels", Napi::Function::New(env, EngineReadPixels));
     return exports;
 }
 

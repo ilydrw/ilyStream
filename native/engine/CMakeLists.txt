@@ -71,8 +71,10 @@ if(NOT NODE_ADDON_API_DIR OR NODE_ADDON_API_DIR STREQUAL "")
     set(NODE_ADDON_API_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../node_modules/node-addon-api")
 endif()
 
-# Node addon bindings target (MODULE library as required for node native addons)
-add_library(ilystream_napi MODULE src/napi_bindings.cpp)
+# Node addon bindings target (MODULE library as required for node native addons).
+# win_delay_load_hook.cc + the /DELAYLOAD below let the addon resolve its N-API
+# imports from the hosting executable (electron.exe), not a literal node.exe.
+add_library(ilystream_napi MODULE src/napi_bindings.cpp src/win_delay_load_hook.cc)
 # Set prefix to empty and suffix to .node for Node.js addon standard
 set_target_properties(ilystream_napi PROPERTIES
     PREFIX ""
@@ -82,15 +84,33 @@ set_target_properties(ilystream_napi PROPERTIES
 # N-API bindings need node-addon-api header search path and Node.js include directories.
 target_include_directories(ilystream_napi PRIVATE ${NODE_ADDON_API_DIR})
 
-# Dynamically locate Electron or Node headers on the developer machine
-file(GLOB ELECTRON_GYP_INCLUDES
-    "$ENV{USERPROFILE}/.electron-gyp/*/include/node"
-    "$ENV{USERPROFILE}/.node-gyp/*/include/node"
-)
+# Determine the Electron version the app actually runs so we build the addon
+# against matching headers + node.lib. A version mismatch produces a .node that
+# crashes on load in the app's Electron, so prefer the installed version and
+# only fall back to globbing whatever .electron-gyp happens to contain.
+set(ELECTRON_VERSION "")
+set(ELECTRON_PKG_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../node_modules/electron/package.json")
+if(EXISTS "${ELECTRON_PKG_JSON}")
+    file(READ "${ELECTRON_PKG_JSON}" ELECTRON_PKG_CONTENT)
+    string(JSON ELECTRON_VERSION ERROR_VARIABLE ELECTRON_JSON_ERR GET "${ELECTRON_PKG_CONTENT}" version)
+endif()
 
-if(ELECTRON_GYP_INCLUDES)
-    list(GET ELECTRON_GYP_INCLUDES 0 LATEST_NODE_INCLUDES)
-    message(STATUS "Found Node/Electron headers: ${LATEST_NODE_INCLUDES}")
+set(LATEST_NODE_INCLUDES "")
+if(ELECTRON_VERSION AND EXISTS "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/include/node")
+    set(LATEST_NODE_INCLUDES "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/include/node")
+    message(STATUS "Using installed Electron ${ELECTRON_VERSION} headers: ${LATEST_NODE_INCLUDES}")
+else()
+    file(GLOB ELECTRON_GYP_INCLUDES
+        "$ENV{USERPROFILE}/.electron-gyp/*/include/node"
+        "$ENV{USERPROFILE}/.node-gyp/*/include/node"
+    )
+    if(ELECTRON_GYP_INCLUDES)
+        list(GET ELECTRON_GYP_INCLUDES 0 LATEST_NODE_INCLUDES)
+        message(WARNING "Installed Electron headers not found for '${ELECTRON_VERSION}'; falling back to ${LATEST_NODE_INCLUDES}. The addon may crash on load if versions differ.")
+    endif()
+endif()
+
+if(LATEST_NODE_INCLUDES)
     target_include_directories(ilystream_napi PRIVATE ${LATEST_NODE_INCLUDES})
 else()
     message(WARNING "Could not find Electron/Node.js include headers. NAPI module might fail compilation.")
@@ -99,17 +119,26 @@ endif()
 # Link ilystream_napi with ilystream_engine
 target_link_libraries(ilystream_napi PRIVATE ilystream_engine)
 
-# On Windows, we need to link against node.lib from electron-gyp/node-gyp
+# On Windows, link against node.lib for the SAME Electron version as the headers
+# above (import lib must match the host Electron or the addon crashes on load).
 if(WIN32)
-    file(GLOB NODE_LIBS
-        "$ENV{USERPROFILE}/.electron-gyp/*/x64/node.lib"
-        "$ENV{USERPROFILE}/.node-gyp/*/x64/node.lib"
-        "$ENV{USERPROFILE}/.electron-gyp/*/win-x64/node.lib"
-        "$ENV{USERPROFILE}/.node-gyp/*/win-x64/node.lib"
-    )
-    if(NODE_LIBS)
-        list(GET NODE_LIBS 0 LATEST_NODE_LIB)
-        message(STATUS "Found node.lib: ${LATEST_NODE_LIB}")
+    set(LATEST_NODE_LIB "")
+    if(ELECTRON_VERSION AND EXISTS "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/x64/node.lib")
+        set(LATEST_NODE_LIB "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/x64/node.lib")
+        message(STATUS "Using installed Electron ${ELECTRON_VERSION} node.lib: ${LATEST_NODE_LIB}")
+    else()
+        file(GLOB NODE_LIBS
+            "$ENV{USERPROFILE}/.electron-gyp/*/x64/node.lib"
+            "$ENV{USERPROFILE}/.node-gyp/*/x64/node.lib"
+            "$ENV{USERPROFILE}/.electron-gyp/*/win-x64/node.lib"
+            "$ENV{USERPROFILE}/.node-gyp/*/win-x64/node.lib"
+        )
+        if(NODE_LIBS)
+            list(GET NODE_LIBS 0 LATEST_NODE_LIB)
+            message(WARNING "Using fallback node.lib: ${LATEST_NODE_LIB}")
+        endif()
+    endif()
+    if(LATEST_NODE_LIB)
         target_link_libraries(ilystream_napi PRIVATE ${LATEST_NODE_LIB})
     else()
         message(WARNING "Could not find node.lib for Windows linking.")
@@ -119,8 +148,12 @@ endif()
 if(MSVC)
     # Enable BigObj just in case
     target_compile_options(ilystream_napi PRIVATE /bigobj)
-    # Node native modules on Windows don't link node.lib directly if they use N-API.
     target_compile_definitions(ilystream_napi PRIVATE NAPI_CPP_EXCEPTIONS)
+    # Delay-load the host binary and let win_delay_load_hook.cc redirect it to
+    # the running process, so the addon loads under electron.exe (not just
+    # node.exe). Without this it crashes on require() inside Electron.
+    target_link_options(ilystream_napi PRIVATE /DELAYLOAD:node.exe)
+    target_link_libraries(ilystream_napi PRIVATE delayimp)
 else()
     target_compile_definitions(ilystream_napi PRIVATE NAPI_CPP_EXCEPTIONS)
 endif()
