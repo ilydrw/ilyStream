@@ -1,0 +1,40 @@
+#pragma once
+
+#include "ily/render_backend.h"
+#include "ily/resource_manager.h"
+#include <memory>
+
+namespace ily {
+
+class BgfxBackend : public IRenderBackend {
+public:
+    BgfxBackend();
+    ~BgfxBackend() override;
+
+    IlyResult Initialize(const IlyEngineConfig& config) override;
+    void Shutdown() override;
+
+    IlyResult BeginFrame() override;
+    IlyResult EndFrame() override;
+
+    void Clear(float r, float g, float b, float a) override;
+
+    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data) override;
+    void DestroyTexture(ResourceHandle handle) override;
+    IlyResult UpdateTexture(ResourceHandle handle, const void* data) override;
+
+    IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) override;
+    ResourceHandle CreateSpriteProgramHandle() override;
+    
+    RendererCapabilities capabilities() const override;
+    IlyRendererCapabilities GetCapabilities() const override;
+
+    ResourceManager& GetResourceManager();
+    void SetActiveSpriteProgram(ResourceHandle programHandle);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+} // namespace ily

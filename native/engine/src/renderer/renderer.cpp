@@ -1,0 +1,246 @@
+#include "renderer.h"
+
+namespace ily {
+
+Renderer::Renderer() {}
+
+Renderer::~Renderer() {
+    Stop();
+}
+
+IlyResult Renderer::Start() {
+    ILY_PROFILE_SCOPE("Renderer::Start");
+    if (m_threadRunning.exchange(true)) {
+        return ILY_SUCCESS; // Already running
+    }
+    m_renderThread = std::thread(&Renderer::RenderThreadLoop, this);
+    return ILY_SUCCESS;
+}
+
+void Renderer::Stop() {
+    ILY_PROFILE_SCOPE("Renderer::Stop");
+    if (!m_threadRunning.exchange(false)) {
+        return; // Already stopped
+    }
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::StopThread;
+    m_commandQueue.Push(cmd);
+    if (m_renderThread.joinable()) {
+        m_renderThread.join();
+    }
+    m_commandQueue.Clear();
+}
+
+IlyResult Renderer::Initialize(const IlyEngineConfig& config) {
+    ILY_PROFILE_SCOPE("Renderer::Initialize");
+    if (!m_threadRunning) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::Initialize;
+    cmd.config = config;
+    cmd.promise = promise;
+
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+void Renderer::Shutdown() {
+    ILY_PROFILE_SCOPE("Renderer::Shutdown");
+    if (!m_threadRunning) {
+        return;
+    }
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::Shutdown;
+    cmd.promise = promise;
+
+    m_commandQueue.Push(cmd);
+    future.get();
+}
+
+IlyResult Renderer::Resize(uint32_t width, uint32_t height) {
+    ILY_PROFILE_SCOPE("Renderer::Resize");
+    if (!m_threadRunning) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::Resize;
+    cmd.width = width;
+    cmd.height = height;
+    cmd.promise = promise;
+
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+void Renderer::SetRenderGraph(std::shared_ptr<RenderGraph> graph) {
+    ILY_PROFILE_SCOPE("Renderer::SetRenderGraph");
+    if (!m_threadRunning) {
+        return;
+    }
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::SetRenderGraph;
+    cmd.renderGraph = graph;
+    m_commandQueue.Push(cmd);
+}
+
+ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const void* data) {
+    if (!m_threadRunning) return ILY_INVALID_HANDLE;
+    auto promise = std::make_shared<std::promise<ResourceHandle>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::CreateTexture;
+    cmd.width = width;
+    cmd.height = height;
+    cmd.textureData = data;
+    cmd.handlePromise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+void Renderer::DestroyTexture(ResourceHandle handle) {
+    if (!m_threadRunning) return;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::DestroyTexture;
+    cmd.handle = handle;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    future.get();
+}
+
+ResourceHandle Renderer::CreateSpriteProgram() {
+    if (!m_threadRunning) return ILY_INVALID_HANDLE;
+    auto promise = std::make_shared<std::promise<ResourceHandle>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::CreateSpriteProgram;
+    cmd.handlePromise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) {
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::DrawQuad;
+    cmd.handle = textureHandle;
+    cmd.transform = transform;
+    cmd.opacity = opacity;
+    cmd.blendMode = blendMode;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+void Renderer::RenderThreadLoop() {
+    FrameScheduler scheduler;
+    bool running = true;
+    bool rendering = false;
+    IlyEngineConfig activeConfig{};
+    std::shared_ptr<RenderGraph> activeGraph = nullptr;
+
+    while (running) {
+        RenderThreadCommand cmd;
+        while (m_commandQueue.Pop(cmd, !rendering)) {
+            switch (cmd.type) {
+                case RenderCommandType::Initialize: {
+                    activeConfig = cmd.config;
+                    IlyResult res = m_device.Initialize(activeConfig);
+                    scheduler.Reset();
+                    rendering = (res == ILY_SUCCESS);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::Shutdown: {
+                    m_device.Shutdown();
+                    rendering = false;
+                    activeGraph = nullptr;
+                    if (cmd.promise) {
+                        cmd.promise->set_value(ILY_SUCCESS);
+                    }
+                    break;
+                }
+                case RenderCommandType::Resize: {
+                    activeConfig.width = cmd.width;
+                    activeConfig.height = cmd.height;
+                    IlyResult res = m_device.Initialize(activeConfig);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::SetRenderGraph: {
+                    activeGraph = cmd.renderGraph;
+                    break;
+                }
+                case RenderCommandType::StopThread: {
+                    running = false;
+                    break;
+                }
+                case RenderCommandType::CreateTexture: {
+                    ResourceHandle tex = m_device.CreateTexture(cmd.width, cmd.height, cmd.textureData);
+                    if (cmd.handlePromise) {
+                        cmd.handlePromise->set_value(tex);
+                    }
+                    break;
+                }
+                case RenderCommandType::DestroyTexture: {
+                    m_device.DestroyTexture(cmd.handle);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(ILY_SUCCESS);
+                    }
+                    break;
+                }
+                case RenderCommandType::CreateSpriteProgram: {
+                    ResourceHandle program = m_device.GetBackend() ? m_device.GetBackend()->CreateSpriteProgramHandle() : ILY_INVALID_HANDLE;
+                    if (cmd.handlePromise) {
+                        cmd.handlePromise->set_value(program);
+                    }
+                    break;
+                }
+                case RenderCommandType::DrawQuad: {
+                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (!running) {
+            break;
+        }
+
+        if (rendering) {
+            scheduler.StartFrame();
+            
+            m_device.BeginFrame();
+            if (activeGraph) {
+                activeGraph->Execute(m_device.GetBackend());
+            }
+            m_device.EndFrame();
+            
+            scheduler.Wait();
+        }
+    }
+    
+    m_device.Shutdown();
+}
+
+} // namespace ily

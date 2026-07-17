@@ -1,0 +1,10 @@
+{
+  "name": "ilystream-engine",
+  "version": "0.0.1",
+  "dependencies": [
+    "catch2",
+    "nlohmann-json",
+    "bgfx"
+  ],
+  "builtin-baseline": "908da3a305a0a8028d9602ab241b433652b3df69"
+}

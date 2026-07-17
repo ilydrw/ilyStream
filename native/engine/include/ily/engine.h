@@ -1,0 +1,104 @@
+#pragma once
+
+#include "ily/types.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Initialize the global engine system.
+ */
+ILY_API IlyResult IlyInitializeSystem(void);
+
+/**
+ * @brief Shutdown the global engine system.
+ */
+ILY_API void IlyShutdownSystem(void);
+
+/**
+ * @brief Create an engine instance.
+ * @param config Configuration options for the engine.
+ * @param outEngineHandle Pointer to receive the created engine handle.
+ */
+ILY_API IlyResult IlyCreateEngine(const IlyEngineConfig* config, ResourceHandle* outEngineHandle);
+
+/**
+ * @brief Destroy an engine instance.
+ * @param engineHandle Handle of the engine to destroy.
+ */
+ILY_API IlyResult IlyDestroyEngine(ResourceHandle engineHandle);
+
+/**
+ * @brief Update the engine state for the current frame.
+ * @param engineHandle Handle of the engine.
+ * @param deltaTime Seconds elapsed since the last frame.
+ */
+ILY_API IlyResult IlyEngineUpdate(ResourceHandle engineHandle, float deltaTime);
+
+/**
+ * @brief Render the current scene.
+ * @param engineHandle Handle of the engine.
+ */
+ILY_API IlyResult IlyEngineRender(ResourceHandle engineHandle);
+
+/**
+ * @brief Set the active scene using a JSON string.
+ * @param engineHandle Handle of the engine.
+ * @param sceneJson The JSON string representing the scene structure.
+ */
+ILY_API IlyResult IlyEngineSetSceneJson(ResourceHandle engineHandle, const char* sceneJson);
+
+/**
+ * @brief Get the current scene as a JSON string.
+ * @param engineHandle Handle of the engine.
+ * @param outBuffer Buffer to write the JSON string into. Can be NULL to query required size.
+ * @param ioBufferSize Pointer to the buffer size. On entry, contains size of outBuffer. On exit, contains required size.
+ */
+ILY_API IlyResult IlyEngineGetSceneJson(ResourceHandle engineHandle, char* outBuffer, uint32_t* ioBufferSize);
+
+/**
+ * @brief Register a source to be used in scenes.
+ * @param engineHandle Handle of the engine.
+ * @param sourceId Unique identifier for the source.
+ * @param name User-friendly name of the source.
+ * @param type The type of the source (e.g. "camera", "image").
+ * @param outSourceHandle Pointer to receive the registered source handle.
+ */
+ILY_API IlyResult IlyEngineRegisterSource(ResourceHandle engineHandle, const char* sourceId, const char* name, const char* type, ResourceHandle* outSourceHandle);
+
+/**
+ * @brief Unregister a source.
+ * @param engineHandle Handle of the engine.
+ * @param sourceHandle Handle of the source to unregister.
+ */
+ILY_API IlyResult IlyEngineUnregisterSource(ResourceHandle engineHandle, ResourceHandle sourceHandle);
+
+/**
+ * @brief Load a texture from an image file.
+ */
+ILY_API IlyResult IlyEngineLoadTexture(ResourceHandle engineHandle, const char* filePath, ResourceHandle* outTextureHandle);
+
+/**
+ * @brief Destroy a texture.
+ */
+ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceHandle textureHandle);
+
+/**
+ * @brief Create a 1x1 solid color texture.
+ */
+ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint32_t color, ResourceHandle* outTextureHandle);
+
+/**
+ * @brief Create the sprite shader program.
+ */
+ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, ResourceHandle* outProgramHandle);
+
+/**
+ * @brief Draw a textured quad.
+ */
+ILY_API IlyResult IlyEngineDrawQuad(ResourceHandle engineHandle, ResourceHandle textureHandle, const IlyTransform* transform, float opacity, IlyBlendMode blendMode);
+
+#ifdef __cplusplus
+}
+#endif
