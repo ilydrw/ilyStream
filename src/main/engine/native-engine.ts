@@ -1,0 +1,218 @@
+/**
+ * Main-process loader and typed wrapper around the native bgfx engine addon
+ * (native/engine -> ilystream_napi.node).
+ *
+ * The engine renders offscreen on its own native thread and hands composited
+ * frames back as RGBA pixels (readFrame), which the main process can stream to
+ * a renderer <canvas>. See native/engine for the C++ side.
+ */
+import { app } from 'electron'
+import { createRequire } from 'module'
+import { dirname, join } from 'path'
+import { existsSync } from 'fs'
+
+const requireNative = createRequire(import.meta.url)
+
+/** IlyBlendMode in native/engine/include/ily/types.h. */
+export enum BlendMode {
+  Normal = 0,
+  Alpha = 1,
+  Add = 2,
+  Multiply = 3,
+  Screen = 4
+}
+
+export interface EngineConfig {
+  width: number
+  height: number
+  fps: number
+  enableValidation?: boolean
+}
+
+export interface Vec3 { x: number; y: number; z: number }
+export interface Vec2 { x: number; y: number }
+export interface Rect { left: number; top: number; right: number; bottom: number }
+
+export interface Transform {
+  position: Vec3
+  rotation: Vec3
+  scale: Vec3
+  anchor: Vec2
+  pivot: Vec2
+  crop: Rect
+  visibility: boolean
+  opacity: number
+}
+
+export interface Layer {
+  texture: bigint
+  transform: Transform
+  opacity: number
+  blendMode: BlendMode
+}
+
+export interface Frame {
+  width: number
+  height: number
+  /** Tightly packed RGBA8, width*height*4 bytes. Reused across reads. */
+  data: Buffer
+}
+
+/** Shape of the native addon's exports (see native/engine/src/napi_bindings.cpp). */
+interface NativeAddon {
+  initializeSystem(): number
+  shutdownSystem(): void
+  createEngine(config: EngineConfig): bigint
+  destroyEngine(engine: bigint): number
+  engineLoadTexture(engine: bigint, filePath: string): bigint
+  engineCreateColorTexture(engine: bigint, rgba: number): bigint
+  engineDestroyTexture(engine: bigint, texture: bigint): number
+  engineSetLayers(engine: bigint, layers: Layer[]): number
+  engineReadPixels(
+    engine: bigint,
+    buffer: Buffer
+  ): { result: number; width: number; height: number }
+}
+
+/** Candidate locations for the built addon, dev and packaged. */
+function addonCandidates(): string[] {
+  const override = process.env.ILY_ENGINE_ADDON
+  const appPath = app.getAppPath()
+  return [
+    ...(override ? [override] : []),
+    // Packaged: electron-builder extraResources copies it here (see package.json).
+    join(process.resourcesPath ?? '', 'native-engine', 'ilystream_napi.node'),
+    // Dev: raw CMake build output.
+    join(appPath, 'native', 'engine', 'build', 'Release', 'ilystream_napi.node'),
+    join(process.cwd(), 'native', 'engine', 'build', 'Release', 'ilystream_napi.node')
+  ].filter(Boolean)
+}
+
+let addon: NativeAddon | null = null
+
+/**
+ * Locate and load the addon. The addon depends on ilystream_engine.dll living
+ * beside it; Windows resolves a module's dependencies from the host exe dir and
+ * PATH (not the module's own dir), so we prepend the addon directory to PATH
+ * before requiring it.
+ */
+function loadAddon(): NativeAddon {
+  if (addon) return addon
+
+  const found = addonCandidates().find((candidate) => existsSync(candidate))
+  if (!found) {
+    throw new Error(
+      `Native engine addon not found. Looked in:\n${addonCandidates().join('\n')}\n` +
+        `Build it with: npm run build:engine`
+    )
+  }
+
+  if (process.platform === 'win32') {
+    const dir = dirname(found)
+    if (!process.env.PATH?.split(';').includes(dir)) {
+      process.env.PATH = `${dir};${process.env.PATH ?? ''}`
+    }
+  }
+
+  addon = requireNative(found) as NativeAddon
+  return addon
+}
+
+let systemInitialized = false
+
+/** Idempotently initialize the global engine system. */
+export function initEngineSystem(): void {
+  if (systemInitialized) return
+  loadAddon().initializeSystem()
+  systemInitialized = true
+}
+
+export function shutdownEngineSystem(): void {
+  if (!systemInitialized || !addon) return
+  addon.shutdownSystem()
+  systemInitialized = false
+}
+
+/**
+ * A single engine instance: renders a retained list of layers offscreen and
+ * reads frames back for presentation.
+ */
+export class NativeEngine {
+  private readonly api: NativeAddon
+  private handle: bigint
+  private readonly width: number
+  private readonly height: number
+  private readonly frameBuffer: Buffer
+  private destroyed = false
+
+  constructor(config: EngineConfig) {
+    initEngineSystem()
+    this.api = loadAddon()
+    this.width = config.width
+    this.height = config.height
+    this.frameBuffer = Buffer.alloc(config.width * config.height * 4)
+    this.handle = this.api.createEngine({ enableValidation: false, ...config })
+  }
+
+  /** Load an image file (png/jpg/...) as a texture. Returns a texture handle. */
+  loadTexture(filePath: string): bigint {
+    this.assertAlive()
+    return this.api.engineLoadTexture(this.handle, filePath)
+  }
+
+  /** Create a 1x1 solid-color texture. `rgba` is packed 0xRRGGBBAA. */
+  createColorTexture(rgba: number): bigint {
+    this.assertAlive()
+    return this.api.engineCreateColorTexture(this.handle, rgba >>> 0)
+  }
+
+  destroyTexture(texture: bigint): void {
+    this.assertAlive()
+    this.api.engineDestroyTexture(this.handle, texture)
+  }
+
+  /** Replace the retained layer list composited every frame. */
+  setLayers(layers: Layer[]): void {
+    this.assertAlive()
+    this.api.engineSetLayers(this.handle, layers)
+  }
+
+  /**
+   * Read the latest composited frame. Returns a Frame whose `data` buffer is
+   * reused across calls (copy it if you need to retain it), or null on failure.
+   */
+  readFrame(): Frame | null {
+    this.assertAlive()
+    const { result, width, height } = this.api.engineReadPixels(this.handle, this.frameBuffer)
+    if (result !== 0) return null
+    return { width, height, data: this.frameBuffer }
+  }
+
+  get size(): { width: number; height: number } {
+    return { width: this.width, height: this.height }
+  }
+
+  destroy(): void {
+    if (this.destroyed) return
+    this.api.destroyEngine(this.handle)
+    this.destroyed = true
+  }
+
+  private assertAlive(): void {
+    if (this.destroyed) throw new Error('NativeEngine used after destroy()')
+  }
+}
+
+/** Convenience: an identity transform covering a rect at (x,y) sized w*h. */
+export function rectTransform(x: number, y: number, w: number, h: number): Transform {
+  return {
+    position: { x, y, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 },
+    scale: { x: w, y: h, z: 1 },
+    anchor: { x: 0, y: 0 },
+    pivot: { x: 0, y: 0 },
+    crop: { left: 0, top: 0, right: 0, bottom: 0 },
+    visibility: true,
+    opacity: 1
+  }
+}
