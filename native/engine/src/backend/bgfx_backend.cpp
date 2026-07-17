@@ -46,6 +46,7 @@ struct BgfxBackend::Impl {
     uint32_t m_height = 720;
     ResourceManager m_resourceManager;
     bgfx::ProgramHandle m_spriteProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_texColorSampler = BGFX_INVALID_HANDLE;
     mutable std::mutex m_mutex;
     bool m_initialized = false;
 
@@ -80,7 +81,7 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     m_impl->m_height = height;
 
     if (m_impl->m_initialized) {
-        bgfx::reset(width, height, BGFX_RESET_VSYNC);
+        bgfx::reset(width, height, BGFX_RESET_NONE);
         bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         return ILY_SUCCESS;
     }
@@ -102,7 +103,10 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 #endif
     init.resolution.width = width;
     init.resolution.height = height;
-    init.resolution.reset = BGFX_RESET_VSYNC;
+    // No vsync: this is an offscreen compositor surface and the render thread
+    // paces frames itself (see Renderer::RenderThreadLoop). vsync here would
+    // block bgfx::frame() and starve queued resource commands.
+    init.resolution.reset = BGFX_RESET_NONE;
 
     if (!bgfx::init(init)) {
         return ILY_ERROR_INITIALIZATION_FAILED;
@@ -113,6 +117,10 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x1e1e1eff, 1.0f, 0);
     bgfx::setViewRect(0, 0, 0, width, height);
     bgfx::setDebug(BGFX_DEBUG_TEXT);
+
+    // Sampler uniform is shared by every quad draw; create it once here rather
+    // than per-DrawQuad. Destroyed in Shutdown().
+    m_impl->m_texColorSampler = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
 
     // Compile/load our textured quad sprite shader program
     m_impl->m_spriteProgram = CreateSpriteProgram();
@@ -131,6 +139,11 @@ void BgfxBackend::Shutdown() {
     if (bgfx::isValid(m_impl->m_spriteProgram)) {
         bgfx::destroy(m_impl->m_spriteProgram);
         m_impl->m_spriteProgram = BGFX_INVALID_HANDLE;
+    }
+
+    if (bgfx::isValid(m_impl->m_texColorSampler)) {
+        bgfx::destroy(m_impl->m_texColorSampler);
+        m_impl->m_texColorSampler = BGFX_INVALID_HANDLE;
     }
 
     m_impl->m_resourceManager.Clear();
@@ -395,9 +408,8 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
 
     bgfx::setState(state);
 
-    // Bind texture
-    bgfx::UniformHandle s_texColor = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
-    bgfx::setTexture(0, s_texColor, tex->GetHandle());
+    // Bind texture using the shared, pre-created sampler uniform.
+    bgfx::setTexture(0, m_impl->m_texColorSampler, tex->GetHandle());
 
     // Submit transient buffers
     bgfx::setVertexBuffer(0, &tvb);
@@ -405,9 +417,6 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
 
     // Submit draw call
     bgfx::submit(0, m_impl->m_spriteProgram);
-
-    // Clean up temporary uniform handle
-    bgfx::destroy(s_texColor);
 
     return ILY_SUCCESS;
 }

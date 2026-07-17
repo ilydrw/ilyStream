@@ -146,21 +146,37 @@ IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& t
 }
 
 void Renderer::RenderThreadLoop() {
+    using Clock = std::chrono::steady_clock;
+
     FrameScheduler scheduler;
     bool running = true;
     bool rendering = false;
     IlyEngineConfig activeConfig{};
     std::shared_ptr<RenderGraph> activeGraph = nullptr;
 
+    // We pace frames ourselves against this deadline instead of blocking inside
+    // the render call (vsync is disabled on the offscreen surface). This keeps
+    // the thread free to service queued commands between frames.
+    Clock::time_point nextFrameTime = Clock::now();
+    auto frameBudget = [&activeConfig]() -> Clock::duration {
+        const uint32_t fps = activeConfig.fps > 0 ? activeConfig.fps : 60;
+        return std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(1.0 / static_cast<double>(fps)));
+    };
+
     while (running) {
+        // Drain every queued command without blocking. Resource work (texture /
+        // shader create+destroy, draws) is serviced here the moment it arrives,
+        // decoupled from the frame cadence below.
         RenderThreadCommand cmd;
-        while (m_commandQueue.Pop(cmd, !rendering)) {
+        while (m_commandQueue.Pop(cmd, /*block*/ false)) {
             switch (cmd.type) {
                 case RenderCommandType::Initialize: {
                     activeConfig = cmd.config;
                     IlyResult res = m_device.Initialize(activeConfig);
                     scheduler.Reset();
                     rendering = (res == ILY_SUCCESS);
+                    nextFrameTime = Clock::now();
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }
@@ -221,6 +237,9 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
             }
+            if (!running) {
+                break;
+            }
         }
 
         if (!running) {
@@ -228,18 +247,34 @@ void Renderer::RenderThreadLoop() {
         }
 
         if (rendering) {
-            scheduler.StartFrame();
-            
-            m_device.BeginFrame();
-            if (activeGraph) {
-                activeGraph->Execute(m_device.GetBackend());
+            const Clock::time_point now = Clock::now();
+            if (now >= nextFrameTime) {
+                scheduler.StartFrame();
+
+                m_device.BeginFrame();
+                if (activeGraph) {
+                    activeGraph->Execute(m_device.GetBackend());
+                }
+                m_device.EndFrame();
+
+                const Clock::duration budget = frameBudget();
+                nextFrameTime += budget;
+                // If we fell far behind (long stall), resync instead of racing
+                // through a backlog of frames to catch up.
+                if (nextFrameTime + budget * 5 < now) {
+                    nextFrameTime = now + budget;
+                }
+            } else {
+                // Wait for the next frame deadline, but wake immediately if a
+                // command arrives so resource work never waits a whole frame.
+                m_commandQueue.WaitUntil(nextFrameTime);
             }
-            m_device.EndFrame();
-            
-            scheduler.Wait();
+        } else {
+            // Idle (not initialized or shut down): block until work arrives.
+            m_commandQueue.WaitForWork();
         }
     }
-    
+
     m_device.Shutdown();
 }
 

@@ -8,6 +8,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 #include <memory>
 #include <future>
 #include <atomic>
@@ -86,6 +87,21 @@ private:
             cmd = m_queue.front();
             m_queue.pop();
             return true;
+        }
+
+        // Block until a command is queued. Used by the render thread when it is
+        // idle (not yet initialized / after shutdown) so it consumes no CPU.
+        void WaitForWork() {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cv.wait(lock, [this] { return !m_queue.empty(); });
+        }
+
+        // Wait until either a command is queued or the deadline passes. Lets the
+        // render thread pace frames to a deadline while still servicing incoming
+        // commands the instant they arrive, instead of sleeping a whole frame.
+        void WaitUntil(std::chrono::steady_clock::time_point deadline) {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cv.wait_until(lock, deadline, [this] { return !m_queue.empty(); });
         }
 
         void Clear() {

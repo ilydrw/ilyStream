@@ -11,25 +11,12 @@ option(ILY_USE_BGFX "Use bgfx renderer backend" ON)
 # Enable position independent code for shared/module targets
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-include(FetchContent)
-
-# Fetch nlohmann_json
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.3
-    SYSTEM
-)
-FetchContent_MakeAvailable(nlohmann_json)
-
-# Fetch Catch2
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.5.2
-    SYSTEM
-)
-FetchContent_MakeAvailable(Catch2)
+# nlohmann_json and Catch2 are provided by vcpkg (see vcpkg.json). Resolving
+# them with find_package instead of FetchContent keeps configure fully offline
+# and deterministic: FetchContent performs git clones/update-checks against
+# GitHub on every reconfigure, which can hang the build when the network stalls.
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Catch2 3 CONFIG REQUIRED)
 
 # Include directories
 include_directories(include src)
@@ -53,6 +40,12 @@ set(ENGINE_SOURCES
 add_library(ilystream_engine SHARED ${ENGINE_SOURCES})
 target_compile_definitions(ilystream_engine PRIVATE ILY_ENGINE_BUILD_DLL)
 target_link_libraries(ilystream_engine PRIVATE nlohmann_json::nlohmann_json)
+
+# Precompiled, committed sprite-shader bytecode headers (one dir per backend:
+# dx11/ spv/ glsl/ essl/ mtl/). shader_loader.cpp includes these by backend
+# subdir, e.g. #include "dx11/vs_sprite.sc.bin.h". Regenerate the contents with
+# shaders/compile_shaders.ps1; no shaderc is needed for a normal engine build.
+target_include_directories(ilystream_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/generated)
 
 # If using bgfx, we locate and link it
 if(ILY_USE_BGFX)
