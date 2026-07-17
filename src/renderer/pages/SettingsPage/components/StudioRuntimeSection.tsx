@@ -25,7 +25,7 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
             <IconDatabase size={32} />
           </div>
           <div>
-            <h2>Runtime & Data</h2>
+            <h2>Runtime & data</h2>
             <p>Chat retention and cross-platform relay behavior.</p>
           </div>
         </div>
@@ -33,7 +33,7 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
 
       <div className="app-section-content !p-0">
         <div className="p-8">
-          <SettingRow label="Message Buffer" hint="How many chat events the renderer keeps hot before old entries roll off.">
+          <SettingRow label="Message buffer" hint="How many chat events the renderer keeps hot before old entries roll off.">
             <NumberInput
               value={settings.chat?.maxMessages}
               onChange={(value) => onUpdate('chatMaxMessages', value)}
@@ -42,15 +42,15 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
             />
           </SettingRow>
 
-          <SettingRow label="Auto Relay" hint="Mirror eligible chat messages into connected platforms when relay is enabled.">
+          <SettingRow label="Auto relay" hint="Mirror eligible chat messages into connected platforms when relay is enabled.">
             <Toggle value={settings.chat?.autoRelayEnabled} onChange={(value) => onUpdate('chatAutoRelayEnabled', value)} />
           </SettingRow>
 
-          <SettingRow label="Host Chat Responses" hint="Send command confirmations from the signed-in host account when a platform sender is ready.">
+          <SettingRow label="Host chat responses" hint="Send command confirmations from the signed-in host account when a platform sender is ready.">
             <Toggle value={settings.chat?.hostResponsesEnabled} onChange={(value) => onUpdate('chatHostResponsesEnabled', value)} />
           </SettingRow>
 
-          <SettingRow label="Platform Auto-Reconnect" hint="Automatically retry connections when a service drops unexpectedly. Disable this to save API limits.">
+          <SettingRow label="Platform auto-reconnect" hint="Automatically retry connections when a service drops unexpectedly. Disable this to save API limits.">
             <Toggle value={settings.platform?.autoReconnect} onChange={(value) => onUpdate('platformAutoReconnect', value)} />
           </SettingRow>
 

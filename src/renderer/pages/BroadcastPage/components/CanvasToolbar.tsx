@@ -31,18 +31,18 @@ export function CanvasToolbar({
     : [...GRID_SIZE_OPTIONS, gridSize].sort((a, b) => a - b)
 
   return (
-    <div className="h-12 px-4 border-b border-white/5 flex items-center justify-between bg-black/20 z-20">
+    <div className="broadcast-canvas-toolbar">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border border-white/10">
-          <IconDeviceDesktop size={14} className="text-accent" />
-          <span className="text-[10px] font-semibold tracking-tighter text-white/60">
+        <div className="broadcast-canvas-badge">
+          <IconDeviceDesktop size={14} />
+          <span>
             {canvasWidth}x{canvasHeight}
           </span>
         </div>
         <Tooltip content={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} position="bottom">
           <button
             onClick={onToggleFullscreen}
-            className="p-2 rounded hover:bg-white/10 text-white/40 hover:text-white transition-colors cursor-pointer"
+            className="broadcast-canvas-icon-button"
           >
             {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
           </button>
@@ -50,23 +50,23 @@ export function CanvasToolbar({
       </div>
       
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded bg-white/[0.035] border border-white/10 px-1.5 py-1">
+        <div className="broadcast-canvas-control-group">
           <Tooltip content={snapToGrid ? 'Snap to grid on' : 'Snap to grid off'} position="bottom">
             <button
               onClick={onToggleSnapToGrid}
               aria-pressed={snapToGrid}
-              className={`h-7 w-7 grid place-items-center rounded transition-all cursor-pointer ${snapToGrid ? 'bg-accent/20 text-accent ring-1 ring-accent/30' : 'text-white/35 hover:bg-white/10 hover:text-white/70'}`}
+              className={`broadcast-canvas-icon-button is-compact ${snapToGrid ? 'is-active' : ''}`}
             >
               <IconMagnet size={15} />
             </button>
           </Tooltip>
           <div className={`flex items-center gap-1 pl-1 transition-opacity ${snapToGrid ? 'opacity-100' : 'opacity-35'}`}>
-            <IconGridDots size={14} className="text-white/40" />
+            <IconGridDots size={14} />
             <select
               value={gridSize}
               onChange={(event) => onGridSizeChange(Number(event.target.value))}
               disabled={!snapToGrid}
-              className="h-7 bg-transparent text-[10px] font-semibold tracking-tight text-white/65 outline-none disabled:cursor-not-allowed cursor-pointer"
+              className="broadcast-canvas-grid-select"
             >
               {gridSizeOptions.map(size => (
                 <option key={size} value={size}>{size}px</option>
@@ -76,10 +76,10 @@ export function CanvasToolbar({
         </div>
         <button 
           onClick={onResetView}
-          className="flex items-center gap-2 px-3 py-1.5 rounded bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-all group cursor-pointer"
+          className="broadcast-canvas-reset group"
         >
           <IconRotate2 size={14} className="group-hover:rotate-[-45deg] transition-transform" />
-          <span className="text-[10px] font-semibold tracking-tight">Reset View</span>
+          <span>Reset view</span>
         </button>
       </div>
     </div>

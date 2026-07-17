@@ -44,7 +44,7 @@ function LayerRow({
             type="checkbox"
             checked={enabled}
             onChange={(e) => onToggle(e.target.checked)}
-            className="w-4 h-4 accent-[#19c8ff] flex-shrink-0"
+            className="w-4 h-4 accent-accent flex-shrink-0"
           />
           <span className="text-lg leading-none">{emoji}</span>
           <div className="flex-1 min-w-0">
@@ -85,7 +85,7 @@ function PhysicsRow({ label, value, onChange, min = 0.1, max = 5, step = 0.1 }: 
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-[#19c8ff]"
+        className="w-full accent-accent"
       />
     </Field>
   )
@@ -341,7 +341,7 @@ export function ParticlesConfigEditor({
               step="0.01"
               value={cfg.audioThreshold ?? 0.05}
               onChange={(e) => update({ audioThreshold: parseFloat(e.target.value) })}
-              className="flex-1 accent-[#19c8ff]"
+              className="flex-1 accent-accent"
             />
           </div>
         </Field>

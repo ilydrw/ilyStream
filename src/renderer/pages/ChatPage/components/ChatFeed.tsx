@@ -3,6 +3,8 @@ import { IconSearch } from '../../../components/ui/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { type ChatMessage } from '../../../stores/chat-store'
+import { PLATFORM_LABELS } from '../../../../shared/chat-relay'
+import type { Platform } from '../../../../main/platforms/types'
 import { platforms } from '../constants'
 import { ChatMessageItem } from './ChatMessageItem'
 
@@ -86,7 +88,7 @@ export function ChatFeed({
                   className={`relative flex items-center gap-2 py-2 text-xs font-semibold tracking-tight transition-all ${ active ? 'text-white' : 'text-white/35 hover:text-white/65' }`}
                 >
                   {platform !== 'all' && <PlatformLogo platform={platform} size={12} />}
-                  {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                  {platform === 'all' ? 'All' : PLATFORM_LABELS[platform as Platform] ?? platform.charAt(0).toUpperCase() + platform.slice(1)}
                   <span className="text-[10px] opacity-45 ml-0.5 tabular-nums">{count}</span>
                   {active && <div className="absolute -bottom-4 left-0 right-0 h-px bg-accent" />}
                 </button>

@@ -49,6 +49,9 @@ interface RenderLoopOptions {
 
 const DUAL_VERTICAL_OVERLAY_FPS = 20
 const DUAL_VERTICAL_OVERLAY_JPEG_QUALITY = 0.7
+// Projector mirrors consume the per-aspect canvas via captureStream(), which
+// emits a frame on every canvas paint — so this is the projector framerate.
+const MIRROR_CAPTURE_FPS = 60
 
 export function useRenderLoop(options: RenderLoopOptions) {
   const {
@@ -77,6 +80,11 @@ export function useRenderLoop(options: RenderLoopOptions) {
   const compositedCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const horizontalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const verticalCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
+  // Draw gates for the per-aspect canvases. Draw cadence (max of every
+  // consumer's rate) is tracked separately from each encoder's capture gate
+  // so a 60fps projector mirror can't push extra frames into a 30fps encoder.
+  const horizontalDrawGateRef = useRef({ lastAt: 0, frameCount: 0 })
+  const verticalDrawGateRef = useRef({ lastAt: 0, frameCount: 0 })
   const virtualCameraCaptureRef = useRef({ lastAt: 0, frameCount: 0 })
   const dualVerticalOverlayRef = useRef({ lastAt: 0, busy: false })
   const transitionCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -141,8 +149,11 @@ export function useRenderLoop(options: RenderLoopOptions) {
     let isHibernated = false
 
     const checkHibernation = () => {
-      // Hibernate if page is hidden AND we aren't doing any work that requires frames (streaming, recording, etc)
-      const workActive = outputActive || streamOutputs.some(o => o.active) || dualVerticalOverlayEnabledRef.current
+      // Hibernate if page is hidden AND we aren't doing any work that requires
+      // frames (streaming, recording, overlay pushes, projector mirrors).
+      const workActive = outputActive || streamOutputs.some(o => o.active) ||
+        dualVerticalOverlayEnabledRef.current ||
+        forceHorizontalCanvasRef.current || forceVerticalCanvasRef.current
       const shouldHibernate = !isVisible && !workActive
 
       if (shouldHibernate !== isHibernated) {
@@ -772,29 +783,32 @@ export function useRenderLoop(options: RenderLoopOptions) {
       // Render each aspect's output canvas FIRST when due, then derive the
       // primary/secondary previews from it via drawImage. This avoids the
       // 2–4× full scene composites per tick that dual streaming used to do.
+      // Each canvas is drawn on ONE clock (the fastest consumer's rate);
+      // slower consumers (the encoder, the overlay push) sample those drawn
+      // frames through their own gates so their cadence/timestamps stay exact.
       const horiz = streamOutputs.find(o => o.id === 'horizontal' && o.active)
       const horizForced = forceHorizontalCanvasRef.current
-      const horizTargetFps = Math.max(horiz?.fps ?? 0, horizForced ? 30 : 0)
-      const horizCaptureDue =
-        (Boolean(horiz) || horizForced) && horizTargetFps > 0 &&
-        shouldCapture(horizontalCaptureRef.current, horizTargetFps, now)
+      const horizDrawFps = Math.max(horiz?.fps ?? 0, horizForced ? MIRROR_CAPTURE_FPS : 0)
+      const horizDrawDue =
+        (Boolean(horiz) || horizForced) && horizDrawFps > 0 &&
+        shouldCapture(horizontalDrawGateRef.current, horizDrawFps, now)
 
       const vert = streamOutputs.find(o => o.id === 'vertical' && o.active)
       const overlayEnabled = dualVerticalOverlayEnabledRef.current
       const vertForced = forceVerticalCanvasRef.current
-      const vertTargetFps = Math.max(
+      const vertDrawFps = Math.max(
         vert?.fps ?? 0,
         overlayEnabled ? DUAL_VERTICAL_OVERLAY_FPS : 0,
-        vertForced ? 30 : 0
+        vertForced ? MIRROR_CAPTURE_FPS : 0
       )
-      const vertCaptureDue =
-        (Boolean(vert) || overlayEnabled || vertForced) && vertTargetFps > 0 &&
-        shouldCapture(verticalCaptureRef.current, vertTargetFps, now)
+      const vertDrawDue =
+        (Boolean(vert) || overlayEnabled || vertForced) && vertDrawFps > 0 &&
+        shouldCapture(verticalDrawGateRef.current, vertDrawFps, now)
 
       let renderedHorizontal: HTMLCanvasElement | null = null
       let renderedVertical: HTMLCanvasElement | null = null
 
-      if (horizCaptureDue) {
+      if (horizDrawDue) {
         if (!horizontalCanvasRef.current) horizontalCanvasRef.current = document.createElement('canvas')
         const hCanvas = horizontalCanvasRef.current
         hCanvas.width = horiz?.width ?? 1920
@@ -802,12 +816,14 @@ export function useRenderLoop(options: RenderLoopOptions) {
         const hCtx = hCanvas.getContext('2d', { alpha: false })
         if (hCtx) {
           drawSceneWithTransition(hCtx, hCanvas, '16:9')
-          if (horiz) postFrameToWorker(horizontalEncoderWorkerRef.current, hCanvas, horizontalCaptureRef.current.frameCount, horiz.fps)
+          if (horiz && shouldCapture(horizontalCaptureRef.current, horiz.fps, now)) {
+            postFrameToWorker(horizontalEncoderWorkerRef.current, hCanvas, horizontalCaptureRef.current.frameCount, horiz.fps)
+          }
           renderedHorizontal = hCanvas
         }
       }
 
-      if (vertCaptureDue) {
+      if (vertDrawDue) {
         if (!verticalCanvasRef.current) verticalCanvasRef.current = document.createElement('canvas')
         const vCanvas = verticalCanvasRef.current
         vCanvas.width = vert?.width ?? 1080
@@ -815,7 +831,9 @@ export function useRenderLoop(options: RenderLoopOptions) {
         const vCtx = vCanvas.getContext('2d', { alpha: false })
         if (vCtx) {
           drawSceneWithTransition(vCtx, vCanvas, '9:16')
-          if (vert) postFrameToWorker(verticalEncoderWorkerRef.current, vCanvas, verticalCaptureRef.current.frameCount, vert.fps)
+          if (vert && shouldCapture(verticalCaptureRef.current, vert.fps, now)) {
+            postFrameToWorker(verticalEncoderWorkerRef.current, vCanvas, verticalCaptureRef.current.frameCount, vert.fps)
+          }
           if (overlayEnabled) maybeCaptureDualVerticalOverlay(vCanvas, now)
           renderedVertical = vCanvas
         }

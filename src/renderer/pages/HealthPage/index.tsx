@@ -94,9 +94,9 @@ function HealthInfoTile({
 }) {
   return (
     <div className="min-w-0 rounded-md border border-white/[0.06] bg-black/15 p-3">
-      <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/30">{label}</span>
+      <span className="block text-[10px] font-semibold text-white/30">{label}</span>
       <strong className="mt-1 block truncate text-[13px] leading-5 text-white">{value}</strong>
-      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-white/42">{detail}</p>
+      <p className="mt-1 line-clamp-3 text-[11px] leading-5 text-white/42">{detail}</p>
     </div>
   )
 }
@@ -138,15 +138,15 @@ function PlatformHealthCard({
           <div className="grid gap-3 md:grid-cols-3">
             <HealthInfoTile label="Input" value={row.trustLabel} detail={row.trustDetail} />
             <HealthInfoTile
-              label="Chat Relay"
+              label="Chat relay"
               value={row.canSendChat ? 'Can send' : 'Read only'}
               detail={row.canSendChat ? 'Outbound messages are available.' : row.chatCapabilityReason ?? 'Outbound chat is not available yet.'}
             />
-            <HealthInfoTile label="Last Event" value={formatTime(row.lastEventAt)} detail={row.lastEventLabel} />
+            <HealthInfoTile label="Last event" value={formatTime(row.lastEventAt)} detail={row.lastEventLabel} />
           </div>
 
           <div className="rounded-md border border-white/[0.06] bg-black/15 p-3">
-            <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/32">
+            <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold text-white/32">
               <IconChecklist size={13} />
               Next action
             </div>
@@ -157,7 +157,7 @@ function PlatformHealthCard({
         <div className="flex min-w-0 flex-col gap-3 rounded-md border border-white/[0.06] bg-black/15 p-3">
           <Link to={row.actionPath} className="app-button-primary w-full justify-center">
             <IconShieldCheck size={14} />
-            Open Setup
+            Open setup
           </Link>
           <button
             type="button"
@@ -166,10 +166,10 @@ function PlatformHealthCard({
             disabled={isTesting}
           >
             <IconSend size={14} />
-            {isTesting ? 'Sending' : 'Chat Test'}
+            {isTesting ? 'Sending' : 'Chat test'}
           </button>
           <div className="mt-1 rounded-md border border-white/[0.06] bg-white/[0.025] p-3">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/30">Audience</span>
+            <span className="block text-[10px] font-semibold text-white/30">Audience</span>
             <strong className="mt-1 block font-mono text-2xl leading-none text-white tabular-nums">{row.viewerCount.toLocaleString()}</strong>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
               <i
@@ -258,7 +258,7 @@ export default function HealthPage() {
         username: 'health_check',
         displayName: 'Health Check'
       })
-      setNotice(`${platform} chat test sent through Event Testing.`)
+      setNotice(`${platform} chat test sent through Event Lab.`)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not send the chat test.')
     } finally {
@@ -288,7 +288,7 @@ export default function HealthPage() {
             </button>
             <button type="button" className="app-button-primary" onClick={copyReport}>
               <IconCopy size={14} />
-              Copy Report
+              Copy report
             </button>
           </>
         }
@@ -302,7 +302,7 @@ export default function HealthPage() {
       </div>
 
       {notice && (
-        <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-[12px] text-cyan-100">
+        <div className="app-callout is-accent">
           {notice}
         </div>
       )}
@@ -311,12 +311,12 @@ export default function HealthPage() {
         <section className="app-section-card glass overflow-hidden">
           <div className="app-section-head">
             <div>
-              <h2>Platform Checkup</h2>
+              <h2>Platform checkup</h2>
               <p>{liveEventCount.toLocaleString()} recent events are available for diagnostics.</p>
             </div>
             <button type="button" className="app-button" onClick={runAllChatTests} disabled={testingPlatform !== null}>
               <IconBolt size={14} />
-              Test All Chats
+              Test all chats
             </button>
           </div>
           <div className="app-section-content flex flex-col gap-4 bg-black/[0.08]">
@@ -334,24 +334,24 @@ export default function HealthPage() {
         <aside className="flex min-w-0 flex-col gap-[var(--gap-grid)]">
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Live Checklist</h2>
+              <h2>Live checklist</h2>
               <IconChecklist size={16} className="text-white/38" />
             </div>
             <div className="app-section-content flex flex-col gap-2">
               <Link to="/event-lab" className="border-t border-white/[0.06] py-3 transition-colors first:border-t-0 hover:text-cyan-100">
-                <strong className="block text-[13px] text-white">Event Testing</strong>
+                <strong className="block text-[13px] text-white">Event testing</strong>
                 <span className="mt-1 block text-[11px] leading-relaxed text-white/45">Run gifts, follows, chats, emotes, alerts, TTS, and overlay routes locally.</span>
               </Link>
               <Link to="/stats" className="border-t border-white/[0.06] py-3 transition-colors first:border-t-0 hover:text-cyan-100">
-                <strong className="block text-[13px] text-white">Identity Manager</strong>
+                <strong className="block text-[13px] text-white">Identity manager</strong>
                 <span className="mt-1 block text-[11px] leading-relaxed text-white/45">Merge accounts, set primary profiles, and verify badges before reading stats.</span>
               </Link>
               <Link to="/chat" className="border-t border-white/[0.06] py-3 transition-colors first:border-t-0 hover:text-cyan-100">
-                <strong className="block text-[13px] text-white">Relay Controls</strong>
+                <strong className="block text-[13px] text-white">Relay controls</strong>
                 <span className="mt-1 block text-[11px] leading-relaxed text-white/45">Review auto-relay, outbound targets, and disabled send paths.</span>
               </Link>
               <Link to="/tts" className="border-t border-white/[0.06] py-3 transition-colors first:border-t-0 hover:text-cyan-100">
-                <strong className="block text-[13px] text-white">Command Filters</strong>
+                <strong className="block text-[13px] text-white">Command filters</strong>
                 <span className="mt-1 block text-[11px] leading-relaxed text-white/45">Confirm AI, song request, and TTS routing before chat gets busy.</span>
               </Link>
             </div>
@@ -359,7 +359,7 @@ export default function HealthPage() {
 
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Current Risks</h2>
+              <h2>Current risks</h2>
               <IconAlertTriangle size={16} className="text-white/38" />
             </div>
             <div className="app-section-content flex flex-col gap-3">

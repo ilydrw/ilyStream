@@ -100,6 +100,7 @@ export default function WidgetPage() {
       setWidgets((prev) => prev.map((w) => (w.id === widget.id ? widget : w)))
     } catch (error) {
       console.error('Failed to save widget', error)
+      throw error
     }
   }
 
@@ -137,7 +138,7 @@ export default function WidgetPage() {
     <div className="app-page widgets-page">
       <PageHeader
         kicker="Overlay compositor"
-        title="Widgets & Overlays"
+        title="Overlays & Widgets"
         icon={IconWidgets}
         description="Create browser-source graphics that stay wired to live events, chat, Spotify, stats, and the overlay server."
         actions={
@@ -145,7 +146,7 @@ export default function WidgetPage() {
           <OverlayStatusPill running={overlayRunning} port={overlayPort} />
           <button onClick={() => setShowNewModal(true)} className="app-button-primary !h-12 !px-6 text-xs font-semibold">
             <IconPlus size={16} className="mr-2" />
-            New Widget
+            New widget
           </button>
           </>
         }
@@ -205,7 +206,6 @@ export default function WidgetPage() {
           onClose={() => setEditingWidget(null)}
           onSave={async (updated) => {
             await saveWidget(updated)
-            setEditingWidget(updated) // keep modal open with refreshed state
           }}
         />
       )}
@@ -240,7 +240,7 @@ async function copyText(value: string): Promise<void> {
 function OverlayStatusPill({ running, port }: { running: boolean; port: number | null }) {
   return (
     <div
-      className={`flex items-center gap-2 h-12 px-4 rounded-lg border text-xs font-semibold ${ running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40' }`}
+      className={`flex shrink-0 items-center gap-2 h-12 px-4 rounded-lg border text-xs font-semibold whitespace-nowrap ${ running ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-white/5 text-white/40' }`}
     >
       <span className={`h-2 w-2 rounded-full ${running ? 'bg-success' : 'bg-white/30'}`} />
       {running && port ? `127.0.0.1:${port}` : 'Overlay server offline'}

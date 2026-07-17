@@ -54,6 +54,8 @@ export interface CanvasEditorProps {
   // a 9:16 (or 16:9) render on demand.
   forceVerticalCanvas?: boolean
   forceHorizontalCanvas?: boolean
+  /** Keep browser-source frames active while this editor is rendering. */
+  browserFramesNeeded?: boolean
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
   /** Double-click on a source — used to jump straight into widget editing. */

@@ -4,7 +4,10 @@ import type { BrowserFrameSurface, CachedMediaFrame, Crop, HandleDir } from './C
 export const BROWSER_SOURCE_CAPTURE_MAX_EDGE = 1920
 export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
 export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
-export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 60
+// 30fps default: each frame is a full BGRA bitmap copied main → renderer →
+// worker, so capture rate directly drives allocation churn. Layers that need
+// 60 can still set it explicitly via config.fps.
+export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 30
 const LIKES_TRACKER_CAPTURE_MIN_WIDTH = 400
 const LIKES_TRACKER_CAPTURE_MIN_HEIGHT = 280
 const LEADERBOARD_CAPTURE_MIN_WIDTH = 440

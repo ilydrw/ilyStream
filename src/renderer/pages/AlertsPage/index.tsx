@@ -237,7 +237,7 @@ export default function AlertsPage() {
       <div className="app-page alerts-page">
         <PageHeader
           kicker="Event routing & delivery"
-          title="Live alerts"
+          title="Alert Routes"
           icon={IconAlert}
           description="Route platform events to sound cues and on-screen visuals. Pick a route from the rail on the left, or create a new one for the platform you want to react to."
           actions={
@@ -305,7 +305,7 @@ export default function AlertsPage() {
             don't monitor their OBS audio hear nothing — this makes the app play
             the sound locally too. */}
         <label
-          className="app-section-card glass flex items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-white/[0.015] transition-colors"
+          className="app-section-card glass flex !flex-row shrink-0 items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-white/[0.015] transition-colors"
           onClick={(e) => {
             e.preventDefault()
             handleUpdate('alertSoundLocalMonitoring', !draftSettings.alertSoundLocalMonitoring)

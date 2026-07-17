@@ -156,7 +156,7 @@ export const routes: AppRoute[] = [
   },
   {
     path: '/event-lab',
-    label: 'Event Testing',
+    label: 'Event Lab',
     description: 'Test realistic events and inspect what they send to alerts, widgets, automations, and devices.',
     section: 'operate',
     icon: IconTerminal,

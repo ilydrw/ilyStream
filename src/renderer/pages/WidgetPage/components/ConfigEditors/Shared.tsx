@@ -144,7 +144,7 @@ export function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.currentTarget.value))}
-        className="w-full accent-[#19c8ff]"
+        className="w-full accent-accent"
         aria-label={label}
       />
       {hint && <p className="text-[11px] text-white/35 leading-snug">{hint}</p>}

@@ -28,7 +28,7 @@ function HeaderKpi({ label, value, accent }: { label: string; value: number; acc
       <div className={`text-[19px] font-extrabold leading-none tabular-nums ${accent ? 'text-accent' : 'text-white'}`}>
         {value.toLocaleString()}
       </div>
-      <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em] leading-none text-white/35">{label}</div>
+      <div className="mt-1 text-[9px] font-semibold leading-none text-white/35">{label}</div>
     </div>
   )
 }
@@ -104,7 +104,7 @@ export default function ChatPage() {
   return (
     <div className="app-page">
       <PageHeader
-        title="Unified Chat"
+        title="Chat Hub"
         description="Every platform's chat, viewers, and replies in one place."
         icon={IconChat}
         actions={

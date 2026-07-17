@@ -166,7 +166,7 @@ export default function KickPage() {
       <PlatformPageHeader 
         platformId={PLATFORM_ID}
         title="Kick Integration"
-        description="Connect your Kick.com channel. IlyStream handles sub alerts, chat interaction, and streamer telemetry on the Kick platform."
+        description="Connect your Kick.com channel. ilyStream handles sub alerts, chat interaction, and streamer telemetry on the Kick platform."
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">

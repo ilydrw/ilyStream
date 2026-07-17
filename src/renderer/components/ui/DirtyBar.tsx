@@ -42,10 +42,10 @@ export function DirtyBar({ isDirty, onApply, onDiscard, isSaving }: DirtyBarProp
               <button
                 onClick={onApply}
                 disabled={isSaving}
-                className="h-[34px] px-4 rounded-md text-[#04111a] text-[13px] font-semibold bg-accent hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-1.5"
+                className="h-[34px] px-4 rounded-md text-[var(--theme-on-accent)] text-[13px] font-semibold bg-accent hover:bg-accent-hover active:translate-y-px transition-colors flex items-center gap-1.5"
               >
                 {isSaving ? (
-                  <div className="w-3.5 h-3.5 border-2 border-[#04111a]/20 border-t-[#04111a] rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-[var(--theme-on-accent)]/20 border-t-[var(--theme-on-accent)] rounded-full animate-spin" />
                 ) : (
                   <IconDeviceFloppy size={14} />
                 )}

@@ -1,4 +1,4 @@
-import type { AppTheme } from './settings/types'
+import type { AppTheme, UISettings } from './settings/types'
 
 export interface AppThemePalette {
   colorScheme: 'dark' | 'light'
@@ -33,7 +33,7 @@ export const APP_THEME_DEFINITIONS: readonly AppThemeDefinition[] = [
   {
     id: 'dark',
     label: 'Cyber Neon',
-    description: 'Neon cyan and magenta on a deep blue-black workbench.',
+    description: 'Flat cyan with a violet undertone on a deep blue-black workbench.',
     palette: {
       colorScheme: 'dark',
       canvas: '#05070d',
@@ -49,7 +49,7 @@ export const APP_THEME_DEFINITIONS: readonly AppThemeDefinition[] = [
       textMuted: '#9aabd0',
       textSubtle: '#65769d',
       accent: '#19c8ff',
-      secondary: '#d035f1'
+      secondary: '#a783ff'
     }
   },
   {
@@ -217,4 +217,67 @@ export function getAppThemeDefinition(theme: AppTheme): AppThemeDefinition | und
 
 export function getAppThemeLabel(theme: AppTheme): string {
   return theme === 'custom' ? 'Custom' : getAppThemeDefinition(theme)?.label ?? 'Cyber Neon'
+}
+
+/**
+ * Resolve the exact runtime palette for the current UI settings. This is
+ * shared by the renderer and LAN companions so both surfaces render the same
+ * saved theme, including custom colors and accent overrides.
+ */
+export function resolveAppThemePalette(settings: UISettings): AppThemePalette {
+  const base = settings.theme === 'custom'
+    ? buildCustomPalette(settings)
+    : getAppThemeDefinition(settings.theme)?.palette ?? getAppThemeDefinition('dark')!.palette
+
+  return {
+    ...base,
+    accent: isHexColor(settings.accentColor) ? settings.accentColor : base.accent
+  }
+}
+
+function buildCustomPalette(settings: UISettings): AppThemePalette {
+  const canvas = isHexColor(settings.customBackground) ? settings.customBackground : '#0b0d12'
+  const secondary = isHexColor(settings.customSecondary) ? settings.customSecondary : '#d035f1'
+  const accent = isHexColor(settings.accentColor) ? settings.accentColor : '#19c8ff'
+  const colorScheme = relativeLuminance(canvas) > 0.48 ? 'light' : 'dark'
+  const text = colorScheme === 'light' ? '#172033' : '#f5f8ff'
+
+  return {
+    colorScheme,
+    canvas,
+    canvasDeep: mixHex(canvas, '#000000', colorScheme === 'light' ? 0.09 : 0.32),
+    chrome: mixHex(canvas, text, colorScheme === 'light' ? 0.025 : 0.045),
+    sidebar: mixHex(canvas, text, colorScheme === 'light' ? 0.035 : 0.055),
+    surface: mixHex(canvas, text, colorScheme === 'light' ? 0.06 : 0.08),
+    surfaceRaised: mixHex(canvas, text, colorScheme === 'light' ? 0.1 : 0.13),
+    surfaceHover: mixHex(canvas, text, colorScheme === 'light' ? 0.15 : 0.19),
+    border: mixHex(canvas, text, colorScheme === 'light' ? 0.2 : 0.24),
+    borderStrong: mixHex(canvas, text, colorScheme === 'light' ? 0.32 : 0.36),
+    text,
+    textMuted: mixHex(canvas, text, 0.66),
+    textSubtle: mixHex(canvas, text, 0.46),
+    accent,
+    secondary
+  }
+}
+
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(value)
+}
+
+function mixHex(a: string, b: string, weightB: number): string {
+  const mix = (index: number) => {
+    const valueA = parseInt(a.slice(index, index + 2), 16)
+    const valueB = parseInt(b.slice(index, index + 2), 16)
+    return Math.round(valueA * (1 - weightB) + valueB * weightB)
+  }
+  return `#${[1, 3, 5].map((index) => mix(index).toString(16).padStart(2, '0')).join('')}`
+}
+
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((index) => {
+    const value = parseInt(hex.slice(index, index + 2), 16) / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 }

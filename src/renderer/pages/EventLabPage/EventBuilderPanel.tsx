@@ -16,7 +16,7 @@ export function EventBuilderPanel({ draft, setDraft, onFireEvent }: EventBuilder
     <section className="app-section-card glass !p-0 overflow-hidden">
       <div className="app-section-head">
         <div>
-          <h2 className="text-sm font-semibold text-white">Test Event Builder</h2>
+          <h2 className="text-sm font-semibold text-white">Test event builder</h2>
           <p>Send a realistic local event through alerts, widgets, TTS, triggers, stats, and devices.</p>
         </div>
       </div>
@@ -145,7 +145,7 @@ export function EventBuilderPanel({ draft, setDraft, onFireEvent }: EventBuilder
 
         <button onClick={() => void onFireEvent()} className="app-button-primary !h-11 text-xs font-semibold">
           <IconPlayerPlay size={15} className="mr-2" />
-          Run Full Test
+          Run full test
         </button>
       </div>
     </section>

@@ -253,7 +253,7 @@ export default function GoveePage() {
           <IconAlertCircle size={48} className="text-danger mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2 tracking-tighter">System Restart Required</h2>
           <p className="text-sm text-white/40 max-w-md">
-            The Govee integration service was just installed. Please restart the IlyStream application to initialize the background bridge.
+            The Govee integration service was just installed. Please restart the ilyStream application to initialize the background bridge.
           </p>
         </div>
       )}

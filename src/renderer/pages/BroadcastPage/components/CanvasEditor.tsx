@@ -36,10 +36,10 @@ function CanvasGridOverlay({ gridSize }: { gridSize: number }) {
       className="absolute inset-0 pointer-events-none"
       style={{
         backgroundImage: [
-          'linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)',
-          'linear-gradient(to right, rgba(208,53,241,0.18) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(208,53,241,0.18) 1px, transparent 1px)'
+          'linear-gradient(to right, rgba(var(--theme-text-rgb),0.10) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(var(--theme-text-rgb),0.10) 1px, transparent 1px)',
+          'linear-gradient(to right, rgba(var(--theme-secondary-rgb),0.18) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(var(--theme-secondary-rgb),0.18) 1px, transparent 1px)'
         ].join(', '),
         backgroundSize: [
           `${normalizedGridSize}px ${normalizedGridSize}px`,
@@ -60,6 +60,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
     dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
     forceVerticalCanvas = false, forceHorizontalCanvas = false,
+    browserFramesNeeded = true,
     onContextMenu, onSelectionContextChange, onLayerDoubleClick
   } = props
 
@@ -134,7 +135,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady, !isPreview)
 
   // Browser Sources
-  useBrowserSources({ layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache })
+  useBrowserSources({
+    layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache,
+    framesNeeded: browserFramesNeeded
+  })
 
   // Render Loop
   const { fps, horizontalCanvasRef, verticalCanvasRef } = useRenderLoop({
@@ -613,7 +617,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }
 
   return (
-    <div className="relative flex-1 flex flex-col bg-black/40 overflow-hidden" ref={wrapperRef}>
+    <div className="broadcast-canvas-editor relative flex-1 flex flex-col overflow-hidden" ref={wrapperRef}>
       <CanvasToolbar
         canvasWidth={canvasWidth}
         canvasHeight={canvasHeight}
@@ -628,7 +632,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       <div
         ref={viewportRef}
         onMouseDown={handleCanvasMouseDown}
-        className={`canvas-viewport flex-1 relative overflow-scroll bg-[#0a0a0a] ${isPanning ? 'cursor-grabbing' : ''}`}
+        className={`broadcast-canvas-viewport canvas-viewport flex-1 relative overflow-scroll ${isPanning ? 'cursor-grabbing' : ''}`}
       >
         <div
           className="min-w-full min-h-full flex items-center justify-center"

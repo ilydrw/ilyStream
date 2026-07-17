@@ -40,7 +40,7 @@ export default function LinkedinPage() {
             <h2 className="text-2xl font-semibold mb-4">Professional Broadcasting</h2>
             <p className="text-white/40 max-w-lg mb-10 leading-relaxed">
               To stream to LinkedIn, you must have a LinkedIn Live authorized profile or page. 
-              Grant IlyStream the necessary permissions to start your broadcast.
+              Grant ilyStream the necessary permissions to start your broadcast.
             </p>
             <button className="app-button-primary !h-14 px-10 bg-[#0A66C2] hover:bg-[#084d91] text-xs font-semibold tracking-tight">
               Authorize LinkedIn Account

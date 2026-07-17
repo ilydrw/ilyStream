@@ -351,6 +351,8 @@ export function useLiveMeters(
           const hasCachedElements = cached && (
             (cached.peakL?.length || 0) +
             (cached.peakR?.length || 0) +
+            (cached.hpeakL?.length || 0) +
+            (cached.hpeakR?.length || 0) +
             (cached.clipL?.length || 0) +
             (cached.clipR?.length || 0)
           ) > 0
@@ -359,6 +361,8 @@ export function useLiveMeters(
             (window as any).__ilyMasterElements = {
               peakL: Array.from(document.querySelectorAll(`.meter-peak-l-master`)),
               peakR: Array.from(document.querySelectorAll(`.meter-peak-r-master`)),
+              hpeakL: Array.from(document.querySelectorAll(`.meter-hpeak-l-master`)),
+              hpeakR: Array.from(document.querySelectorAll(`.meter-hpeak-r-master`)),
               clipL: Array.from(document.querySelectorAll(`.meter-clip-l-master`)),
               clipR: Array.from(document.querySelectorAll(`.meter-clip-r-master`))
             }
@@ -372,6 +376,8 @@ export function useLiveMeters(
             node.elements = {
               peakL: Array.from(document.querySelectorAll(`.meter-peak-l-${id}`)) as HTMLElement[],
               peakR: Array.from(document.querySelectorAll(`.meter-peak-r-${id}`)) as HTMLElement[],
+              hpeakL: Array.from(document.querySelectorAll(`.meter-hpeak-l-${id}`)) as HTMLElement[],
+              hpeakR: Array.from(document.querySelectorAll(`.meter-hpeak-r-${id}`)) as HTMLElement[],
               clipL: Array.from(document.querySelectorAll(`.meter-clip-l-${id}`)) as HTMLElement[],
               clipR: Array.from(document.querySelectorAll(`.meter-clip-r-${id}`)) as HTMLElement[],
               spectrum: document.getElementById(`spectrum-canvas-${id}`) as HTMLCanvasElement | null
@@ -387,6 +393,8 @@ export function useLiveMeters(
 
         elements.peakL.forEach((el: HTMLElement) => { el.style.height = peakPercentL })
         elements.peakR.forEach((el: HTMLElement) => { el.style.height = peakPercentR })
+        elements.hpeakL?.forEach((el: HTMLElement) => { el.style.width = peakPercentL })
+        elements.hpeakR?.forEach((el: HTMLElement) => { el.style.width = peakPercentR })
 
         const dbL = data.left <= 0.001 ? -60 : 20 * Math.log10(data.left)
         const dbR = data.right <= 0.001 ? -60 : 20 * Math.log10(data.right)

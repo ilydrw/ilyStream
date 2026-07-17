@@ -188,7 +188,7 @@ export default function StatsPage() {
   return (
     <div className="app-page">
       <PageHeader
-        title="Stream Stats"
+        title="Audience Stats"
         description="Lifetime engagement, connected accounts, badges, and audience rankings."
         iconNode={activePlatformTab === 'all' ? <IconActivity size={22} /> : <PlatformLogo platform={activePlatformTab as Platform} size={24} />}
         actions={

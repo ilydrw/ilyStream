@@ -274,57 +274,184 @@ export default function BroadcastPage() {
   })
 
   // Projector windows can't hold the cameras this window owns, so we mirror
-  // our already-composed scene canvas to them as ImageBitmap frames. Unlike
-  // VideoFrame, ImageBitmap is cross-process structured-cloneable in
-  // Chromium, so this transfer actually works between BrowserWindows.
+  // our already-composed scene canvas to them. Primary transport is WebRTC:
+  // canvas.captureStream() → RTCPeerConnection, signaled over the brokered
+  // MessagePort. Frames are then encoded and paced by the media pipeline off
+  // this thread, so the projector gets smooth 60fps video with no per-frame
+  // main-thread cost here. If the peer connection can't establish, we fall
+  // back to the legacy ImageBitmap timer loop (ImageBitmap — unlike
+  // VideoFrame — is cross-process structured-cloneable in Chromium).
   useEffect(() => {
-    const activePorts = new Set<MessagePort>()
-    const portCaptureTimers = new Map<MessagePort, number>()
-    const portAspects = new Map<MessagePort, '16:9' | '9:16' | undefined>()
+    const sessions = new Set<{ stop: () => void }>()
 
     const refCount = (delta: 1 | -1, aspect: '16:9' | '9:16' | undefined) => {
       if (aspect === '9:16') setActiveMirrorAspects(prev => ({ ...prev, vertical: Math.max(0, prev.vertical + delta) }))
       else if (aspect === '16:9') setActiveMirrorAspects(prev => ({ ...prev, horizontal: Math.max(0, prev.horizontal + delta) }))
     }
 
-    const startCaptureLoop = (port: MessagePort, aspectRatio?: '16:9' | '9:16') => {
+    const startMirrorSession = (port: MessagePort, aspectRatio?: '16:9' | '9:16') => {
       let stopped = false
-      const cleanup = () => {
+      let pc: RTCPeerConnection | null = null
+      let captureTrack: MediaStreamTrack | null = null
+      let legacyStarted = false
+      let legacyTimer = 0
+      let connectTimeout = 0
+      let remoteDescribed = false
+      const pendingIce: RTCIceCandidateInit[] = []
+
+      refCount(1, aspectRatio)
+
+      const stop = () => {
         if (stopped) return
         stopped = true
-        const timer = portCaptureTimers.get(port)
-        if (timer) window.clearTimeout(timer)
-        portCaptureTimers.delete(port)
-        activePorts.delete(port)
-        refCount(-1, portAspects.get(port))
-        portAspects.delete(port)
+        window.clearTimeout(legacyTimer)
+        window.clearTimeout(connectTimeout)
+        try { pc?.close() } catch {}
+        pc = null
+        try { captureTrack?.stop() } catch {}
+        captureTrack = null
+        refCount(-1, aspectRatio)
+        sessions.delete(session)
+        try { port.close() } catch {}
       }
-      port.addEventListener('messageerror', cleanup)
-      port.addEventListener('message', (msg) => {
-        if (msg.data === '__close') cleanup()
-      })
+      const session = { stop }
+      sessions.add(session)
 
-      const tick = async () => {
-        if (stopped) return
-        // Prefer the per-aspect output canvas (so a projector asking for the
-        // vertical view gets the 9:16 render, not the dual editor canvas).
-        // Fall back to the main editor canvas if the requested aspect canvas
-        // isn't being rendered right now.
-        const canvas =
-          (aspectRatio && canvasRef.current?.getOutputCanvas(aspectRatio)) ||
-          canvasRef.current?.getCanvas() ||
-          null
-        if (canvas && canvas.width > 0 && canvas.height > 0) {
-          try {
-            const bitmap = await createImageBitmap(canvas)
-            port.postMessage({ bitmap }, [bitmap])
-          } catch {
-            // Canvas may have been resized or detached between frames; skip.
+      // Legacy transport and WebRTC safety net: ImageBitmap frames on a timer.
+      const startLegacyLoop = () => {
+        if (stopped || legacyStarted) return
+        legacyStarted = true
+        const tick = async () => {
+          if (stopped) return
+          // Prefer the per-aspect output canvas (so a projector asking for
+          // the vertical view gets the 9:16 render, not the dual editor
+          // canvas). Fall back to the main editor canvas if the requested
+          // aspect canvas isn't being rendered right now.
+          const canvas =
+            (aspectRatio && canvasRef.current?.getOutputCanvas(aspectRatio)) ||
+            canvasRef.current?.getCanvas() ||
+            null
+          if (canvas && canvas.width > 0 && canvas.height > 0) {
+            try {
+              const bitmap = await createImageBitmap(canvas)
+              port.postMessage({ bitmap }, [bitmap])
+            } catch {
+              // Canvas may have been resized or detached between frames; skip.
+            }
           }
+          legacyTimer = window.setTimeout(tick, 33)
         }
-        portCaptureTimers.set(port, window.setTimeout(tick, 33))
+        void tick()
       }
-      void tick()
+
+      const failToLegacy = (reason: unknown) => {
+        if (stopped || legacyStarted) return
+        console.warn('[ProjectorMirror] WebRTC transport unavailable, using ImageBitmap fallback:', reason)
+        window.clearTimeout(connectTimeout)
+        try { pc?.close() } catch {}
+        pc = null
+        try { captureTrack?.stop() } catch {}
+        captureTrack = null
+        startLegacyLoop()
+      }
+
+      const startWebRtc = async () => {
+        // The per-aspect canvas is created lazily by the render loop once the
+        // mirror ref-count forces it to render — poll briefly until it exists.
+        let canvas: HTMLCanvasElement | null = null
+        for (let attempt = 0; attempt < 20 && !stopped; attempt++) {
+          canvas = (aspectRatio && canvasRef.current?.getOutputCanvas(aspectRatio)) || null
+          if (!canvas && attempt >= 10) canvas = canvasRef.current?.getCanvas() ?? null
+          if (canvas) break
+          await new Promise(resolve => window.setTimeout(resolve, 100))
+        }
+        if (stopped) return
+        if (!canvas || typeof RTCPeerConnection !== 'function') {
+          failToLegacy('no source canvas or RTCPeerConnection')
+          return
+        }
+
+        try {
+          const stream = canvas.captureStream()
+          const track = stream.getVideoTracks()[0]
+          if (!track) throw new Error('captureStream produced no video track')
+          captureTrack = track
+          try { track.contentHint = 'motion' } catch {}
+
+          pc = new RTCPeerConnection()
+          const sender = pc.addTrack(track, stream)
+          const transceiver = pc.getTransceivers().find(t => t.sender === sender)
+          if (transceiver) {
+            transceiver.direction = 'sendonly'
+            // Put H.264 first so Chromium can pick the hardware encoder.
+            try {
+              const caps = RTCRtpSender.getCapabilities('video')
+              const h264 = caps?.codecs.filter(codec => /h264/i.test(codec.mimeType)) ?? []
+              if (caps && h264.length) {
+                transceiver.setCodecPreferences([...h264, ...caps.codecs.filter(codec => !/h264/i.test(codec.mimeType))])
+              }
+            } catch {}
+          }
+          try {
+            const params = sender.getParameters()
+            params.degradationPreference = 'maintain-framerate'
+            params.encodings = (params.encodings?.length ? params.encodings : [{}]).map(encoding => ({
+              ...encoding,
+              maxBitrate: 20_000_000,
+              maxFramerate: 60
+            }))
+            await sender.setParameters(params)
+          } catch {}
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) port.postMessage({ type: 'mirror-webrtc-ice', candidate: event.candidate.toJSON() })
+          }
+          pc.onconnectionstatechange = () => {
+            if (!pc) return
+            if (pc.connectionState === 'connected') window.clearTimeout(connectTimeout)
+            else if (pc.connectionState === 'failed') failToLegacy('connection failed')
+          }
+
+          const offer = await pc.createOffer()
+          if (stopped || !pc) return
+          await pc.setLocalDescription(offer)
+          port.postMessage({ type: 'mirror-webrtc-offer', sdp: offer.sdp })
+
+          connectTimeout = window.setTimeout(() => {
+            if (pc && pc.connectionState !== 'connected') failToLegacy('connect timeout')
+          }, 5000)
+        } catch (err) {
+          failToLegacy(err)
+        }
+      }
+
+      port.addEventListener('messageerror', stop)
+      port.addEventListener('message', (msg) => {
+        const data = msg.data as any
+        if (data === '__close') {
+          stop()
+          return
+        }
+        if (!data || typeof data !== 'object') return
+        if (data.type === 'mirror-webrtc-answer' && pc) {
+          void (async () => {
+            try {
+              await pc!.setRemoteDescription({ type: 'answer', sdp: data.sdp })
+              remoteDescribed = true
+              for (const candidate of pendingIce.splice(0)) {
+                try { await pc?.addIceCandidate(candidate) } catch {}
+              }
+            } catch (err) {
+              failToLegacy(err)
+            }
+          })()
+        } else if (data.type === 'mirror-webrtc-ice' && data.candidate) {
+          if (pc && remoteDescribed) void pc.addIceCandidate(data.candidate).catch(() => {})
+          else pendingIce.push(data.candidate)
+        }
+      })
+      port.start()
+      void startWebRtc()
     }
 
     const handler = (event: MessageEvent) => {
@@ -333,24 +460,14 @@ export default function BroadcastPage() {
       const port = event.ports[0]
       if (!port) return
       const aspectRatio = (event.data as any)?.payload?.aspectRatio as '16:9' | '9:16' | undefined
-      activePorts.add(port)
-      portAspects.set(port, aspectRatio)
-      refCount(1, aspectRatio)
-      port.start()
-      startCaptureLoop(port, aspectRatio)
+      startMirrorSession(port, aspectRatio)
     }
     window.addEventListener('message', handler)
 
     return () => {
       window.removeEventListener('message', handler)
-      for (const timer of portCaptureTimers.values()) window.clearTimeout(timer)
-      portCaptureTimers.clear()
-      for (const port of activePorts) {
-        try { port.close() } catch {}
-      }
-      activePorts.clear()
+      for (const session of Array.from(sessions)) session.stop()
       // Wipe per-aspect ref counts; no projector ports are alive anymore.
-      portAspects.clear()
       setActiveMirrorAspects({ horizontal: 0, vertical: 0 })
     }
   }, [])
@@ -764,14 +881,20 @@ export default function BroadcastPage() {
       : await getOptimizedCaptureInputFormat(1080, 1920, fps, bitrateKbps * 1000)
     setLayoutInputFormats({ horizontal: hIn, vertical: vIn })
 
+    const context = audioEngine.getContext()
+    if (context.state === 'suspended') await context.resume()
+
     try {
-      const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: audioEngine.getContext().sampleRate })))
+      const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: context.sampleRate })))
       if (res.every(r => r.success)) {
         setIsStreaming(true)
         setStatus('Live')
       } else {
         await completeNativeTikTokLive()
-        setStreamError('Failed to start one or more outputs')
+        const failures = res
+          .filter(r => !r.success)
+          .map(r => formatIpcError(r.error || 'Unknown output startup failure'))
+        setStreamError(failures.join('; ') || 'Failed to start one or more outputs')
       }
     } catch (err) {
       await completeNativeTikTokLive()
@@ -922,7 +1045,7 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-black relative">
+    <div className="broadcast-studio-shell flex flex-col h-full overflow-hidden relative">
       <BroadcastHeader
         isStreaming={isStreaming} isRecording={isRecording} recordingTime={isRecording ? formatDuration(recordingTime) : '00:00'} status={status}
         outputHealth={outputHealth}
@@ -993,7 +1116,7 @@ export default function BroadcastPage() {
         />
       )}
 
-      <div className="flex-1 flex min-h-0 bg-black">
+      <div className="broadcast-studio-workspace flex-1 flex min-h-0">
         {showLeftSidebar && (
           <SceneSidebar
             scenes={visibleScenes}
@@ -1010,12 +1133,12 @@ export default function BroadcastPage() {
             onContextMenu={(e, id) => setSceneContextMenu({ x: e.clientX, y: e.clientY, sceneId: id })}
           />
         )}
-        <div className="flex-1 flex min-w-0 min-h-0 bg-[#080808] overflow-hidden relative">
+        <div className="broadcast-studio-stage flex-1 flex min-w-0 min-h-0 overflow-hidden relative">
           {store.studioMode ? (
             <div className="flex-1 flex min-w-0 h-full gap-4 p-4">
               {/* Preview Canvas (Left) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-white/5 bg-black/20 rounded-md overflow-hidden relative group">
-                <div className="absolute top-4 left-4 z-10 px-3 py-1 bg-accent/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg">Preview</div>
+              <div className="broadcast-studio-preview-pane flex-1 flex flex-col min-w-0 rounded-md overflow-hidden relative group">
+                <div className="broadcast-studio-canvas-label is-preview">Preview</div>
                 <CanvasEditor
                   activeScene={previewScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
@@ -1032,52 +1155,52 @@ export default function BroadcastPage() {
               </div>
 
               {/* Transition Controls */}
-              <div className="flex flex-col justify-center items-center gap-4 px-3">
-                <div className="flex flex-col items-center gap-1">
+              <div className="broadcast-transition-rail">
+                <div className="broadcast-transition-group">
                   <button
                     onClick={() => store.transition('fade')}
-                    className="w-16 h-16 rounded-md bg-accent text-white flex flex-col items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all border border-white/10 group"
+                    className="broadcast-transition-button is-primary group"
                   >
                     <IconArrowsMove size={24} className="group-hover:rotate-180 transition-transform duration-500" />
                     <span className="text-[10px] font-semibold tracking-tighter">Fade</span>
                   </button>
-                  <div className="flex flex-col items-center gap-0.5 mt-1">
+                  <div className="broadcast-transition-duration">
                     <input
                       type="number"
                       value={store.transitionDuration}
                       onChange={(e) => store.setTransitionDuration(Number(e.target.value))}
-                      className="w-12 bg-white/5 border border-white/10 rounded text-[9px] font-semibold text-center text-white/50 focus:text-accent focus:border-accent/50 outline-none transition-all"
+                      className="broadcast-transition-duration-input"
                       title="Transition Duration (ms)"
                     />
-                    <span className="text-[7px] font-semibold tracking-tight text-white/20">ms</span>
+                    <span>ms</span>
                   </div>
                 </div>
 
-                <div className="h-px w-10 bg-white/10" />
+                <div className="broadcast-transition-divider" />
 
                 <button
                   onClick={() => store.transition('cut')}
-                  className="w-16 py-3 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 text-[9px] font-semibold tracking-tight transition-all border border-white/5"
+                  className="broadcast-transition-button is-secondary"
                 >
                   Cut
                 </button>
 
-                <div className="h-px w-10 bg-white/10" />
+                <div className="broadcast-transition-divider" />
 
-                <div className="flex flex-col items-center gap-1">
+                <div className="broadcast-transition-group">
                   <button
                     onClick={() => {
                       if (!store.stingerSettings.path) setShowStingerConfig(true)
                       else store.transition('stinger')
                     }}
-                    className={`w-16 h-16 rounded-md flex flex-col items-center justify-center gap-1 transition-all border border-white/10 group ${ store.stingerSettings.path ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:brightness-110' : 'bg-white/5 text-white/20 hover:bg-white/10 hover:text-white/40' }`}
+                    className={`broadcast-transition-button is-stinger group ${store.stingerSettings.path ? 'is-configured' : ''}`}
                   >
                     <IconVideo size={24} />
                     <span className="text-[10px] font-semibold tracking-tighter">Stinger</span>
                   </button>
                   <button
                     onClick={() => setShowStingerConfig(true)}
-                    className="text-[8px] font-semibold tracking-tight text-white/20 hover:text-white/60 transition-colors"
+                    className="broadcast-transition-setup"
                   >
                     Setup
                   </button>
@@ -1086,8 +1209,8 @@ export default function BroadcastPage() {
 
 
               {/* Program Canvas (Right) */}
-              <div className="flex-1 flex flex-col min-w-0 border border-red-500/20 bg-black/20 rounded-md overflow-hidden relative group">
-                <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-red-500/80 text-white text-[10px] font-semibold tracking-tight rounded-full shadow-lg animate-pulse">Live</div>
+              <div className="broadcast-studio-program-pane flex-1 flex flex-col min-w-0 rounded-md overflow-hidden relative group">
+                <div className="broadcast-studio-canvas-label is-live animate-pulse">Live</div>
                 <CanvasEditor
                   activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}

@@ -4,12 +4,12 @@ import type { OverlayRuntimeStatus } from '../../../../shared/overlay'
 
 export function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-4 border-b border-border py-8 last:border-0 md:flex-row md:items-center md:justify-between">
-      <div className="min-w-0 md:pr-10">
-        <h4 className="mb-1 text-sm font-semibold text-foreground">{label}</h4>
-        {hint && <p className="text-xs leading-relaxed text-muted">{hint}</p>}
+    <div className="settings-row">
+      <div className="settings-row-copy">
+        <h4>{label}</h4>
+        {hint && <p>{hint}</p>}
       </div>
-      <div className="flex-shrink-0">{children}</div>
+      <div className="settings-row-control">{children}</div>
     </div>
   )
 }
@@ -37,7 +37,7 @@ export function NumberInput({
       }}
       min={min}
       max={max}
-      className={`app-input !w-28 text-right !h-10 !px-4 font-mono text-sm ${className}`}
+      className={`app-input settings-number-input ${className}`}
     />
   )
 }
@@ -61,7 +61,7 @@ export function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={`app-input !w-64 !h-12 !px-4 !text-sm ${className}`}
+      className={`app-input settings-text-input ${className}`}
     />
   )
 }
@@ -98,33 +98,29 @@ export function RuntimeValue({ label, value }: { label: string; value: string })
 }
 
 export function StatusBadge({ status }: { status: OverlayRuntimeStatus | null }) {
-  const baseClasses = "px-3 py-1 rounded-md text-[12px] font-medium tracking-tight border transition-colors"
-  
   if (!status) {
-    return <span className={`${baseClasses} bg-white/5 border-white/5 text-white/20`}>Overlay</span>
+    return <span className="app-status-chip">Overlay</span>
   }
 
   if (status.running) {
-    return <span className={`${baseClasses} bg-accent/10 border-accent/20 text-accent shadow-[0_0_10px_rgba(var(--accent-rgb),0.2)]`}>Port {status.port}</span>
+    return <span className="app-status-chip is-good">Overlay port {status.port}</span>
   }
 
-  return <span className={`${baseClasses} bg-danger/10 border-danger/20 text-danger`}>Offline</span>
+  return <span className="app-status-chip is-danger">Overlay offline</span>
 }
 
 export function OBSStatusBadge({ status }: { status: OBSRuntimeStatus | null }) {
-  const baseClasses = "px-3 py-1 rounded-md text-[12px] font-medium tracking-tight border transition-colors"
-  
   if (!status) {
-    return <span className={`${baseClasses} bg-white/5 border-white/5 text-white/20`}>OBS Studio</span>
+    return <span className="app-status-chip">OBS Studio</span>
   }
 
   if (status.connecting) {
-    return <span className={`${baseClasses} bg-warning/10 border-warning/20 text-warning animate-pulse`}>Connecting</span>
+    return <span className="app-status-chip is-warning animate-pulse">OBS connecting</span>
   }
 
   if (status.connected) {
-    return <span className={`${baseClasses} bg-success/10 border-success/20 text-success shadow-[0_0_10px_rgba(var(--success-rgb),0.2)]`}>Connected</span>
+    return <span className="app-status-chip is-good">OBS connected</span>
   }
 
-  return <span className={`${baseClasses} bg-danger/10 border-danger/20 text-danger`}>Disconnected</span>
+  return <span className="app-status-chip is-danger">OBS disconnected</span>
 }

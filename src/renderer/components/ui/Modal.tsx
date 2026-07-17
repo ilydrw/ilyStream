@@ -11,6 +11,7 @@ interface ModalProps {
   className?: string
   headerActions?: React.ReactNode
   noScroll?: boolean
+  dismissible?: boolean
 }
 
 /**
@@ -18,14 +19,23 @@ interface ModalProps {
  * accessibility features, and design system integration.
  * Uses z-context (1000) for proper layering above regular UI elements.
  */
-export function Modal({ open, onClose, title, children, className, headerActions, noScroll }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  headerActions,
+  noScroll,
+  dismissible = true
+}: ModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (dismissible && e.key === 'Escape') onClose()
     }
     if (open) window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
-  }, [open, onClose])
+  }, [dismissible, open, onClose])
 
   return (
     <AnimatePresence>
@@ -35,7 +45,7 @@ export function Modal({ open, onClose, title, children, className, headerActions
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={dismissible ? onClose : undefined}
             className="absolute inset-0 bg-black/70"
           />
           <motion.div
@@ -53,12 +63,14 @@ export function Modal({ open, onClose, title, children, className, headerActions
                 {headerActions}
                 {title && <h2 className="text-[15px] font-semibold tracking-tight text-white">{title}</h2>}
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 grid place-items-center rounded-md hover:bg-white/[0.04] text-white/55 hover:text-white transition-colors cursor-pointer"
-              >
-                <IconX size={16} />
-              </button>
+              {dismissible ? (
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 grid place-items-center rounded-md hover:bg-white/[0.04] text-white/55 hover:text-white transition-colors cursor-pointer"
+                >
+                  <IconX size={16} />
+                </button>
+              ) : null}
             </div>
             {noScroll ? (
               children

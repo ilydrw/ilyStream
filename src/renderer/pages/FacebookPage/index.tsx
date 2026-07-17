@@ -45,7 +45,7 @@ export default function FacebookPage() {
             </button>
             
             <p className="text-[10px] text-white/20 text-center mt-6 leading-relaxed">
-              By connecting, you allow IlyStream to manage your live videos and comments. 
+              By connecting, you allow ilyStream to manage your live videos and comments. 
               We never post to your timeline without permission.
             </p>
           </section>

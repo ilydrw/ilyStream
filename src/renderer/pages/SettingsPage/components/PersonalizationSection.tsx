@@ -63,7 +63,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
   }
 
   return (
-    <section className="app-section-card glass">
+    <section className="app-section-card glass settings-personalization">
       <div className="app-section-head">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center text-accent">
@@ -79,9 +79,9 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
         </span>
       </div>
 
-      <div className="app-section-content !p-0">
-        <div className="p-8">
-          <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="app-section-content settings-personalization-content">
+        <div className="settings-section-body">
+          <div className="settings-theme-grid">
             {THEME_OPTIONS.map((option) => {
               const active = settings.theme === option.value
               const previewPalette = option.palette ?? customPreviewPalette
@@ -90,7 +90,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                   key={option.value}
                   onClick={() => setTheme(option)}
                   aria-pressed={active}
-                  className={`group rounded-xl border p-4 text-left transition-all ${ active ? 'border-accent/50 bg-accent/10 shadow-[0_0_30px_rgba(var(--accent-rgb),0.12)]' : 'border-border bg-card hover:border-accent/30 hover:bg-[var(--theme-surface-hover)]' }`}
+                  className={`settings-theme-card group ${active ? 'is-active' : ''}`}
                 >
                   <ThemeWorkbenchPreview palette={previewPalette} />
                   <div className="flex items-center justify-between gap-4">
@@ -112,7 +112,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                   type="color"
                   value={settings.ui.customBackground || '#0b0d12'}
                   onChange={(event) => onUpdate('customThemeBackground', event.target.value)}
-                  className="h-9 w-20 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+                  className="settings-custom-color-input"
                   title="Custom background color"
                 />
               </SettingRow>
@@ -121,7 +121,7 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                   type="color"
                   value={settings.ui.customSecondary || '#d035f1'}
                   onChange={(event) => onUpdate('customThemeSecondary', event.target.value)}
-                  className="h-9 w-20 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+                  className="settings-custom-color-input"
                   title="Custom secondary color"
                 />
               </SettingRow>
@@ -129,12 +129,12 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
           )}
 
           <SettingRow label="Accent Color" hint="Choose the color used for active states, meters, glows, and primary actions.">
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="settings-accent-options">
               {ACCENT_OPTIONS.map((color) => (
                 <button
                   key={color}
                   onClick={() => onUpdate('accentColor', color)}
-                  className={`h-9 w-9 rounded-lg border transition-all ${ (settings.accentColor || '').toLowerCase() === color.toLowerCase() ? 'border-white scale-105' : 'border-white/10 hover:border-white/30' }`}
+                  className={`settings-color-swatch ${(settings.accentColor || '').toLowerCase() === color.toLowerCase() ? 'is-active' : ''}`}
                   style={{ background: color }}
                   title={color}
                 />
@@ -143,19 +143,19 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
                 type="color"
                 value={settings.ui.accentColor || settings.accentColor || '#000000'}
                 onChange={(event) => onUpdate('accentColor', event.target.value)}
-                className="h-9 w-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+                className="settings-color-swatch is-picker"
                 title="Custom accent color"
               />
             </div>
           </SettingRow>
 
           <SettingRow label="Interface Scale" hint="Zoom the entire app — useful on high-DPI or small laptop screens.">
-            <div className="grid grid-cols-5 overflow-hidden rounded-xl border border-border bg-[var(--theme-surface-raised)]">
+            <div className="settings-choice-group is-scale">
               {UI_SCALE_OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => onUpdate('uiScale', option.value)}
-                  className={`h-10 px-3 text-xs font-semibold tracking-tight transition-all ${ Math.abs((settings.ui.uiScale || 1) - option.value) < 0.01 ? 'bg-accent text-[var(--theme-on-accent)]' : 'text-muted hover:bg-[var(--theme-surface-hover)] hover:text-foreground' }`}
+                  className={Math.abs((settings.ui.uiScale || 1) - option.value) < 0.01 ? 'is-active' : ''}
                 >
                   {option.label}
                 </button>
@@ -164,12 +164,12 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
           </SettingRow>
 
           <SettingRow label="Interface Density" hint="Compact mode tightens cards and settings rows for smaller displays.">
-            <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-[var(--theme-surface-raised)]">
+            <div className="settings-choice-group is-density">
               {(['comfortable', 'compact'] as InterfaceDensity[]).map((density) => (
                 <button
                   key={density}
                   onClick={() => onUpdate('interfaceDensity', density)}
-                  className={`h-10 px-4 text-xs font-semibold tracking-tight transition-all ${ settings.interfaceDensity === density ? 'bg-accent text-[var(--theme-on-accent)]' : 'text-muted hover:bg-[var(--theme-surface-hover)] hover:text-foreground' }`}
+                  className={settings.interfaceDensity === density ? 'is-active' : ''}
                 >
                   {density}
                 </button>
@@ -181,15 +181,15 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
             <Toggle value={settings.reducedMotion} onChange={(value) => onUpdate('reducedMotion', value)} />
           </SettingRow>
 
-          <div className="mt-8 grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-[var(--theme-surface-raised)] p-4">
+          <div className="settings-personalization-summary">
+            <div className="settings-personalization-summary-card">
               <IconSettings size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-semibold tracking-tight text-muted">Density</p>
                 <p className="text-sm font-semibold capitalize text-foreground">{settings.interfaceDensity}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-[var(--theme-surface-raised)] p-4">
+            <div className="settings-personalization-summary-card">
               <IconSparkles size={18} className="text-accent" />
               <div>
                 <p className="text-[10px] font-semibold tracking-tight text-muted">Motion</p>
@@ -210,7 +210,7 @@ function ThemeWorkbenchPreview({
 }) {
   return (
     <div
-      className="mb-4 h-16 overflow-hidden rounded-lg border"
+      className="settings-theme-preview"
       style={{ background: palette.canvas, borderColor: palette.border }}
       aria-hidden="true"
     >

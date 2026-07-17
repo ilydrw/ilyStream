@@ -59,7 +59,7 @@ export default function EventLabPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<EventLabEntryKind | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [captureName, setCaptureName] = useState('Live Event Capture')
+  const [captureName, setCaptureName] = useState('Live event capture')
   const [replaySpeed, setReplaySpeed] = useState(1)
   const [stepIndex, setStepIndex] = useState(0)
   const [importText, setImportText] = useState('')
@@ -324,7 +324,7 @@ export default function EventLabPage() {
           <div className="flex items-center gap-2">
             <button className="app-button !h-11 text-xs font-semibold" onClick={() => void fireEvent()}>
               <IconSend size={15} className="mr-2" />
-              Fire Event
+              Fire event
             </button>
             <button className="app-button-danger !h-11 !px-4" onClick={clearEntries} title="Clear Event Lab">
               <IconTrash size={15} />

@@ -374,7 +374,7 @@ export function ViewerPersonalizationSection({
         {joinSound?.soundId && (
           <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-white/[0.04] bg-black/20 px-3 py-2.5">
             <label className="flex min-w-0 items-center gap-2.5">
-              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-white/35">Vol</span>
+              <span className="shrink-0 text-[11px] font-semibold text-white/35">Vol</span>
               <input
                 type="range"
                 min={0}

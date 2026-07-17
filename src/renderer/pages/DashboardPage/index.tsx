@@ -250,7 +250,7 @@ function PlatformBreakdown({ rows }: { rows: PlatformDashboardRow[] }) {
     <section className="app-section-card glass">
       <div className="app-section-head">
         <div>
-          <h2>Platform Breakdown</h2>
+          <h2>Platform breakdown</h2>
           <p>Current audience, session chat, and lifetime engagement by service.</p>
         </div>
         <Link to="/stats" className="app-button">
@@ -288,8 +288,8 @@ function PlatformBreakdown({ rows }: { rows: PlatformDashboardRow[] }) {
             </div>
 
             <div className="dashboard-platform-stat-grid">
-              <span><strong>{row.sessionChats.toLocaleString()}</strong><em>session chat</em></span>
-              <span><strong>{formatCompact(row.lifetimeChats)}</strong><em>life chat</em></span>
+              <span><strong>{row.sessionChats.toLocaleString()}</strong><em>session</em></span>
+              <span><strong>{formatCompact(row.lifetimeChats)}</strong><em>lifetime</em></span>
               <span><strong>{formatCompact(row.uniqueUsers)}</strong><em>users</em></span>
               <span><strong>{row.followerCount === null ? '--' : formatCompact(row.followerCount)}</strong><em>followers</em></span>
               <span><strong>{formatCompact(row.lifetimeLikes)}</strong><em>likes</em></span>
@@ -307,7 +307,7 @@ function LifetimeSummary({ global }: { global: GlobalStats }) {
     <section className="app-section-card glass">
       <div className="app-section-head">
         <div>
-          <h2>Lifetime Totals</h2>
+          <h2>Lifetime totals</h2>
           <p>{global.lastUpdatedAt ? `Updated ${relativeTime(new Date(global.lastUpdatedAt).getTime())}` : 'No persisted activity yet'}</p>
         </div>
         <IconDatabase size={16} className="text-white/38" />
@@ -328,9 +328,9 @@ function TopAudience({ identities, loading }: { identities: UserIdentity[]; load
   return (
     <section className="app-section-card glass">
       <div className="app-section-head">
-        <h2>Top Audience</h2>
+        <h2>Top audience</h2>
         <Link to="/stats" className="app-button">
-          View All
+          View all
         </Link>
       </div>
       <div className="app-section-content dashboard-leader-list">
@@ -580,7 +580,7 @@ export default function DashboardPage() {
     <div className="app-page dashboard-pro">
       <PageHeader
         kicker="Live Operations"
-        title="Broadcast Dashboard"
+        title="Dashboard"
         description="Live audience, chat velocity, service health, and fast go-live controls."
         icon={IconBroadcast}
         actions={
@@ -600,7 +600,7 @@ export default function DashboardPage() {
             <div className="dashboard-hero-content">
               <div className="dashboard-hero-copy">
                 <div>
-                  <div className="dashboard-kicker">Live Audience</div>
+                  <div className="dashboard-kicker">Live audience</div>
                   <div className="dashboard-hero-number tabular-nums">{totalViewers.toLocaleString()}</div>
                   <p className="dashboard-hero-label">
                     {connectedCount} connected node{connectedCount === 1 ? '' : 's'} · {formatDuration(firstSample ? Date.now() - firstSample.timestamp : 0)} session
@@ -609,15 +609,15 @@ export default function DashboardPage() {
 
                 <div className="dashboard-hero-stats">
                   <div className="dashboard-hero-stat">
-                    <span>Sample Delta</span>
+                    <span>Sample delta</span>
                     <strong>{formatDelta(audienceDelta)}</strong>
                   </div>
                   <div className="dashboard-hero-stat">
-                    <span>Session Peak</span>
+                    <span>Session peak</span>
                     <strong>{sessionPeak.toLocaleString()}</strong>
                   </div>
                   <div className="dashboard-hero-stat">
-                    <span>Last Update</span>
+                    <span>Last update</span>
                     <strong>{relativeTime(lastSample?.timestamp ?? null)}</strong>
                   </div>
                 </div>
@@ -630,7 +630,7 @@ export default function DashboardPage() {
           <div className="dashboard-metric-grid">
             <MetricCard
               icon={<IconServer size={17} />}
-              label="Service Nodes"
+              label="Service nodes"
               value={`${connectedCount}/4`}
               subValue={issueCount > 0 ? `${issueCount} node issues` : connectingCount > 0 ? `${connectingCount} connecting` : 'Connection matrix clean'}
               trend={issueCount > 0 ? 'down' : connectedCount > 0 ? 'up' : 'neutral'}
@@ -644,14 +644,14 @@ export default function DashboardPage() {
             />
             <MetricCard
               icon={<IconActivity size={17} />}
-              label="Chat Rate"
+              label="Chat rate"
               value={`${chatRate >= 10 ? chatRate.toFixed(0) : chatRate.toFixed(1)}/m`}
               subValue={`${sessionUniqueChatters.toLocaleString()} unique chatters`}
               trend={chatRate > 0 ? 'up' : 'neutral'}
             />
             <MetricCard
               icon={<IconDatabase size={17} />}
-              label="Lifetime Events"
+              label="Lifetime events"
               value={formatCompact(lifetimeInteractions)}
               subValue={`${globalStats.uniqueUserCount.toLocaleString()} tracked users`}
               trend={lifetimeInteractions > 0 ? 'up' : 'neutral'}
@@ -662,7 +662,7 @@ export default function DashboardPage() {
           <section className="app-section-card glass">
             <div className="app-section-head">
               <div>
-                <h2>Next Setup Moves</h2>
+                <h2>Next setup moves</h2>
                 <p>Fast routes for the most common live setup decisions.</p>
               </div>
             </div>
@@ -760,7 +760,7 @@ export default function DashboardPage() {
         <aside className="dashboard-side-stack">
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Speech Engine</h2>
+              <h2>Speech engine</h2>
               <span className={`app-status-chip ${ttsEnabled ? 'is-good' : ''}`}>{ttsEnabled ? 'Active' : 'Standby'}</span>
             </div>
             <div className="app-section-content dashboard-voice-list">
@@ -784,7 +784,7 @@ export default function DashboardPage() {
                 ))
               )}
               <Link to="/tts" className="app-button mt-1 w-full">
-                Manage Voice
+                Manage voice
               </Link>
             </div>
           </section>
@@ -793,7 +793,7 @@ export default function DashboardPage() {
 
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Quick Routes</h2>
+              <h2>Quick routes</h2>
             </div>
             <div className="app-section-content dashboard-quick-grid">
               <QuickLink to="/chat" icon={<IconChat size={16} />} label="Chat Hub" />
@@ -805,7 +805,7 @@ export default function DashboardPage() {
 
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>System Health</h2>
+              <h2>System health</h2>
               <IconChartLine size={16} className="text-white/38" />
             </div>
             <div className="app-section-content dashboard-health-list">

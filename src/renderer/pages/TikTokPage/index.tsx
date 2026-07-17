@@ -320,8 +320,8 @@ export default function TikTokPage() {
     <div className="app-page">
       <PlatformPageHeader 
         platformId={PLATFORM_ID}
-        title="TikTok Integration"
-        description="Connect your TikTok Live stream to IlyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
+        title="TikTok"
+        description="Connect your TikTok Live stream to ilyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -745,7 +745,7 @@ function AutomationToggle({
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-tight text-white/30">{label}</span>
+      <span className="text-[10px] font-semibold tracking-tight text-white/30">{label}</span>
       <span className="text-lg font-semibold text-white/90">{value}</span>
     </div>
   )

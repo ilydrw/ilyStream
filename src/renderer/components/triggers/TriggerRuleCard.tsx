@@ -101,7 +101,7 @@ function SummaryGroup({ title, items }: { title: string; items: string[] }) {
           !important` in components.css (per an earlier user request to suppress
           page-header eyebrows), which silently hid this group title. The
           Tailwind utilities below carry the intended micro-label styling. */}
-      <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/30 mb-3">{title}</p>
+      <p className="text-[9px] font-semibold text-white/30 mb-3">{title}</p>
       <div className="space-y-2">
         {items.length === 0 ? (
           <p className="text-xs text-white/20 italic">No configuration detected</p>

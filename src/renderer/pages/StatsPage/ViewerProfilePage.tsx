@@ -264,7 +264,7 @@ export default function ViewerProfilePage() {
 
             {/* Overall ranking */}
             <div className="shrink-0 sm:pb-1 sm:text-right">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35">Overall rank</div>
+              <div className="text-[10px] font-semibold text-white/35">Overall rank</div>
               <div className="mt-1 text-[42px] font-extrabold leading-none text-accent tabular-nums">
                 {typeof identity.overallRank === 'number' && identity.overallRank > 0 ? `#${identity.overallRank}` : '—'}
               </div>
@@ -423,7 +423,7 @@ function StatCard({ label, value, color, rank }: { label: string, value: React.R
 function MiniStat({ label, value }: { label: string, value: string }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-white/[0.04] bg-black/20 px-2 py-3">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">{label}</div>
+      <div className="mb-1 text-[10px] font-semibold text-white/35">{label}</div>
       <div className="text-[15px] font-bold tabular-nums text-white">{value}</div>
     </div>
   )

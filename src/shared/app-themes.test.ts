@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { APP_THEME_DEFINITIONS, getAppThemeDefinition, getAppThemeLabel } from './app-themes'
+import {
+  APP_THEME_DEFINITIONS,
+  getAppThemeDefinition,
+  getAppThemeLabel,
+  resolveAppThemePalette
+} from './app-themes'
+import { DEFAULT_APP_SETTINGS } from './settings/defaults'
 
 describe('app theme definitions', () => {
   it('uses the user-facing theme label instead of exposing the legacy storage id', () => {
@@ -26,5 +32,20 @@ describe('app theme definitions', () => {
     expect(cyber.palette.sidebar).not.toBe(ember.palette.sidebar)
     expect(cyber.palette.surface).not.toBe(ember.palette.surface)
     expect(cyber.palette.secondary).not.toBe(ember.palette.secondary)
+  })
+
+  it('resolves custom palettes and saved accent overrides for companion clients', () => {
+    const custom = resolveAppThemePalette({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'custom',
+      accentColor: '#123456',
+      customBackground: '#f0f0f0',
+      customSecondary: '#654321'
+    })
+
+    expect(custom.colorScheme).toBe('light')
+    expect(custom.canvas).toBe('#f0f0f0')
+    expect(custom.accent).toBe('#123456')
+    expect(custom.secondary).toBe('#654321')
   })
 })

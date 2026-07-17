@@ -9,10 +9,16 @@ interface BrowserSourceOptions {
   aspectRatio: string
   overlayPort: number
   browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>
+  /**
+   * False when no consumer needs frames right now (studio hidden, nothing
+   * streaming/recording/mirrored). Captures stay alive so widget pages keep
+   * their state, but drop to 1fps to stop full-frame IPC churn.
+   */
+  framesNeeded?: boolean
 }
 
 export function useBrowserSources(options: BrowserSourceOptions) {
-  const { layers, aspectRatio, overlayPort, browserFrameCache } = options
+  const { layers, aspectRatio, overlayPort, browserFrameCache, framesNeeded = true } = options
   const browserWorkerRef = useRef<Worker | null>(null)
   const browserWorkerBusy = useRef<Record<string, boolean>>({})
   const latestBrowserBitmaps = useRef<Record<string, any>>({})
@@ -86,6 +92,12 @@ export function useBrowserSources(options: BrowserSourceOptions) {
       const layout = resolveLayerLayout(layer, aspectRatio as any)
       const url = resolveBrowserSourceUrl(layer, overlayPort)
       const capture = resolveBrowserCaptureSettings(layer, layout.width, layout.height)
+      // A layer hidden in both aspects can never be drawn anywhere — idle its
+      // capture too, independent of the global framesNeeded signal.
+      const hiddenEverywhere =
+        !resolveLayerLayout(layer, '16:9').visible &&
+        !resolveLayerLayout(layer, '9:16').visible
+      if (!framesNeeded || hiddenEverywhere) capture.fps = 1
       const config = { id: layer.id, url, ...capture }
       const sig = JSON.stringify(config)
 
@@ -107,7 +119,7 @@ export function useBrowserSources(options: BrowserSourceOptions) {
         void window.api.studio.stopBrowserSource(id)
       }
     }
-  }, [layers, aspectRatio, overlayPort])
+  }, [layers, aspectRatio, overlayPort, framesNeeded])
 }
 
 function postWorkerFrame(worker: Worker, message: unknown, source: unknown): void {

@@ -239,7 +239,7 @@ export default function AICoHostPage() {
                     type="range" min="64" max="4096" step="64"
                     value={settings.ai.maxTokens}
                     onChange={(e) => onUpdate('aiMaxTokens', parseInt(e.target.value))}
-                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-[#19c8ff]"
+                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-accent"
                   />
                 </div>
 
@@ -250,7 +250,7 @@ export default function AICoHostPage() {
                   </div>
                   <input
                     type="range" min="0" max="1" step="0.1" defaultValue="0.7"
-                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-[#19c8ff]"
+                    className="w-full h-1 bg-white/[0.05] rounded-full appearance-none cursor-pointer accent-accent"
                   />
                 </div>
               </div>

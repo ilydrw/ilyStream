@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { IconLayout, IconSettings } from '@tabler/icons-react'
 import { IconTrash, IconCheck, IconCopy, IconExternalLink } from '../../../components/ui/icons'
 import { type Widget } from '../../../../shared/widgets'
@@ -35,17 +35,35 @@ export function WidgetCard({
     viewportStyle: previewViewportStyle
   } = usePreviewViewportScale(previewFrame)
 
-  // Card previews are lazy: we mount the iframe the first time the user
-  // hovers, focuses, or tabs into the card and keep it mounted. The previous
-  // implementation rendered a scaled-down live iframe for every card on every
-  // render, which meant N widgets = N simultaneous overlay simulations
-  // (animations, SSE connections, audio contexts) running just to populate
-  // the grid. Now an idle grid does zero overlay work.
+  const previewRef = useRef<HTMLDivElement | null>(null)
   const [hasActivated, setHasActivated] = useState(false)
-  const activate = () => {
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  // Activate previews automatically as they enter the visible grid. This
+  // keeps the page useful without a hover gesture while still avoiding live
+  // overlay runtimes for cards that are far off-screen.
+  useEffect(() => {
+    setHasActivated(false)
+    setHasLoaded(false)
     if (!previewUrl) return
-    if (!hasActivated) setHasActivated(true)
-  }
+
+    const preview = previewRef.current
+    if (!preview || typeof IntersectionObserver === 'undefined') {
+      setHasActivated(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        setHasActivated(true)
+        observer.disconnect()
+      },
+      { rootMargin: '160px 0px' }
+    )
+    observer.observe(preview)
+    return () => observer.disconnect()
+  }, [previewUrl])
 
   return (
     <section className="app-section-card glass overflow-hidden flex flex-col">
@@ -91,20 +109,17 @@ export function WidgetCard({
             </button>
           </div>
 
-          {/* Preview area — static placeholder until the user hovers. The
-              real interactive entry-point is the Configure button below;
-              this surface is decorative. */}
+          {/* The real interactive entry-point is the Configure button below;
+              this surface is a compact, automatically loaded preview. */}
           <div
-            className="mt-2 relative w-full rounded-lg overflow-hidden border border-white/5 bg-black/60 transition-all group/preview"
-            style={{ aspectRatio: '16 / 9' }}
-            onPointerEnter={activate}
+            ref={previewRef}
+            className="mt-2 relative w-full h-[clamp(150px,12vw,190px)] rounded-lg overflow-hidden border border-white/5 bg-black/60 transition-all group/preview"
           >
             {previewUrl ? (
               <>
-                {/* Default placeholder: shown until the iframe is activated.
-                    Once activated, the iframe sits on top with the same
-                    natural-ratio inner frame. */}
-                <CardPlaceholder Icon={Icon} resolutionLabel={previewFrame.resolutionLabel} active={hasActivated} />
+                {/* Keep the placeholder visible while the iframe boots, then
+                    leave it faintly behind transparent widget content. */}
+                <CardPlaceholder Icon={Icon} resolutionLabel={previewFrame.resolutionLabel} active={hasLoaded} />
 
                 {hasActivated ? (
                   <div className="absolute inset-0 flex items-center justify-center p-2 pointer-events-none">
@@ -122,6 +137,7 @@ export function WidgetCard({
                         title={`${widget.name} preview`}
                         className="absolute left-0 top-0 border-none"
                         style={{ ...previewViewportStyle, background: 'transparent' }}
+                        onLoad={() => setHasLoaded(true)}
                         // Cards are decorative; the click-target is the overlay below.
                         tabIndex={-1}
                       />
@@ -138,15 +154,15 @@ export function WidgetCard({
 
             <div
               className={`absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/10 text-[8px] font-semibold tracking-normal pointer-events-none ${
-                !previewUrl ? 'text-white/25' : hasActivated ? 'text-accent' : 'text-white/40'
+                !previewUrl ? 'text-white/25' : hasLoaded ? 'text-accent' : 'text-white/40'
               }`}
             >
               <div
                 className={`w-1 h-1 rounded-full ${
-                  !previewUrl ? 'bg-white/20' : hasActivated ? 'bg-accent animate-pulse' : 'bg-white/40'
+                  !previewUrl ? 'bg-white/20' : hasLoaded ? 'bg-accent animate-pulse' : 'bg-white/40'
                 }`}
               />
-              {!previewUrl ? 'Offline' : hasActivated ? 'Live' : 'Hover to load'}
+              {!previewUrl ? 'Offline' : hasLoaded ? 'Live' : 'Loading'}
             </div>
 
             {/* Click to configure overlay (sits above the iframe so the iframe is
@@ -187,7 +203,7 @@ function CardPlaceholder({
   resolutionLabel: string
   active: boolean
 }) {
-  // When the iframe activates we fade the placeholder out instead of
+  // When the iframe loads we fade the placeholder out instead of
   // unmounting it. It still sits behind the iframe so transparent widgets
   // (alerts, particles, screen-border) get a non-flickering backdrop.
   return (

@@ -157,7 +157,7 @@ export default function VoiceEffectsPage() {
                 step="0.01"
                 value={volume}
                 onChange={(event) => setVolume(parseFloat(event.target.value))}
-                className="studio-range"
+                className="app-range"
               />
             </label>
           </section>

@@ -44,7 +44,7 @@ export function DualVerticalOverlayBar({ enabled, onToggle }: DualVerticalOverla
       </button>
 
       <div className="relative flex-1 max-w-[520px]">
-        <div className={`w-full bg-black/60 border rounded-lg px-3 py-1.5 text-[11px] font-mono truncate pr-9 select-all transition-colors ${enabled ? 'border-accent/30 text-[#19c8ff]' : 'border-white/10 text-white/30'}`}>
+        <div className={`w-full bg-black/60 border rounded-lg px-3 py-1.5 text-[11px] font-mono truncate pr-9 select-all transition-colors ${enabled ? 'border-accent/30 text-accent' : 'border-white/10 text-white/30'}`}>
           {url || 'Overlay server unavailable'}
         </div>
         <button

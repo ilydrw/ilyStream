@@ -44,6 +44,8 @@ export interface LiveMeterNode {
   elements?: {
     peakL: HTMLElement[]
     peakR: HTMLElement[]
+    hpeakL: HTMLElement[]
+    hpeakR: HTMLElement[]
     clipL: HTMLElement[]
     clipR: HTMLElement[]
     spectrum: HTMLCanvasElement | null

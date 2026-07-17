@@ -122,21 +122,21 @@ export default function SoundboardPage() {
   return (
     <div className="app-page">
       <PageHeader
-        title="Audio Deck"
+        title="Soundboard"
         description="Manage instant audio effects, system actions, and stream deck layouts."
         icon={IconSoundboard}
         actions={
           <>
-          <div className="flex p-1 bg-white/[0.03] border border-white/5 rounded-md">
+          <div className="app-segment shrink-0">
             <button
               onClick={() => setActiveTab('sounds')}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-semibold tracking-tight transition-all ${ activeTab === 'sounds' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60' }`}
+              className={`app-segment-btn ${activeTab === 'sounds' ? 'is-active' : ''}`}
             >
               Sounds
             </button>
             <button
               onClick={() => setActiveTab('actions')}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-semibold tracking-tight transition-all ${ activeTab === 'actions' ? 'bg-white/10 text-white shadow-xl' : 'text-white/30 hover:text-white/60' }`}
+              className={`app-segment-btn ${activeTab === 'actions' ? 'is-active' : ''}`}
             >
               Actions
             </button>
@@ -147,7 +147,7 @@ export default function SoundboardPage() {
             className={`app-button !h-12 !px-6 !text-[10px] font-semibold tracking-tight transition-all ${ isEditMode ? 'bg-accent border-transparent text-white ' : '' }`}
           >
             {isEditMode ? <IconCheck size={14} /> : <IconSettings size={14} />}
-            {isEditMode ? 'SAVE DECK' : 'CONFIGURE DECK'}
+            {isEditMode ? 'Save deck' : 'Configure deck'}
           </button>
 
           {!isEditMode && (
@@ -156,7 +156,7 @@ export default function SoundboardPage() {
               className="app-button !h-12 !px-6 !text-[10px] font-semibold tracking-tight bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
             >
               <IconX size={14} />
-              STOP ALL
+              Stop all
             </button>
           )}
           </>
@@ -177,7 +177,7 @@ export default function SoundboardPage() {
                   <IconMusic size={32} />
                 </div>
                 <div>
-                  <h2>{activeTab === 'sounds' ? 'Audio Library' : 'System Actions'}</h2>
+                  <h2>{activeTab === 'sounds' ? 'Audio library' : 'System actions'}</h2>
                   <p>{isEditMode ? 'Customizing deck layout' : 'Click to trigger instant effects'}</p>
                 </div>
               </div>
@@ -187,7 +187,7 @@ export default function SoundboardPage() {
                   className="app-button !h-10 !px-5 !text-[10px] font-semibold tracking-tight"
                 >
                   <IconPlus size={14} />
-                  UPLOAD NEW
+                  Upload new
                 </button>
               )}
               {activeTab === 'actions' && isEditMode && (
@@ -196,7 +196,7 @@ export default function SoundboardPage() {
                   className="app-button !h-10 !px-5 !text-[10px] font-semibold tracking-tight"
                 >
                   <IconPlus size={14} />
-                  ADD ACTION
+                  Add action
                 </button>
               )}
             </div>
@@ -231,8 +231,19 @@ export default function SoundboardPage() {
                   ))
                 )}
 
+                {/* First tile invites the initial upload instead of an all-hollow grid */}
+                {activeTab === 'sounds' && sounds.length === 0 && (
+                  <button
+                    onClick={handleUploadClick}
+                    className="aspect-square rounded-lg border border-dashed border-accent/25 bg-accent/[0.04] text-accent/70 hover:bg-accent/10 hover:text-accent transition-colors flex flex-col items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <IconPlus size={20} />
+                    <span className="text-[10px] font-semibold">Upload a sound</span>
+                  </button>
+                )}
+
                 {/* Empty state fillers for that stream deck look */}
-                {Array.from({ length: Math.max(0, 15 - (activeTab === 'sounds' ? sounds.length : actions.length)) }).map((_, i) => (
+                {Array.from({ length: Math.max(0, 15 - (activeTab === 'sounds' ? sounds.length + (sounds.length === 0 ? 1 : 0) : actions.length)) }).map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square rounded-lg bg-white/[0.01] border border-white/[0.02] border-dashed" />
                 ))}
               </div>
@@ -278,7 +289,7 @@ export default function SoundboardPage() {
                   <IconExternalLink size={32} />
                 </div>
                 <div>
-                  <h2>Deck Overlay</h2>
+                  <h2>Deck overlay</h2>
                   <p>Remote browser deck.</p>
                 </div>
               </div>
@@ -293,7 +304,7 @@ export default function SoundboardPage() {
               onClick={() => window.open('http://127.0.0.1:8899/overlay/deck', '_blank', 'noopener,noreferrer')}
               className="app-button !w-full !h-12 !text-[10px] font-semibold tracking-tight"
             >
-              OPEN STUDIO DECK
+              Open studio deck
             </button>
           </div>
         </div>
@@ -336,19 +347,24 @@ function DeckButton({
   color?: string;
 }) {
   return (
-    <motion.button
+    <motion.div
       whileHover={{ scale: isEditMode ? 1 : 1.05, y: isEditMode ? 0 : -2 }}
       whileTap={{ scale: 0.95 }}
-      onClick={isEditMode ? onEdit : onClick}
       className={`relative aspect-square rounded-lg border border-white/5 hover:border-white/20 transition-all group overflow-hidden ${color.split(' ')[0]}`}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-      <div className="flex flex-col items-center justify-center h-full p-4 gap-2">
-        <span className="text-4xl">{icon}</span>
-        <span className={`text-[9px] font-semibold tracking-tighter text-center truncate w-full ${color.split(' ')[1] || 'text-white/40'}`}>
-          {label}
-        </span>
-      </div>
+      <button
+        type="button"
+        onClick={isEditMode ? onEdit : onClick}
+        className="absolute inset-0 h-full w-full rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="flex flex-col items-center justify-center h-full p-4 gap-2">
+          <span className="text-4xl">{icon}</span>
+          <span className={`text-[9px] font-semibold tracking-tighter text-center truncate w-full ${color.split(' ')[1] || 'text-white/40'}`}>
+            {label}
+          </span>
+        </div>
+      </button>
 
       {/* Edit Mode Overlay */}
       <AnimatePresence>
@@ -357,10 +373,12 @@ function DeckButton({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-3 z-20"
+            className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-3 z-20"
           >
-            <div className="flex gap-2">
+            <div className="pointer-events-auto flex gap-2">
               <button
+                type="button"
+                aria-label={`Edit ${label}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onEdit?.()
@@ -370,6 +388,8 @@ function DeckButton({
                 <IconPencil size={16} />
               </button>
               <button
+                type="button"
+                aria-label={`Delete ${label}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onDelete?.()
@@ -385,6 +405,8 @@ function DeckButton({
 
       {!isEditMode && onCopy && (
         <button
+          type="button"
+          aria-label={`Copy trigger URL for ${label}`}
           onClick={(e) => {
             e.stopPropagation()
             onCopy()
@@ -394,7 +416,7 @@ function DeckButton({
           <IconCopy size={12} className="text-white/60" />
         </button>
       )}
-    </motion.button>
+    </motion.div>
   )
 }
 

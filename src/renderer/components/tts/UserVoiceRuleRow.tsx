@@ -280,7 +280,7 @@ export function UserVoiceOverrideRow({
 function LabeledControl({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[9px] font-semibold uppercase tracking-[0.05em] text-white/28">{label}</span>
+      <span className="text-[9px] font-semibold text-white/28">{label}</span>
       {children}
     </label>
   )
@@ -303,7 +303,7 @@ function NumberMiniField({
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[9px] font-semibold uppercase tracking-[0.05em] text-white/28">{label}</span>
+      <span className="text-[9px] font-semibold text-white/28">{label}</span>
       <input
         type="number"
         value={value}

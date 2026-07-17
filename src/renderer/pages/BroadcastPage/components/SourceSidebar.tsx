@@ -98,7 +98,7 @@ function SourceRow(props: SourceRowProps) {
       </div>
 
       <div className="broadcast-source-type">
-        <Icon size={14} className={isSelected ? 'text-white' : ''} />
+        <Icon size={14} />
       </div>
 
       {isRenaming ? (
@@ -113,7 +113,7 @@ function SourceRow(props: SourceRowProps) {
             if (e.key === 'Enter') onRenameCommit(nameDraft)
             if (e.key === 'Escape') onRenameCommit(layer.name)
           }}
-          className="broadcast-source-name bg-white/10 rounded px-1.5 outline-none border border-accent/40 min-w-0"
+          className="broadcast-source-name broadcast-source-input"
         />
       ) : (
         <div className="broadcast-source-summary">
@@ -140,7 +140,7 @@ function SourceRow(props: SourceRowProps) {
             onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitLocked: !isLocked } : { locked: !isLocked }) }}
             className="broadcast-icon-button"
           >
-            {isLocked ? <IconLock size={13} className="text-amber-400" /> : <IconLockOpen size={13} className="text-white/20" />}
+            {isLocked ? <IconLock size={13} className="broadcast-source-action-icon is-warning" /> : <IconLockOpen size={13} className="broadcast-source-action-icon" />}
           </button>
           <button
             type="button"
@@ -148,7 +148,7 @@ function SourceRow(props: SourceRowProps) {
             onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, isPortraitList ? { portraitVisible: !isVisible } : { visible: !isVisible }) }}
             className="broadcast-icon-button"
           >
-            {isVisible ? <IconEye size={13} className="text-white/40" /> : <IconEyeOff size={13} className="text-red-500/60" />}
+            {isVisible ? <IconEye size={13} className="broadcast-source-action-icon" /> : <IconEyeOff size={13} className="broadcast-source-action-icon is-danger" />}
           </button>
         </div>
       )}
@@ -284,7 +284,7 @@ export function SourceSidebar(props: SourceSidebarProps) {
       {/* Resize Handle */}
       <div onPointerDown={onSidebarResizeStart} className="broadcast-dock-resize group">
         <div>
-          <div className="w-0.5 h-4 bg-white/20 group-hover:bg-white/60" />
+          <div className="broadcast-dock-resize-line" />
         </div>
       </div>
 

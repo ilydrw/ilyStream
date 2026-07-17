@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react'
 import { IconAdjustmentsHorizontal } from '@tabler/icons-react'
+import { IconChevronRight } from '../../../components/ui/icons'
 import type { StudioScene } from '../../../../shared/studio'
 import { ContextMenu } from '../../../components/ui/ContextMenu'
 import { ChannelStrip } from './AudioMixer/ChannelStrip'
 import { MixerInspector } from './AudioMixer/MixerInspector'
+import { MiniPeak } from './AudioMixer/Visualizers'
 import { useAudioMixerLogic } from './AudioMixer/useAudioMixerLogic'
 
 interface Props {
@@ -11,9 +13,11 @@ interface Props {
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>
   devices: MediaDeviceInfo[]
   streamReady?: number
+  dockCollapsed?: boolean
+  onToggleDockCollapse?: () => void
 }
 
-export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, streamReady = 0 }) => {
+export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, streamReady = 0, dockCollapsed, onToggleDockCollapse }) => {
   const logic = useAudioMixerLogic(activeScene, videoRefs, devices, streamReady)
   const [mixerMode, setMixerMode] = useState<'mix' | 'fx' | 'send'>('mix')
   const [collapsedTracks, setCollapsedTracks] = useState<Set<string>>(() => new Set())
@@ -33,7 +37,23 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
   }), [collapsedTracks])
 
   return (
-    <div className="pro-mixer-root relative flex h-full min-h-0 text-white overflow-hidden select-none">
+    <div className="pro-mixer-root relative flex h-full min-h-0 overflow-hidden select-none">
+      {/* Master meter + dock collapse live in ONE flex row so they can never
+          overlap. Kept inside the top 48px band so both stay visible (and the
+          meter keeps running) while the dock is collapsed. */}
+      <div className="absolute right-6 top-0 z-[120] flex h-12 items-center gap-3">
+        <MiniPeak id="master" meter={masterMeter} />
+        {onToggleDockCollapse && (
+          <button
+            onClick={onToggleDockCollapse}
+            className="broadcast-mixer-collapse"
+            title={dockCollapsed ? 'Expand mixer' : 'Collapse mixer'}
+          >
+            <IconChevronRight className={dockCollapsed ? '-rotate-90' : 'rotate-90'} size={16} />
+          </button>
+        )}
+      </div>
+
       <section className="pro-mixer-main flex-1 min-w-0 flex flex-col">
         <div className="pro-mixer-head">
           <div className="pro-mixer-title">
@@ -116,7 +136,6 @@ export const AudioMixer: React.FC<Props> = ({ activeScene, videoRefs, devices, s
       {logic.selectedSource && (
         <MixerInspector
           selectedSource={logic.selectedSource}
-          selectedMeter={logic.selectedMeter}
           mode={mixerMode}
           trackStatuses={logic.trackStatuses}
           sidebarWidth={logic.sidebarWidth}

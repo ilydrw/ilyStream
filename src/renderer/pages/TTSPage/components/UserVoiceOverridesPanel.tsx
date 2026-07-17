@@ -103,7 +103,7 @@ export function UserVoiceOverridesPanel({
           </div>
         ) : (
           <div className="flex flex-col">
-            <div className="tts-user-rules-head border-b border-white/[0.05] bg-black/15 px-5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-white/30">
+            <div className="tts-user-rules-head border-b border-white/[0.05] bg-black/15 px-5 py-1.5 text-[9px] font-semibold text-white/30">
               <span>Scope</span>
               <span>User</span>
               <span>Platform</span>
@@ -376,7 +376,7 @@ function UserVoiceOverrideRow({
 function LabeledControl({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[9px] font-semibold uppercase tracking-[0.05em] text-white/28">{label}</span>
+      <span className="text-[9px] font-semibold text-white/28">{label}</span>
       {children}
     </label>
   )
@@ -399,7 +399,7 @@ function NumberMiniField({
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[9px] font-semibold uppercase tracking-[0.05em] text-white/28">{label}</span>
+      <span className="text-[9px] font-semibold text-white/28">{label}</span>
       <input
         type="number"
         value={value}

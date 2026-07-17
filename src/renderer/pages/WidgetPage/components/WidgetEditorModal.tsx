@@ -226,6 +226,7 @@ export function WidgetEditorModal({
     setSaving(true)
     try {
       await onSave(draft)
+      onClose()
     } finally {
       setSaving(false)
     }
@@ -235,6 +236,7 @@ export function WidgetEditorModal({
     <Modal
       open={true}
       onClose={onClose}
+      dismissible={false}
       className="max-w-6xl h-[90vh] min-h-0"
       noScroll
       headerActions={
@@ -349,7 +351,7 @@ export function WidgetEditorModal({
               disabled={saving}
               className="h-11 px-7 rounded-lg bg-accent text-[#0a0b0e] text-[13px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:brightness-110 active:brightness-95"
             >
-              {saving ? 'Saving…' : 'Apply changes'}
+              {saving ? 'Saving…' : 'Save & apply'}
             </button>
           </div>
         </div>

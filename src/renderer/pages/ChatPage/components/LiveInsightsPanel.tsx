@@ -100,7 +100,7 @@ function InsightTile({
     <div className="bg-[#171a20] px-4 py-3">
       <div className="mb-2 flex items-center gap-2 text-white/30">
         {icon}
-        <span className="text-[9px] font-bold uppercase tracking-[0.12em]">{label}</span>
+        <span className="text-[9px] font-bold">{label}</span>
       </div>
       <div className={`text-[17px] font-extrabold leading-none tabular-nums ${accent ? 'text-accent' : 'text-white'}`}>
         {value}

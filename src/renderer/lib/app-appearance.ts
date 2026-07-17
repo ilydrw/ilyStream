@@ -1,7 +1,16 @@
 import type { AppSettings } from '../../shared/app-settings'
-import { getAppThemeDefinition, type AppThemePalette } from '../../shared/app-themes'
+import { resolveAppThemePalette } from '../../shared/app-themes'
 
 type AppearanceSettings = AppSettings['ui']
+
+export function normalizeInterfaceScale(value: number): number {
+  return Number.isFinite(value) ? Math.min(1.3, Math.max(0.8, value)) : 1
+}
+
+export function shouldApplyInterfaceScale(location: Pick<Location, 'pathname' | 'search'>): boolean {
+  const searchParams = new URLSearchParams(location.search)
+  return !location.pathname.startsWith('/overlay/') && !searchParams.has('projectorSceneId')
+}
 
 /**
  * Turn the selected workbench palette into the semantic variables consumed by
@@ -11,19 +20,21 @@ type AppearanceSettings = AppSettings['ui']
  */
 export function applyAppAppearance(settings: AppearanceSettings): void {
   const root = document.documentElement
-  const palette = settings.theme === 'custom'
-    ? buildCustomPalette(settings)
-    : getAppThemeDefinition(settings.theme)?.palette ?? getAppThemeDefinition('dark')!.palette
-  const accent = isHexColor(settings.accentColor) ? settings.accentColor : palette.accent
+  const palette = resolveAppThemePalette(settings)
+  const accent = palette.accent
   const secondary = palette.secondary
   const accentRgb = hexToRgb(accent)
   const secondaryRgb = hexToRgb(secondary)
   const textRgb = hexToRgb(palette.text)
 
-  // Chromium's non-standard zoom works with the px-based styles used across
-  // the desktop renderer, unlike rem scaling which would miss older screens.
-  const uiScale = Number.isFinite(settings.uiScale) ? Math.min(1.3, Math.max(0.8, settings.uiScale)) : 1
-  ;(root.style as CSSStyleDeclaration & { zoom: string }).zoom = uiScale === 1 ? '' : String(uiScale)
+  // Electron page zoom recalculates the CSS viewport as it scales. Root-level
+  // CSS zoom does not, which caused 110/120% layouts to overflow the window and
+  // left unused borders at lower scales. Presentation surfaces stay pixel-true.
+  const uiScale = normalizeInterfaceScale(settings.uiScale)
+  const rendererScale = shouldApplyInterfaceScale(window.location) ? uiScale : 1
+  root.style.removeProperty('zoom')
+  root.dataset.interfaceScale = String(uiScale)
+  window.api?.window?.setZoomFactor?.(rendererScale)
 
   const gradient = `linear-gradient(135deg, ${accent}, ${secondary})`
   const softGradient = `linear-gradient(135deg, ${withAlpha(accent, 0.16)}, ${withAlpha(secondary, 0.11)})`
@@ -165,37 +176,6 @@ export function applyAppAppearance(settings: AppearanceSettings): void {
   root.style.setProperty('--color-secondary-s', `${ss}%`)
   root.style.setProperty('--color-secondary-l', `${sl}%`)
   root.style.setProperty('--theme-text-rgb', textRgb)
-}
-
-/** Build a complete workbench from the three user-controlled custom colors. */
-function buildCustomPalette(settings: AppearanceSettings): AppThemePalette {
-  const canvas = isHexColor(settings.customBackground) ? settings.customBackground : '#0b0d12'
-  const secondary = isHexColor(settings.customSecondary) ? settings.customSecondary : '#d035f1'
-  const accent = isHexColor(settings.accentColor) ? settings.accentColor : '#19c8ff'
-  const colorScheme = relativeLuminance(canvas) > 0.48 ? 'light' : 'dark'
-  const text = colorScheme === 'light' ? '#172033' : '#f5f8ff'
-
-  return {
-    colorScheme,
-    canvas,
-    canvasDeep: mixHex(canvas, '#000000', colorScheme === 'light' ? 0.09 : 0.32),
-    chrome: mixHex(canvas, text, colorScheme === 'light' ? 0.025 : 0.045),
-    sidebar: mixHex(canvas, text, colorScheme === 'light' ? 0.035 : 0.055),
-    surface: mixHex(canvas, text, colorScheme === 'light' ? 0.06 : 0.08),
-    surfaceRaised: mixHex(canvas, text, colorScheme === 'light' ? 0.1 : 0.13),
-    surfaceHover: mixHex(canvas, text, colorScheme === 'light' ? 0.15 : 0.19),
-    border: mixHex(canvas, text, colorScheme === 'light' ? 0.2 : 0.24),
-    borderStrong: mixHex(canvas, text, colorScheme === 'light' ? 0.32 : 0.36),
-    text,
-    textMuted: mixHex(canvas, text, 0.66),
-    textSubtle: mixHex(canvas, text, 0.46),
-    accent,
-    secondary
-  }
-}
-
-function isHexColor(value: string): boolean {
-  return /^#[0-9a-f]{6}$/i.test(value)
 }
 
 function hexToRgb(hex: string): string {

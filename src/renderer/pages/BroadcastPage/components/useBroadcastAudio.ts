@@ -4,6 +4,7 @@ import type { AudioSource } from '../../../../shared/studio'
 import { reconcileFxChain } from '../../../utils/audio-fx'
 import { audioEngine, createChannelModeStage, sanitizeChannelMode, type ChannelModeStage } from '../../../utils/audio-engine'
 import { buildLowLatencyAudioConstraints } from '../utils/media-init'
+import BroadcastProcessorUrl from '../../../workers/broadcast-processor.ts?worker&url'
 
 interface TrackNodes {
   channelMode: ChannelModeStage
@@ -272,7 +273,7 @@ export function useBroadcastAudio(
     const setupProcessor = async () => {
       try {
         console.log('[useBroadcastAudio] Initializing AudioWorklet...')
-        await ctx.audioWorklet.addModule(new URL('../../../workers/broadcast-processor.ts', import.meta.url))
+        await ctx.audioWorklet.addModule(BroadcastProcessorUrl)
         if (disposed || processorRef.current) return
 
         const processor = new AudioWorkletNode(ctx, 'broadcast-processor')
