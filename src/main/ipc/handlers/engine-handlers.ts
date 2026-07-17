@@ -3,10 +3,40 @@ import { sendToRenderer } from '../safe-send'
 import {
   NativeEngine,
   rectTransform,
+  imageTransform,
   BlendMode,
   shutdownEngineSystem,
   type Layer
 } from '../../engine/native-engine'
+
+/**
+ * Build a colorful RGBA8 image (diagonal cyan->magenta with a soft highlight)
+ * to prove the compositor handles a real multi-pixel raster layer, not just
+ * solid quads. Stands in for a camera/video/canvas frame uploaded from JS.
+ */
+function makeGradientImage(w: number, h: number): Buffer {
+  const buf = Buffer.alloc(w * h * 4)
+  const cx = w * 0.5
+  const cy = h * 0.4
+  const maxR = Math.hypot(w, h) * 0.6
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      const u = x / w
+      const v = y / h
+      let r = 20 + u * 210
+      let g = 200 * (1 - u) + v * 20
+      let b = 255 - v * 120
+      const d = Math.hypot(x - cx, y - cy) / maxR
+      const hi = Math.max(0, 1 - d) ** 2 * 70
+      buf[i] = Math.min(255, r + hi) | 0
+      buf[i + 1] = Math.min(255, g + hi) | 0
+      buf[i + 2] = Math.min(255, b + hi) | 0
+      buf[i + 3] = 255
+    }
+  }
+  return buf
+}
 
 /**
  * Preview harness for the native bgfx engine: creates an engine, composites a
@@ -44,32 +74,33 @@ export function registerEngineHandlers(window: BrowserWindow): void {
       const height = Math.max(16, Math.min(1080, Math.round(opts?.height ?? 360)))
 
       engine = new NativeEngine({ width, height, fps: 60 })
-      const green = engine.createColorTexture(0xff00ff00) // opaque green
-      const magenta = engine.createColorTexture(0xffff00ff) // magenta
+      // Full-frame generated image (uploaded from JS) as the base layer, plus a
+      // moving translucent quad on top to show blending over real pixels.
+      const image = engine.createTextureFromPixels(width, height, makeGradientImage(width, height))
+      const white = engine.createColorTexture(0xffffffff)
 
       startMs = Date.now()
       timer = setInterval(() => {
         if (!engine) return
 
         const t = (Date.now() - startMs) / 1000
-        const qw = width * 0.4
-        const qh = height * 0.5
-        const gy = (height - qh) / 2
-        // Magenta quad slides horizontally and overlaps the green one, so the
-        // frame shows compositing + alpha blending in motion.
-        const mx = width * 0.3 + Math.sin(t * 1.5) * width * 0.18
+        const qw = width * 0.28
+        const qh = height * 0.55
+        const qy = (height - qh) / 2
+        // Translucent white bar slides across, compositing over the image.
+        const qx = width * 0.5 + Math.sin(t * 1.2) * width * 0.32 - qw / 2
 
         const layers: Layer[] = [
           {
-            texture: green,
-            transform: rectTransform(width * 0.12, gy, qw, qh),
+            texture: image,
+            transform: imageTransform(0, 0),
             opacity: 1,
             blendMode: BlendMode.Alpha
           },
           {
-            texture: magenta,
-            transform: rectTransform(mx, gy, qw, qh),
-            opacity: 0.6,
+            texture: white,
+            transform: rectTransform(qx, qy, qw, qh),
+            opacity: 0.35,
             blendMode: BlendMode.Alpha
           }
         ]

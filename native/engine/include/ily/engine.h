@@ -90,6 +90,14 @@ ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceH
 ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint32_t color, ResourceHandle* outTextureHandle);
 
 /**
+ * @brief Create a texture from tightly packed RGBA8 pixels supplied by the host.
+ *
+ * This is the general "upload a frame from the app" path — camera/video/canvas
+ * sources feed pixels this way. @p rgbaPixels must be width*height*4 bytes.
+ */
+ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, uint32_t width, uint32_t height, const void* rgbaPixels, uint32_t byteLength, ResourceHandle* outTextureHandle);
+
+/**
  * @brief Create the sprite shader program.
  */
 ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, ResourceHandle* outProgramHandle);

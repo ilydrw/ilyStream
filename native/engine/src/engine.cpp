@@ -263,6 +263,28 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
     return ILY_SUCCESS;
 }
 
+ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, uint32_t width, uint32_t height, const void* rgbaPixels, uint32_t byteLength, ResourceHandle* outTextureHandle) {
+    if (!rgbaPixels || !outTextureHandle || width == 0 || height == 0) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    if (byteLength < width * height * 4) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, rgbaPixels);
+    if (texHandle == ILY_INVALID_HANDLE) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+    *outTextureHandle = texHandle;
+    return ILY_SUCCESS;
+}
+
 ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, ResourceHandle* outProgramHandle) {
     if (!outProgramHandle) {
         return ILY_ERROR_INVALID_ARGUMENT;

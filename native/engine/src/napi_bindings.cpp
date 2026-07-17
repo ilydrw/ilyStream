@@ -192,6 +192,31 @@ static Napi::Value EngineCreateColorTexture(const Napi::CallbackInfo& info) {
     return Napi::BigInt::New(env, ResourceHandleToUint64(outTextureHandle));
 }
 
+// engineCreateTextureFromPixels(engine: BigInt, width, height, rgba: Buffer) -> BigInt
+static Napi::Value EngineCreateTextureFromPixels(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 4 || !info[0].IsBigInt() || !info[1].IsNumber() ||
+        !info[2].IsNumber() || !info[3].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Number, Number, Buffer)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    uint32_t width = info[1].As<Napi::Number>().Uint32Value();
+    uint32_t height = info[2].As<Napi::Number>().Uint32Value();
+    Napi::Buffer<uint8_t> buf = info[3].As<Napi::Buffer<uint8_t>>();
+
+    ResourceHandle outTex = ILY_INVALID_HANDLE;
+    IlyResult res = IlyEngineCreateTextureFromPixels(
+        Uint64ToResourceHandle(engineVal), width, height,
+        buf.Data(), static_cast<uint32_t>(buf.Length()), &outTex);
+    if (res != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to create texture from pixels, code: " + std::to_string(res)).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return Napi::BigInt::New(env, ResourceHandleToUint64(outTex));
+}
+
 static Napi::Value EngineCreateSpriteProgram(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1 || !info[0].IsBigInt()) {
@@ -393,6 +418,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineLoadTexture", Napi::Function::New(env, EngineLoadTexture));
     exports.Set("engineDestroyTexture", Napi::Function::New(env, EngineDestroyTexture));
     exports.Set("engineCreateColorTexture", Napi::Function::New(env, EngineCreateColorTexture));
+    exports.Set("engineCreateTextureFromPixels", Napi::Function::New(env, EngineCreateTextureFromPixels));
     exports.Set("engineCreateSpriteProgram", Napi::Function::New(env, EngineCreateSpriteProgram));
     exports.Set("engineDrawQuad", Napi::Function::New(env, EngineDrawQuad));
 

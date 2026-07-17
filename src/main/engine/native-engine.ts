@@ -66,6 +66,7 @@ interface NativeAddon {
   destroyEngine(engine: bigint): number
   engineLoadTexture(engine: bigint, filePath: string): bigint
   engineCreateColorTexture(engine: bigint, rgba: number): bigint
+  engineCreateTextureFromPixels(engine: bigint, width: number, height: number, rgba: Buffer): bigint
   engineDestroyTexture(engine: bigint, texture: bigint): number
   engineSetLayers(engine: bigint, layers: Layer[]): number
   engineReadPixels(
@@ -166,6 +167,12 @@ export class NativeEngine {
     return this.api.engineCreateColorTexture(this.handle, rgba >>> 0)
   }
 
+  /** Create a texture from tightly packed RGBA8 pixels (width*height*4 bytes). */
+  createTextureFromPixels(width: number, height: number, rgba: Buffer): bigint {
+    this.assertAlive()
+    return this.api.engineCreateTextureFromPixels(this.handle, width, height, rgba)
+  }
+
   destroyTexture(texture: bigint): void {
     this.assertAlive()
     this.api.engineDestroyTexture(this.handle, texture)
@@ -203,12 +210,30 @@ export class NativeEngine {
   }
 }
 
-/** Convenience: an identity transform covering a rect at (x,y) sized w*h. */
+/**
+ * Convenience: a transform for a UNIT (1x1) source texture — e.g. a color
+ * texture — drawn as a rect at (x,y) sized w*h. For a real image texture use
+ * imageTransform (scale multiplies the source's own pixel size).
+ */
 export function rectTransform(x: number, y: number, w: number, h: number): Transform {
   return {
     position: { x, y, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
     scale: { x: w, y: h, z: 1 },
+    anchor: { x: 0, y: 0 },
+    pivot: { x: 0, y: 0 },
+    crop: { left: 0, top: 0, right: 0, bottom: 0 },
+    visibility: true,
+    opacity: 1
+  }
+}
+
+/** Draw an image texture at its native pixel size, top-left at (x,y), scaled. */
+export function imageTransform(x: number, y: number, scale = 1): Transform {
+  return {
+    position: { x, y, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 },
+    scale: { x: scale, y: scale, z: 1 },
     anchor: { x: 0, y: 0 },
     pivot: { x: 0, y: 0 },
     crop: { left: 0, top: 0, right: 0, bottom: 0 },
