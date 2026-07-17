@@ -41,6 +41,28 @@ function generateCodeChallenge(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url')
 }
 
+export function buildKickAuthorizeUrl(input: {
+  clientId: string
+  state: string
+  codeChallenge: string
+}): string {
+  const params = new URLSearchParams({
+    client_id: input.clientId,
+    response_type: 'code',
+    // Kick currently rewrites the first 127.0.0.1 query value to localhost.
+    // Keep this sacrificial parameter before redirect_uri so the registered
+    // callback remains unchanged. See Kick's OAuth 2.1 loopback workaround.
+    redirect: '127.0.0.1',
+    redirect_uri: KICK_REDIRECT_URI,
+    scope: SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: input.codeChallenge,
+    state: input.state
+  })
+
+  return `${AUTH_URL}?${params.toString()}`
+}
+
 // In-flight auth attempt. A second connect click cancels the first so the
 // loopback port can be re-bound.
 let activeAuth: { server: Server; cancel: (reason: Error) => void } | null = null
@@ -59,17 +81,11 @@ export async function initiateKickUserAuth(
   const codeChallenge = generateCodeChallenge(codeVerifier)
   const state = randomBytes(32).toString('base64url')
 
-  const params = new URLSearchParams({
-    client_id: clientId.trim(),
-    response_type: 'code',
-    redirect_uri: KICK_REDIRECT_URI,
-    scope: SCOPES,
-    code_challenge_method: 'S256',
-    code_challenge: codeChallenge,
-    state
-  })
-
-  await shell.openExternal(`${AUTH_URL}?${params.toString()}`)
+  await shell.openExternal(buildKickAuthorizeUrl({
+    clientId: clientId.trim(),
+    state,
+    codeChallenge
+  }))
 
   const code = await waitForCallback(state)
   return exchangeCodeForTokens(clientId.trim(), clientSecret.trim(), code, codeVerifier)

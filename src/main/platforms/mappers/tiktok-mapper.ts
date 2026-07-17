@@ -327,9 +327,9 @@ export class TikTokMapper {
   }
 
   /**
-   * TikTok's roomUser payload includes a `topViewers` roster — the identifiable
-   * viewers currently in the room (even silent ones). We surface these so the
-   * "in stream" list reflects who's actually present, not just who's chatted.
+   * TikTok's roomUser payload can include a `topViewers` snapshot. It is a
+   * best-effort subset, not a durable room-membership list; consumers must
+   * replace prior snapshots and reconcile it against viewerCount.
    */
   mapRoomViewers(data: any): UserInfo[] {
     const raw = Array.isArray(data?.topViewers)

@@ -20,6 +20,8 @@ export function usePlatformEvents(isMounted: boolean) {
   const recordInsightEvent = useLiveInsightsStore((s) => s.recordEvent)
   const ensureInsightsStarted = useLiveInsightsStore((s) => s.ensureStarted)
   const recordPresence = useLiveViewersStore((s) => s.recordPresence)
+  const syncRoster = useLiveViewersStore((s) => s.syncRoster)
+  const clearViewerPlatform = useLiveViewersStore((s) => s.clearPlatform)
 
   useEffect(() => {
     if (!window.api?.platform || !isMounted) return
@@ -106,25 +108,26 @@ export function usePlatformEvents(isMounted: boolean) {
 
         if (event.type === 'viewer-count') {
           setViewerCount(event.platform, event.count)
-          // The room's top-viewers roster (TikTok) — people present but not
-          // necessarily active. Surfaces lurkers in the "in stream" list.
+          // Treat platform rosters as replaceable snapshots. Appending every
+          // payload made normal audience churn look like dozens of simultaneous
+          // viewers because TikTok does not send matching leave events.
+          // An omitted roster means "not supplied", while an explicit empty
+          // array means the platform supplied an empty snapshot.
           if (Array.isArray(event.viewers)) {
-            for (const viewer of event.viewers) {
-              if (!viewer?.username) continue
-              recordPresence({
-                platform: event.platform,
-                username: viewer.username,
-                displayName: viewer.displayName,
-                profilePictureUrl: viewer.profilePictureUrl,
-                isModerator: viewer.isModerator,
-                isSubscriber: viewer.isSubscriber,
-                isVip: viewer.isVip,
-                isFanClub: viewer.isFanClubMember,
-                isSuperFan: viewer.isSuperFan,
-                badges: viewer.badges,
-                action: 'viewing'
-              })
-            }
+            syncRoster(
+              event.platform,
+              event.viewers.map((viewer: any) => ({
+                username: viewer?.username ?? '',
+                displayName: viewer?.displayName,
+                profilePictureUrl: viewer?.profilePictureUrl,
+                isModerator: viewer?.isModerator,
+                isSubscriber: viewer?.isSubscriber,
+                isVip: viewer?.isVip,
+                isFanClub: viewer?.isFanClubMember,
+                isSuperFan: viewer?.isSuperFan,
+                badges: viewer?.badges
+              }))
+            )
           }
         }
       })
@@ -134,6 +137,7 @@ export function usePlatformEvents(isMounted: boolean) {
     cleanups.push(
       window.api.on('platform:status-change', (data: any) => {
         setStatus(data.platform, data.status)
+        if (data.status !== 'connected') clearViewerPlatform(data.platform)
         if (data.status === 'connected') ensureInsightsStarted()
       })
     )
@@ -163,6 +167,9 @@ export function usePlatformEvents(isMounted: boolean) {
           platform as Parameters<typeof setStatus>[0],
           status as Parameters<typeof setStatus>[1]
         )
+        if (status !== 'connected') {
+          clearViewerPlatform(platform as Parameters<typeof clearViewerPlatform>[0])
+        }
         if (status === 'connected') ensureInsightsStarted()
       }
     })
@@ -189,7 +196,7 @@ export function usePlatformEvents(isMounted: boolean) {
       clearTimeout(restoreTimer)
       cleanups.forEach((fn) => fn())
     }
-  }, [isMounted, addEventDiagnostic, addEventLabEntry, addMessage, ensureInsightsStarted, recordInsightEvent, recordPresence, setError, setReconnectInfo, setStatus, setViewerCount])
+  }, [isMounted, addEventDiagnostic, addEventLabEntry, addMessage, clearViewerPlatform, ensureInsightsStarted, recordInsightEvent, recordPresence, setError, setReconnectInfo, setStatus, setViewerCount, syncRoster])
 }
 
 function summarizeStreamEvent(event: any): string {

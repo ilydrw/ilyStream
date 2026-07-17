@@ -39,22 +39,31 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
   recentEvents: [],
 
   setStatus: (platform, status) =>
-    set((state) => ({
-      statuses: { ...state.statuses, [platform]: status },
-      errors:
-        status === 'error'
-          ? state.errors
-          : { ...state.errors, [platform]: null },
-      // Clear reconnect info when status changes away from 'connecting'
-      reconnectInfo:
-        status !== 'connecting'
-          ? { ...state.reconnectInfo, [platform]: null }
-          : state.reconnectInfo
-    })),
+    set((state) => {
+      const viewerCounts = { ...state.viewerCounts }
+      if (status !== 'connected') delete viewerCounts[platform]
+
+      return {
+        statuses: { ...state.statuses, [platform]: status },
+        viewerCounts,
+        errors:
+          status === 'error'
+            ? state.errors
+            : { ...state.errors, [platform]: null },
+        // Clear reconnect info when status changes away from 'connecting'
+        reconnectInfo:
+          status !== 'connecting'
+            ? { ...state.reconnectInfo, [platform]: null }
+            : state.reconnectInfo
+      }
+    }),
 
   setViewerCount: (platform, count) =>
     set((state) => ({
-      viewerCounts: { ...state.viewerCounts, [platform]: count }
+      viewerCounts: {
+        ...state.viewerCounts,
+        [platform]: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+      }
     })),
 
   setError: (platform, message) =>

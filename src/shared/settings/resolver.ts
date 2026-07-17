@@ -1,4 +1,4 @@
-import type { AppSettings, AppTheme, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
+import type { AppSettings, AppTheme, KokoroQuality, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
 import { DEFAULT_APP_SETTINGS } from './defaults'
 import { DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE, DEFAULT_TTS_COMMAND_PREFIXES } from './types'
 import type { RelayPlatformParticipation } from '../chat-relay'
@@ -265,6 +265,10 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     }
   }
 
+  const normalizeKokoroQuality = (value: unknown): KokoroQuality => {
+    return value === 'q8' ? 'q8' : 'fp32'
+  }
+
   const normalizeSoundId = (id: string): string => {
     if (!id) return ''
     if (id.startsWith('/')) return ''
@@ -389,7 +393,8 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
       skipMessagesStartingWithAt: get('ttsSkipMessagesStartingWithAt', flatValues.tts?.skipMessagesStartingWithAt ?? s.tts.skipMessagesStartingWithAt),
       ignoreEmotes: get('ttsIgnoreEmotes', flatValues.tts?.ignoreEmotes ?? s.tts.ignoreEmotes),
       volume: Math.max(0, Math.min(1, get('ttsVolume', flatValues.tts?.volume ?? s.tts.volume))),
-      modifiers: normalizeVoiceModifiers(get('voiceModifiers', flatValues.tts?.modifiers ?? s.tts.modifiers))
+      modifiers: normalizeVoiceModifiers(get('voiceModifiers', flatValues.tts?.modifiers ?? s.tts.modifiers)),
+      kokoroQuality: normalizeKokoroQuality(get('ttsKokoroQuality', flatValues.tts?.kokoroQuality ?? s.tts.kokoroQuality))
     },
     ai: {
       enabled: get('aiEnabled', flatValues.ai?.enabled ?? s.ai.enabled),
@@ -582,6 +587,7 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     ttsSkipMessagesStartingWithAt: nested.tts.skipMessagesStartingWithAt,
     ttsIgnoreEmotes: nested.tts.ignoreEmotes,
     ttsVolume: nested.tts.volume,
+    ttsKokoroQuality: nested.tts.kokoroQuality,
     voiceModifiers: nested.tts.modifiers,
     elevenlabsApiKey: typeof flatValues.elevenlabsApiKey === 'string' ? flatValues.elevenlabsApiKey : s.elevenlabsApiKey,
     elevenlabsApiKeys,

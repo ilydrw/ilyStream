@@ -65,6 +65,16 @@ export function preloadKokoroModel(): void {
   void loadKokoroModel()
 }
 
+async function resolveConfiguredKokoroDtype(): Promise<'fp32' | 'q8'> {
+  try {
+    const settingsRaw = await window.api.settings.getAll()
+    const settings = resolveAppSettings(settingsRaw || {})
+    return settings.tts.kokoroQuality === 'q8' ? 'q8' : 'fp32'
+  } catch {
+    return 'fp32'
+  }
+}
+
 function loadKokoroModel(): Promise<KokoroInstance> {
   if (modelPromise) return modelPromise
 
@@ -75,24 +85,30 @@ function loadKokoroModel(): Promise<KokoroInstance> {
 
       // Audio quality beats speed for stream TTS. WebGPU can be faster, but on
       // some Windows GPU/driver combos it produces buzzy/revving artifacts.
-      try {
-        console.info('[kokoro] Attempting to load fp32 model...')
-        const model = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-          dtype: 'fp32',
-          device: 'wasm'
-        })
-        console.info('[kokoro] Model loaded successfully (fp32)')
-        return model
-      } catch (error) {
-        console.warn('[kokoro] WASM fp32 failed, falling back to WASM q8:', error)
+      // fp32 holds ~330MB of weights in WASM memory (which never shrinks);
+      // q8 is ~90MB, so the dtype is user-configurable.
+      const dtype = await resolveConfiguredKokoroDtype()
+
+      if (dtype === 'fp32') {
+        try {
+          console.info('[kokoro] Attempting to load fp32 model...')
+          const model = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
+            dtype: 'fp32',
+            device: 'wasm'
+          })
+          console.info('[kokoro] Model loaded successfully (fp32)')
+          return model
+        } catch (error) {
+          console.warn('[kokoro] WASM fp32 failed, falling back to WASM q8:', error)
+        }
       }
 
-      console.info('[kokoro] Attempting to load q8 fallback model...')
+      console.info('[kokoro] Attempting to load q8 model...')
       const fallback = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
         dtype: 'q8',
         device: 'wasm'
       })
-      console.info('[kokoro] Fallback model loaded successfully (q8)')
+      console.info('[kokoro] Model loaded successfully (q8)')
       return fallback
     } catch (error) {
       console.error('[kokoro] Critical failure loading model:', error)

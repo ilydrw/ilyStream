@@ -25,7 +25,10 @@ interface BrowserSourceCapture {
 const MAX_CAPTURE_EDGE = 1920
 const MAX_CAPTURE_PIXELS = 1920 * 1080
 const MAX_CAPTURE_FPS = 60
-const DEFAULT_CAPTURE_FPS = 60
+// 30fps default: every captured frame is a full BGRA copy pushed over IPC,
+// so the default rate directly scales allocation churn in three processes.
+// Sources that genuinely need 60 can still request it per-layer.
+const DEFAULT_CAPTURE_FPS = 30
 
 export class BrowserSourceService {
   private captures = new Map<string, BrowserSourceCapture>()

@@ -58,11 +58,23 @@ export function useTTS(isMounted: boolean) {
       void warmConfiguredKokoroProfiles(settings)
     })
 
-    // Delay heavy TTS prep to prioritize UI paint and media stability
+    // Delay heavy TTS prep to prioritize UI paint and media stability.
+    // The Kokoro model holds hundreds of MB in WASM memory, so it is only
+    // preloaded when something can actually speak (TTS or the AI co-host).
+    // If both are off, the model still loads lazily on the first real
+    // speech request — the only cost is cold-start latency on that line.
     const prepTimer = setTimeout(() => {
-      console.log('[useTTS] Starting background preloading (Kokoro)...')
-      preloadKokoroModel()
-      void warmConfiguredKokoroProfiles()
+      void (async () => {
+        const settingsRaw = await window.api.settings.getAll().catch(() => null)
+        const resolved = resolveAppSettings(settingsRaw || {})
+        if (!resolved.tts.enabled && !resolved.ai.enabled) {
+          console.log('[useTTS] Skipping Kokoro preload — TTS and AI co-host are disabled.')
+          return
+        }
+        console.log('[useTTS] Starting background preloading (Kokoro)...')
+        preloadKokoroModel()
+        void warmConfiguredKokoroProfiles(settingsRaw || undefined)
+      })()
     }, 3000)
 
     const cleanups: (() => void)[] = []
@@ -253,6 +265,14 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
   ])
   const profiles = Array.isArray(profilesValue) ? (profilesValue as VoiceProfile[]) : []
   const settings = settingsValue as Record<string, any>
+
+  // Warming synthesizes audio, which loads the (large) Kokoro model as a side
+  // effect. Never do that while nothing is allowed to speak.
+  const resolved = resolveAppSettings(settings || {})
+  const ttsActive = resolved.tts.enabled
+  const cohostActive = resolved.ai.enabled
+  if (!ttsActive && !cohostActive) return
+
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]))
   const warmProfiles = new Map<string, VoiceProfile>()
 
@@ -261,35 +281,37 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
     warmProfiles.set(profile.id, profile)
   }
 
-  const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0]
-  addProfile(defaultProfile)
+  if (ttsActive) {
+    const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0]
+    addProfile(defaultProfile)
 
-  for (const { flatKey, nestedKey } of [
-    { flatKey: 'ttsChatVoiceProfileId', nestedKey: 'chatVoiceProfileId' },
-    { flatKey: 'ttsSubscriptionVoiceProfileId', nestedKey: 'subscriptionVoiceProfileId' }
-  ]) {
-    const profileId =
-      typeof settings?.[flatKey] === 'string'
-        ? settings[flatKey]
-        : typeof settings?.tts?.[nestedKey] === 'string'
-          ? settings.tts[nestedKey]
-          : ''
-    addProfile(profileId ? profileById.get(profileId) : defaultProfile)
-  }
+    for (const { flatKey, nestedKey } of [
+      { flatKey: 'ttsChatVoiceProfileId', nestedKey: 'chatVoiceProfileId' },
+      { flatKey: 'ttsSubscriptionVoiceProfileId', nestedKey: 'subscriptionVoiceProfileId' }
+    ]) {
+      const profileId =
+        typeof settings?.[flatKey] === 'string'
+          ? settings[flatKey]
+          : typeof settings?.tts?.[nestedKey] === 'string'
+            ? settings.tts[nestedKey]
+            : ''
+      addProfile(profileId ? profileById.get(profileId) : defaultProfile)
+    }
 
-  const rawOverrides = Array.isArray(settings?.tts?.userVoiceOverrides)
-    ? settings.tts.userVoiceOverrides
-    : settings?.ttsUserVoiceOverrides
-  const overrides = Array.isArray(rawOverrides)
-    ? (rawOverrides as TTSUserVoiceOverride[])
-    : []
-  for (const override of overrides.slice(0, 8)) {
-    if (!override.enabled) continue
+    const rawOverrides = Array.isArray(settings?.tts?.userVoiceOverrides)
+      ? settings.tts.userVoiceOverrides
+      : settings?.ttsUserVoiceOverrides
+    const overrides = Array.isArray(rawOverrides)
+      ? (rawOverrides as TTSUserVoiceOverride[])
+      : []
+    for (const override of overrides.slice(0, 8)) {
+      if (!override.enabled) continue
 
-    if (override.mode === 'profile') {
-      addProfile(profileById.get(override.voiceProfileId))
-    } else if (override.provider === 'kokoro') {
-      warmProfiles.set(`user:${override.id}`, profileFromOverride(override))
+      if (override.mode === 'profile') {
+        addProfile(profileById.get(override.voiceProfileId))
+      } else if (override.provider === 'kokoro') {
+        warmProfiles.set(`user:${override.id}`, profileFromOverride(override))
+      }
     }
   }
 
@@ -297,23 +319,25 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
     warmKokoroProfile(profile)
   }
 
-  // Also warm up the AI signature voice
-  warmKokoroProfile({
-    id: 'ai-cohost-voice',
-    name: 'AI Co-Host',
-    provider: 'kokoro',
-    voiceName: '',
-    kokoroVoice: 'af_sky',
-    lang: 'en-US',
-    pitch: 1.1,
-    rate: 1.05,
-    volume: 1.0,
-    effects: [
-      { type: 'robot', enabled: true, params: {} },
-      { type: 'reverb', enabled: true, params: { roomSize: 0.5 } }
-    ],
-    isDefault: false
-  })
+  // Also warm up the AI signature voice, but only when the co-host can speak
+  if (cohostActive) {
+    warmKokoroProfile({
+      id: 'ai-cohost-voice',
+      name: 'AI Co-Host',
+      provider: 'kokoro',
+      voiceName: '',
+      kokoroVoice: 'af_sky',
+      lang: 'en-US',
+      pitch: 1.1,
+      rate: 1.05,
+      volume: 1.0,
+      effects: [
+        { type: 'robot', enabled: true, params: {} },
+        { type: 'reverb', enabled: true, params: { roomSize: 0.5 } }
+      ],
+      isDefault: false
+    })
+  }
 }
 
 function profileFromOverride(override: TTSUserVoiceOverride): VoiceProfile {

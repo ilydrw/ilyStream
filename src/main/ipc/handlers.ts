@@ -95,6 +95,13 @@ export function registerIpcHandlers(
     if (!changedKeys || changedKeys.includes('platformAutoReconnect')) {
       platformManager.setAutoReconnect(settings.platform.autoReconnect)
     }
+
+    if (!changedKeys || changedKeys.includes('recordingsFolder')) {
+      services.streamingService.setRecordingsFolder(settings.recordingsFolder)
+      services.recordingsService.setRecordingsFolder(settings.recordingsFolder)
+    }
+
+    services.overlayServer.broadcastAppTheme(settings.ui)
   }
 
   const updateSetting = async <K extends AppSettingKey>(key: K, value: unknown) => {

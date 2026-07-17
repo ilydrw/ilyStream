@@ -55,7 +55,7 @@ export const useHueStore = create<HueStore>((set, get) => ({
 
   discoverBridges: async () => {
     if (!window.api?.hue) {
-      throw new Error('Hardware API not initialized. Please restart the IlyStream application.')
+      throw new Error('Hardware API not initialized. Please restart the ilyStream application.')
     }
     set({ isDiscovering: true })
     try {
@@ -74,7 +74,7 @@ export const useHueStore = create<HueStore>((set, get) => ({
 
   connect: async (ip, username) => {
     if (!window.api?.hue) {
-      throw new Error('Hardware API not initialized. Please restart the IlyStream application.')
+      throw new Error('Hardware API not initialized. Please restart the ilyStream application.')
     }
     const success = await window.api.hue.connect(ip, username)
     if (success) {

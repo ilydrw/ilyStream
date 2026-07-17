@@ -9,7 +9,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     chatVoiceProfileId: '', giftVoiceProfileId: '', subscriptionVoiceProfileId: '',
     onlySubsAndMods: false, userVoiceOverrides: [], readAtSymbol: false,
     skipMessagesStartingWithAt: false, ignoreEmotes: true, volume: 0.8,
-    modifiers: { radioFilter: false, speedRamping: true, pitchShifting: 'normal' }
+    modifiers: { radioFilter: false, speedRamping: true, pitchShifting: 'normal' },
+    kokoroQuality: 'fp32'
   },
   alerts: {
     rules: DEFAULT_ALERT_RULES,

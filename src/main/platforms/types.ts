@@ -139,10 +139,9 @@ export interface ViewerCountEvent extends StreamEvent {
   type: 'viewer-count'
   count: number
   /**
-   * Identifiable viewers currently in the room (e.g. TikTok's top-viewers
-   * roster), surfaced so the "in stream" list can show people who are present
-   * but haven't chatted/reacted. Not every viewer — platforms only expose a
-   * subset by name.
+   * Best-effort roster snapshot (for example TikTok top viewers or Twitch
+   * chatters). It is partial and must not be treated as the authoritative
+   * audience count or accumulated across snapshots.
    */
   viewers?: UserInfo[]
 }

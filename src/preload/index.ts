@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import type { AppSettingKey } from '../shared/app-settings'
 import type { WindowsSettingsTarget } from '../main/system/windows-settings'
 import type { GetTopUsersOptions, ViewerAccountInput, ViewerProfileInput } from '../shared/stats'
@@ -247,7 +247,11 @@ const api = {
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),
-    close: () => ipcRenderer.invoke('window:close')
+    close: () => ipcRenderer.invoke('window:close'),
+    setZoomFactor: (factor: number) => {
+      const normalizedFactor = Number.isFinite(factor) ? Math.min(1.3, Math.max(0.8, factor)) : 1
+      webFrame.setZoomFactor(normalizedFactor)
+    }
   },
 
   // --- System ---
@@ -374,6 +378,7 @@ const api = {
     list: () => ipcRenderer.invoke('recordings:list'),
     openFolder: () => ipcRenderer.invoke('recordings:open-folder'),
     play: (path: string) => ipcRenderer.invoke('recordings:play', path),
+    thumbnail: (path: string): Promise<string | null> => ipcRenderer.invoke('recordings:thumbnail', path),
     delete: (path: string) => ipcRenderer.invoke('recordings:delete', path)
   },
   // --- Govee ---

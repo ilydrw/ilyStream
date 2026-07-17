@@ -20,6 +20,13 @@ import {
 export const DEFAULT_TTS_COMMAND_PREFIXES = ['!tts', '!say', '!speak']
 export const DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE = '{displayName} says: {message}'
 
+/**
+ * Local (Kokoro) voice model precision. fp32 sounds cleanest but holds
+ * ~330MB of weights in memory; q8 is nearly as clean at ~90MB.
+ */
+export type KokoroQuality = 'fp32' | 'q8'
+export const DEFAULT_KOKORO_QUALITY: KokoroQuality = 'fp32'
+
 export interface VoiceModifiers {
   radioFilter: boolean
   speedRamping: boolean
@@ -119,6 +126,7 @@ export interface TTSSettings {
   ignoreEmotes: boolean
   volume: number
   modifiers: VoiceModifiers
+  kokoroQuality: KokoroQuality
 }
 
 export interface AlertVisualSettings {

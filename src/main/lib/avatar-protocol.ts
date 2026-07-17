@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { join } from 'path'
 import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from './ssrf-guard'
+import { detectAvatarContentType, resolveAvatarContentType } from './avatar-content-type'
 
 function decodeAvatarProxyUrl(requestUrl: string): string | null {
   const url = new URL(requestUrl)
@@ -49,7 +50,7 @@ export function registerAvatarProtocol(): void {
             status: 200,
             headers: {
               'Cache-Control': 'public, max-age=31536000',
-              'Content-Type': 'image/jpeg'
+              'Content-Type': detectAvatarContentType(data) || 'application/octet-stream'
             }
           })
         }
@@ -68,10 +69,10 @@ export function registerAvatarProtocol(): void {
         return new Response('Avatar fetch failed', { status: response.status })
       }
 
-      const contentType = response.headers.get('Content-Type') || 'image/jpeg'
+      const declaredContentType = response.headers.get('Content-Type') || ''
       // Only proxy actual images, and never more than MAX_AVATAR_BYTES — the
       // proxy must not be usable as a general-purpose data exfiltration channel.
-      if (!contentType.toLowerCase().startsWith('image/')) {
+      if (!declaredContentType.toLowerCase().startsWith('image/')) {
         return new Response('Not an image', { status: 415 })
       }
       const buffer = Buffer.from(await response.arrayBuffer())
@@ -81,6 +82,7 @@ export function registerAvatarProtocol(): void {
       void writeFile(cachePath, buffer).catch((error) => {
         console.error('[AvatarProtocol] Failed to cache avatar:', error)
       })
+      const contentType = resolveAvatarContentType(buffer, declaredContentType) || 'application/octet-stream'
 
       return new Response(buffer, {
         status: 200,
