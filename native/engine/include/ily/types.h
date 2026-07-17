@@ -89,6 +89,16 @@ typedef struct IlyEngineConfig {
     bool enableValidation;
 } IlyEngineConfig;
 
+// A single composited layer: a texture drawn with a transform. The engine
+// redraws the current layer list into its offscreen target every frame, so the
+// composited result can be read back (IlyEngineReadPixels) and presented.
+typedef struct IlyLayer {
+    ResourceHandle texture;
+    IlyTransform transform;
+    float opacity;
+    IlyBlendMode blendMode;
+} IlyLayer;
+
 typedef struct IlyRendererCapabilities {
     bool supportsNPOT;
     bool supportsRenderToTexture;

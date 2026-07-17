@@ -7,7 +7,10 @@
 #include <cstring>
 
 #include "renderer/renderer.h"
+#include "ily/render_graph.h"
+#include "ily/render_backend.h"
 #include <stb_image.h>
+#include <vector>
 
 class EngineInstance {
 public:
@@ -293,6 +296,54 @@ ILY_API IlyResult IlyEngineDrawQuad(ResourceHandle engineHandle, ResourceHandle 
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
     return it->second->renderer->DrawQuad(textureHandle, *transform, opacity, blendMode);
+}
+
+ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer* layers, uint32_t count) {
+    if (count > 0 && !layers) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+
+    // Snapshot the layers into the pass so the render thread draws them every
+    // frame without referencing caller memory. Empty list clears the graph.
+    auto graph = std::make_shared<ily::RenderGraph>();
+    if (count > 0) {
+        std::vector<IlyLayer> layerList(layers, layers + count);
+        ily::RenderPass pass;
+        pass.name = "layers";
+        pass.execute = [layerList](ily::IRenderBackend* backend) -> IlyResult {
+            for (const auto& layer : layerList) {
+                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode);
+                if (r != ILY_SUCCESS) {
+                    return r;
+                }
+            }
+            return ILY_SUCCESS;
+        };
+        graph->AddPass(pass);
+    }
+    it->second->renderer->SetRenderGraph(graph);
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!buffer) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->ReadPixels(buffer, bufferSize, outWidth, outHeight);
 }
 
 }

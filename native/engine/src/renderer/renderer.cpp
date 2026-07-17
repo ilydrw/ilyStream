@@ -145,6 +145,21 @@ IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& t
     return future.get();
 }
 
+IlyResult Renderer::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::ReadPixels;
+    cmd.readbackDst = dst;
+    cmd.readbackSize = dstSize;
+    cmd.readbackOutWidth = outWidth;
+    cmd.readbackOutHeight = outHeight;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
 void Renderer::RenderThreadLoop() {
     using Clock = std::chrono::steady_clock;
 
@@ -231,6 +246,14 @@ void Renderer::RenderThreadLoop() {
                 }
                 case RenderCommandType::DrawQuad: {
                     IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::ReadPixels: {
+                    IlyResult res = m_device.ReadPixels(cmd.readbackDst, cmd.readbackSize,
+                                                        cmd.readbackOutWidth, cmd.readbackOutHeight);
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }

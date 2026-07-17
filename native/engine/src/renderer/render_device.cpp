@@ -81,6 +81,13 @@ IlyResult RenderDevice::DrawQuad(ResourceHandle textureHandle, const IlyTransfor
     return m_backend->DrawQuad(textureHandle, transform, opacity, blendMode);
 }
 
+IlyResult RenderDevice::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+    ILY_PROFILE_SCOPE("RenderDevice::ReadPixels");
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_initialized) return ILY_ERROR_INITIALIZATION_FAILED;
+    return m_backend->ReadPixels(dst, dstSize, outWidth, outHeight);
+}
+
 IRenderBackend::RendererCapabilities RenderDevice::GetCapabilities() const {
     ILY_PROFILE_SCOPE("RenderDevice::GetCapabilities");
     std::lock_guard<std::mutex> lock(m_mutex);

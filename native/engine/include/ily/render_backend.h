@@ -22,6 +22,11 @@ public:
 
     virtual IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) = 0;
     virtual ResourceHandle CreateSpriteProgramHandle() = 0;
+
+    // Copy the most recently rendered offscreen frame into dst as tightly packed
+    // RGBA8 (width*height*4 bytes). Fills outWidth/outHeight with the surface
+    // size. Blocks briefly while the GPU readback completes.
+    virtual IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) = 0;
     
     // Capabilities Query
     using RendererCapabilities = IlyRendererCapabilities;

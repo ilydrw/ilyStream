@@ -47,12 +47,60 @@ struct BgfxBackend::Impl {
     ResourceManager m_resourceManager;
     bgfx::ProgramHandle m_spriteProgram = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_texColorSampler = BGFX_INVALID_HANDLE;
+
+    // The engine renders into an offscreen color target (view 0 -> m_offscreenFb)
+    // rather than presenting to a window. m_readbackTex is a CPU-readable copy
+    // target that ReadPixels blits into so the composited frame can be handed to
+    // the host application (e.g. an Electron canvas).
+    bgfx::TextureHandle m_offscreenColorTex = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_offscreenFb = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_readbackTex = BGFX_INVALID_HANDLE;
+
     mutable std::mutex m_mutex;
     bool m_initialized = false;
 
 #ifdef _WIN32
     HWND m_dummyHwnd = nullptr;
 #endif
+
+    // (Re)create the offscreen and readback targets at the given size and point
+    // view 0 at the offscreen framebuffer. Caller must hold m_mutex.
+    void CreateOffscreenTargets(uint32_t width, uint32_t height) {
+        DestroyOffscreenTargets();
+
+        m_offscreenColorTex = bgfx::createTexture2D(
+            static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1,
+            bgfx::TextureFormat::RGBA8,
+            BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+
+        // destroyTextures=false: we own m_offscreenColorTex and destroy it
+        // ourselves (we also blit from it, so it must outlive per-frame use).
+        m_offscreenFb = bgfx::createFrameBuffer(1, &m_offscreenColorTex, false);
+
+        m_readbackTex = bgfx::createTexture2D(
+            static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1,
+            bgfx::TextureFormat::RGBA8,
+            BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
+
+        if (bgfx::isValid(m_offscreenFb)) {
+            bgfx::setViewFrameBuffer(0, m_offscreenFb);
+        }
+    }
+
+    void DestroyOffscreenTargets() {
+        if (bgfx::isValid(m_offscreenFb)) {
+            bgfx::destroy(m_offscreenFb);
+            m_offscreenFb = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(m_offscreenColorTex)) {
+            bgfx::destroy(m_offscreenColorTex);
+            m_offscreenColorTex = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(m_readbackTex)) {
+            bgfx::destroy(m_readbackTex);
+            m_readbackTex = BGFX_INVALID_HANDLE;
+        }
+    }
 };
 
 struct SpriteVertex {
@@ -83,6 +131,8 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     if (m_impl->m_initialized) {
         bgfx::reset(width, height, BGFX_RESET_NONE);
         bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+        // Offscreen targets are sized to the surface, so recreate them on resize.
+        m_impl->CreateOffscreenTargets(width, height);
         return ILY_SUCCESS;
     }
 
@@ -125,6 +175,9 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     // Compile/load our textured quad sprite shader program
     m_impl->m_spriteProgram = CreateSpriteProgram();
 
+    // Render offscreen; view 0 targets this framebuffer instead of the window.
+    m_impl->CreateOffscreenTargets(width, height);
+
     return ILY_SUCCESS;
 }
 
@@ -145,6 +198,8 @@ void BgfxBackend::Shutdown() {
         bgfx::destroy(m_impl->m_texColorSampler);
         m_impl->m_texColorSampler = BGFX_INVALID_HANDLE;
     }
+
+    m_impl->DestroyOffscreenTargets();
 
     m_impl->m_resourceManager.Clear();
 
@@ -456,6 +511,53 @@ ResourceHandle BgfxBackend::CreateSpriteProgramHandle() {
     ResourceHandle handle = m_impl->m_resourceManager.Create(ResourceType::Shader, shaderRes);
     m_impl->m_spriteProgram = program;
     return handle;
+}
+
+IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+    ILY_PROFILE_SCOPE("BgfxBackend::ReadPixels");
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+
+    if (!m_impl->m_initialized) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+    if (!dst) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    const uint32_t width = m_impl->m_width;
+    const uint32_t height = m_impl->m_height;
+    if (outWidth) *outWidth = width;
+    if (outHeight) *outHeight = height;
+
+    const uint32_t required = width * height * 4;
+    if (dstSize < required) {
+        return ILY_ERROR_OUT_OF_MEMORY;
+    }
+
+    const bgfx::Caps* caps = bgfx::getCaps();
+    if (!(caps->supported & BGFX_CAPS_TEXTURE_BLIT) ||
+        !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+    if (!bgfx::isValid(m_impl->m_offscreenColorTex) || !bgfx::isValid(m_impl->m_readbackTex)) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+
+    // Copy the offscreen color target into the CPU-readable texture, then read
+    // it back. readTexture reports the frame at which dst will be populated;
+    // pump frames (bounded) until we reach it.
+    const bgfx::ViewId kBlitView = 1;
+    bgfx::blit(kBlitView, m_impl->m_readbackTex, 0, 0, m_impl->m_offscreenColorTex);
+    const uint32_t frameAvailable = bgfx::readTexture(m_impl->m_readbackTex, dst);
+
+    uint32_t current = bgfx::frame();
+    for (int i = 0; i < 8 && current < frameAvailable; ++i) {
+        current = bgfx::frame();
+    }
+    if (current < frameAvailable) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+    return ILY_SUCCESS;
 }
 
 } // namespace ily

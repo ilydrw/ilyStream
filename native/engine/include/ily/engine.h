@@ -99,6 +99,26 @@ ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, Reso
  */
 ILY_API IlyResult IlyEngineDrawQuad(ResourceHandle engineHandle, ResourceHandle textureHandle, const IlyTransform* transform, float opacity, IlyBlendMode blendMode);
 
+/**
+ * @brief Set the retained layer list the engine composites every frame.
+ *
+ * Each layer is a texture drawn with a transform/opacity/blend mode. The engine
+ * redraws this list into its offscreen target on every frame, so the result can
+ * be read back with IlyEngineReadPixels. Passing count == 0 clears the layers.
+ * The layer array is copied; the caller need not keep it alive.
+ */
+ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer* layers, uint32_t count);
+
+/**
+ * @brief Read the latest composited frame back as tightly packed RGBA8.
+ *
+ * @param buffer     Destination buffer; must be at least width*height*4 bytes.
+ * @param bufferSize Size of buffer in bytes.
+ * @param outWidth   Receives the surface width (may be NULL).
+ * @param outHeight  Receives the surface height (may be NULL).
+ */
+ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight);
+
 #ifdef __cplusplus
 }
 #endif

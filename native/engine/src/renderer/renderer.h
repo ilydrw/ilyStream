@@ -24,7 +24,8 @@ enum class RenderCommandType {
     CreateTexture,
     DestroyTexture,
     CreateSpriteProgram,
-    DrawQuad
+    DrawQuad,
+    ReadPixels
 };
 
 struct RenderThreadCommand {
@@ -38,6 +39,12 @@ struct RenderThreadCommand {
     float opacity;
     IlyBlendMode blendMode;
     std::shared_ptr<RenderGraph> renderGraph;
+    // Readback destination (ReadPixels): caller-owned buffer + size and optional
+    // out-params for the surface dimensions.
+    void* readbackDst = nullptr;
+    uint32_t readbackSize = 0;
+    uint32_t* readbackOutWidth = nullptr;
+    uint32_t* readbackOutHeight = nullptr;
     std::shared_ptr<std::promise<IlyResult>> promise;
     std::shared_ptr<std::promise<ResourceHandle>> handlePromise;
 };
@@ -61,6 +68,7 @@ public:
     void DestroyTexture(ResourceHandle handle);
     ResourceHandle CreateSpriteProgram();
     IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode);
+    IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight);
 
     RenderDevice& GetDevice() { return m_device; }
 

@@ -25,6 +25,8 @@ public:
 
     IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) override;
     ResourceHandle CreateSpriteProgramHandle() override;
+
+    IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) override;
     
     RendererCapabilities capabilities() const override;
     IlyRendererCapabilities GetCapabilities() const override;
