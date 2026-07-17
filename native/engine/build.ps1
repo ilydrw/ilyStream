@@ -49,43 +49,36 @@ if (-not (Test-Path $buildDir)) {
 Write-Host "Compiling Native Engine..." -ForegroundColor Cyan
 & $cmakePath --build $buildDir --config $Configuration
 
+# Run a test executable with a hard timeout. A hung test would otherwise wedge
+# the whole build indefinitely and keep ilystream_engine.dll locked, breaking
+# every subsequent build's link step, so we kill it and fail fast instead.
+function Invoke-EngineTest {
+  param(
+    [string] $Name,
+    [string] $ExePath,
+    [int]    $TimeoutSeconds = 180
+  )
+  if (-not (Test-Path $ExePath)) {
+    Write-Warning "Could not find test executable: $ExePath"
+    return
+  }
+  Write-Host "Running $Name..." -ForegroundColor Cyan
+  $proc = Start-Process -FilePath $ExePath -NoNewWindow -PassThru
+  if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+    try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+    throw "$Name timed out after $TimeoutSeconds s and was killed (hung test)."
+  }
+  if ($proc.ExitCode -ne 0) {
+    throw "$Name failed (exit code $($proc.ExitCode))."
+  }
+  Write-Host "$Name passed." -ForegroundColor Green
+}
+
 # 4. Run tests
 if ($RunTests) {
-  Write-Host "Running C++ Engine Tests..." -ForegroundColor Cyan
-  $testExe = Join-Path $buildDir "$Configuration\engine_tests.exe"
-  if (Test-Path $testExe) {
-    & $testExe
-    if ($LASTEXITCODE -ne 0) {
-      throw "Engine unit tests failed!"
-    }
-    Write-Host "All engine tests passed successfully." -ForegroundColor Green
-  } else {
-    Write-Warning "Could not find test executable: $testExe"
-  }
-
-  Write-Host "Running Texture Pipeline Tests..." -ForegroundColor Cyan
-  $pipelineTestExe = Join-Path $buildDir "$Configuration\texture_pipeline_test.exe"
-  if (Test-Path $pipelineTestExe) {
-    & $pipelineTestExe
-    if ($LASTEXITCODE -ne 0) {
-      throw "Texture pipeline tests failed!"
-    }
-    Write-Host "All texture pipeline tests passed successfully." -ForegroundColor Green
-  } else {
-    Write-Warning "Could not find texture pipeline test executable: $pipelineTestExe"
-  }
-
-  Write-Host "Running Renderer Stress Tests..." -ForegroundColor Cyan
-  $stressExe = Join-Path $buildDir "$Configuration\renderer_stress_test.exe"
-  if (Test-Path $stressExe) {
-    & $stressExe
-    if ($LASTEXITCODE -ne 0) {
-      throw "Renderer stress tests failed!"
-    }
-    Write-Host "All renderer stress tests passed successfully." -ForegroundColor Green
-  } else {
-    Write-Warning "Could not find stress test executable: $stressExe"
-  }
+  Invoke-EngineTest -Name "Engine unit tests"     -ExePath (Join-Path $buildDir "$Configuration\engine_tests.exe")
+  Invoke-EngineTest -Name "Texture pipeline tests" -ExePath (Join-Path $buildDir "$Configuration\texture_pipeline_test.exe")
+  Invoke-EngineTest -Name "Renderer stress tests"  -ExePath (Join-Path $buildDir "$Configuration\renderer_stress_test.exe") -TimeoutSeconds 240
 }
 
 Write-Host "Native Engine Build completed successfully!" -ForegroundColor Green
