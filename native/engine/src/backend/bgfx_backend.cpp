@@ -149,7 +149,7 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 #elif defined(__APPLE__)
     init.type = bgfx::RendererType::Metal;
 #else
-    init.type = bgfx::RendererType::Vulkan;
+    init.type = bgfx::RendererType::Direct3D11;
 #endif
     init.resolution.width = width;
     init.resolution.height = height;
@@ -255,27 +255,38 @@ void BgfxBackend::Clear(float r, float g, float b, float a) {
     bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, clearColor, 1.0f, 0);
 }
 
-ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const void* data) {
+ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA) {
     ILY_PROFILE_SCOPE("BgfxBackend::CreateTexture");
     bgfx::TextureHandle handle = BGFX_INVALID_HANDLE;
     if (data) {
-        const bgfx::Memory* mem = bgfx::copy(data, width * height * 4);
+        const uint64_t required64 = static_cast<uint64_t>(width) * static_cast<uint64_t>(height) * 4;
+        if (required64 > UINT32_MAX || byteLength < required64) {
+            return ILY_INVALID_HANDLE;
+        }
+        const uint32_t required = static_cast<uint32_t>(required64);
+        const bgfx::Memory* mem = bgfx::copy(data, required);
         handle = bgfx::createTexture2D(
             static_cast<uint16_t>(width),
             static_cast<uint16_t>(height),
             false,
             1,
-            bgfx::TextureFormat::RGBA8,
+            isBGRA ? bgfx::TextureFormat::BGRA8 : bgfx::TextureFormat::RGBA8,
             BGFX_TEXTURE_NONE | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
-            mem
+            nullptr
         );
+        if (bgfx::isValid(handle)) {
+            bgfx::updateTexture2D(handle, 0, 0, 0, 0,
+                                  static_cast<uint16_t>(width),
+                                  static_cast<uint16_t>(height),
+                                  mem);
+        }
     } else {
         handle = bgfx::createTexture2D(
             static_cast<uint16_t>(width),
             static_cast<uint16_t>(height),
             false,
             1,
-            bgfx::TextureFormat::RGBA8,
+            isBGRA ? bgfx::TextureFormat::BGRA8 : bgfx::TextureFormat::RGBA8,
             BGFX_TEXTURE_NONE | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr
         );
@@ -286,7 +297,7 @@ ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const
     }
 
     std::lock_guard<std::mutex> lock(m_impl->m_mutex);
-    auto texResource = std::make_shared<TextureResource>(width, height, bgfx::TextureFormat::RGBA8, handle);
+    auto texResource = std::make_shared<TextureResource>(width, height, isBGRA ? bgfx::TextureFormat::BGRA8 : bgfx::TextureFormat::RGBA8, handle);
     return m_impl->m_resourceManager.Create(ResourceType::Texture, texResource);
 }
 
@@ -296,7 +307,7 @@ void BgfxBackend::DestroyTexture(ResourceHandle handle) {
     m_impl->m_resourceManager.Destroy(handle);
 }
 
-IlyResult BgfxBackend::UpdateTexture(ResourceHandle handle, const void* data) {
+IlyResult BgfxBackend::UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA) {
     ILY_PROFILE_SCOPE("BgfxBackend::UpdateTexture");
     if (!data) {
         return ILY_ERROR_INVALID_ARGUMENT;
@@ -306,8 +317,14 @@ IlyResult BgfxBackend::UpdateTexture(ResourceHandle handle, const void* data) {
     if (!tex) {
         return ILY_ERROR_NOT_FOUND;
     }
-    
-    const bgfx::Memory* mem = bgfx::copy(data, tex->GetWidth() * tex->GetHeight() * 4);
+
+    const uint64_t required64 = static_cast<uint64_t>(tex->GetWidth()) * static_cast<uint64_t>(tex->GetHeight()) * 4;
+    if (required64 > UINT32_MAX || byteLength < required64) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    const uint32_t required = static_cast<uint32_t>(required64);
+    const bgfx::Memory* mem = bgfx::copy(data, required);
     bgfx::updateTexture2D(tex->GetHandle(), 0, 0, 0, 0, 
                           static_cast<uint16_t>(tex->GetWidth()), 
                           static_cast<uint16_t>(tex->GetHeight()), 

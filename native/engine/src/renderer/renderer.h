@@ -22,18 +22,33 @@ enum class RenderCommandType {
     SetRenderGraph,
     StopThread,
     CreateTexture,
+    UpdateTexture,
     DestroyTexture,
     CreateSpriteProgram,
     DrawQuad,
     ReadPixels
 };
 
+// Represents a command enqueued for the dedicated render thread.
+//
+// MEMORY SAFETY INVARIANTS FOR RAW POINTERS:
+// The fields `textureData`, `readbackDst`, `readbackOutWidth`, and 
+// `readbackOutHeight` are raw pointers passed from the caller thread (e.g. JS/V8). 
+// These pointers are SAFE to use by the render thread ONLY because the enqueueing 
+// methods (e.g. CreateTexture, UpdateTexture, ReadPixels) are synchronous 
+// blocking operations. The caller thread explicitly blocks on the associated 
+// `std::promise` until the render thread executes the command and sets the result. 
+// Thus, the caller's stack or heap allocations remain valid and cannot be 
+// garbage-collected or deallocated while the render thread processes the command.
+// Do not use these pointers in fire-and-forget (non-blocking) commands.
 struct RenderThreadCommand {
     RenderCommandType type;
     IlyEngineConfig config;
     uint32_t width;
     uint32_t height;
     const void* textureData;
+    uint32_t textureDataSize;
+    bool isBGRA;
     ResourceHandle handle;
     IlyTransform transform;
     float opacity;
@@ -64,7 +79,8 @@ public:
     void SetRenderGraph(std::shared_ptr<RenderGraph> graph);
     
     // Thread-safe Render Queue helpers
-    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data);
+    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false);
+    IlyResult UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA = false);
     void DestroyTexture(ResourceHandle handle);
     ResourceHandle CreateSpriteProgram();
     IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode);

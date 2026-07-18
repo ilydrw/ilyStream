@@ -91,9 +91,20 @@ const outPng = path.join(os.tmpdir(), 'ily_electron_image.png');
 writePng(outPng, W, H, buf);
 console.log('wrote', outPng);
 
+// Verify updateTexture: change the source in place, the readback must follow.
+const red = Buffer.alloc(W * H * 4);
+for (let i = 0; i < red.length; i += 4) { red[i] = 255; red[i+1] = 0; red[i+2] = 0; red[i+3] = 255; }
+engine.engineUpdateTexture(eng, img, red);
+sleep(60);
+const buf2 = Buffer.alloc(W * H * 4);
+engine.engineReadPixels(eng, buf2);
+const mid = (120 * W + 160) * 4;
+const updateOk = buf2[mid] > 200 && buf2[mid + 1] < 40 && buf2[mid + 2] < 40;
+console.log('after updateTexture, center =', [buf2[mid], buf2[mid + 1], buf2[mid + 2]], updateOk ? '(red OK)' : '(FAIL)');
+
 engine.destroyEngine(eng);
 engine.shutdownSystem();
 
-const ok = rp.result === 0 && rp.width === W && rp.height === H && maxDelta <= 6;
+const ok = rp.result === 0 && rp.width === W && rp.height === H && maxDelta <= 6 && updateOk;
 console.log(ok ? 'SMOKE OK' : 'SMOKE FAIL');
 process.exit(ok ? 0 : 1);

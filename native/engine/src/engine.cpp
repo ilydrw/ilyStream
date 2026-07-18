@@ -11,6 +11,7 @@
 #include "ily/render_backend.h"
 #include <stb_image.h>
 #include <vector>
+#include "capture/dxgi_capture.h"
 
 class EngineInstance {
 public:
@@ -19,6 +20,7 @@ public:
     std::unordered_map<ResourceHandle, std::string> sources;
     ResourceHandle nextSourceHandle = {1, 1};
     std::unique_ptr<ily::Renderer> renderer;
+    std::unordered_map<ResourceHandle, std::shared_ptr<ily::DXGICapture>> captureSessions;
     std::mutex mutex;
 
     EngineInstance(const IlyEngineConfig& cfg) : config(cfg) {}
@@ -81,7 +83,19 @@ ILY_API IlyResult IlyDestroyEngine(ResourceHandle engineHandle) {
     if (it == g_Engines.end()) {
         return ILY_ERROR_NOT_FOUND;
     }
+    
+    // 1. Shutdown all capture sessions first!
+    // If we stop the renderer before shutting down captures, capture threads might be 
+    // blocked in UpdateTexture waiting for the (now dead) render thread to fulfill a promise, 
+    // causing a deadlock/crash when we try to join the capture thread.
+    for (auto& pair : it->second->captureSessions) {
+        pair.second->Shutdown();
+    }
+    it->second->captureSessions.clear();
+
+    // 2. Now it's safe to stop the render thread
     it->second->renderer->Stop();
+    
     g_Engines.erase(it);
     return ILY_SUCCESS;
 }
@@ -219,7 +233,7 @@ ILY_API IlyResult IlyEngineLoadTexture(ResourceHandle engineHandle, const char* 
         return ILY_ERROR_INVALID_ARGUMENT;
     }
 
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, pixelData);
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, pixelData, width * height * 4);
     stbi_image_free(pixelData);
 
     if (texHandle == ILY_INVALID_HANDLE) {
@@ -238,7 +252,40 @@ ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceH
     }
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
-    it->second->renderer->DestroyTexture(textureHandle);
+
+    // If it's a capture session, shut it down
+    auto capIt = it->second->captureSessions.find(textureHandle);
+    if (capIt != it->second->captureSessions.end()) {
+        capIt->second->Shutdown();
+        it->second->captureSessions.erase(capIt);
+    } else {
+        it->second->renderer->DestroyTexture(textureHandle);
+    }
+
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle) {
+    if (!outTextureHandle) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+
+    auto capture = std::make_shared<ily::DXGICapture>(monitorIndex, targetFps, it->second->renderer.get());
+    if (!capture->Initialize()) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+
+    ResourceHandle texHandle = capture->GetTexture();
+    it->second->captureSessions[texHandle] = capture;
+
+    *outTextureHandle = texHandle;
     return ILY_SUCCESS;
 }
 
@@ -254,7 +301,7 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
 
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(1, 1, &color);
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(1, 1, &color, 4);
     if (texHandle == ILY_INVALID_HANDLE) {
         return ILY_ERROR_RENDER_FAILED;
     }
@@ -277,12 +324,26 @@ ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, 
     }
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, rgbaPixels);
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, rgbaPixels, byteLength);
     if (texHandle == ILY_INVALID_HANDLE) {
         return ILY_ERROR_RENDER_FAILED;
     }
     *outTextureHandle = texHandle;
     return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineUpdateTexture(ResourceHandle engineHandle, ResourceHandle textureHandle, const void* rgbaPixels, uint32_t byteLength) {
+    if (!rgbaPixels) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->UpdateTexture(textureHandle, rgbaPixels, byteLength);
 }
 
 ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, ResourceHandle* outProgramHandle) {

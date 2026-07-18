@@ -16,9 +16,9 @@ public:
 
     virtual void Clear(float r, float g, float b, float a) = 0;
 
-    virtual ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data) = 0;
+    virtual ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false) = 0;
     virtual void DestroyTexture(ResourceHandle handle) = 0;
-    virtual IlyResult UpdateTexture(ResourceHandle handle, const void* data) = 0;
+    virtual IlyResult UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA = false) = 0;
 
     virtual IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) = 0;
     virtual ResourceHandle CreateSpriteProgramHandle() = 0;

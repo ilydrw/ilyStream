@@ -265,3 +265,53 @@ TEST_CASE("Offscreen readback composites a layer", "[readback]") {
     IlyDestroyEngine(engineHandle);
     IlyShutdownSystem();
 }
+
+TEST_CASE("Dynamic Texture Creation and Updating", "[texture_pipeline]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t W = 160;
+    const uint32_t H = 120;
+    IlyEngineConfig config{W, H, 60, false};
+    ResourceHandle engineHandle = ILY_INVALID_HANDLE;
+    res = IlyCreateEngine(&config, &engineHandle);
+    REQUIRE(res == ILY_SUCCESS);
+
+    const uint32_t texW = 64;
+    const uint32_t texH = 64;
+    std::vector<uint8_t> pixels(texW * texH * 4, 0xFF); // White texture
+
+    // 1. Create Texture
+    ResourceHandle dynamicTex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateTextureFromPixels(engineHandle, texW, texH, pixels.data(), static_cast<uint32_t>(pixels.size()), &dynamicTex);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(dynamicTex != ILY_INVALID_HANDLE);
+
+    // Test byteLength validation for creation
+    ResourceHandle invalidTex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateTextureFromPixels(engineHandle, texW, texH, pixels.data(), static_cast<uint32_t>(pixels.size()) - 1, &invalidTex);
+    REQUIRE(res == ILY_ERROR_INVALID_ARGUMENT); // Assuming the API returns error or invalid handle. The implementation returns INVALID_HANDLE and C API maps it to INVALID_ARGUMENT.
+    
+    // 2. Update Texture
+    // Change to solid red
+    for (size_t i = 0; i < pixels.size(); i += 4) {
+        pixels[i] = 0xFF;     // R
+        pixels[i+1] = 0x00;   // G
+        pixels[i+2] = 0x00;   // B
+        pixels[i+3] = 0xFF;   // A
+    }
+    res = IlyEngineUpdateTexture(engineHandle, dynamicTex, pixels.data(), static_cast<uint32_t>(pixels.size()));
+    REQUIRE(res == ILY_SUCCESS);
+
+    // Test byteLength validation for update
+    res = IlyEngineUpdateTexture(engineHandle, dynamicTex, pixels.data(), static_cast<uint32_t>(pixels.size()) - 1);
+    REQUIRE(res == ILY_ERROR_INVALID_ARGUMENT);
+
+    // Test 64-bit overflow guard (try to create a huge texture)
+    ResourceHandle hugeTex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateTextureFromPixels(engineHandle, 65536, 65536, pixels.data(), static_cast<uint32_t>(pixels.size()), &hugeTex);
+    REQUIRE(res == ILY_ERROR_INVALID_ARGUMENT);
+
+    IlyDestroyEngine(engineHandle);
+    IlyShutdownSystem();
+}

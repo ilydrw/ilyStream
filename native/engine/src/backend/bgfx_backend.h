@@ -19,9 +19,9 @@ public:
 
     void Clear(float r, float g, float b, float a) override;
 
-    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data) override;
+    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false) override;
     void DestroyTexture(ResourceHandle handle) override;
-    IlyResult UpdateTexture(ResourceHandle handle, const void* data) override;
+    IlyResult UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA = false) override;
 
     IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) override;
     ResourceHandle CreateSpriteProgramHandle() override;

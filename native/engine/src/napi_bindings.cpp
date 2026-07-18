@@ -217,6 +217,46 @@ static Napi::Value EngineCreateTextureFromPixels(const Napi::CallbackInfo& info)
     return Napi::BigInt::New(env, ResourceHandleToUint64(outTex));
 }
 
+// engineUpdateTexture(engine: BigInt, texture: BigInt, rgba: Buffer) -> IlyResult code
+static Napi::Value EngineUpdateTexture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3 || !info[0].IsBigInt() || !info[1].IsBigInt() || !info[2].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (BigInt, BigInt, Buffer)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    uint64_t textureVal = info[1].As<Napi::BigInt>().Uint64Value(&lossless);
+    Napi::Buffer<uint8_t> buf = info[2].As<Napi::Buffer<uint8_t>>();
+
+    IlyResult res = IlyEngineUpdateTexture(
+        Uint64ToResourceHandle(engineVal), Uint64ToResourceHandle(textureVal),
+        buf.Data(), static_cast<uint32_t>(buf.Length()));
+    return Napi::Number::New(env, static_cast<double>(res));
+}
+
+// engineCreateScreenCapture(engine: BigInt, monitorIndex: Number, targetFps: Number) -> BigInt
+static Napi::Value EngineCreateScreenCapture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3 || !info[0].IsBigInt() || !info[1].IsNumber() || !info[2].IsNumber()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Number, Number)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    uint32_t monitorIndex = info[1].As<Napi::Number>().Uint32Value();
+    uint32_t targetFps = info[2].As<Napi::Number>().Uint32Value();
+
+    ResourceHandle outTex = ILY_INVALID_HANDLE;
+    IlyResult res = IlyEngineCreateScreenCapture(
+        Uint64ToResourceHandle(engineVal), monitorIndex, targetFps, &outTex);
+    if (res != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to create screen capture, code: " + std::to_string(res)).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return Napi::BigInt::New(env, ResourceHandleToUint64(outTex));
+}
+
 static Napi::Value EngineCreateSpriteProgram(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1 || !info[0].IsBigInt()) {
@@ -419,6 +459,8 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineDestroyTexture", Napi::Function::New(env, EngineDestroyTexture));
     exports.Set("engineCreateColorTexture", Napi::Function::New(env, EngineCreateColorTexture));
     exports.Set("engineCreateTextureFromPixels", Napi::Function::New(env, EngineCreateTextureFromPixels));
+    exports.Set("engineCreateScreenCapture", Napi::Function::New(env, EngineCreateScreenCapture));
+    exports.Set("engineUpdateTexture", Napi::Function::New(env, EngineUpdateTexture));
     exports.Set("engineCreateSpriteProgram", Napi::Function::New(env, EngineCreateSpriteProgram));
     exports.Set("engineDrawQuad", Napi::Function::New(env, EngineDrawQuad));
 

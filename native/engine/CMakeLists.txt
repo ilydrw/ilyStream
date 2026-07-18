@@ -34,6 +34,7 @@ set(ENGINE_SOURCES
     src/renderer/renderer.cpp
     src/renderer/shader_loader.cpp
     src/renderer/texture_producer.cpp
+    src/capture/dxgi_capture.cpp
 )
 
 # Shared engine library

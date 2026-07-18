@@ -98,6 +98,25 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
 ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, uint32_t width, uint32_t height, const void* rgbaPixels, uint32_t byteLength, ResourceHandle* outTextureHandle);
 
 /**
+ * @brief Create a hardware-accelerated screen capture session on the native engine.
+ *
+ * The engine will spawn a background thread using DXGI Desktop Duplication
+ * to directly stream the monitor into a texture on the GPU. The returned
+ * texture handle is automatically updated by the engine without V8/IPC overhead.
+ * To stop the capture session, pass the handle to IlyEngineDestroyTexture.
+ */
+ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle);
+
+/**
+ * @brief Update an existing texture's pixels in place (RGBA8, width*height*4).
+ *
+ * Reuses the GPU texture rather than reallocating — the per-frame path for a
+ * live source. The texture must already be the right size (see
+ * IlyEngineCreateTextureFromPixels).
+ */
+ILY_API IlyResult IlyEngineUpdateTexture(ResourceHandle engineHandle, ResourceHandle textureHandle, const void* rgbaPixels, uint32_t byteLength);
+
+/**
  * @brief Create the sprite shader program.
  */
 ILY_API IlyResult IlyEngineCreateSpriteProgram(ResourceHandle engineHandle, ResourceHandle* outProgramHandle);

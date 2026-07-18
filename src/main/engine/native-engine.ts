@@ -67,6 +67,8 @@ interface NativeAddon {
   engineLoadTexture(engine: bigint, filePath: string): bigint
   engineCreateColorTexture(engine: bigint, rgba: number): bigint
   engineCreateTextureFromPixels(engine: bigint, width: number, height: number, rgba: Buffer): bigint
+  engineCreateScreenCapture(engine: bigint, monitorIndex: number, targetFps: number): bigint
+  engineUpdateTexture(engine: bigint, texture: bigint, rgba: Buffer): number
   engineDestroyTexture(engine: bigint, texture: bigint): number
   engineSetLayers(engine: bigint, layers: Layer[]): number
   engineReadPixels(
@@ -171,6 +173,27 @@ export class NativeEngine {
   createTextureFromPixels(width: number, height: number, rgba: Buffer): bigint {
     this.assertAlive()
     return this.api.engineCreateTextureFromPixels(this.handle, width, height, rgba)
+  }
+
+  /** 
+   * Create a hardware-accelerated screen capture texture. 
+   * The texture updates automatically on a background thread.
+   */
+  createScreenCapture(monitorIndex: number, targetFps: number): bigint {
+    this.assertAlive()
+    return this.api.engineCreateScreenCapture(this.handle, monitorIndex, targetFps)
+  }
+
+  /**
+   * Update an existing texture's pixels in place (must match its size). The
+   * per-frame path for a live source — no reallocation.
+   */
+  updateTexture(texture: bigint, rgba: Buffer): void {
+    this.assertAlive()
+    const res = this.api.engineUpdateTexture(this.handle, texture, rgba)
+    if (res !== 0) {
+      console.log(`[engine-preview] updateTexture failed with code: ${res}`)
+    }
   }
 
   destroyTexture(texture: bigint): void {

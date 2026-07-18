@@ -93,7 +93,7 @@ void Renderer::SetRenderGraph(std::shared_ptr<RenderGraph> graph) {
     m_commandQueue.Push(cmd);
 }
 
-ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const void* data) {
+ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA) {
     if (!m_threadRunning) return ILY_INVALID_HANDLE;
     auto promise = std::make_shared<std::promise<ResourceHandle>>();
     auto future = promise->get_future();
@@ -102,7 +102,24 @@ ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const vo
     cmd.width = width;
     cmd.height = height;
     cmd.textureData = data;
+    cmd.textureDataSize = byteLength;
+    cmd.isBGRA = isBGRA;
     cmd.handlePromise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA) {
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::UpdateTexture;
+    cmd.handle = handle;
+    cmd.textureData = data;
+    cmd.textureDataSize = byteLength;
+    cmd.isBGRA = isBGRA;
+    cmd.promise = promise;
     m_commandQueue.Push(cmd);
     return future.get();
 }
@@ -224,9 +241,16 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::CreateTexture: {
-                    ResourceHandle tex = m_device.CreateTexture(cmd.width, cmd.height, cmd.textureData);
+                    ResourceHandle tex = m_device.CreateTexture(cmd.width, cmd.height, cmd.textureData, cmd.textureDataSize, cmd.isBGRA);
                     if (cmd.handlePromise) {
                         cmd.handlePromise->set_value(tex);
+                    }
+                    break;
+                }
+                case RenderCommandType::UpdateTexture: {
+                    IlyResult res = m_device.UpdateTexture(cmd.handle, cmd.textureData, cmd.textureDataSize, cmd.isBGRA);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
                     }
                     break;
                 }

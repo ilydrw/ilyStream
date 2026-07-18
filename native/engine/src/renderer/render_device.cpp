@@ -53,11 +53,11 @@ void RenderDevice::Clear(float r, float g, float b, float a) {
     m_backend->Clear(r, g, b, a);
 }
 
-ResourceHandle RenderDevice::CreateTexture(uint32_t width, uint32_t height, const void* data) {
+ResourceHandle RenderDevice::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA) {
     ILY_PROFILE_SCOPE("RenderDevice::CreateTexture");
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_initialized) return ILY_INVALID_HANDLE;
-    return m_backend->CreateTexture(width, height, data);
+    return m_backend->CreateTexture(width, height, data, byteLength, isBGRA);
 }
 
 void RenderDevice::DestroyTexture(ResourceHandle handle) {
@@ -67,11 +67,11 @@ void RenderDevice::DestroyTexture(ResourceHandle handle) {
     m_backend->DestroyTexture(handle);
 }
 
-IlyResult RenderDevice::UpdateTexture(ResourceHandle handle, const void* data) {
+IlyResult RenderDevice::UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA) {
     ILY_PROFILE_SCOPE("RenderDevice::UpdateTexture");
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_initialized) return ILY_ERROR_INITIALIZATION_FAILED;
-    return m_backend->UpdateTexture(handle, data);
+    return m_backend->UpdateTexture(handle, data, byteLength, isBGRA);
 }
 
 IlyResult RenderDevice::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) {
