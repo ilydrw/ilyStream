@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, desktopCapturer } from 'electron'
 import { sendToRenderer } from '../safe-send'
 import {
   NativeEngine,
@@ -10,55 +10,32 @@ import {
 } from '../../engine/native-engine'
 
 /**
- * Build a colorful RGBA8 image (diagonal cyan->magenta with a soft highlight)
- * to prove the compositor handles a real multi-pixel raster layer, not just
- * solid quads. Stands in for a camera/video/canvas frame uploaded from JS.
- */
-function makeGradientImage(w: number, h: number): Buffer {
-  const buf = Buffer.alloc(w * h * 4)
-  const cx = w * 0.5
-  const cy = h * 0.4
-  const maxR = Math.hypot(w, h) * 0.6
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4
-      const u = x / w
-      const v = y / h
-      let r = 20 + u * 210
-      let g = 200 * (1 - u) + v * 20
-      let b = 255 - v * 120
-      const d = Math.hypot(x - cx, y - cy) / maxR
-      const hi = Math.max(0, 1 - d) ** 2 * 70
-      buf[i] = Math.min(255, r + hi) | 0
-      buf[i + 1] = Math.min(255, g + hi) | 0
-      buf[i + 2] = Math.min(255, b + hi) | 0
-      buf[i + 3] = 255
-    }
-  }
-  return buf
-}
-
-/**
- * Preview harness for the native bgfx engine: creates an engine, composites a
- * small animated scene each tick, reads the frame back, and streams it to the
- * renderer (channel 'engine:frame') for display on a <canvas>. This is the
- * end-to-end proof that the native compositor presents into the app window.
+ * Live preview of the native engine driven by a REAL capture source. Each tick
+ * grabs a screen frame (desktopCapturer, main process), uploads its pixels into
+ * the engine (createTextureFromPixels), composites a translucent overlay badge
+ * on top, reads the composited frame back and streams it to the renderer
+ * <canvas>. This is the actual broadcast shape: a live source + an overlay,
+ * composited natively.
  *
- * readFrame() blocks briefly on the render thread, so the streaming interval
- * runs on the main event loop only for the preview; the real pipeline will
- * move frame delivery off the main thread.
+ * Frames go through create/destroy per tick (bounded — the previous frame's
+ * texture is released once it is no longer the active layer). readFrame blocks
+ * briefly on the render thread; fine for a preview, a production path would move
+ * frame delivery off the main thread.
  */
-const PREVIEW_FPS = 30
+const PREVIEW_FPS = 15
 
 let engine: NativeEngine | null = null
-let timer: ReturnType<typeof setInterval> | null = null
-let startMs = 0
+let timer: ReturnType<typeof setTimeout> | null = null
+let running = false
+let prevTexture: bigint | null = null
 
 function stopPreview(): void {
+  running = false
   if (timer) {
-    clearInterval(timer)
+    clearTimeout(timer)
     timer = null
   }
+  prevTexture = null
   if (engine) {
     engine.destroy()
     engine = null
@@ -68,56 +45,79 @@ function stopPreview(): void {
 export function registerEngineHandlers(window: BrowserWindow): void {
   ipcMain.handle(
     'engine:preview:start',
-    (_event, opts?: { width?: number; height?: number }) => {
+    async (_event, opts?: { width?: number; height?: number }) => {
       stopPreview()
       const width = Math.max(16, Math.min(1920, Math.round(opts?.width ?? 640)))
       const height = Math.max(16, Math.min(1080, Math.round(opts?.height ?? 360)))
 
-      engine = new NativeEngine({ width, height, fps: 60 })
-      // Full-frame generated image (uploaded from JS) as the base layer, plus a
-      // moving translucent quad on top to show blending over real pixels.
-      const image = engine.createTextureFromPixels(width, height, makeGradientImage(width, height))
-      const white = engine.createColorTexture(0xffffffff)
+      const eng = new NativeEngine({ width, height, fps: 60 })
+      engine = eng
+      running = true
 
-      startMs = Date.now()
-      timer = setInterval(() => {
-        if (!engine) return
+      // Overlay graphic composited on top of the live source (bottom-right).
+      const badge = eng.createColorTexture(0x19c8ffff) // brand cyan
+      const badgeW = Math.round(width * 0.26)
+      const badgeH = Math.round(height * 0.12)
 
-        const t = (Date.now() - startMs) / 1000
-        const qw = width * 0.28
-        const qh = height * 0.55
-        const qy = (height - qh) / 2
-        // Translucent white bar slides across, compositing over the image.
-        const qx = width * 0.5 + Math.sin(t * 1.2) * width * 0.32 - qw / 2
+      const intervalMs = Math.round(1000 / PREVIEW_FPS)
 
-        const layers: Layer[] = [
-          {
-            texture: image,
-            transform: imageTransform(0, 0),
-            opacity: 1,
-            blendMode: BlendMode.Alpha
-          },
-          {
-            texture: white,
-            transform: rectTransform(qx, qy, qw, qh),
-            opacity: 0.35,
-            blendMode: BlendMode.Alpha
-          }
-        ]
-        engine.setLayers(layers)
-
-        const frame = engine.readFrame()
-        if (frame) {
-          sendToRenderer(window, 'engine:frame', {
-            width: frame.width,
-            height: frame.height,
-            // Copy: frame.data is a reused buffer owned by the engine.
-            data: Buffer.from(frame.data)
+      const tick = async (): Promise<void> => {
+        if (!running || engine !== eng) return
+        const startedAt = Date.now()
+        try {
+          const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width, height }
           })
-        }
-      }, Math.round(1000 / PREVIEW_FPS))
+          if (running && engine === eng && sources[0]) {
+            const thumb = sources[0].thumbnail
+            const size = thumb.getSize()
+            const bmp = thumb.toBitmap() // BGRA on Windows
+            // BGRA -> RGBA in place (engine expects RGBA8).
+            for (let i = 0; i + 2 < bmp.length; i += 4) {
+              const b = bmp[i]
+              bmp[i] = bmp[i + 2]
+              bmp[i + 2] = b
+            }
 
-      return { ok: true, width, height }
+            const frameTex = eng.createTextureFromPixels(size.width, size.height, bmp)
+            const layers: Layer[] = [
+              { texture: frameTex, transform: imageTransform(0, 0), opacity: 1, blendMode: BlendMode.Alpha },
+              {
+                texture: badge,
+                transform: rectTransform(width - badgeW - 16, height - badgeH - 16, badgeW, badgeH),
+                opacity: 0.55,
+                blendMode: BlendMode.Alpha
+              }
+            ]
+            eng.setLayers(layers)
+
+            const frame = eng.readFrame()
+            if (frame) {
+              sendToRenderer(window, 'engine:frame', {
+                width: frame.width,
+                height: frame.height,
+                data: Buffer.from(frame.data)
+              })
+            }
+
+            // Release the previous frame's texture; it is no longer the active
+            // layer (we just replaced it above).
+            if (prevTexture !== null) eng.destroyTexture(prevTexture)
+            prevTexture = frameTex
+          }
+        } catch (err) {
+          process.stderr.write(`[engine-preview] capture failed: ${(err as Error).message}\n`)
+        }
+
+        if (running && engine === eng) {
+          const elapsed = Date.now() - startedAt
+          timer = setTimeout(tick, Math.max(0, intervalMs - elapsed))
+        }
+      }
+
+      void tick()
+      return { ok: true, width, height, source: 'screen' }
     }
   )
 
