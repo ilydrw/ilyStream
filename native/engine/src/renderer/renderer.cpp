@@ -93,7 +93,7 @@ void Renderer::SetRenderGraph(std::shared_ptr<RenderGraph> graph) {
     m_commandQueue.Push(cmd);
 }
 
-ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA) {
+ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA, const IlyColorDescription& color, IlyAlphaMode alphaMode) {
     if (!m_threadRunning) return ILY_INVALID_HANDLE;
     auto promise = std::make_shared<std::promise<ResourceHandle>>();
     auto future = promise->get_future();
@@ -104,6 +104,26 @@ ResourceHandle Renderer::CreateTexture(uint32_t width, uint32_t height, const vo
     cmd.textureData = data;
     cmd.textureDataSize = byteLength;
     cmd.isBGRA = isBGRA;
+    cmd.colorDescription = color;
+    cmd.alphaMode = alphaMode;
+    cmd.handlePromise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+ResourceHandle Renderer::CreateSharedTextureFromHandle(uint32_t width, uint32_t height, void* sharedHandle, IlyPixelFormat format, const IlyColorDescription& color, IlyAlphaMode alphaMode, float sdrWhiteNits) {
+    if (!m_threadRunning) return ILY_INVALID_HANDLE;
+    auto promise = std::make_shared<std::promise<ResourceHandle>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::CreateSharedTexture;
+    cmd.width = width;
+    cmd.height = height;
+    cmd.sharedTextureHandle = sharedHandle;
+    cmd.pixelFormat = format;
+    cmd.colorDescription = color;
+    cmd.alphaMode = alphaMode;
+    cmd.sdrWhiteNits = sdrWhiteNits;
     cmd.handlePromise = promise;
     m_commandQueue.Push(cmd);
     return future.get();
@@ -147,7 +167,7 @@ ResourceHandle Renderer::CreateSpriteProgram() {
     return future.get();
 }
 
-IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode) {
+IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma) {
     if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
     auto promise = std::make_shared<std::promise<IlyResult>>();
     auto future = promise->get_future();
@@ -157,6 +177,21 @@ IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& t
     cmd.transform = transform;
     cmd.opacity = opacity;
     cmd.blendMode = blendMode;
+    if (chroma) cmd.chromaKey = *chroma;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::GetSharedOutputTexture;
+    cmd.sharedOutputHandle = outHandle;
+    cmd.sharedOutputWidth = outWidth;
+    cmd.sharedOutputHeight = outHeight;
     cmd.promise = promise;
     m_commandQueue.Push(cmd);
     return future.get();
@@ -241,7 +276,14 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::CreateTexture: {
-                    ResourceHandle tex = m_device.CreateTexture(cmd.width, cmd.height, cmd.textureData, cmd.textureDataSize, cmd.isBGRA);
+                    ResourceHandle tex = m_device.CreateTexture(cmd.width, cmd.height, cmd.textureData, cmd.textureDataSize, cmd.isBGRA, cmd.colorDescription, cmd.alphaMode);
+                    if (cmd.handlePromise) {
+                        cmd.handlePromise->set_value(tex);
+                    }
+                    break;
+                }
+                case RenderCommandType::CreateSharedTexture: {
+                    ResourceHandle tex = m_device.CreateSharedTextureFromHandle(cmd.width, cmd.height, cmd.sharedTextureHandle, cmd.pixelFormat, cmd.colorDescription, cmd.alphaMode, cmd.sdrWhiteNits);
                     if (cmd.handlePromise) {
                         cmd.handlePromise->set_value(tex);
                     }
@@ -269,7 +311,15 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::DrawQuad: {
-                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode);
+                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode, &cmd.chromaKey);
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::GetSharedOutputTexture: {
+                    IlyResult res = m_device.GetSharedOutputTexture(
+                        cmd.sharedOutputHandle, cmd.sharedOutputWidth, cmd.sharedOutputHeight);
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }

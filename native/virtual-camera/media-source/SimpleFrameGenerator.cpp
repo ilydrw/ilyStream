@@ -2,6 +2,7 @@
 // Copyright (C) Microsoft Corporation. All rights reserved.
 //
 #include "pch.h"
+#include "../../common/video_color.h"
 #include "..\common\IlyStreamFrameBridge.h"
 
 SimpleFrameGenerator::~SimpleFrameGenerator()
@@ -312,22 +313,33 @@ HRESULT SimpleFrameGenerator::_CreateRGB32Frame(
 
 void SimpleFrameGenerator::RGB24ToYUY2(int R, int G, int B, BYTE* pY, BYTE* pU, BYTE* pV)
 {
-    *pY = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;
-    *pU = ((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128;
-    *pV = ((112 * R - 94 * G - 18 * B + 128) >> 8) + 128;
+    const auto converted = ily::color::RgbToBt709Limited(
+        static_cast<uint8_t>(R), static_cast<uint8_t>(G), static_cast<uint8_t>(B));
+    *pY = converted.y;
+    *pU = converted.u;
+    *pV = converted.v;
 }
 
 void SimpleFrameGenerator::RGB24ToY(int R, int G, int B, BYTE* pY)
 {
-    *pY = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;
+    *pY = ily::color::Bt709LimitedY(
+        static_cast<uint8_t>(R), static_cast<uint8_t>(G), static_cast<uint8_t>(B));
 }
 
 void SimpleFrameGenerator::RGB32ToNV12(BYTE RGB1[8], BYTE RGB2[8], BYTE* pY1, BYTE* pY2, BYTE* pUV)
 {
-    RGB24ToYUY2(RGB1[2], RGB1[1], RGB1[0], pY1, pUV, pUV + 1);
+    RGB24ToY(RGB1[2], RGB1[1], RGB1[0], pY1);
     RGB24ToY(RGB1[6], RGB1[5], RGB1[4], pY1 + 1);
-    RGB24ToYUY2(RGB2[2], RGB2[1], RGB2[0], pY2, pUV, pUV + 1);
+    RGB24ToY(RGB2[2], RGB2[1], RGB2[0], pY2);
     RGB24ToY(RGB2[6], RGB2[5], RGB2[4], pY2 + 1);
+
+    const uint8_t red = static_cast<uint8_t>((
+        static_cast<unsigned>(RGB1[2]) + RGB1[6] + RGB2[2] + RGB2[6] + 2) / 4);
+    const uint8_t green = static_cast<uint8_t>((
+        static_cast<unsigned>(RGB1[1]) + RGB1[5] + RGB2[1] + RGB2[5] + 2) / 4);
+    const uint8_t blue = static_cast<uint8_t>((
+        static_cast<unsigned>(RGB1[0]) + RGB1[4] + RGB2[0] + RGB2[4] + 2) / 4);
+    ily::color::Bt709LimitedChroma(red, green, blue, pUV, pUV + 1);
 };
 
 //////////////////////////////////////////////////

@@ -50,3 +50,54 @@ TEST_CASE("Renderer Stress Test - Random Resizes & Minimize/Restore", "[renderer
     
     renderer.Stop();
 }
+
+TEST_CASE("Renderer Resize updates readback surface dimensions", "[renderer_stress]") {
+    ily::Renderer renderer;
+    IlyResult res = renderer.Start();
+    REQUIRE(res == ILY_SUCCESS);
+
+    IlyEngineConfig config{640, 360, 60, false};
+    res = renderer.Initialize(config);
+    REQUIRE(res == ILY_SUCCESS);
+
+#ifdef _WIN32
+    void* sharedOutput = nullptr;
+    uint32_t sharedWidth = 0;
+    uint32_t sharedHeight = 0;
+    res = renderer.GetSharedOutputTexture(&sharedOutput, &sharedWidth, &sharedHeight);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(sharedOutput != nullptr);
+    REQUIRE(sharedWidth == 640);
+    REQUIRE(sharedHeight == 360);
+#endif
+
+    uint32_t outW = 0;
+    uint32_t outH = 0;
+    std::vector<uint8_t> first(640 * 360 * 4);
+    res = renderer.ReadPixels(first.data(), static_cast<uint32_t>(first.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(outW == 640);
+    REQUIRE(outH == 360);
+
+    res = renderer.Resize(320, 180);
+    REQUIRE(res == ILY_SUCCESS);
+
+#ifdef _WIN32
+    sharedOutput = nullptr;
+    res = renderer.GetSharedOutputTexture(&sharedOutput, &sharedWidth, &sharedHeight);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(sharedOutput != nullptr);
+    REQUIRE(sharedWidth == 320);
+    REQUIRE(sharedHeight == 180);
+#endif
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+    std::vector<uint8_t> resized(320 * 180 * 4);
+    res = renderer.ReadPixels(resized.data(), static_cast<uint32_t>(resized.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(outW == 320);
+    REQUIRE(outH == 180);
+
+    renderer.Stop();
+}

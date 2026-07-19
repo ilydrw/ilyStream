@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "ily/engine.h"
+#include "../../common/video_color.h"
 #include "ily/scene.h"
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -16,6 +17,17 @@ TEST_CASE("Engine LifeCycle", "[engine]") {
     REQUIRE(res == ILY_SUCCESS);
     REQUIRE(engineHandle != ILY_INVALID_HANDLE);
 
+    IlyOutputColorConfig outputColor{};
+    res = IlyEngineGetOutputColorConfig(engineHandle, &outputColor);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(outputColor.format == ILY_PIXEL_FORMAT_RGBA8);
+    REQUIRE(outputColor.color.primaries == ILY_COLOR_PRIMARIES_BT709);
+    REQUIRE(outputColor.color.transfer == ILY_TRANSFER_SRGB);
+    REQUIRE(outputColor.color.matrix == ILY_MATRIX_RGB);
+    REQUIRE(outputColor.color.range == ILY_COLOR_RANGE_FULL);
+    REQUIRE(outputColor.sdrWhiteNits == 100.0f);
+    REQUIRE(outputColor.hdrNominalPeakNits == 1000.0f);
+
     res = IlyEngineUpdate(engineHandle, 0.016f);
     REQUIRE(res == ILY_SUCCESS);
 
@@ -26,6 +38,23 @@ TEST_CASE("Engine LifeCycle", "[engine]") {
     REQUIRE(res == ILY_SUCCESS);
 
     IlyShutdownSystem();
+}
+
+TEST_CASE("BT.709 limited-range conversion uses legal reference levels", "[color]") {
+    const auto black = ily::color::RgbToBt709Limited(0, 0, 0);
+    REQUIRE(black.y == 16);
+    REQUIRE(black.u == 128);
+    REQUIRE(black.v == 128);
+
+    const auto white = ily::color::RgbToBt709Limited(255, 255, 255);
+    REQUIRE(white.y == 235);
+    REQUIRE(white.u == 128);
+    REQUIRE(white.v == 128);
+
+    const auto red = ily::color::RgbToBt709Limited(255, 0, 0);
+    REQUIRE(red.y == 63);
+    REQUIRE(red.u == 102);
+    REQUIRE(red.v == 240);
 }
 
 TEST_CASE("Scene Serialization", "[scene]") {

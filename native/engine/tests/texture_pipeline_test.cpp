@@ -11,6 +11,8 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <array>
+#include <cstdlib>
 
 TEST_CASE("Generational Resource Handle version mismatch", "[resource_manager]") {
     ily::ResourceManager rm;
@@ -59,7 +61,7 @@ TEST_CASE("Color/Image uploads and Quad draws", "[texture_pipeline]") {
 
     // 1. Color texture creation
     ResourceHandle colorTex = ILY_INVALID_HANDLE;
-    res = IlyEngineCreateColorTexture(engineHandle, 0xFF00FF00, &colorTex); // Green 1x1
+    res = IlyEngineCreateColorTexture(engineHandle, 0x00FF00FF, &colorTex); // Green RGBA
     REQUIRE(res == ILY_SUCCESS);
     REQUIRE(colorTex != ILY_INVALID_HANDLE);
 
@@ -188,7 +190,7 @@ TEST_CASE("Offscreen readback composites a layer", "[readback]") {
 
     // Opaque green source texture (uint32 RGBA in memory: R=0x00 G=0xFF B=0x00 A=0xFF).
     ResourceHandle tex = ILY_INVALID_HANDLE;
-    res = IlyEngineCreateColorTexture(engineHandle, 0xFF00FF00, &tex);
+    res = IlyEngineCreateColorTexture(engineHandle, 0x00FF00FF, &tex);
     REQUIRE(res == ILY_SUCCESS);
 
     // Composite the texture as a 160x120 quad at (80,60) -> covers screen
@@ -262,6 +264,147 @@ TEST_CASE("Offscreen readback composites a layer", "[readback]") {
     REQUIRE(ch(160, 120, 1) == 0x1e);
     REQUIRE(ch(160, 120, 2) == 0x1e);
 
+    t.visibility = false;
+    layer.transform = t;
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(ch(160, 120, 0) == 0x1e);
+    REQUIRE(ch(160, 120, 1) == 0x1e);
+    REQUIRE(ch(160, 120, 2) == 0x1e);
+
+    IlyDestroyEngine(engineHandle);
+    IlyShutdownSystem();
+}
+
+TEST_CASE("Alpha layers blend in linear light", "[readback][color]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    constexpr uint32_t W = 64;
+    constexpr uint32_t H = 64;
+    IlyEngineConfig config{W, H, 60, false};
+    ResourceHandle engineHandle = ILY_INVALID_HANDLE;
+    REQUIRE(IlyCreateEngine(&config, &engineHandle) == ILY_SUCCESS);
+
+    ResourceHandle black = ILY_INVALID_HANDLE;
+    ResourceHandle halfWhite = ILY_INVALID_HANDLE;
+    REQUIRE(IlyEngineCreateColorTexture(engineHandle, 0x000000FF, &black) == ILY_SUCCESS);
+    REQUIRE(IlyEngineCreateColorTexture(engineHandle, 0xFFFFFF80, &halfWhite) == ILY_SUCCESS);
+
+    IlyTransform transform{};
+    transform.scale = {static_cast<float>(W), static_cast<float>(H), 1.0f};
+    transform.visibility = true;
+    transform.opacity = 1.0f;
+
+    IlyLayer layers[2]{};
+    layers[0] = {black, transform, 1.0f, ILY_BLEND_ALPHA};
+    layers[1] = {halfWhite, transform, 1.0f, ILY_BLEND_ALPHA};
+    REQUIRE(IlyEngineSetLayers(engineHandle, layers, 2) == ILY_SUCCESS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    std::vector<uint8_t> pixels(static_cast<size_t>(W) * H * 4, 0);
+    uint32_t outWidth = 0;
+    uint32_t outHeight = 0;
+    REQUIRE(IlyEngineReadPixels(
+        engineHandle,
+        pixels.data(),
+        static_cast<uint32_t>(pixels.size()),
+        &outWidth,
+        &outHeight) == ILY_SUCCESS);
+
+    const size_t center = (static_cast<size_t>(H / 2) * W + W / 2) * 4;
+    for (size_t channel = 0; channel < 3; ++channel) {
+        REQUIRE(pixels[center + channel] >= 186);
+        REQUIRE(pixels[center + channel] <= 190);
+    }
+    REQUIRE(pixels[center + 3] == 255);
+
+    IlyDestroyEngine(engineHandle);
+    IlyShutdownSystem();
+}
+
+TEST_CASE("sRGB texture colors survive the linear compositor", "[readback][color]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    constexpr uint32_t W = 9;
+    constexpr uint32_t H = 8;
+    const std::array<std::array<uint8_t, 4>, W> chart{{
+        {{0, 0, 0, 255}},
+        {{18, 18, 18, 255}},
+        {{64, 64, 64, 255}},
+        {{128, 128, 128, 255}},
+        {{255, 255, 255, 255}},
+        {{255, 0, 0, 255}},
+        {{0, 255, 0, 255}},
+        {{0, 0, 255, 255}},
+        {{12, 85, 203, 255}}
+    }};
+
+    ResourceHandle engineHandle = ILY_INVALID_HANDLE;
+    IlyEngineConfig config{W, H, 60, false};
+    REQUIRE(IlyCreateEngine(&config, &engineHandle) == ILY_SUCCESS);
+
+    std::vector<uint8_t> source(static_cast<size_t>(W) * H * 4);
+    for (uint32_t y = 0; y < H; ++y) {
+        for (uint32_t x = 0; x < W; ++x) {
+            const size_t offset = (static_cast<size_t>(y) * W + x) * 4;
+            for (size_t channel = 0; channel < 4; ++channel) {
+                source[offset + channel] = chart[x][channel];
+            }
+        }
+    }
+
+    IlyTextureDesc description{};
+    description.width = W;
+    description.height = H;
+    description.format = ILY_PIXEL_FORMAT_RGBA8;
+    description.color = IlySrgbFullColor();
+    description.alphaMode = ILY_ALPHA_OPAQUE;
+
+    ResourceHandle texture = ILY_INVALID_HANDLE;
+    REQUIRE(IlyEngineCreateTextureFromPixelsEx(
+        engineHandle,
+        &description,
+        source.data(),
+        static_cast<uint32_t>(source.size()),
+        &texture) == ILY_SUCCESS);
+
+    IlyTransform transform{};
+    transform.scale = {1.0f, 1.0f, 1.0f};
+    transform.visibility = true;
+    transform.opacity = 1.0f;
+
+    IlyLayer layer{texture, transform, 1.0f, ILY_BLEND_ALPHA};
+    REQUIRE(IlyEngineSetLayers(engineHandle, &layer, 1) == ILY_SUCCESS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    std::vector<uint8_t> output(static_cast<size_t>(W) * H * 4, 0);
+    uint32_t outputWidth = 0;
+    uint32_t outputHeight = 0;
+    REQUIRE(IlyEngineReadPixels(
+        engineHandle,
+        output.data(),
+        static_cast<uint32_t>(output.size()),
+        &outputWidth,
+        &outputHeight) == ILY_SUCCESS);
+    REQUIRE(outputWidth == W);
+    REQUIRE(outputHeight == H);
+
+    for (uint32_t x = 0; x < W; ++x) {
+        const size_t offset = (static_cast<size_t>(H / 2) * W + x) * 4;
+        for (size_t channel = 0; channel < 3; ++channel) {
+            INFO("x=" << x << " channel=" << channel);
+            REQUIRE(std::abs(static_cast<int>(output[offset + channel]) -
+                             static_cast<int>(chart[x][channel])) <= 2);
+        }
+        REQUIRE(output[offset + 3] == 255);
+    }
+
     IlyDestroyEngine(engineHandle);
     IlyShutdownSystem();
 }
@@ -311,6 +454,97 @@ TEST_CASE("Dynamic Texture Creation and Updating", "[texture_pipeline]") {
     ResourceHandle hugeTex = ILY_INVALID_HANDLE;
     res = IlyEngineCreateTextureFromPixels(engineHandle, 65536, 65536, pixels.data(), static_cast<uint32_t>(pixels.size()), &hugeTex);
     REQUIRE(res == ILY_ERROR_INVALID_ARGUMENT);
+
+    IlyDestroyEngine(engineHandle);
+    IlyShutdownSystem();
+}
+
+TEST_CASE("Chroma key removes the keyed color natively", "[readback][chroma]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t W = 320;
+    const uint32_t H = 240;
+    IlyEngineConfig config{W, H, 60, false};
+    ResourceHandle engineHandle = ILY_INVALID_HANDLE;
+    res = IlyCreateEngine(&config, &engineHandle);
+    REQUIRE(res == ILY_SUCCESS);
+
+    // Opaque green source (0xRRGGBBAA packing).
+    ResourceHandle tex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateColorTexture(engineHandle, 0x00FF00FF, &tex);
+    REQUIRE(res == ILY_SUCCESS);
+
+    IlyTransform t{};
+    t.position = {80.0f, 60.0f, 0.0f};
+    t.rotation = {0.0f, 0.0f, 0.0f};
+    t.scale = {160.0f, 120.0f, 1.0f};
+    t.anchor = {0.0f, 0.0f};
+    t.pivot = {0.0f, 0.0f};
+    t.crop = {0.0f, 0.0f, 0.0f, 0.0f};
+    t.visibility = true;
+    t.opacity = 1.0f;
+
+    IlyLayer layer{};
+    layer.texture = tex;
+    layer.transform = t;
+    layer.opacity = 1.0f;
+    layer.blendMode = ILY_BLEND_ALPHA;
+    layer.chromaKey.enabled = true;
+    layer.chromaKey.keyR = 0.0f;
+    layer.chromaKey.keyG = 1.0f;
+    layer.chromaKey.keyB = 0.0f;
+    layer.chromaKey.similarity = 0.4f;
+    layer.chromaKey.smoothness = 0.1f;
+    layer.chromaKey.spill = 0.1f;
+
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(W) * H * 4, 0);
+    uint32_t outW = 0, outH = 0;
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+
+    auto ch = [&](uint32_t x, uint32_t y, uint32_t c) -> int {
+        return pixels[(static_cast<size_t>(y) * W + x) * 4 + c];
+    };
+
+    // The pure-green quad is inside the key band -> fully keyed out, so the
+    // center shows the clear color, exactly like the region outside the quad.
+    REQUIRE(ch(160, 120, 0) == ch(5, 5, 0));
+    REQUIRE(ch(160, 120, 1) == ch(5, 5, 1));
+    REQUIRE(ch(160, 120, 2) == ch(5, 5, 2));
+
+    // Disabling the key on the same layer restores the green quad, proving the
+    // uniform toggles per draw rather than sticking.
+    layer.chromaKey.enabled = false;
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(ch(160, 120, 1) > 200);
+    REQUIRE(ch(160, 120, 0) < 64);
+
+    // A non-matching color (magenta) with the same key must NOT be keyed.
+    ResourceHandle magenta = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateColorTexture(engineHandle, 0xFF00FFFF, &magenta);
+    REQUIRE(res == ILY_SUCCESS);
+    layer.texture = magenta;
+    layer.chromaKey.enabled = true;
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(ch(160, 120, 0) > 200);
+    REQUIRE(ch(160, 120, 2) > 200);
+    REQUIRE(ch(160, 120, 1) < 64);
 
     IlyDestroyEngine(engineHandle);
     IlyShutdownSystem();

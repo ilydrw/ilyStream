@@ -11,22 +11,27 @@
 #if BGFX_PLATFORM_SUPPORTS_DXBC
 #include "dx11/vs_sprite.sc.bin.h"
 #include "dx11/fs_sprite.sc.bin.h"
+#include "dx11/fs_output_sdr.sc.bin.h"
 #endif
 #if BGFX_PLATFORM_SUPPORTS_SPIRV
 #include "spv/vs_sprite.sc.bin.h"
 #include "spv/fs_sprite.sc.bin.h"
+#include "spv/fs_output_sdr.sc.bin.h"
 #endif
 #if BGFX_PLATFORM_SUPPORTS_GLSL
 #include "glsl/vs_sprite.sc.bin.h"
 #include "glsl/fs_sprite.sc.bin.h"
+#include "glsl/fs_output_sdr.sc.bin.h"
 #endif
 #if BGFX_PLATFORM_SUPPORTS_ESSL
 #include "essl/vs_sprite.sc.bin.h"
 #include "essl/fs_sprite.sc.bin.h"
+#include "essl/fs_output_sdr.sc.bin.h"
 #endif
 #if BGFX_PLATFORM_SUPPORTS_METAL
 #include "mtl/vs_sprite.sc.bin.h"
 #include "mtl/fs_sprite.sc.bin.h"
+#include "mtl/fs_output_sdr.sc.bin.h"
 #endif
 
 namespace ily {
@@ -34,6 +39,12 @@ namespace ily {
 static const bgfx::EmbeddedShader s_spriteEmbeddedShaders[] = {
     BGFX_EMBEDDED_SHADER(vs_sprite),
     BGFX_EMBEDDED_SHADER(fs_sprite),
+    BGFX_EMBEDDED_SHADER_END()
+};
+
+static const bgfx::EmbeddedShader s_outputEmbeddedShaders[] = {
+    BGFX_EMBEDDED_SHADER(vs_sprite),
+    BGFX_EMBEDDED_SHADER(fs_output_sdr),
     BGFX_EMBEDDED_SHADER_END()
 };
 
@@ -60,6 +71,18 @@ bgfx::ProgramHandle CreateSpriteProgram() {
                   << bgfx::getRendererName(type) << std::endl;
     }
     return program;
+}
+
+bgfx::ProgramHandle CreateSdrOutputProgram() {
+    const bgfx::RendererType::Enum type = bgfx::getRendererType();
+    bgfx::ShaderHandle vertex = bgfx::createEmbeddedShader(s_outputEmbeddedShaders, type, "vs_sprite");
+    bgfx::ShaderHandle fragment = bgfx::createEmbeddedShader(s_outputEmbeddedShaders, type, "fs_output_sdr");
+    if (!bgfx::isValid(vertex) || !bgfx::isValid(fragment)) {
+        if (bgfx::isValid(vertex)) bgfx::destroy(vertex);
+        if (bgfx::isValid(fragment)) bgfx::destroy(fragment);
+        return BGFX_INVALID_HANDLE;
+    }
+    return bgfx::createProgram(vertex, fragment, true);
 }
 
 } // namespace ily

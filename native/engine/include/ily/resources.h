@@ -10,10 +10,26 @@ private:
     uint32_t m_height = 0;
     bgfx::TextureFormat::Enum m_format = bgfx::TextureFormat::RGBA8;
     bgfx::TextureHandle m_handle = BGFX_INVALID_HANDLE;
+    IlyColorDescription m_color = IlySrgbFullColor();
+    IlyAlphaMode m_alphaMode = ILY_ALPHA_STRAIGHT;
+    float m_sdrWhiteNits = 0.0f;
 
 public:
-    TextureResource(uint32_t width, uint32_t height, bgfx::TextureFormat::Enum format, bgfx::TextureHandle handle)
-        : m_width(width), m_height(height), m_format(format), m_handle(handle) {}
+    TextureResource(
+        uint32_t width,
+        uint32_t height,
+        bgfx::TextureFormat::Enum format,
+        bgfx::TextureHandle handle,
+        IlyColorDescription color = IlySrgbFullColor(),
+        IlyAlphaMode alphaMode = ILY_ALPHA_STRAIGHT,
+        float sdrWhiteNits = 0.0f)
+        : m_width(width),
+          m_height(height),
+          m_format(format),
+          m_handle(handle),
+          m_color(color),
+          m_alphaMode(alphaMode),
+          m_sdrWhiteNits(sdrWhiteNits) {}
 
     ~TextureResource() override {
         if (bgfx::isValid(m_handle)) {
@@ -27,6 +43,9 @@ public:
     uint32_t GetHeight() const { return m_height; }
     bgfx::TextureFormat::Enum GetFormat() const { return m_format; }
     bgfx::TextureHandle GetHandle() const { return m_handle; }
+    const IlyColorDescription& GetColorDescription() const { return m_color; }
+    IlyAlphaMode GetAlphaMode() const { return m_alphaMode; }
+    float GetSdrWhiteNits() const { return m_sdrWhiteNits; }
 };
 
 class ShaderResource : public IResource {

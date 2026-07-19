@@ -85,7 +85,7 @@ ILY_API IlyResult IlyEngineLoadTexture(ResourceHandle engineHandle, const char* 
 ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceHandle textureHandle);
 
 /**
- * @brief Create a 1x1 solid color texture.
+ * @brief Create a 1x1 solid color texture from a packed 0xRRGGBBAA value.
  */
 ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint32_t color, ResourceHandle* outTextureHandle);
 
@@ -98,14 +98,31 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
 ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, uint32_t width, uint32_t height, const void* rgbaPixels, uint32_t byteLength, ResourceHandle* outTextureHandle);
 
 /**
+ * @brief Create a texture with an explicit pixel/color/alpha description.
+ */
+ILY_API IlyResult IlyEngineCreateTextureFromPixelsEx(ResourceHandle engineHandle, const IlyTextureDesc* textureDesc, const void* pixels, uint32_t byteLength, ResourceHandle* outTextureHandle);
+
+/**
  * @brief Create a hardware-accelerated screen capture session on the native engine.
  *
  * The engine will spawn a background thread using DXGI Desktop Duplication
- * to directly stream the monitor into a texture on the GPU. The returned
- * texture handle is automatically updated by the engine without V8/IPC overhead.
+ * to copy the monitor into a shared D3D11 texture imported by the renderer. The
+ * returned texture handle is automatically updated without per-frame V8/IPC
+ * texture uploads.
  * To stop the capture session, pass the handle to IlyEngineDestroyTexture.
  */
-ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle);
+ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle, char* outSharedMemoryName, uint32_t nameBufSize);
+
+/**
+ * @brief Enumerate attached DXGI outputs in the same global index space used by capture.
+ * Pass NULL for outDisplays to query the required count.
+ */
+ILY_API IlyResult IlyEngineGetScreenCaptureDisplays(IlyScreenCaptureDisplayInfo* outDisplays, uint32_t* ioCount);
+
+/**
+ * @brief Get format, color-space and luminance metadata for a screen capture.
+ */
+ILY_API IlyResult IlyEngineGetScreenCaptureInfo(ResourceHandle engineHandle, ResourceHandle textureHandle, IlyScreenCaptureInfo* outInfo);
 
 /**
  * @brief Update an existing texture's pixels in place (RGBA8, width*height*4).
@@ -135,6 +152,20 @@ ILY_API IlyResult IlyEngineDrawQuad(ResourceHandle engineHandle, ResourceHandle 
  * The layer array is copied; the caller need not keep it alive.
  */
 ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer* layers, uint32_t count);
+
+/**
+ * @brief Get the engine-owned native shared handle for the compositor output.
+ *
+ * On Windows this is an NT HANDLE for an RGBA8 D3D11 texture suitable for
+ * Electron's sharedTexture import API. The handle must not be closed by the
+ * caller and remains valid until the engine is resized or destroyed.
+ */
+ILY_API IlyResult IlyEngineGetSharedOutputTexture(ResourceHandle engineHandle, void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
+
+/**
+ * @brief Get the normalized color description of the compositor output.
+ */
+ILY_API IlyResult IlyEngineGetOutputColorConfig(ResourceHandle engineHandle, IlyOutputColorConfig* outConfig);
 
 /**
  * @brief Read the latest composited frame back as tightly packed RGBA8.

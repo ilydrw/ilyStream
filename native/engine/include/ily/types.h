@@ -41,6 +41,94 @@ typedef enum IlyBlendMode {
     ILY_BLEND_SCREEN = 4
 } IlyBlendMode;
 
+typedef enum IlyPixelFormat {
+    ILY_PIXEL_FORMAT_UNKNOWN = 0,
+    ILY_PIXEL_FORMAT_RGBA8 = 1,
+    ILY_PIXEL_FORMAT_BGRA8 = 2,
+    ILY_PIXEL_FORMAT_RGBA16F = 3,
+    ILY_PIXEL_FORMAT_R10G10B10A2 = 4,
+    ILY_PIXEL_FORMAT_NV12 = 5,
+    ILY_PIXEL_FORMAT_P010 = 6
+} IlyPixelFormat;
+
+typedef enum IlyColorPrimaries {
+    ILY_COLOR_PRIMARIES_UNSPECIFIED = 0,
+    ILY_COLOR_PRIMARIES_BT709 = 1,
+    ILY_COLOR_PRIMARIES_BT2020 = 2
+} IlyColorPrimaries;
+
+typedef enum IlyTransferFunction {
+    ILY_TRANSFER_UNSPECIFIED = 0,
+    ILY_TRANSFER_SRGB = 1,
+    ILY_TRANSFER_BT709 = 2,
+    ILY_TRANSFER_LINEAR = 3,
+    ILY_TRANSFER_PQ = 4,
+    ILY_TRANSFER_HLG = 5
+} IlyTransferFunction;
+
+typedef enum IlyMatrixCoefficients {
+    ILY_MATRIX_UNSPECIFIED = 0,
+    ILY_MATRIX_RGB = 1,
+    ILY_MATRIX_BT601 = 2,
+    ILY_MATRIX_BT709 = 3,
+    ILY_MATRIX_BT2020_NCL = 4
+} IlyMatrixCoefficients;
+
+typedef enum IlyColorRange {
+    ILY_COLOR_RANGE_UNSPECIFIED = 0,
+    ILY_COLOR_RANGE_FULL = 1,
+    ILY_COLOR_RANGE_LIMITED = 2
+} IlyColorRange;
+
+typedef enum IlyAlphaMode {
+    ILY_ALPHA_OPAQUE = 0,
+    ILY_ALPHA_STRAIGHT = 1,
+    ILY_ALPHA_PREMULTIPLIED = 2
+} IlyAlphaMode;
+
+typedef struct IlyColorDescription {
+    IlyColorPrimaries primaries;
+    IlyTransferFunction transfer;
+    IlyMatrixCoefficients matrix;
+    IlyColorRange range;
+} IlyColorDescription;
+
+typedef struct IlyTextureDesc {
+    uint32_t width;
+    uint32_t height;
+    IlyPixelFormat format;
+    IlyColorDescription color;
+    IlyAlphaMode alphaMode;
+} IlyTextureDesc;
+
+typedef struct IlyOutputColorConfig {
+    IlyPixelFormat format;
+    IlyColorDescription color;
+    float sdrWhiteNits;
+    float hdrNominalPeakNits;
+} IlyOutputColorConfig;
+
+typedef struct IlyScreenCaptureInfo {
+    uint32_t width;
+    uint32_t height;
+    IlyPixelFormat format;
+    IlyColorDescription color;
+    bool hdr;
+    float sdrWhiteNits;
+    float maxLuminance;
+    float maxFullFrameLuminance;
+} IlyScreenCaptureInfo;
+
+typedef struct IlyScreenCaptureDisplayInfo {
+    uint32_t index;
+    char deviceName[32];
+    int32_t left;
+    int32_t top;
+    int32_t right;
+    int32_t bottom;
+    bool hdr;
+} IlyScreenCaptureDisplayInfo;
+
 
 typedef struct ResourceHandle {
     uint32_t index;
@@ -87,7 +175,24 @@ typedef struct IlyEngineConfig {
     uint32_t height;
     uint32_t fps;
     bool enableValidation;
+    bool linearBlending;
+    IlyOutputColorConfig outputColor;
 } IlyEngineConfig;
+
+/**
+ * Per-layer chroma key. Matches the app's canvas compositor math exactly
+ * (gamma-space RGB distance, normalized 0..1 parameters) so scenes tuned on
+ * the canvas path look identical composited natively.
+ */
+typedef struct IlyChromaKey {
+    bool enabled;
+    float keyR;        /* key color, 0..1 */
+    float keyG;
+    float keyB;
+    float similarity;  /* 0..1: distance below which pixels become transparent */
+    float smoothness;  /* 0..1: feather band above similarity */
+    float spill;       /* 0..1: green-spill suppression band */
+} IlyChromaKey;
 
 // A single composited layer: a texture drawn with a transform. The engine
 // redraws the current layer list into its offscreen target every frame, so the
@@ -97,6 +202,7 @@ typedef struct IlyLayer {
     IlyTransform transform;
     float opacity;
     IlyBlendMode blendMode;
+    IlyChromaKey chromaKey;
 } IlyLayer;
 
 typedef struct IlyRendererCapabilities {
@@ -139,6 +245,42 @@ inline bool operator<(const ResourceHandle& lhs, const ResourceHandle& rhs) {
 // Convert to/from uint64_t for binding compatibility
 inline uint64_t ResourceHandleToUint64(ResourceHandle handle) {
     return (static_cast<uint64_t>(handle.generation) << 32) | handle.index;
+}
+
+inline constexpr IlyColorDescription IlySrgbFullColor() {
+    return IlyColorDescription{
+        ILY_COLOR_PRIMARIES_BT709,
+        ILY_TRANSFER_SRGB,
+        ILY_MATRIX_RGB,
+        ILY_COLOR_RANGE_FULL
+    };
+}
+
+inline constexpr IlyColorDescription IlyBt709LimitedColor() {
+    return IlyColorDescription{
+        ILY_COLOR_PRIMARIES_BT709,
+        ILY_TRANSFER_BT709,
+        ILY_MATRIX_BT709,
+        ILY_COLOR_RANGE_LIMITED
+    };
+}
+
+inline constexpr IlyColorDescription IlyRec2100PqLimitedColor() {
+    return IlyColorDescription{
+        ILY_COLOR_PRIMARIES_BT2020,
+        ILY_TRANSFER_PQ,
+        ILY_MATRIX_BT2020_NCL,
+        ILY_COLOR_RANGE_LIMITED
+    };
+}
+
+inline constexpr IlyOutputColorConfig IlyDefaultSdrOutputColor() {
+    return IlyOutputColorConfig{
+        ILY_PIXEL_FORMAT_RGBA8,
+        IlySrgbFullColor(),
+        100.0f,
+        1000.0f
+    };
 }
 
 inline ResourceHandle Uint64ToResourceHandle(uint64_t val) {

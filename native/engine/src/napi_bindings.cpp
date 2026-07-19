@@ -3,6 +3,43 @@
 #include <string>
 #include <vector>
 
+static IlyColorDescription ParseColorDescription(
+    const Napi::Object& object,
+    const IlyColorDescription& fallback) {
+    IlyColorDescription color = fallback;
+    if (object.Has("primaries")) {
+        color.primaries = static_cast<IlyColorPrimaries>(object.Get("primaries").As<Napi::Number>().Uint32Value());
+    }
+    if (object.Has("transfer")) {
+        color.transfer = static_cast<IlyTransferFunction>(object.Get("transfer").As<Napi::Number>().Uint32Value());
+    }
+    if (object.Has("matrix")) {
+        color.matrix = static_cast<IlyMatrixCoefficients>(object.Get("matrix").As<Napi::Number>().Uint32Value());
+    }
+    if (object.Has("range")) {
+        color.range = static_cast<IlyColorRange>(object.Get("range").As<Napi::Number>().Uint32Value());
+    }
+    return color;
+}
+
+static Napi::Object ColorDescriptionToObject(Napi::Env env, const IlyColorDescription& color) {
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("primaries", Napi::Number::New(env, color.primaries));
+    result.Set("transfer", Napi::Number::New(env, color.transfer));
+    result.Set("matrix", Napi::Number::New(env, color.matrix));
+    result.Set("range", Napi::Number::New(env, color.range));
+    return result;
+}
+
+static Napi::Object OutputColorConfigToObject(Napi::Env env, const IlyOutputColorConfig& config) {
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("format", Napi::Number::New(env, config.format));
+    result.Set("color", ColorDescriptionToObject(env, config.color));
+    result.Set("sdrWhiteNits", Napi::Number::New(env, config.sdrWhiteNits));
+    result.Set("hdrNominalPeakNits", Napi::Number::New(env, config.hdrNominalPeakNits));
+    return result;
+}
+
 static Napi::Value InitSystem(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     IlyResult res = IlyInitializeSystem();
@@ -28,6 +65,24 @@ static Napi::Value CreateEngine(const Napi::CallbackInfo& info) {
     config.height = configObj.Get("height").As<Napi::Number>().Uint32Value();
     config.fps = configObj.Get("fps").As<Napi::Number>().Uint32Value();
     config.enableValidation = configObj.Has("enableValidation") ? configObj.Get("enableValidation").As<Napi::Boolean>().Value() : false;
+    config.linearBlending = configObj.Has("linearBlending") ? configObj.Get("linearBlending").As<Napi::Boolean>().Value() : true;
+    config.outputColor = IlyDefaultSdrOutputColor();
+    if (configObj.Has("outputColor") && configObj.Get("outputColor").IsObject()) {
+        Napi::Object output = configObj.Get("outputColor").As<Napi::Object>();
+        if (output.Has("format")) {
+            config.outputColor.format = static_cast<IlyPixelFormat>(output.Get("format").As<Napi::Number>().Uint32Value());
+        }
+        if (output.Has("color") && output.Get("color").IsObject()) {
+            config.outputColor.color = ParseColorDescription(
+                output.Get("color").As<Napi::Object>(), config.outputColor.color);
+        }
+        if (output.Has("sdrWhiteNits")) {
+            config.outputColor.sdrWhiteNits = output.Get("sdrWhiteNits").As<Napi::Number>().FloatValue();
+        }
+        if (output.Has("hdrNominalPeakNits")) {
+            config.outputColor.hdrNominalPeakNits = output.Get("hdrNominalPeakNits").As<Napi::Number>().FloatValue();
+        }
+    }
 
     ResourceHandle engineHandle = ILY_INVALID_HANDLE;
     IlyResult res = IlyCreateEngine(&config, &engineHandle);
@@ -217,6 +272,47 @@ static Napi::Value EngineCreateTextureFromPixels(const Napi::CallbackInfo& info)
     return Napi::BigInt::New(env, ResourceHandleToUint64(outTex));
 }
 
+// engineCreateTextureFromPixelsEx(engine: BigInt, desc: Object, pixels: Buffer) -> BigInt
+static Napi::Value EngineCreateTextureFromPixelsEx(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3 || !info[0].IsBigInt() || !info[1].IsObject() || !info[2].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Object, Buffer)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    Napi::Object object = info[1].As<Napi::Object>();
+    Napi::Buffer<uint8_t> buffer = info[2].As<Napi::Buffer<uint8_t>>();
+
+    IlyTextureDesc desc{};
+    desc.width = object.Get("width").As<Napi::Number>().Uint32Value();
+    desc.height = object.Get("height").As<Napi::Number>().Uint32Value();
+    desc.format = object.Has("format")
+        ? static_cast<IlyPixelFormat>(object.Get("format").As<Napi::Number>().Uint32Value())
+        : ILY_PIXEL_FORMAT_RGBA8;
+    desc.color = IlySrgbFullColor();
+    if (object.Has("color") && object.Get("color").IsObject()) {
+        desc.color = ParseColorDescription(object.Get("color").As<Napi::Object>(), desc.color);
+    }
+    desc.alphaMode = object.Has("alphaMode")
+        ? static_cast<IlyAlphaMode>(object.Get("alphaMode").As<Napi::Number>().Uint32Value())
+        : ILY_ALPHA_STRAIGHT;
+
+    ResourceHandle outTexture = ILY_INVALID_HANDLE;
+    IlyResult result = IlyEngineCreateTextureFromPixelsEx(
+        Uint64ToResourceHandle(engineVal),
+        &desc,
+        buffer.Data(),
+        static_cast<uint32_t>(buffer.Length()),
+        &outTexture);
+    if (result != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to create described texture, code: " + std::to_string(result)).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return Napi::BigInt::New(env, ResourceHandleToUint64(outTexture));
+}
+
 // engineUpdateTexture(engine: BigInt, texture: BigInt, rgba: Buffer) -> IlyResult code
 static Napi::Value EngineUpdateTexture(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -248,13 +344,62 @@ static Napi::Value EngineCreateScreenCapture(const Napi::CallbackInfo& info) {
     uint32_t targetFps = info[2].As<Napi::Number>().Uint32Value();
 
     ResourceHandle outTex = ILY_INVALID_HANDLE;
+    char sharedMemName[256] = {0};
     IlyResult res = IlyEngineCreateScreenCapture(
-        Uint64ToResourceHandle(engineVal), monitorIndex, targetFps, &outTex);
+        Uint64ToResourceHandle(engineVal), monitorIndex, targetFps, &outTex, sharedMemName, sizeof(sharedMemName));
     if (res != ILY_SUCCESS) {
         Napi::Error::New(env, "Failed to create screen capture, code: " + std::to_string(res)).ThrowAsJavaScriptException();
         return env.Null();
     }
-    return Napi::BigInt::New(env, ResourceHandleToUint64(outTex));
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("texture", Napi::BigInt::New(env, ResourceHandleToUint64(outTex)));
+    result.Set("sharedMemoryName", Napi::String::New(env, sharedMemName));
+    IlyScreenCaptureInfo captureInfo{};
+    if (IlyEngineGetScreenCaptureInfo(Uint64ToResourceHandle(engineVal), outTex, &captureInfo) == ILY_SUCCESS) {
+        Napi::Object description = Napi::Object::New(env);
+        description.Set("width", Napi::Number::New(env, captureInfo.width));
+        description.Set("height", Napi::Number::New(env, captureInfo.height));
+        description.Set("format", Napi::Number::New(env, captureInfo.format));
+        description.Set("color", ColorDescriptionToObject(env, captureInfo.color));
+        description.Set("hdr", Napi::Boolean::New(env, captureInfo.hdr));
+        description.Set("sdrWhiteNits", Napi::Number::New(env, captureInfo.sdrWhiteNits));
+        description.Set("maxLuminance", Napi::Number::New(env, captureInfo.maxLuminance));
+        description.Set("maxFullFrameLuminance", Napi::Number::New(env, captureInfo.maxFullFrameLuminance));
+        result.Set("description", description);
+    }
+    return result;
+}
+
+static Napi::Value ListScreenCaptureDisplays(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    uint32_t count = 0;
+    IlyResult queryResult = IlyEngineGetScreenCaptureDisplays(nullptr, &count);
+    if (queryResult != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to enumerate screen capture displays").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    std::vector<IlyScreenCaptureDisplayInfo> displays(count);
+    IlyResult listResult = IlyEngineGetScreenCaptureDisplays(displays.data(), &count);
+    if (listResult != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to read screen capture displays").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Array result = Napi::Array::New(env, count);
+    for (uint32_t index = 0; index < count; ++index) {
+        const auto& display = displays[index];
+        Napi::Object item = Napi::Object::New(env);
+        item.Set("index", Napi::Number::New(env, display.index));
+        item.Set("deviceName", Napi::String::New(env, display.deviceName));
+        item.Set("left", Napi::Number::New(env, display.left));
+        item.Set("top", Napi::Number::New(env, display.top));
+        item.Set("right", Napi::Number::New(env, display.right));
+        item.Set("bottom", Napi::Number::New(env, display.bottom));
+        item.Set("hdr", Napi::Boolean::New(env, display.hdr));
+        result.Set(index, item);
+    }
+    return result;
 }
 
 static Napi::Value EngineCreateSpriteProgram(const Napi::CallbackInfo& info) {
@@ -336,6 +481,25 @@ static Napi::Value EngineSetLayers(const Napi::CallbackInfo& info) {
         layer.blendMode = static_cast<IlyBlendMode>(
             lo.Has("blendMode") ? lo.Get("blendMode").As<Napi::Number>().Uint32Value()
                                 : static_cast<uint32_t>(ILY_BLEND_ALPHA));
+
+        // Optional chroma key: { keyR, keyG, keyB, similarity, smoothness,
+        // spill }, all normalized 0..1. Presence of the object enables keying.
+        layer.chromaKey = IlyChromaKey{};
+        if (lo.Has("chromaKey") && lo.Get("chromaKey").IsObject()) {
+            Napi::Object ck = lo.Get("chromaKey").As<Napi::Object>();
+            auto readClamped = [&ck](const char* name, float fallback) -> float {
+                if (!ck.Has(name)) return fallback;
+                const float value = ck.Get(name).As<Napi::Number>().FloatValue();
+                return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+            };
+            layer.chromaKey.enabled = true;
+            layer.chromaKey.keyR = readClamped("keyR", 0.0f);
+            layer.chromaKey.keyG = readClamped("keyG", 1.0f);
+            layer.chromaKey.keyB = readClamped("keyB", 0.0f);
+            layer.chromaKey.similarity = readClamped("similarity", 0.4f);
+            layer.chromaKey.smoothness = readClamped("smoothness", 0.1f);
+            layer.chromaKey.spill = readClamped("spill", 0.1f);
+        }
     }
 
     IlyResult res = IlyEngineSetLayers(Uint64ToResourceHandle(engineVal),
@@ -366,6 +530,59 @@ static Napi::Value EngineReadPixels(const Napi::CallbackInfo& info) {
     result.Set("width", Napi::Number::New(env, width));
     result.Set("height", Napi::Number::New(env, height));
     return result;
+}
+
+// engineGetSharedOutputTexture(engineHandle: BigInt) ->
+// { handle: Buffer, width, height, pixelFormat: "rgba" }
+static Napi::Value EngineGetSharedOutputTexture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBigInt()) {
+        Napi::TypeError::New(env, "BigInt engine handle expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    void* nativeHandle = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    IlyResult res = IlyEngineGetSharedOutputTexture(
+        Uint64ToResourceHandle(engineVal), &nativeHandle, &width, &height);
+    if (res != ILY_SUCCESS || !nativeHandle) {
+        Napi::Error::New(
+            env, "Shared output texture unavailable, code: " + std::to_string(res))
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    const uint8_t* handleBytes = reinterpret_cast<const uint8_t*>(&nativeHandle);
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("handle", Napi::Buffer<uint8_t>::Copy(env, handleBytes, sizeof(nativeHandle)));
+    result.Set("width", Napi::Number::New(env, width));
+    result.Set("height", Napi::Number::New(env, height));
+    result.Set("pixelFormat", Napi::String::New(env, "rgba"));
+    IlyOutputColorConfig outputColor{};
+    if (IlyEngineGetOutputColorConfig(Uint64ToResourceHandle(engineVal), &outputColor) == ILY_SUCCESS) {
+        result.Set("color", OutputColorConfigToObject(env, outputColor));
+    }
+    return result;
+}
+
+static Napi::Value EngineGetOutputColorConfig(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBigInt()) {
+        Napi::TypeError::New(env, "BigInt engine handle expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    IlyOutputColorConfig config{};
+    IlyResult result = IlyEngineGetOutputColorConfig(Uint64ToResourceHandle(engineVal), &config);
+    if (result != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to get output color config, code: " + std::to_string(result)).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return OutputColorConfigToObject(env, config);
 }
 
 static Napi::Value EngineDrawQuad(const Napi::CallbackInfo& info) {
@@ -459,13 +676,17 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineDestroyTexture", Napi::Function::New(env, EngineDestroyTexture));
     exports.Set("engineCreateColorTexture", Napi::Function::New(env, EngineCreateColorTexture));
     exports.Set("engineCreateTextureFromPixels", Napi::Function::New(env, EngineCreateTextureFromPixels));
+    exports.Set("engineCreateTextureFromPixelsEx", Napi::Function::New(env, EngineCreateTextureFromPixelsEx));
     exports.Set("engineCreateScreenCapture", Napi::Function::New(env, EngineCreateScreenCapture));
+    exports.Set("listScreenCaptureDisplays", Napi::Function::New(env, ListScreenCaptureDisplays));
     exports.Set("engineUpdateTexture", Napi::Function::New(env, EngineUpdateTexture));
     exports.Set("engineCreateSpriteProgram", Napi::Function::New(env, EngineCreateSpriteProgram));
     exports.Set("engineDrawQuad", Napi::Function::New(env, EngineDrawQuad));
 
     // Compositor present surface
     exports.Set("engineSetLayers", Napi::Function::New(env, EngineSetLayers));
+    exports.Set("engineGetSharedOutputTexture", Napi::Function::New(env, EngineGetSharedOutputTexture));
+    exports.Set("engineGetOutputColorConfig", Napi::Function::New(env, EngineGetOutputColorConfig));
     exports.Set("engineReadPixels", Napi::Function::New(env, EngineReadPixels));
     return exports;
 }

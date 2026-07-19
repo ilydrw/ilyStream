@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <cstring>
+#include <limits>
 
 #include "renderer/renderer.h"
 #include "ily/render_graph.h"
@@ -30,6 +31,40 @@ static std::unordered_map<ResourceHandle, std::unique_ptr<EngineInstance>> g_Eng
 static ResourceHandle g_NextEngineHandle = {1, 1};
 static std::mutex g_EngineMutex;
 static bool g_SystemInitialized = false;
+
+static bool RequiredRgbaBytes(uint32_t width, uint32_t height, uint32_t* outBytes) {
+    const uint64_t required = static_cast<uint64_t>(width) * static_cast<uint64_t>(height) * 4;
+    if (required > (std::numeric_limits<uint32_t>::max)()) {
+        return false;
+    }
+    *outBytes = static_cast<uint32_t>(required);
+    return true;
+}
+
+static IlyColorDescription NormalizeColorDescription(
+    const IlyColorDescription& input,
+    const IlyColorDescription& fallback) {
+    IlyColorDescription result = input;
+    if (result.primaries == ILY_COLOR_PRIMARIES_UNSPECIFIED) result.primaries = fallback.primaries;
+    if (result.transfer == ILY_TRANSFER_UNSPECIFIED) result.transfer = fallback.transfer;
+    if (result.matrix == ILY_MATRIX_UNSPECIFIED) result.matrix = fallback.matrix;
+    if (result.range == ILY_COLOR_RANGE_UNSPECIFIED) result.range = fallback.range;
+    return result;
+}
+
+static IlyEngineConfig NormalizeEngineConfig(const IlyEngineConfig& input) {
+    IlyEngineConfig result = input;
+    const bool legacyConfig = result.outputColor.format == ILY_PIXEL_FORMAT_UNKNOWN;
+    const IlyOutputColorConfig defaults = IlyDefaultSdrOutputColor();
+    if (legacyConfig) result.outputColor.format = defaults.format;
+    result.outputColor.color = NormalizeColorDescription(result.outputColor.color, defaults.color);
+    if (result.outputColor.sdrWhiteNits <= 0.0f) result.outputColor.sdrWhiteNits = defaults.sdrWhiteNits;
+    if (result.outputColor.hdrNominalPeakNits <= 0.0f) {
+        result.outputColor.hdrNominalPeakNits = defaults.hdrNominalPeakNits;
+    }
+    if (legacyConfig) result.linearBlending = true;
+    return result;
+}
 
 extern "C" {
 
@@ -60,13 +95,14 @@ ILY_API IlyResult IlyCreateEngine(const IlyEngineConfig* config, ResourceHandle*
     ResourceHandle handle = g_NextEngineHandle;
     g_NextEngineHandle.index++;
     
-    auto inst = std::make_unique<EngineInstance>(*config);
+    const IlyEngineConfig normalizedConfig = NormalizeEngineConfig(*config);
+    auto inst = std::make_unique<EngineInstance>(normalizedConfig);
     inst->renderer = std::make_unique<ily::Renderer>();
     IlyResult res = inst->renderer->Start();
     if (res != ILY_SUCCESS) {
         return res;
     }
-    res = inst->renderer->Initialize(*config);
+    res = inst->renderer->Initialize(normalizedConfig);
     if (res != ILY_SUCCESS) {
         inst->renderer->Stop();
         return res;
@@ -233,7 +269,15 @@ ILY_API IlyResult IlyEngineLoadTexture(ResourceHandle engineHandle, const char* 
         return ILY_ERROR_INVALID_ARGUMENT;
     }
 
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, pixelData, width * height * 4);
+    uint32_t byteLength = 0;
+    if (width <= 0 || height <= 0 ||
+        !RequiredRgbaBytes(static_cast<uint32_t>(width), static_cast<uint32_t>(height), &byteLength)) {
+        stbi_image_free(pixelData);
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(
+        static_cast<uint32_t>(width), static_cast<uint32_t>(height), pixelData, byteLength);
     stbi_image_free(pixelData);
 
     if (texHandle == ILY_INVALID_HANDLE) {
@@ -265,7 +309,7 @@ ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceH
     return ILY_SUCCESS;
 }
 
-ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle) {
+ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint32_t monitorIndex, uint32_t targetFps, ResourceHandle* outTextureHandle, char* outSharedMemoryName, uint32_t nameBufSize) {
     if (!outTextureHandle) {
         return ILY_ERROR_INVALID_ARGUMENT;
     }
@@ -285,7 +329,73 @@ ILY_API IlyResult IlyEngineCreateScreenCapture(ResourceHandle engineHandle, uint
     ResourceHandle texHandle = capture->GetTexture();
     it->second->captureSessions[texHandle] = capture;
 
+    if (outSharedMemoryName && nameBufSize > 0) {
+        const std::string& name = capture->GetSharedMemoryName();
+        size_t copyLen = (std::min)((size_t)(nameBufSize - 1), name.length());
+        std::memcpy(outSharedMemoryName, name.c_str(), copyLen);
+        outSharedMemoryName[copyLen] = '\0';
+    }
+
     *outTextureHandle = texHandle;
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetScreenCaptureDisplays(IlyScreenCaptureDisplayInfo* outDisplays, uint32_t* ioCount) {
+    if (!ioCount) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    const std::vector<ily::DXGIDisplayInfo> displays = ily::DXGICapture::EnumerateDisplays();
+    const uint32_t requiredCount = static_cast<uint32_t>(displays.size());
+    if (!outDisplays) {
+        *ioCount = requiredCount;
+        return ILY_SUCCESS;
+    }
+    if (*ioCount < requiredCount) {
+        *ioCount = requiredCount;
+        return ILY_ERROR_OUT_OF_MEMORY;
+    }
+
+    for (uint32_t index = 0; index < requiredCount; ++index) {
+        const auto& source = displays[index];
+        auto& destination = outDisplays[index];
+        destination = IlyScreenCaptureDisplayInfo{};
+        destination.index = source.index;
+        const size_t copyLength = (std::min)(source.deviceName.size(), sizeof(destination.deviceName) - 1);
+        std::memcpy(destination.deviceName, source.deviceName.data(), copyLength);
+        destination.deviceName[copyLength] = '\0';
+        destination.left = source.left;
+        destination.top = source.top;
+        destination.right = source.right;
+        destination.bottom = source.bottom;
+        destination.hdr = source.hdr;
+    }
+    *ioCount = requiredCount;
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetScreenCaptureInfo(ResourceHandle engineHandle, ResourceHandle textureHandle, IlyScreenCaptureInfo* outInfo) {
+    if (!outInfo) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto engine = g_Engines.find(engineHandle);
+    if (engine == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+    std::lock_guard<std::mutex> instLock(engine->second->mutex);
+    auto capture = engine->second->captureSessions.find(textureHandle);
+    if (capture == engine->second->captureSessions.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+    outInfo->width = capture->second->GetWidth();
+    outInfo->height = capture->second->GetHeight();
+    outInfo->format = capture->second->GetPixelFormat();
+    outInfo->color = capture->second->GetColorDescription();
+    outInfo->hdr = capture->second->IsHdr();
+    outInfo->sdrWhiteNits = capture->second->GetSdrWhiteNits();
+    outInfo->maxLuminance = capture->second->GetMaxLuminance();
+    outInfo->maxFullFrameLuminance = capture->second->GetMaxFullFrameLuminance();
     return ILY_SUCCESS;
 }
 
@@ -301,7 +411,14 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
 
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(1, 1, &color, 4);
+    const uint8_t pixel[4] = {
+        static_cast<uint8_t>((color >> 24) & 0xFF),
+        static_cast<uint8_t>((color >> 16) & 0xFF),
+        static_cast<uint8_t>((color >> 8) & 0xFF),
+        static_cast<uint8_t>(color & 0xFF)
+    };
+
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(1, 1, pixel, sizeof(pixel));
     if (texHandle == ILY_INVALID_HANDLE) {
         return ILY_ERROR_RENDER_FAILED;
     }
@@ -311,10 +428,25 @@ ILY_API IlyResult IlyEngineCreateColorTexture(ResourceHandle engineHandle, uint3
 }
 
 ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, uint32_t width, uint32_t height, const void* rgbaPixels, uint32_t byteLength, ResourceHandle* outTextureHandle) {
-    if (!rgbaPixels || !outTextureHandle || width == 0 || height == 0) {
+    IlyTextureDesc textureDesc{};
+    textureDesc.width = width;
+    textureDesc.height = height;
+    textureDesc.format = ILY_PIXEL_FORMAT_RGBA8;
+    textureDesc.color = IlySrgbFullColor();
+    textureDesc.alphaMode = ILY_ALPHA_STRAIGHT;
+    return IlyEngineCreateTextureFromPixelsEx(
+        engineHandle, &textureDesc, rgbaPixels, byteLength, outTextureHandle);
+}
+
+ILY_API IlyResult IlyEngineCreateTextureFromPixelsEx(ResourceHandle engineHandle, const IlyTextureDesc* textureDesc, const void* pixels, uint32_t byteLength, ResourceHandle* outTextureHandle) {
+    if (!textureDesc || !pixels || !outTextureHandle || textureDesc->width == 0 || textureDesc->height == 0) {
         return ILY_ERROR_INVALID_ARGUMENT;
     }
-    if (byteLength < width * height * 4) {
+    if (textureDesc->format != ILY_PIXEL_FORMAT_RGBA8 && textureDesc->format != ILY_PIXEL_FORMAT_BGRA8) {
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+    uint32_t requiredBytes = 0;
+    if (!RequiredRgbaBytes(textureDesc->width, textureDesc->height, &requiredBytes) || byteLength < requiredBytes) {
         return ILY_ERROR_INVALID_ARGUMENT;
     }
     std::lock_guard<std::mutex> lock(g_EngineMutex);
@@ -324,11 +456,33 @@ ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, 
     }
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
-    ResourceHandle texHandle = it->second->renderer->CreateTexture(width, height, rgbaPixels, byteLength);
+    const IlyColorDescription color = NormalizeColorDescription(textureDesc->color, IlySrgbFullColor());
+    ResourceHandle texHandle = it->second->renderer->CreateTexture(
+        textureDesc->width,
+        textureDesc->height,
+        pixels,
+        byteLength,
+        textureDesc->format == ILY_PIXEL_FORMAT_BGRA8,
+        color,
+        textureDesc->alphaMode);
     if (texHandle == ILY_INVALID_HANDLE) {
         return ILY_ERROR_RENDER_FAILED;
     }
     *outTextureHandle = texHandle;
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetOutputColorConfig(ResourceHandle engineHandle, IlyOutputColorConfig* outConfig) {
+    if (!outConfig) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    *outConfig = it->second->config.outputColor;
     return ILY_SUCCESS;
 }
 
@@ -402,7 +556,7 @@ ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer
         pass.name = "layers";
         pass.execute = [layerList](ily::IRenderBackend* backend) -> IlyResult {
             for (const auto& layer : layerList) {
-                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode);
+                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey);
                 if (r != ILY_SUCCESS) {
                     return r;
                 }
@@ -413,6 +567,22 @@ ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer
     }
     it->second->renderer->SetRenderGraph(graph);
     return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetSharedOutputTexture(ResourceHandle engineHandle, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!outHandle) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    *outHandle = nullptr;
+
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->GetSharedOutputTexture(outHandle, outWidth, outHeight);
 }
 
 ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight) {

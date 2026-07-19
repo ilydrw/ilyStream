@@ -6,6 +6,7 @@
     "nlohmann-json",
     {
       "name": "bgfx",
+      "default-features": false,
       "features": [
         "tools"
       ]

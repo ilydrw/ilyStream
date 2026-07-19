@@ -22,18 +22,21 @@ enum class RenderCommandType {
     SetRenderGraph,
     StopThread,
     CreateTexture,
+    CreateSharedTexture,
     UpdateTexture,
     DestroyTexture,
     CreateSpriteProgram,
     DrawQuad,
+    GetSharedOutputTexture,
     ReadPixels
 };
 
 // Represents a command enqueued for the dedicated render thread.
 //
 // MEMORY SAFETY INVARIANTS FOR RAW POINTERS:
-// The fields `textureData`, `readbackDst`, `readbackOutWidth`, and 
-// `readbackOutHeight` are raw pointers passed from the caller thread (e.g. JS/V8). 
+// The fields `textureData`, `sharedOutputHandle`, `sharedOutputWidth`,
+// `sharedOutputHeight`, `readbackDst`, `readbackOutWidth`, and
+// `readbackOutHeight` are raw pointers passed from the caller thread (e.g. JS/V8).
 // These pointers are SAFE to use by the render thread ONLY because the enqueueing 
 // methods (e.g. CreateTexture, UpdateTexture, ReadPixels) are synchronous 
 // blocking operations. The caller thread explicitly blocks on the associated 
@@ -48,12 +51,21 @@ struct RenderThreadCommand {
     uint32_t height;
     const void* textureData;
     uint32_t textureDataSize;
+    void* sharedTextureHandle = nullptr;
     bool isBGRA;
+    IlyPixelFormat pixelFormat = ILY_PIXEL_FORMAT_UNKNOWN;
+    IlyColorDescription colorDescription = IlySrgbFullColor();
+    IlyAlphaMode alphaMode = ILY_ALPHA_STRAIGHT;
+    float sdrWhiteNits = 0.0f;
     ResourceHandle handle;
     IlyTransform transform;
     float opacity;
     IlyBlendMode blendMode;
+    IlyChromaKey chromaKey{};
     std::shared_ptr<RenderGraph> renderGraph;
+    void** sharedOutputHandle = nullptr;
+    uint32_t* sharedOutputWidth = nullptr;
+    uint32_t* sharedOutputHeight = nullptr;
     // Readback destination (ReadPixels): caller-owned buffer + size and optional
     // out-params for the surface dimensions.
     void* readbackDst = nullptr;
@@ -79,11 +91,13 @@ public:
     void SetRenderGraph(std::shared_ptr<RenderGraph> graph);
     
     // Thread-safe Render Queue helpers
-    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false);
+    ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false, const IlyColorDescription& color = IlySrgbFullColor(), IlyAlphaMode alphaMode = ILY_ALPHA_STRAIGHT);
+    ResourceHandle CreateSharedTextureFromHandle(uint32_t width, uint32_t height, void* sharedHandle, IlyPixelFormat format = ILY_PIXEL_FORMAT_BGRA8, const IlyColorDescription& color = IlySrgbFullColor(), IlyAlphaMode alphaMode = ILY_ALPHA_OPAQUE, float sdrWhiteNits = 0.0f);
     IlyResult UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA = false);
     void DestroyTexture(ResourceHandle handle);
     ResourceHandle CreateSpriteProgram();
-    IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode);
+    IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr);
+    IlyResult GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
     IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight);
 
     RenderDevice& GetDevice() { return m_device; }

@@ -81,7 +81,8 @@ $backends = @(
 # shader descriptor: source file | shaderc type | embedded array basename
 $shaders = @(
     @{ file = 'vs_sprite.sc'; type = 'vertex';   name = 'vs_sprite' },
-    @{ file = 'fs_sprite.sc'; type = 'fragment'; name = 'fs_sprite' }
+    @{ file = 'fs_sprite.sc'; type = 'fragment'; name = 'fs_sprite' },
+    @{ file = 'fs_output_sdr.sc'; type = 'fragment'; name = 'fs_output_sdr' }
 )
 
 $failures = @()
@@ -110,6 +111,19 @@ foreach ($shader in $shaders) {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $outFile)) {
             Write-Warning "  FAILED $arrayName ($($be.profile)): $stderr"
             $failures += $arrayName
+        } else {
+            $generated = [System.IO.File]::ReadAllText($outFile)
+            $normalized = [regex]::Replace(
+                $generated,
+                '[ \t]+(?=\r?$)',
+                '',
+                [System.Text.RegularExpressions.RegexOptions]::Multiline
+            )
+            [System.IO.File]::WriteAllText(
+                $outFile,
+                $normalized,
+                [System.Text.UTF8Encoding]::new($false)
+            )
         }
     }
 }

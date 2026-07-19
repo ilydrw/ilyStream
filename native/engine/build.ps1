@@ -44,10 +44,16 @@ if (-not (Test-Path $buildDir)) {
 }
 
 & $cmakePath -B $buildDir -S $engineRoot "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_TOOLCHAIN_FILE=C:/Users/Drew/vcpkg/scripts/buildsystems/vcpkg.cmake" "-DILY_USE_BGFX=ON"
+if ($LASTEXITCODE -ne 0) {
+  throw "CMake configure failed (exit code $LASTEXITCODE)."
+}
 
 # 3. Build project
 Write-Host "Compiling Native Engine..." -ForegroundColor Cyan
 & $cmakePath --build $buildDir --config $Configuration
+if ($LASTEXITCODE -ne 0) {
+  throw "CMake build failed (exit code $LASTEXITCODE)."
+}
 
 # Run a test executable with a hard timeout. A hung test would otherwise wedge
 # the whole build indefinitely and keep ilystream_engine.dll locked, breaking
@@ -63,7 +69,11 @@ function Invoke-EngineTest {
     return
   }
   Write-Host "Running $Name..." -ForegroundColor Cyan
-  $proc = Start-Process -FilePath $ExePath -NoNewWindow -PassThru
+  $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $ExePath
+  $startInfo.WorkingDirectory = Split-Path -Parent $ExePath
+  $startInfo.UseShellExecute = $false
+  $proc = [System.Diagnostics.Process]::Start($startInfo)
   if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
     try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
     throw "$Name timed out after $TimeoutSeconds s and was killed (hung test)."

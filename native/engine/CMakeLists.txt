@@ -48,7 +48,9 @@ target_link_libraries(ilystream_engine PRIVATE nlohmann_json::nlohmann_json)
 # shaders/compile_shaders.ps1; no shaderc is needed for a normal engine build.
 target_include_directories(ilystream_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/generated)
 
-# If using bgfx, we locate and link it
+# The vcpkg manifest disables bgfx's internal render thread. The engine already
+# owns a dedicated renderer thread, and bgfx native interop (getInternalData /
+# overrideInternal) is only safe on bgfx's render thread.
 if(ILY_USE_BGFX)
     find_package(bgfx CONFIG REQUIRED)
     target_compile_definitions(ilystream_engine PUBLIC ILY_USE_BGFX)
@@ -157,6 +159,28 @@ if(MSVC)
     target_link_libraries(ilystream_napi PRIVATE delayimp)
 else()
     target_compile_definitions(ilystream_napi PRIVATE NAPI_CPP_EXCEPTIONS)
+endif()
+
+# Node addon for Renderer process (Preview Shared Memory Reader)
+add_library(ilystream_preview MODULE src/preview_bindings.cpp src/win_delay_load_hook.cc)
+set_target_properties(ilystream_preview PROPERTIES
+    PREFIX ""
+    SUFFIX ".node"
+)
+target_include_directories(ilystream_preview PRIVATE ${NODE_ADDON_API_DIR} include)
+if(LATEST_NODE_INCLUDES)
+    target_include_directories(ilystream_preview PRIVATE ${LATEST_NODE_INCLUDES})
+endif()
+if(WIN32 AND LATEST_NODE_LIB)
+    target_link_libraries(ilystream_preview PRIVATE ${LATEST_NODE_LIB})
+endif()
+if(MSVC)
+    target_compile_options(ilystream_preview PRIVATE /bigobj)
+    target_compile_definitions(ilystream_preview PRIVATE NAPI_CPP_EXCEPTIONS)
+    target_link_options(ilystream_preview PRIVATE /DELAYLOAD:node.exe)
+    target_link_libraries(ilystream_preview PRIVATE delayimp)
+else()
+    target_compile_definitions(ilystream_preview PRIVATE NAPI_CPP_EXCEPTIONS)
 endif()
 
 # Unit tests executable target

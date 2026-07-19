@@ -22,6 +22,13 @@ private:
     bool m_dirty = true;
     mutable std::mutex m_mutex;
 
+    void PackColor(uint8_t* outPixel) const {
+        outPixel[0] = static_cast<uint8_t>((m_color >> 24) & 0xFF);
+        outPixel[1] = static_cast<uint8_t>((m_color >> 16) & 0xFF);
+        outPixel[2] = static_cast<uint8_t>((m_color >> 8) & 0xFF);
+        outPixel[3] = static_cast<uint8_t>(m_color & 0xFF);
+    }
+
 public:
     ColorProducer(ResourceManager& rm, uint32_t color) 
         : m_resourceManager(rm), m_color(color) {}
@@ -53,7 +60,9 @@ public:
         if (m_dirty) {
             if (m_textureHandle == ILY_INVALID_HANDLE) {
                 // Create a 1x1 solid color texture on the GPU
-                const bgfx::Memory* mem = bgfx::copy(&m_color, sizeof(uint32_t));
+                uint8_t pixel[4];
+                PackColor(pixel);
+                const bgfx::Memory* mem = bgfx::copy(pixel, sizeof(pixel));
                 bgfx::TextureHandle handle = bgfx::createTexture2D(
                     1, 1, false, 1,
                     bgfx::TextureFormat::RGBA8,
@@ -66,7 +75,9 @@ public:
                 // Update existing texture
                 auto tex = m_resourceManager.GetAs<TextureResource>(m_textureHandle);
                 if (tex) {
-                    const bgfx::Memory* mem = bgfx::copy(&m_color, sizeof(uint32_t));
+                    uint8_t pixel[4];
+                    PackColor(pixel);
+                    const bgfx::Memory* mem = bgfx::copy(pixel, sizeof(pixel));
                     bgfx::updateTexture2D(
                         tex->GetHandle(),
                         0, 0, 0, 0, 1, 1,
