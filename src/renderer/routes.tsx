@@ -387,6 +387,14 @@ export const routes: AppRoute[] = [
     component: lazy(() => import('./pages/ConsolePage'))
   },
   {
+    path: '/engine-preview',
+    label: 'Engine Preview',
+    description: 'Live preview of frames composited by the native bgfx engine.',
+    section: 'configure',
+    icon: IconVideo,
+    component: lazy(() => import('./pages/EnginePreviewPage'))
+  },
+  {
     path: '/settings',
     label: 'Settings',
     description: 'Tune app defaults, broadcast settings, overlay delivery, integrations, and advanced runtime options.',

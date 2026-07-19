@@ -2,9 +2,9 @@
  * Main-process loader and typed wrapper around the native bgfx engine addon
  * (native/engine -> ilystream_napi.node).
  *
- * The engine renders offscreen on its own native thread and hands composited
- * frames back as RGBA pixels (readFrame), which the main process can stream to
- * a renderer <canvas>. See native/engine for the C++ side.
+ * The engine renders offscreen on its own native thread. On Windows its output
+ * is an NT-shared D3D11 texture that Electron can present without CPU readback;
+ * readFrame remains available as a compatibility fallback.
  */
 import { app } from 'electron'
 import { createRequire } from 'module'
@@ -22,11 +22,115 @@ export enum BlendMode {
   Screen = 4
 }
 
+export enum PixelFormat {
+  Unknown = 0,
+  RGBA8 = 1,
+  BGRA8 = 2,
+  RGBA16F = 3,
+  R10G10B10A2 = 4,
+  NV12 = 5,
+  P010 = 6
+}
+
+export enum ColorPrimaries {
+  Unspecified = 0,
+  BT709 = 1,
+  BT2020 = 2
+}
+
+export enum TransferFunction {
+  Unspecified = 0,
+  SRGB = 1,
+  BT709 = 2,
+  Linear = 3,
+  PQ = 4,
+  HLG = 5
+}
+
+export enum MatrixCoefficients {
+  Unspecified = 0,
+  RGB = 1,
+  BT601 = 2,
+  BT709 = 3,
+  BT2020NCL = 4
+}
+
+export enum ColorRange {
+  Unspecified = 0,
+  Full = 1,
+  Limited = 2
+}
+
+export enum AlphaMode {
+  Opaque = 0,
+  Straight = 1,
+  Premultiplied = 2
+}
+
+export interface ColorDescription {
+  primaries: ColorPrimaries
+  transfer: TransferFunction
+  matrix: MatrixCoefficients
+  range: ColorRange
+}
+
+export interface OutputColorConfig {
+  format: PixelFormat
+  color: ColorDescription
+  sdrWhiteNits: number
+  hdrNominalPeakNits: number
+}
+
+export interface TextureDescription {
+  width: number
+  height: number
+  format: PixelFormat
+  color: ColorDescription
+  alphaMode: AlphaMode
+}
+
+export interface ScreenCaptureDescription {
+  width: number
+  height: number
+  format: PixelFormat
+  color: ColorDescription
+  hdr: boolean
+  sdrWhiteNits: number
+  maxLuminance: number
+  maxFullFrameLuminance: number
+}
+
+export interface ScreenCaptureDisplay {
+  index: number
+  deviceName: string
+  left: number
+  top: number
+  right: number
+  bottom: number
+  hdr: boolean
+}
+
+export const SRGB_FULL_COLOR: ColorDescription = {
+  primaries: ColorPrimaries.BT709,
+  transfer: TransferFunction.SRGB,
+  matrix: MatrixCoefficients.RGB,
+  range: ColorRange.Full
+}
+
+export const SDR_OUTPUT_COLOR: OutputColorConfig = {
+  format: PixelFormat.RGBA8,
+  color: SRGB_FULL_COLOR,
+  sdrWhiteNits: 100,
+  hdrNominalPeakNits: 1000
+}
+
 export interface EngineConfig {
   width: number
   height: number
   fps: number
   enableValidation?: boolean
+  linearBlending?: boolean
+  outputColor?: OutputColorConfig
 }
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -44,11 +148,26 @@ export interface Transform {
   opacity: number
 }
 
+/**
+ * Per-layer chroma key, all values normalized 0..1. Math matches the canvas
+ * compositor (gamma-space RGB distance) so existing key settings port 1:1.
+ */
+export interface LayerChromaKey {
+  keyR: number
+  keyG: number
+  keyB: number
+  similarity: number
+  smoothness: number
+  spill: number
+}
+
 export interface Layer {
   texture: bigint
   transform: Transform
   opacity: number
   blendMode: BlendMode
+  /** Present = keying enabled for this layer. */
+  chromaKey?: LayerChromaKey
 }
 
 export interface Frame {
@@ -56,6 +175,15 @@ export interface Frame {
   height: number
   /** Tightly packed RGBA8, width*height*4 bytes. Reused across reads. */
   data: Buffer
+}
+
+export interface SharedOutputTexture {
+  /** Engine-owned Windows NT HANDLE encoded as pointer-sized native bytes. */
+  handle: Buffer
+  width: number
+  height: number
+  pixelFormat: 'rgba'
+  color: OutputColorConfig
 }
 
 /** Shape of the native addon's exports (see native/engine/src/napi_bindings.cpp). */
@@ -67,10 +195,14 @@ interface NativeAddon {
   engineLoadTexture(engine: bigint, filePath: string): bigint
   engineCreateColorTexture(engine: bigint, rgba: number): bigint
   engineCreateTextureFromPixels(engine: bigint, width: number, height: number, rgba: Buffer): bigint
-  engineCreateScreenCapture(engine: bigint, monitorIndex: number, targetFps: number): bigint
+  engineCreateTextureFromPixelsEx(engine: bigint, description: TextureDescription, pixels: Buffer): bigint
+  engineCreateScreenCapture(engine: bigint, monitorIndex: number, targetFps: number): { texture: bigint; sharedMemoryName: string; description: ScreenCaptureDescription }
+  listScreenCaptureDisplays(): ScreenCaptureDisplay[]
   engineUpdateTexture(engine: bigint, texture: bigint, rgba: Buffer): number
   engineDestroyTexture(engine: bigint, texture: bigint): number
   engineSetLayers(engine: bigint, layers: Layer[]): number
+  engineGetSharedOutputTexture(engine: bigint): SharedOutputTexture
+  engineGetOutputColorConfig(engine: bigint): OutputColorConfig
   engineReadPixels(
     engine: bigint,
     buffer: Buffer
@@ -137,15 +269,14 @@ export function shutdownEngineSystem(): void {
 }
 
 /**
- * A single engine instance: renders a retained list of layers offscreen and
- * reads frames back for presentation.
+ * A single engine instance that renders a retained list of layers offscreen.
  */
 export class NativeEngine {
   private readonly api: NativeAddon
   private handle: bigint
   private readonly width: number
   private readonly height: number
-  private readonly frameBuffer: Buffer
+  private frameBuffer: Buffer | null = null
   private destroyed = false
 
   constructor(config: EngineConfig) {
@@ -153,8 +284,16 @@ export class NativeEngine {
     this.api = loadAddon()
     this.width = config.width
     this.height = config.height
-    this.frameBuffer = Buffer.alloc(config.width * config.height * 4)
-    this.handle = this.api.createEngine({ enableValidation: false, ...config })
+    this.handle = this.api.createEngine({
+      enableValidation: false,
+      linearBlending: true,
+      outputColor: SDR_OUTPUT_COLOR,
+      ...config
+    })
+  }
+
+  static listScreenCaptureDisplays(): ScreenCaptureDisplay[] {
+    return loadAddon().listScreenCaptureDisplays()
   }
 
   /** Load an image file (png/jpg/...) as a texture. Returns a texture handle. */
@@ -175,11 +314,17 @@ export class NativeEngine {
     return this.api.engineCreateTextureFromPixels(this.handle, width, height, rgba)
   }
 
+  /** Create a texture with explicit pixel, color-space and alpha metadata. */
+  createDescribedTexture(description: TextureDescription, pixels: Buffer): bigint {
+    this.assertAlive()
+    return this.api.engineCreateTextureFromPixelsEx(this.handle, description, pixels)
+  }
+
   /** 
    * Create a hardware-accelerated screen capture texture. 
    * The texture updates automatically on a background thread.
    */
-  createScreenCapture(monitorIndex: number, targetFps: number): bigint {
+  createScreenCapture(monitorIndex: number, targetFps: number): { texture: bigint; sharedMemoryName: string; description: ScreenCaptureDescription } {
     this.assertAlive()
     return this.api.engineCreateScreenCapture(this.handle, monitorIndex, targetFps)
   }
@@ -204,7 +349,19 @@ export class NativeEngine {
   /** Replace the retained layer list composited every frame. */
   setLayers(layers: Layer[]): void {
     this.assertAlive()
-    this.api.engineSetLayers(this.handle, layers)
+    const result = this.api.engineSetLayers(this.handle, layers)
+    if (result !== 0) throw new Error(`Native engine setLayers failed with code ${result}`)
+  }
+
+  /** Get the persistent GPU output texture used by the compositor. */
+  getSharedOutputTexture(): SharedOutputTexture {
+    this.assertAlive()
+    return this.api.engineGetSharedOutputTexture(this.handle)
+  }
+
+  getOutputColorConfig(): OutputColorConfig {
+    this.assertAlive()
+    return this.api.engineGetOutputColorConfig(this.handle)
   }
 
   /**
@@ -213,6 +370,7 @@ export class NativeEngine {
    */
   readFrame(): Frame | null {
     this.assertAlive()
+    this.frameBuffer ??= Buffer.alloc(this.width * this.height * 4)
     const { result, width, height } = this.api.engineReadPixels(this.handle, this.frameBuffer)
     if (result !== 0) return null
     return { width, height, data: this.frameBuffer }

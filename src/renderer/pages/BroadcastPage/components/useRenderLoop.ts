@@ -45,13 +45,18 @@ interface RenderLoopOptions {
   // whether streaming or the dual-vertical overlay is currently active.
   forceVerticalCanvas?: boolean
   forceHorizontalCanvas?: boolean
+  nativeHorizontalOutputActive?: boolean
+  nativeProgramPreviewActive?: boolean
 }
 
 const DUAL_VERTICAL_OVERLAY_FPS = 20
 const DUAL_VERTICAL_OVERLAY_JPEG_QUALITY = 0.7
 // Projector mirrors consume the per-aspect canvas via captureStream(), which
 // emits a frame on every canvas paint — so this is the projector framerate.
-const MIRROR_CAPTURE_FPS = 60
+// 30, not 60: the ImageBitmap fallback transport ticks at 30fps anyway, and a
+// forced 60fps full-scene composite doubled CPU and GC churn for a monitor
+// feed (measured: renderer sawtoothed to 3.6GB / 16% CPU on an idle scene).
+const MIRROR_CAPTURE_FPS = 30
 
 export function useRenderLoop(options: RenderLoopOptions) {
   const {
@@ -63,7 +68,9 @@ export function useRenderLoop(options: RenderLoopOptions) {
     dualVerticalOverlayEnabled = false,
     isVisible = true,
     forceVerticalCanvas = false,
-    forceHorizontalCanvas = false
+    forceHorizontalCanvas = false,
+    nativeHorizontalOutputActive = false,
+    nativeProgramPreviewActive = false
   } = options
 
   const forceVerticalCanvasRef = useRef(forceVerticalCanvas)
@@ -133,7 +140,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d', { alpha: false })
+    const ctx = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
     if (!ctx) return
 
     ctx.imageSmoothingEnabled = true
@@ -170,12 +177,32 @@ export function useRenderLoop(options: RenderLoopOptions) {
       return isHibernated
     }
 
+    // Unconditionally assigning width/height guarantees the canvas backing store
+    // and context state (clips, transforms, paths) are fully reset for the new frame.
+    const setCanvasSize = (target: HTMLCanvasElement, width: number, height: number) => {
+      target.width = width
+      target.height = height
+    }
+
+    // Scene objects are immutable (zustand) — cache the z-sorted layer list
+    // per scene identity instead of allocating and sorting a fresh array for
+    // every canvas on every tick.
+    const sortedLayersCache = new WeakMap<StudioScene, StudioLayer[]>()
+    const getSortedLayers = (scene: StudioScene): StudioLayer[] => {
+      let sorted = sortedLayersCache.get(scene)
+      if (!sorted) {
+        sorted = [...scene.layers].sort((a, b) => a.zIndex - b.zIndex)
+        sortedLayersCache.set(scene, sorted)
+      }
+      return sorted
+    }
+
     const drawScene = (targetCtx: CanvasRenderingContext2D, targetCanvas: HTMLCanvasElement, targetRatio: '16:9' | '9:16', sceneOverride?: StudioScene) => {
       const scene = sceneOverride || activeScene
       targetCtx.fillStyle = '#000'
       targetCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height)
 
-      const sorted = [...scene.layers].sort((a, b) => a.zIndex - b.zIndex)
+      const sorted = getSortedLayers(scene)
       for (const l of sorted) {
         const layout = resolveLayerLayout(l, targetRatio)
         if (!layout.visible) continue
@@ -664,6 +691,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
       outputCtx: CanvasRenderingContext2D,
       outputCanvas: HTMLCanvasElement
     ) => {
+      outputCanvas.width = outputCanvas.width
       outputCtx.fillStyle = '#000'
       outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height)
 
@@ -745,8 +773,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
         drawScene(targetCtx, targetCanvas, targetRatio, fromScene)
         if (!transitionCanvasRef.current) transitionCanvasRef.current = document.createElement('canvas')
         const tCanvas = transitionCanvasRef.current
-        tCanvas.width = targetCanvas.width
-        tCanvas.height = targetCanvas.height
+        setCanvasSize(tCanvas, targetCanvas.width, targetCanvas.height)
         const tempCtx = tCanvas.getContext('2d', { alpha: true })
         if (tempCtx) {
           drawScene(tempCtx, tCanvas, targetRatio, toScene)
@@ -776,7 +803,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
       fpsRef.current.count++
       fpsRef.current.globalCount++
       if (now - fpsRef.current.lastTime >= 1000) {
-        setFps(fpsRef.current.count); fpsRef.current.count = 0; fpsRef.current.lastTime = now
+        const measured = fpsRef.current.count
+        fpsRef.current.count = 0; fpsRef.current.lastTime = now
+        // Publishing the fps every second re-rendered the whole BroadcastPage
+        // at 1Hz just for ±1fps timer jitter. Only publish meaningful moves;
+        // returning the previous value lets React bail out of the update.
+        setFps(prev => (Math.abs(prev - measured) >= 3 || (measured === 0) !== (prev === 0)) ? measured : prev)
       }
 
       // === Output capture decisions for this tick ===
@@ -788,9 +820,10 @@ export function useRenderLoop(options: RenderLoopOptions) {
       // frames through their own gates so their cadence/timestamps stay exact.
       const horiz = streamOutputs.find(o => o.id === 'horizontal' && o.active)
       const horizForced = forceHorizontalCanvasRef.current
-      const horizDrawFps = Math.max(horiz?.fps ?? 0, horizForced ? MIRROR_CAPTURE_FPS : 0)
+      const canvasHorizontalOutputActive = Boolean(horiz) && !nativeHorizontalOutputActive
+      const horizDrawFps = Math.max(canvasHorizontalOutputActive ? (horiz?.fps ?? 0) : 0, horizForced ? MIRROR_CAPTURE_FPS : 0)
       const horizDrawDue =
-        (Boolean(horiz) || horizForced) && horizDrawFps > 0 &&
+        (canvasHorizontalOutputActive || horizForced) && horizDrawFps > 0 &&
         shouldCapture(horizontalDrawGateRef.current, horizDrawFps, now)
 
       const vert = streamOutputs.find(o => o.id === 'vertical' && o.active)
@@ -811,12 +844,11 @@ export function useRenderLoop(options: RenderLoopOptions) {
       if (horizDrawDue) {
         if (!horizontalCanvasRef.current) horizontalCanvasRef.current = document.createElement('canvas')
         const hCanvas = horizontalCanvasRef.current
-        hCanvas.width = horiz?.width ?? 1920
-        hCanvas.height = horiz?.height ?? 1080
-        const hCtx = hCanvas.getContext('2d', { alpha: false })
+        setCanvasSize(hCanvas, horiz?.width ?? 1920, horiz?.height ?? 1080)
+        const hCtx = hCanvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
         if (hCtx) {
           drawSceneWithTransition(hCtx, hCanvas, '16:9')
-          if (horiz && shouldCapture(horizontalCaptureRef.current, horiz.fps, now)) {
+          if (horiz && !nativeHorizontalOutputActive && shouldCapture(horizontalCaptureRef.current, horiz.fps, now)) {
             postFrameToWorker(horizontalEncoderWorkerRef.current, hCanvas, horizontalCaptureRef.current.frameCount, horiz.fps)
           }
           renderedHorizontal = hCanvas
@@ -826,9 +858,8 @@ export function useRenderLoop(options: RenderLoopOptions) {
       if (vertDrawDue) {
         if (!verticalCanvasRef.current) verticalCanvasRef.current = document.createElement('canvas')
         const vCanvas = verticalCanvasRef.current
-        vCanvas.width = vert?.width ?? 1080
-        vCanvas.height = vert?.height ?? 1920
-        const vCtx = vCanvas.getContext('2d', { alpha: false })
+        setCanvasSize(vCanvas, vert?.width ?? 1080, vert?.height ?? 1920)
+        const vCtx = vCanvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
         if (vCtx) {
           drawSceneWithTransition(vCtx, vCanvas, '9:16')
           if (vert && shouldCapture(verticalCaptureRef.current, vert.fps, now)) {
@@ -845,10 +876,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
         aspectRatio === '9:16' ? renderedVertical :
         null
 
-      if (primaryReuseSource) {
-        ctx.drawImage(primaryReuseSource, 0, 0, canvas.width, canvas.height)
-      } else {
-        drawSceneWithTransition(ctx, canvas, aspectRatio)
+      if (!nativeProgramPreviewActive) {
+        if (primaryReuseSource) {
+          ctx.drawImage(primaryReuseSource, 0, 0, canvas.width, canvas.height)
+        } else {
+          drawSceneWithTransition(ctx, canvas, aspectRatio)
+        }
       }
 
       // Legacy default encoder (uses already-drawn primary canvas content)
@@ -859,7 +892,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
       // === Secondary preview: reuse rendered capture canvas when aspect matches ===
       const secondary = secondaryPreviewCanvasRef.current
       if (shouldDrawSecondary && secondary && shouldCapture(secondaryCaptureRef, SECONDARY_PREVIEW_FPS, now)) {
-        const sCtx = secondary.getContext('2d', { alpha: false })
+        const sCtx = secondary.getContext('2d', { alpha: false, colorSpace: 'srgb' })
         if (sCtx) {
           const secondaryReuseSource =
             secondaryRenderRatio === '16:9' ? renderedHorizontal :
@@ -881,14 +914,12 @@ export function useRenderLoop(options: RenderLoopOptions) {
 
         const stageCanvas = virtualCameraStageCanvasRef.current
         const stageRatio = getVirtualCameraStageRatio(virtualCam)
-        stageCanvas.width = stageRatio === '9:16' ? 1080 : 1920
-        stageCanvas.height = stageRatio === '9:16' ? 1920 : 1080
-        const stageCtx = stageCanvas.getContext('2d', { alpha: false })
+        setCanvasSize(stageCanvas, stageRatio === '9:16' ? 1080 : 1920, stageRatio === '9:16' ? 1920 : 1080)
+        const stageCtx = stageCanvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
 
         const outputCanvas = virtualCameraCanvasRef.current
-        outputCanvas.width = virtualCam.width
-        outputCanvas.height = virtualCam.height
-        const outputCtx = outputCanvas.getContext('2d', { alpha: false })
+        setCanvasSize(outputCanvas, virtualCam.width, virtualCam.height)
+        const outputCtx = outputCanvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
 
         if (stageCtx && outputCtx) {
           const feed = virtualCam.feed
@@ -916,7 +947,7 @@ export function useRenderLoop(options: RenderLoopOptions) {
     }
 
     return () => cancelAnimationFrame(frameId)
-  }, [activeScene, aspectRatio, outputFps, outputActive, previewMode, streamOutputs, isVisible])
+  }, [activeScene, aspectRatio, outputFps, outputActive, previewMode, streamOutputs, isVisible, nativeHorizontalOutputActive, nativeProgramPreviewActive])
 
   // Expose the per-aspect offscreen canvases so the parent (CanvasEditor) can
   // forward them to features like projector mirroring, which needs to capture

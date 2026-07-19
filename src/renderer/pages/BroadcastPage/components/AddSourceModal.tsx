@@ -44,6 +44,8 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
   const [name, setName] = useState('')
   const [config, setConfig] = useState<Record<string, any>>({})
   const [desktopSources, setDesktopSources] = useState<DesktopSourceOption[]>([])
+  const [desktopSourcesLoading, setDesktopSourcesLoading] = useState(false)
+  const [desktopSourcesError, setDesktopSourcesError] = useState<string | null>(null)
   const videoDevices = devices.filter(d => d.kind === 'videoinput')
   const dropdownClass = "w-full h-12 rounded-md border border-white/20 bg-[#181b22] px-4 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] outline-none transition-all hover:border-white/35 hover:bg-[#20242c] focus:border-accent/70 focus:ring-2 focus:ring-accent/25 [&>option]:bg-[#1a1a1a]"
 
@@ -54,6 +56,8 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
       setName('')
       setConfig({})
       setDesktopSources([])
+      setDesktopSourcesLoading(false)
+      setDesktopSourcesError(null)
     }
   }, [open])
 
@@ -130,18 +134,30 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
   }
 
   const loadDesktopSources = async () => {
-    if (!window.api?.studio?.getDesktopSources) return
-    let sources = await window.api.studio.getDesktopSources()
-    
-    if (name === 'Spotify') {
-      sources = [...sources].sort((a, b) => {
-        const isA = a.name.toLowerCase().includes('spotify')
-        const isB = b.name.toLowerCase().includes('spotify')
-        return isA === isB ? 0 : (isA ? -1 : 1)
-      })
+    if (!window.api?.studio?.getDesktopSources) {
+      setDesktopSourcesError('Screen and window capture is unavailable in this build.')
+      return
     }
-    
-    setDesktopSources(sources || [])
+    setDesktopSourcesLoading(true)
+    setDesktopSourcesError(null)
+    try {
+      let sources = await window.api.studio.getDesktopSources()
+
+      if (name === 'Spotify') {
+        sources = [...sources].sort((a, b) => {
+          const isA = a.name.toLowerCase().includes('spotify')
+          const isB = b.name.toLowerCase().includes('spotify')
+          return isA === isB ? 0 : (isA ? -1 : 1)
+        })
+      }
+
+      setDesktopSources(sources || [])
+    } catch (error) {
+      setDesktopSources([])
+      setDesktopSourcesError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setDesktopSourcesLoading(false)
+    }
   }
 
   const selectDesktopSource = (source: DesktopSourceOption) => {
@@ -351,6 +367,8 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
                 <DesktopSourcePicker
                   sources={desktopSources}
                   selectedId={config.desktopSourceId || ''}
+                  loading={desktopSourcesLoading}
+                  error={desktopSourcesError}
                   onRefresh={loadDesktopSources}
                   onSelect={selectDesktopSource}
                 />
@@ -377,6 +395,8 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
               <DesktopSourcePicker
                 sources={desktopSources}
                 selectedId={config.desktopSourceId || ''}
+                loading={desktopSourcesLoading}
+                error={desktopSourcesError}
                 onRefresh={loadDesktopSources}
                 onSelect={selectDesktopSource}
               />
@@ -496,11 +516,15 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
 function DesktopSourcePicker({
   sources,
   selectedId,
+  loading,
+  error,
   onRefresh,
   onSelect
 }: {
   sources: DesktopSourceOption[]
   selectedId: string
+  loading: boolean
+  error: string | null
   onRefresh: () => void
   onSelect: (source: DesktopSourceOption) => void
 }) {
@@ -515,13 +539,25 @@ function DesktopSourcePicker({
         <label className="text-[10px] font-semibold tracking-tight text-white/30">Screen / Window</label>
         <button
           onClick={onRefresh}
+          disabled={loading}
           className="text-[10px] font-semibold tracking-tight text-accent/80 hover:text-accent cursor-pointer"
         >
-          Refresh
+          {loading ? 'Scanning…' : 'Refresh'}
         </button>
       </div>
       <div className="max-h-72 overflow-y-auto custom-scrollbar grid grid-cols-2 gap-3 pr-1">
-        {sortedSources.length === 0 ? (
+        {error ? (
+          <div className="col-span-2 rounded-xl border border-red-400/20 bg-red-400/[0.06] p-4 text-xs text-red-200/80 text-center">
+            <div>{error}</div>
+            <button onClick={onRefresh} className="mt-3 font-semibold text-accent hover:text-accent/80 cursor-pointer">
+              Try again
+            </button>
+          </div>
+        ) : loading && sortedSources.length === 0 ? (
+          <div className="col-span-2 rounded-xl border border-white/5 bg-white/[0.03] p-4 text-xs text-white/35 text-center">
+            Looking for screens and open windows…
+          </div>
+        ) : sortedSources.length === 0 ? (
           <div className="col-span-2 rounded-xl border border-white/5 bg-white/[0.03] p-4 text-xs text-white/35 text-center">
             No screens or windows found.
           </div>

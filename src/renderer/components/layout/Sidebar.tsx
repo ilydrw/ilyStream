@@ -94,7 +94,7 @@ const navigationGroups: NavigationGroup[] = [
     label: 'System',
     drawerTitle: 'App settings',
     icon: IconSettings,
-    items: [itemByPath('/settings'), itemByPath('/console')]
+    items: [itemByPath('/settings'), itemByPath('/console'), itemByPath('/engine-preview')]
   }
 ]
 

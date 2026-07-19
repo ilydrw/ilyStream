@@ -68,6 +68,7 @@ export default function BroadcastPage() {
   // drives the "reconnecting / dropping frames" chip in the header.
   const [outputHealth, setOutputHealth] = useState<Array<{ id: string; name: string; state: string; degraded: boolean }>>([])
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [mediaDeviceRevision, setMediaDeviceRevision] = useState(0)
   const [widgets, setWidgets] = useState<any[]>([])
   const [platforms, setPlatforms] = useState<any[]>([])
   const [monitors, setMonitors] = useState<any[]>([])
@@ -270,7 +271,7 @@ export default function BroadcastPage() {
     activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
     updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources,
-    activeAspectRatios: activeMediaAspectRatios
+    activeAspectRatios: activeMediaAspectRatios, mediaDeviceRevision
   })
 
   // Projector windows can't hold the cameras this window owns, so we mirror
@@ -538,6 +539,20 @@ export default function BroadcastPage() {
       if (window.api?.obs) setObsStatus(await window.api.obs.getStatus())
       if (window.api?.virtualCamera) setVirtualCameraInfo(await window.api.virtualCamera.getStatus())
     })()
+  }, [])
+
+  useEffect(() => {
+    const refreshDevices = async () => {
+      try {
+        setDevices(await navigator.mediaDevices.enumerateDevices())
+        setMediaDeviceRevision(current => current + 1)
+      } catch (error) {
+        console.error('[BroadcastPage] Failed to refresh media devices:', error)
+      }
+    }
+
+    navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
   }, [])
 
   useEffect(() => {

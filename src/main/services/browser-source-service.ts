@@ -30,8 +30,33 @@ const MAX_CAPTURE_FPS = 60
 // Sources that genuinely need 60 can still request it per-layer.
 const DEFAULT_CAPTURE_FPS = 30
 
+/** Frame delivered to an in-main-process consumer (e.g. the native engine). */
+export interface BrowserSourceEngineFrame {
+  id: string
+  width: number
+  height: number
+  /** BGRA8 pixels, tightly packed (width*height*4). Valid for the call only. */
+  bgra: Buffer
+}
+
 export class BrowserSourceService {
   private captures = new Map<string, BrowserSourceCapture>()
+  // In-process frame consumers keyed by capture id. Lets the native engine
+  // receive widget/overlay frames directly in main instead of routing the
+  // pixels renderer->canvas->getImageData->IPC->main and back.
+  private engineFrameSinks = new Map<string, (frame: BrowserSourceEngineFrame) => void>()
+
+  /**
+   * Register (or clear, with null) a direct frame consumer for a capture id.
+   * The sink is called on the capture's paint cadence with BGRA pixels.
+   */
+  setEngineFrameSink(id: string, sink: ((frame: BrowserSourceEngineFrame) => void) | null): void {
+    if (sink) {
+      this.engineFrameSinks.set(id, sink)
+    } else {
+      this.engineFrameSinks.delete(id)
+    }
+  }
 
   start(owner: BrowserWindow, config: BrowserSourceCaptureConfig): void {
     const key = getCaptureKey(owner, config.id)
@@ -116,6 +141,17 @@ export class BrowserSourceService {
 
       const size = image.getSize()
       const bitmap = image.toBitmap()
+
+      // Direct in-main consumer (native engine) gets the same frame with no
+      // extra copy or IPC hop.
+      const engineSink = this.engineFrameSinks.get(capture.id)
+      if (engineSink) {
+        try {
+          engineSink({ id: capture.id, width: size.width, height: size.height, bgra: bitmap })
+        } catch (error) {
+          console.warn(`[BrowserSource] engine frame sink failed for ${capture.id}:`, error)
+        }
+      }
 
       sendToRenderer(capture.owner, 'browser-source:frame', {
         id: capture.id,

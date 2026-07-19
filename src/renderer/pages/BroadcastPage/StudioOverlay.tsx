@@ -451,6 +451,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
     let targetRenderFps = maxRenderFps
     let targetFrameMs = 1000 / targetRenderFps
     let lastRenderAt = 0
+    let lastBlittedMirrorBitmap: ImageBitmap | null = null
     let renderFrameCount = 0
     let perfWindowStart = performance.now()
     let perfFrameCount = 0
@@ -472,13 +473,21 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         frameId = requestAnimationFrame(render); return
       }
 
+      // Short-circuit: if the broadcast window is mirroring its composed
+      // canvas to us, just draw that and skip our local layer composition.
+      // Bitmaps arrive at the mirror transport's ~30fps while this loop runs
+      // at up to 60 — re-blitting an identical frame doubles raster work, so
+      // skip (before clearing!) until a new bitmap lands.
+      const mirror = latestMirrorBitmapRef.current
+      if (mirror && mirror === lastBlittedMirrorBitmap) {
+        frameId = requestAnimationFrame(render); return
+      }
+
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-      // Short-circuit: if the broadcast window is mirroring its composed
-      // canvas to us, just draw that and skip our local layer composition.
-      const mirror = latestMirrorBitmapRef.current
       if (mirror) {
+        lastBlittedMirrorBitmap = mirror
         const canvasRatio = canvas.width / canvas.height
         const bitmapRatio = mirror.width / mirror.height
         let dw = canvas.width, dh = canvas.height, dx = 0, dy = 0
@@ -492,6 +501,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         ctx.drawImage(mirror, dx, dy, dw, dh)
         frameId = requestAnimationFrame(render); return
       }
+      lastBlittedMirrorBitmap = null
 
       const currentScene = activeSceneRef.current
       if (!currentScene) { frameId = requestAnimationFrame(render); return }

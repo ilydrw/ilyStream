@@ -23,6 +23,7 @@ import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 import { registerLightingHandlers } from './handlers/lighting-handlers'
 import { registerRazerHandlers } from './handlers/razer-handlers'
+import { registerEngineHandlers } from './handlers/engine-handlers'
 import { sendToRenderer } from './safe-send'
 
 export function registerIpcHandlers(
@@ -141,6 +142,7 @@ export function registerIpcHandlers(
   registerGoveeHandlers(window, services.goveeService)
   registerVirtualCameraHandlers(services)
   registerLightingHandlers(window, services.lightingManager)
+  registerEngineHandlers(window, services.browserSourceService)
 
   // Trigger handlers
   ipcMain.handle('triggers:get-all', () => triggerEngine.getRules())

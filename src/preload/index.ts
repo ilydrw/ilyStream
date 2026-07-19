@@ -1,4 +1,6 @@
-import { contextBridge, ipcRenderer, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, sharedTexture, webFrame } from 'electron'
+import { join } from 'path'
+import { existsSync } from 'fs'
 import type { AppSettingKey } from '../shared/app-settings'
 import type { WindowsSettingsTarget } from '../main/system/windows-settings'
 import type { GetTopUsersOptions, ViewerAccountInput, ViewerProfileInput } from '../shared/stats'
@@ -13,6 +15,7 @@ import type {
   TikTokNativeLiveDestination
 } from '../shared/tiktok-native'
 import type { BroadcastStreamInfo, StreamInfoPreset, TwitchCategory } from '../shared/stream-info'
+import type { NativeBroadcastScene, NativeLiveSourceFrame } from '../shared/native-scene'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -29,6 +32,149 @@ ipcRenderer.on('studio:projector:mirror-sink', (event) => {
   const port = event.ports[0]
   if (!port) return
   ;(globalThis as any).postMessage({ __ilyProjectorChannel: 'mirror-sink' }, '*', [port])
+})
+
+let sharedPreviewTexture: Electron.SharedTextureImported | null = null
+let sharedPreviewCanvasId: string | null = null
+let sharedPreviewAnimationFrame: number | null = null
+let sharedPreviewWidth = 0
+let sharedPreviewHeight = 0
+let sharedPreviewFrameCount = 0
+let sharedPreviewFps = 0
+let sharedPreviewFpsStartedAt = 0
+let sharedPreviewFpsFrames = 0
+let sharedBroadcastTexture: Electron.SharedTextureImported | null = null
+let sharedBroadcastCanvasId: string | null = null
+let sharedBroadcastAnimationFrame: number | null = null
+let sharedBroadcastWidth = 0
+let sharedBroadcastHeight = 0
+let sharedBroadcastFrameCount = 0
+let sharedBroadcastFps = 0
+let sharedBroadcastFpsStartedAt = 0
+let sharedBroadcastFpsFrames = 0
+
+function releaseSharedPreviewTexture(): void {
+  if (sharedPreviewAnimationFrame !== null) {
+    ;(globalThis as any).cancelAnimationFrame(sharedPreviewAnimationFrame)
+    sharedPreviewAnimationFrame = null
+  }
+  sharedPreviewTexture?.release()
+  sharedPreviewTexture = null
+  sharedPreviewWidth = 0
+  sharedPreviewHeight = 0
+  sharedPreviewFrameCount = 0
+  sharedPreviewFps = 0
+  sharedPreviewFpsStartedAt = 0
+  sharedPreviewFpsFrames = 0
+}
+
+function releaseSharedBroadcastTexture(): void {
+  if (sharedBroadcastAnimationFrame !== null) {
+    ;(globalThis as any).cancelAnimationFrame(sharedBroadcastAnimationFrame)
+    sharedBroadcastAnimationFrame = null
+  }
+  sharedBroadcastTexture?.release()
+  sharedBroadcastTexture = null
+  sharedBroadcastWidth = 0
+  sharedBroadcastHeight = 0
+  sharedBroadcastFrameCount = 0
+  sharedBroadcastFps = 0
+  sharedBroadcastFpsStartedAt = 0
+  sharedBroadcastFpsFrames = 0
+}
+
+function scheduleSharedBroadcastFrame(): void {
+  if (!sharedBroadcastTexture || !sharedBroadcastCanvasId || sharedBroadcastAnimationFrame !== null) return
+
+  sharedBroadcastAnimationFrame = (globalThis as any).requestAnimationFrame((now: number) => {
+    sharedBroadcastAnimationFrame = null
+    const imported = sharedBroadcastTexture
+    const documentRef = (globalThis as any).document
+    const canvas = documentRef?.getElementById(sharedBroadcastCanvasId)
+    if (imported && canvas) {
+      const width = Math.max(1, Math.floor(canvas.width || canvas.getBoundingClientRect().width))
+      const height = Math.max(1, Math.floor(canvas.height || canvas.getBoundingClientRect().height))
+      const context = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
+      if (context) {
+        const frame = imported.getVideoFrame()
+        try {
+          context.drawImage(frame, 0, 0, width, height)
+          sharedBroadcastFrameCount += 1
+          sharedBroadcastFpsFrames += 1
+          if (sharedBroadcastFpsStartedAt === 0) sharedBroadcastFpsStartedAt = now
+          if (now - sharedBroadcastFpsStartedAt >= 500) {
+            sharedBroadcastFps = Math.round(
+              (sharedBroadcastFpsFrames * 1000) / (now - sharedBroadcastFpsStartedAt)
+            )
+            sharedBroadcastFpsFrames = 0
+            sharedBroadcastFpsStartedAt = now
+          }
+        } finally {
+          frame.close()
+        }
+      }
+    }
+    scheduleSharedBroadcastFrame()
+  })
+}
+
+function scheduleSharedPreviewFrame(): void {
+  if (!sharedPreviewTexture || !sharedPreviewCanvasId || sharedPreviewAnimationFrame !== null) return
+
+  sharedPreviewAnimationFrame = (globalThis as any).requestAnimationFrame((now: number) => {
+    sharedPreviewAnimationFrame = null
+    const imported = sharedPreviewTexture
+    const documentRef = (globalThis as any).document
+    const canvas = documentRef?.getElementById(sharedPreviewCanvasId)
+    if (imported && canvas) {
+      const rect = canvas.getBoundingClientRect()
+      const width = Math.max(1, Math.floor(rect.width))
+      const height = Math.max(1, Math.floor(rect.height))
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width
+        canvas.height = height
+      }
+
+      const context = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
+      if (context) {
+        const frame = imported.getVideoFrame()
+        try {
+          context.drawImage(frame, 0, 0, width, height)
+          sharedPreviewFrameCount += 1
+          sharedPreviewFpsFrames += 1
+          if (sharedPreviewFpsStartedAt === 0) sharedPreviewFpsStartedAt = now
+          if (now - sharedPreviewFpsStartedAt >= 500) {
+            sharedPreviewFps = Math.round(
+              (sharedPreviewFpsFrames * 1000) / (now - sharedPreviewFpsStartedAt)
+            )
+            sharedPreviewFpsFrames = 0
+            sharedPreviewFpsStartedAt = now
+          }
+        } finally {
+          frame.close()
+        }
+      }
+    }
+    scheduleSharedPreviewFrame()
+  })
+}
+
+sharedTexture.setSharedTextureReceiver(async (data, metadata?: unknown) => {
+  const info = metadata as { purpose?: string; width?: number; height?: number } | undefined
+  if (info?.purpose === 'broadcast') {
+    releaseSharedBroadcastTexture()
+    sharedBroadcastTexture = data.importedSharedTexture
+    sharedBroadcastWidth = Math.max(0, Math.round(info.width ?? 0))
+    sharedBroadcastHeight = Math.max(0, Math.round(info.height ?? 0))
+    scheduleSharedBroadcastFrame()
+    return
+  }
+
+  releaseSharedPreviewTexture()
+  sharedPreviewTexture = data.importedSharedTexture
+  sharedPreviewWidth = Math.max(0, Math.round(info?.width ?? 0))
+  sharedPreviewHeight = Math.max(0, Math.round(info?.height ?? 0))
+  scheduleSharedPreviewFrame()
 })
 
 const api = {
@@ -426,7 +572,163 @@ const api = {
   // --- Native Camera ---
   nativeCamera: {
     start: (deviceName: string, width: number, height: number, fps: number) => ipcRenderer.send('native-camera:start', deviceName, width, height, fps),
-    stop: (deviceName: string) => ipcRenderer.send('native-camera:stop', deviceName)
+    stop: (deviceName: string) => ipcRenderer.invoke('native-camera:stop', deviceName)
+  },
+
+  // --- Native engine preview (bgfx compositor -> canvas) ---
+  engine: {
+    getCaptureDisplays: () => ipcRenderer.invoke('engine:preview:displays') as Promise<Array<{
+      index: number
+      deviceName: string
+      name: string
+      label: string
+      sourceId?: string
+      displayId?: string
+      left: number
+      top: number
+      right: number
+      bottom: number
+      hdr: boolean
+    }>>,
+    attachPreview: (canvasId: string) => {
+      sharedPreviewCanvasId = canvasId
+      scheduleSharedPreviewFrame()
+    },
+    detachPreview: () => {
+      sharedPreviewCanvasId = null
+      releaseSharedPreviewTexture()
+    },
+    getPreviewStats: () => sharedPreviewTexture
+      ? {
+          presentation: 'shared-texture' as const,
+          width: sharedPreviewWidth,
+          height: sharedPreviewHeight,
+          frames: sharedPreviewFrameCount,
+          fps: sharedPreviewFps
+        }
+      : null,
+    startPreview: async (opts?: { width?: number; height?: number; monitorIndex?: number }) => {
+      releaseSharedBroadcastTexture()
+      releaseSharedPreviewTexture()
+      const r = await ipcRenderer.invoke('engine:preview:start', opts) as any
+      if (r?.ok && r.presentation !== 'shared-texture' && r.sharedMemoryName) {
+        try {
+          if ((globalThis as any).__previewReader) {
+            ;(globalThis as any).__previewReader.close()
+            ;(globalThis as any).__previewReader = null
+          }
+          const candidates = [
+            join(process.resourcesPath ?? '', 'native-engine', 'ilystream_preview.node'),
+            join(__dirname, '../../native/engine/build/Release/ilystream_preview.node'),
+            join(process.cwd(), 'native/engine/build/Release/ilystream_preview.node')
+          ]
+          const found = candidates.find(c => existsSync(c))
+          if (found) {
+            const addon = require(found)
+            ;(globalThis as any).__previewReader = new addon.PreviewReader(r.sharedMemoryName)
+          } else {
+            console.warn('[preload] ilystream_preview.node not found')
+          }
+        } catch (e) {
+          console.error('[preload] failed to load preview reader:', e)
+        }
+      }
+      return r
+    },
+    selectPreviewSource: (monitorIndex: number) =>
+      ipcRenderer.invoke('engine:preview:select-source', { monitorIndex }) as Promise<{
+        ok: boolean
+        source?: string
+        captureDescription?: { hdr?: boolean }
+        error?: string
+      }>,
+    startBroadcast: async (opts: {
+      width: number
+      height: number
+      fps: number
+      monitorIndex?: number
+      desktopSourceId?: string
+      scene?: NativeBroadcastScene
+    }) => {
+      releaseSharedPreviewTexture()
+      releaseSharedBroadcastTexture()
+      return ipcRenderer.invoke('engine:broadcast:start', opts) as Promise<{
+        ok: boolean
+        width?: number
+        height?: number
+        fps?: number
+        error?: string
+      }>
+    },
+    attachBroadcastPreview: (canvasId: string) => {
+      sharedBroadcastCanvasId = canvasId
+      scheduleSharedBroadcastFrame()
+    },
+    detachBroadcastPreview: () => {
+      sharedBroadcastCanvasId = null
+      if (sharedBroadcastAnimationFrame !== null) {
+        ;(globalThis as any).cancelAnimationFrame(sharedBroadcastAnimationFrame)
+        sharedBroadcastAnimationFrame = null
+      }
+    },
+    getBroadcastPreviewStats: () => sharedBroadcastTexture
+      ? {
+          presentation: 'shared-texture' as const,
+          width: sharedBroadcastWidth,
+          height: sharedBroadcastHeight,
+          frames: sharedBroadcastFrameCount,
+          fps: sharedBroadcastFps
+        }
+      : null,
+    updateBroadcastScene: (scene: NativeBroadcastScene) =>
+      ipcRenderer.invoke('engine:broadcast:update-scene', scene) as Promise<{
+        ok: boolean
+        error?: string
+      }>,
+    updateBroadcastSourceFrame: (frame: NativeLiveSourceFrame) =>
+      ipcRenderer.invoke('engine:broadcast:update-source-frame', frame) as Promise<{
+        ok: boolean
+        error?: string
+      }>,
+    stopBroadcast: async () => {
+      releaseSharedBroadcastTexture()
+      return ipcRenderer.invoke('engine:broadcast:stop') as Promise<{ ok: boolean }>
+    },
+    requestBroadcastFrame: (timestamp: number, outputId = 'horizontal') => {
+      const imported = sharedBroadcastTexture
+      if (!imported || sharedBroadcastWidth <= 0 || sharedBroadcastHeight <= 0) return false
+
+      const sourceFrame = imported.getVideoFrame()
+      try {
+        const frame = new (globalThis as any).VideoFrame(sourceFrame, { timestamp })
+        ;(globalThis as any).postMessage(
+          { __ilyNativeBroadcastFrame: true, outputId, frame },
+          '*',
+          [frame]
+        )
+        return true
+      } finally {
+        sourceFrame.close()
+      }
+    },
+    stopPreview: async () => {
+      releaseSharedPreviewTexture()
+      if ((globalThis as any).__previewReader) {
+        ;(globalThis as any).__previewReader.close()
+        ;(globalThis as any).__previewReader = null
+      }
+      return ipcRenderer.invoke('engine:preview:stop') as Promise<{ ok: boolean }>
+    },
+    requestFrame: () => {
+      // Check shared memory reader first!
+      if ((globalThis as any).__previewReader) {
+         const frame = (globalThis as any).__previewReader.readLatestFrame()
+         if (frame) {
+           return Promise.resolve(frame)
+         }
+      }
+      return ipcRenderer.invoke('engine:preview:frame') as Promise<{ width: number; height: number; data: Uint8Array } | null>
+    }
   }
 }
 

@@ -41,7 +41,8 @@ export const RENDERER_EVENT_CHANNELS = [
   'system:log',
   'virtualcamera:status-changed',
   'system:update-status',
-  'studio:active-scene-changed'
+  'studio:active-scene-changed',
+  'engine:frame'
 ] as const
 
 export type RendererEventChannel = (typeof RENDERER_EVENT_CHANNELS)[number]

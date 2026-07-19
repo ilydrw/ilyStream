@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, useImperativeHandle, forwardRef, useId } from 'react'
 import { useStudioStore } from '../../../stores/studio-store'
 import { resolveLayerLayout, type StudioLayer } from '../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../components/ui/ContextMenu'
@@ -26,6 +26,7 @@ import { CanvasToolbar } from './CanvasToolbar'
 import { CanvasStatusBar } from './CanvasStatusBar'
 import { useRenderLoop } from './useRenderLoop'
 import { useBrowserSources } from './useBrowserSources'
+import { shouldPresentNativeProgramPreview, useNativeDisplayOutput } from './useNativeDisplayOutput'
 
 function CanvasGridOverlay({ gridSize }: { gridSize: number }) {
   const normalizedGridSize = normalizeGridSize(gridSize)
@@ -80,8 +81,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const nativeProgramCanvasId = `ily-native-program-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const secondaryPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageCache = useRef<Record<string, HTMLImageElement>>({})
+  const directImageSourcesRef = useRef<Record<string, string>>({})
   const mediaFrameCache = useRef<Record<string, CachedMediaFrame>>({})
   const browserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
   const hasRoutedStreamOutputs = streamOutputs.some(output => output.active)
@@ -92,6 +95,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const safeGridSize = useMemo(() => normalizeGridSize(gridSize), [gridSize])
   const previewSceneId = useStudioStore(s => s.previewSceneId)
   const activeSceneId = useStudioStore(s => s.activeSceneId)
+  const transitionActive = useStudioStore(s => s.transitionState.isActive)
   const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
 
   // IconVideo Encoders
@@ -113,6 +117,28 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     outputId: 'virtual-camera-session', format: virtualCameraOutput?.inputFormat ?? 'bgra', fps: virtualCameraOutput?.fps ?? outputFps,
     bitrate: virtualCameraOutput?.bitrateKbps ?? outputBitrateKbps, width: virtualCameraOutput?.width ?? 1280, height: virtualCameraOutput?.height ?? 720, codec: virtualCameraOutput?.codec
   }, () => { if (virtualCameraOutput?.active) void window.api?.virtualCamera?.stop?.() })
+
+  const nativeHorizontalOutputRequested = !isPreview && Boolean(horizontalOutput?.active)
+  const nativeProgramPreviewRequested = shouldPresentNativeProgramPreview(isPreview, isVisible, aspectRatio)
+  const nativeDisplayOutput = useNativeDisplayOutput({
+    enabled: nativeHorizontalOutputRequested || nativeProgramPreviewRequested,
+    presentCanvasId: nativeProgramPreviewRequested ? nativeProgramCanvasId : undefined,
+    encodeFrames: nativeHorizontalOutputRequested,
+    scene: activeScene,
+    canvasWidth,
+    canvasHeight,
+    outputWidth: nativeHorizontalOutputRequested ? (horizontalOutput?.width ?? 1920) : canvasWidth,
+    outputHeight: nativeHorizontalOutputRequested ? (horizontalOutput?.height ?? 1080) : canvasHeight,
+    fps: horizontalOutput?.fps ?? outputFps,
+    transitionActive,
+    sourceRevision: streamReady,
+    videoRefs,
+    browserFrameCache,
+    mediaFrameCache,
+    encoderWorkerRef: horizontalEncoderWorkerRef
+  })
+  const nativeHorizontalOutputActive = nativeHorizontalOutputRequested && nativeDisplayOutput.active
+  const nativeProgramPreviewActive = nativeDisplayOutput.previewActive
 
   // Adaptive bitrate: main watches per-output drop counters and asks the
   // matching layout encoder to step its bitrate down/up. Reconfigure is live
@@ -137,8 +163,30 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   // Browser Sources
   useBrowserSources({
     layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache,
-    framesNeeded: browserFramesNeeded
+    framesNeeded: browserFramesNeeded || nativeHorizontalOutputRequested || nativeProgramPreviewRequested
   })
+
+  useEffect(() => {
+    const activeImageIds = new Set<string>()
+    for (const layer of activeScene.layers) {
+      if (layer.type !== 'image' || !layer.config.assetPath) continue
+      const source = resolveImageSource(layer.config.assetPath)
+      activeImageIds.add(layer.id)
+      if (directImageSourcesRef.current[layer.id] === source) continue
+
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = source
+      imageCache.current[layer.id] = image
+      directImageSourcesRef.current[layer.id] = source
+    }
+
+    for (const layerId of Object.keys(directImageSourcesRef.current)) {
+      if (activeImageIds.has(layerId)) continue
+      delete directImageSourcesRef.current[layerId]
+      delete imageCache.current[layerId]
+    }
+  }, [activeScene.layers])
 
   // Render Loop
   const { fps, horizontalCanvasRef, verticalCanvasRef } = useRenderLoop({
@@ -146,7 +194,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     videoRefs, mediaFrameCache, browserFrameCache, imageCache, encoderWorkerRef,
     horizontalEncoderWorkerRef, verticalEncoderWorkerRef, virtualCameraEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
     captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible,
-    forceVerticalCanvas, forceHorizontalCanvas
+    forceVerticalCanvas, forceHorizontalCanvas, nativeHorizontalOutputActive, nativeProgramPreviewActive
   })
 
   useImperativeHandle(ref, () => ({
@@ -657,7 +705,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                   onMouseDown={handleCanvasMouseDown}
                   onContextMenu={(e) => handleEditorContextMenu(e, null, aspectRatio)}
                 >
-                <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="block w-full h-full" />
+                <canvas
+                  id={nativeProgramCanvasId}
+                  ref={canvasRef}
+                  width={canvasWidth}
+                  height={canvasHeight}
+                  className="block w-full h-full"
+                  data-renderer={nativeProgramPreviewActive ? 'native' : 'canvas'}
+                  style={{
+                    imageRendering: nativeProgramPreviewActive && scale > 1 ? 'pixelated' : 'auto'
+                  }}
+                />
                 {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
                 <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} codec={outputCodec} />
                 <InteractionLayer

@@ -45,7 +45,8 @@ self.onmessage = async (e) => {
     ctx = offscreenCanvas!.getContext('2d', {
       alpha: false,
       desynchronized: true,
-      willReadFrequently: captureFormat === 'bgra'
+      willReadFrequently: captureFormat === 'bgra',
+      colorSpace: 'srgb'
     })!
     // 'high' uses a bicubic/lanczos resampler. Cheap on GPU, expensive on the
     // CPU-backed canvas that we hit for the BGRA virtual-camera path. 'low'

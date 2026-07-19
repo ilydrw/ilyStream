@@ -13,6 +13,8 @@ import { registerAvatarProtocol } from './lib/avatar-protocol'
 import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
 import { startNativeCameraServer, stopAllNativeCameras } from './native-camera'
+import { startMemoryTelemetry, stopMemoryTelemetry } from './system/memory-telemetry'
+import { disposeEnginePreview } from './ipc/handlers/engine-handlers'
 
 // Global logger setup
 setupLogger()
@@ -139,8 +141,8 @@ function createWindow(): void {
     backgroundColor: '#0f1115',
     icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false
@@ -309,6 +311,7 @@ app.whenReady().then(async () => {
   })
 
   startHistoryPrune()
+  startMemoryTelemetry()
 })
 
 function startHistoryPrune(): void {
@@ -327,6 +330,7 @@ function startHealthWatchdog(): void {
 }
 
 function stopBackgroundTimers(): void {
+  stopMemoryTelemetry()
   if (historyPruneTimer) {
     clearInterval(historyPruneTimer)
     historyPruneTimer = null
@@ -349,6 +353,7 @@ app.on('before-quit', (event) => {
   disposeAutoUpdates()
   void (async () => {
     try {
+      await disposeEnginePreview()
       if (services) await services.dispose()
     } finally {
       app.exit(0)

@@ -11,13 +11,14 @@
     "build:tiktok-bridge": "tsc -p services/tiktok-auth-bridge/tsconfig.build.json",
     "start:tiktok-bridge": "node services/tiktok-auth-bridge/dist/server.js",
     "build:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/build.ps1",
+    "build:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File native/engine/build.ps1",
     "install:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/install.ps1",
     "uninstall:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/uninstall.ps1",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish never",
-    "release": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish always",
+    "package": "npm run build:native-audio && npm run build:virtual-camera && npm run build:engine && npm run build && electron-builder --win --publish never",
+    "release": "npm run build:native-audio && npm run build:virtual-camera && npm run build:engine && npm run build && electron-builder --win --publish always",
     "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p services/tiktok-auth-bridge/tsconfig.json",
     "test": "vitest run"
   },
@@ -33,6 +34,18 @@
       {
         "from": "src/renderer/utils/native-audio/build/Release/audio_engine.node",
         "to": "native-audio/audio_engine.node"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_napi.node",
+        "to": "native-engine/ilystream_napi.node"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_preview.node",
+        "to": "native-engine/ilystream_preview.node"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_engine.dll",
+        "to": "native-engine/ilystream_engine.dll"
       },
       {
         "from": "resources/ilyStream-Logo.svg",
