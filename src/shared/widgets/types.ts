@@ -12,11 +12,16 @@ export interface Widget<TConfig = unknown> {
 export interface AlertsConfig {
   accentColor: string
   textColor: string
+  /** Card background as hex; combined with backgroundOpacity into the glass tint. */
+  backgroundColor: string
+  /** 0–1 card background alpha. 0 = fully transparent (shadow/blur scale away too). */
   backgroundOpacity: number
   blur: number
   duration: number
   fontFamily: string
   borderRadius: number
+  /** Card border thickness in px; 0 removes the border. */
+  borderWidth: number
   glassIntensity: number
   animationStyle: 'slide' | 'fade' | 'zoom'
   animationDuration?: number

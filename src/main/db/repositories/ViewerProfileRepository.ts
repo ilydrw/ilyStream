@@ -225,10 +225,12 @@ export class ViewerProfileRepository extends BaseRepository {
     const primaryPlatform = input.primaryPlatform || firstAccount?.platform || null
     const profilePictureUrl = input.profilePictureUrl || firstAccount?.profilePictureUrl || null
 
+    const primaryUsername = input.primaryUsername || firstAccount?.username || null
+
     this.db.prepare(`
-      INSERT INTO viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).run(id, displayName, profilePictureUrl, input.notes || '', primaryPlatform)
+      INSERT INTO viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform, primary_username, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(id, displayName, profilePictureUrl, input.notes || '', primaryPlatform, primaryUsername)
 
     for (const account of input.accounts || []) {
       this.addAccountToProfile(id, account)
@@ -243,13 +245,14 @@ export class ViewerProfileRepository extends BaseRepository {
 
     this.db.prepare(`
       UPDATE viewer_profiles
-      SET display_name = ?, profile_picture_url = ?, notes = ?, primary_platform = ?, updated_at = CURRENT_TIMESTAMP
+      SET display_name = ?, profile_picture_url = ?, notes = ?, primary_platform = ?, primary_username = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       safeDisplayName(patch.displayName ?? existing.displayName),
       patch.profilePictureUrl !== undefined ? patch.profilePictureUrl : existing.profilePictureUrl,
       patch.notes ?? existing.notes,
       patch.primaryPlatform === undefined ? existing.primaryPlatform : patch.primaryPlatform,
+      patch.primaryUsername !== undefined ? patch.primaryUsername : existing.primaryUsername,
       profileId
     )
 

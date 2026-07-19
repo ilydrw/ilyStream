@@ -1,13 +1,51 @@
 import { Widget } from '../../../shared/widgets'
 import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+function parseHexRgb(value: unknown): { r: number; g: number; b: number } | null {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  if (!match) return null
+  let hex = match[1]
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('')
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  }
+}
+
 export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): string {
   const cfg = (_widget.config as any) || {}
-  const glassIntensity = cfg.glassIntensity ?? 0.5
-  const bgOpacity = (0.2 + (glassIntensity * 0.4))
-  const blur = glassIntensity * 60
+  const glassIntensity = clamp01(Number(cfg.glassIntensity ?? 0.5))
+  // Explicit background-opacity slider wins and goes all the way to 0
+  // (fully transparent); widgets saved before the slider existed keep the
+  // legacy glass-derived value (0.2–0.6).
+  const bgOpacity = Number.isFinite(Number(cfg.backgroundOpacity))
+    ? clamp01(Number(cfg.backgroundOpacity))
+    : 0.2 + glassIntensity * 0.4
+  const blur = Number.isFinite(Number(cfg.blur))
+    ? Math.min(120, Math.max(0, Number(cfg.blur)))
+    : glassIntensity * 60
   const borderRadius = cfg.borderRadius ?? 40
+  const borderWidth = Number.isFinite(Number(cfg.borderWidth))
+    ? Math.min(20, Math.max(0, Number(cfg.borderWidth)))
+    : 1
   const fontFamily = cfg.fontFamily || 'Inter'
+  const backgroundRgb = parseHexRgb(cfg.backgroundColor) || { r: 10, g: 12, b: 18 }
+  const textColor = typeof cfg.textColor === 'string' && /^#[0-9a-f]{3,8}$/i.test(cfg.textColor)
+    ? cfg.textColor
+    : '#ffffff'
+  // Panel chrome (drop shadow, inner glow, shine, frost) scales with the
+  // background tint so a transparent card is truly invisible, not a ghost
+  // box of shadow and blur. At the legacy default alpha (0.4) the scale is
+  // exactly 1, preserving the original look.
+  const chromeScale = Math.min(1, bgOpacity / 0.4)
+  const frostScale = Math.min(1, bgOpacity * 4)
 
   return `<!doctype html>
 <html lang="en">
@@ -20,12 +58,18 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     :root {
       --cyber-blue: #00f2ff;
       --cyber-pink: #ff00e5;
-      --glass-bg: rgba(10, 12, 18, ${bgOpacity});
+      --glass-bg: rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, ${bgOpacity});
       --glass-border: rgba(255, 255, 255, 0.15);
       --liquid-shine: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
       --radius: ${borderRadius}px;
       --font-main: "${fontFamily}", Inter, "Segoe UI", Arial, sans-serif;
-      --blur: ${blur}px;
+      --blur: ${(blur * frostScale).toFixed(1)}px;
+      --card-border-width: ${borderWidth}px;
+      --card-shadow-alpha: ${(0.6 * chromeScale).toFixed(3)};
+      --card-inner-alpha: ${(0.05 * chromeScale).toFixed(3)};
+      --card-shine: ${chromeScale.toFixed(3)};
+      --card-saturate: ${100 + Math.round(150 * frostScale)}%;
+      --alert-text-color: ${textColor};
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,16 +140,16 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       align-items: center;
       gap: 20px;
       overflow: visible;
-      border: 1px solid var(--glass-border);
+      border: var(--card-border-width) solid var(--glass-border);
       border-radius: var(--radius);
       background: var(--glass-bg);
       padding: 35px 50px;
       text-align: center;
       box-shadow:
-        0 30px 80px rgba(0, 0, 0, 0.6),
-        inset 0 0 20px rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(var(--blur)) saturate(250%);
-      -webkit-backdrop-filter: blur(var(--blur)) saturate(250%);
+        0 30px 80px rgba(0, 0, 0, var(--card-shadow-alpha)),
+        inset 0 0 20px rgba(255, 255, 255, var(--card-inner-alpha));
+      backdrop-filter: blur(var(--blur)) saturate(var(--card-saturate));
+      -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--card-saturate));
     }
 
     .alert-content::after {
@@ -114,6 +158,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       inset: 0;
       border-radius: inherit;
       background: var(--liquid-shine);
+      opacity: var(--card-shine);
       pointer-events: none;
     }
 
@@ -141,9 +186,9 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     .cyber-border .alert-content::before {
       content: "";
       position: absolute;
-      inset: -3px;
-      border-radius: 35px;
-      padding: 3px;
+      inset: calc(var(--cyber-width, 3px) * -1);
+      border-radius: inherit;
+      padding: var(--cyber-width, 3px);
       background: linear-gradient(90deg, var(--cyber-blue), var(--cyber-pink), var(--cyber-blue));
       background-size: 200% 100%;
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -221,7 +266,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     }
 
     .alert-main-text {
-      color: #fff;
+      color: var(--alert-text-color, #fff);
       font-size: 42px;
       font-weight: 900;
       line-height: 1.1;
@@ -651,10 +696,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         const alertContent = document.createElement('div');
         alertContent.className = 'alert-content';
         if (!cleanAlertType) {
-          alertContent.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
-        }
-        if (!cleanAlertType && !isCyber) {
-          alertContent.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
+          applyCardStyle(alertContent, alert, isCyber);
         }
 
         const innerHtml = [];
@@ -664,19 +706,25 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         } else if (layout !== 'text-only' && alert.imageUrl) {
           const imageLeft = clampNumber(alert.imageLeft, -1000, 1000, 0);
           const imageTop = clampNumber(alert.imageTop, -1000, 1000, 0);
+          const imageSize = clampNumber(alert.imageSize, 0, 1024, 0);
+          const imageStyle = imageSize > 0 ? ' style="width: ' + imageSize + 'px; height: ' + imageSize + 'px"' : '';
           innerHtml.push('<div class="alert-image-container" style="transform: translate(' + imageLeft + 'px, ' + imageTop + 'px)">');
-          innerHtml.push('  <img class="alert-image" src="' + escapeAttr(window.__ilyAvatar.proxy(alert.imageUrl)) + '" alt="" />');
+          innerHtml.push('  <img class="alert-image"' + imageStyle + ' src="' + escapeAttr(window.__ilyAvatar.proxy(alert.imageUrl)) + '" alt="" />');
           innerHtml.push('</div>');
         }
 
         if (!cleanAlertType && layout !== 'image-only') {
           const fontSize = clampNumber(alert.fontSize, 12, 180, layout === 'side-by-side' ? 34 : 42);
           const fontWeight = clampNumber(alert.fontWeight, 100, 1000, 900);
+          const placement = normalizeImagePlacement(alert.imagePlacement);
+          const effectiveRow = placement ? (placement === 'left' || placement === 'right') : layout === 'side-by-side';
+          const textAlign = normalizeTextAlign(alert.textAlign) || (effectiveRow ? 'left' : 'center');
           const textStyle = [
             'font-size: ' + fontSize + 'px',
-            'color: ' + safeCssValue(alert.textColor, '#ffffff'),
+            'color: ' + safeCssValue(alert.textColor, 'var(--alert-text-color)'),
             'text-shadow: ' + safeCssValue(alert.textShadow, '0 4px 15px rgba(0,0,0,0.5)'),
-            'font-weight: ' + fontWeight
+            'font-weight: ' + fontWeight,
+            'text-align: ' + textAlign
           ].join('; ');
 
           innerHtml.push('<div class="alert-text">');
@@ -853,6 +901,116 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       return 'stacked';
     }
 
+    function normalizeImagePlacement(value) {
+      if (value === 'left' || value === 'right' || value === 'top' || value === 'bottom') return value;
+      return '';
+    }
+
+    function normalizeTextAlign(value) {
+      if (value === 'left' || value === 'center' || value === 'right') return value;
+      return '';
+    }
+
+    // Widget-level blur in px, pre-scaling; per-alert frost scales from this.
+    const BASE_BLUR_PX = ${blur};
+
+    // Mirrors composeAlertBackground in src/shared/alert-rules.ts: combine the
+    // rule's background color with its 0–100 opacity slider. Opacity -1 (or
+    // absent) keeps whatever alpha the color string itself carries.
+    function composeBackground(color, opacityPercent) {
+      const parsed = parseCssColor(typeof color === 'string' ? color : '');
+      if (!parsed) return { css: null, alpha: null };
+      const pct = Number(opacityPercent);
+      const alpha = Number.isFinite(pct) && pct >= 0
+        ? Math.min(100, Math.max(0, pct)) / 100
+        : parsed.alpha;
+      return {
+        css: 'rgba(' + parsed.r + ', ' + parsed.g + ', ' + parsed.b + ', ' + (Math.round(alpha * 1000) / 1000) + ')',
+        alpha: alpha
+      };
+    }
+
+    function parseCssColor(value) {
+      const raw = value.trim();
+      const hexMatch = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+      if (hexMatch) {
+        let hex = hexMatch[1];
+        if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1
+        };
+      }
+      const rgbMatch = raw.match(/^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*(?:,\\s*([0-9.]+)\\s*)?\\)$/i);
+      if (rgbMatch) {
+        const alpha = rgbMatch[4] === undefined ? 1 : Math.min(1, Math.max(0, Number(rgbMatch[4])));
+        if (!Number.isFinite(alpha)) return null;
+        return {
+          r: Math.min(255, Math.max(0, Number(rgbMatch[1]))),
+          g: Math.min(255, Math.max(0, Number(rgbMatch[2]))),
+          b: Math.min(255, Math.max(0, Number(rgbMatch[3]))),
+          alpha: alpha
+        };
+      }
+      return null;
+    }
+
+    // Applies the rule's full card styling. Panel chrome (shadow, inner glow,
+    // shine, frost) scales with the background alpha so opacity 0 renders a
+    // truly invisible card instead of a ghost box of shadow and blur.
+    function applyCardStyle(content, alert, isCyber) {
+      const bg = composeBackground(alert.backgroundColor, alert.backgroundOpacity);
+      if (bg.css) {
+        content.style.background = bg.css;
+      } else {
+        content.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
+      }
+
+      if (bg.alpha !== null) {
+        const chromeScale = Math.min(1, bg.alpha / 0.4);
+        const frostScale = Math.min(1, bg.alpha * 4);
+        content.style.setProperty('--card-shadow-alpha', (0.6 * chromeScale).toFixed(3));
+        content.style.setProperty('--card-inner-alpha', (0.05 * chromeScale).toFixed(3));
+        content.style.setProperty('--card-shine', chromeScale.toFixed(3));
+        content.style.setProperty('--blur', (BASE_BLUR_PX * frostScale).toFixed(1) + 'px');
+        content.style.setProperty('--card-saturate', (100 + Math.round(150 * frostScale)) + '%');
+      }
+
+      if (!isCyber) {
+        content.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
+      }
+
+      const borderWidth = Number(alert.borderWidth);
+      if (Number.isFinite(borderWidth)) {
+        const width = Math.min(20, Math.max(0, borderWidth));
+        content.style.borderWidth = width + 'px';
+        content.style.setProperty('--cyber-width', Math.max(1, width) + 'px');
+      }
+
+      const radius = Number(alert.borderRadius);
+      if (Number.isFinite(radius) && radius >= 0) {
+        content.style.borderRadius = Math.min(200, radius) + 'px';
+      }
+
+      const paddingX = Number(alert.paddingX);
+      const paddingY = Number(alert.paddingY);
+      if ((Number.isFinite(paddingX) && paddingX >= 0) || (Number.isFinite(paddingY) && paddingY >= 0)) {
+        const px = Number.isFinite(paddingX) && paddingX >= 0 ? Math.min(300, paddingX) : 50;
+        const py = Number.isFinite(paddingY) && paddingY >= 0 ? Math.min(300, paddingY) : 35;
+        content.style.padding = py + 'px ' + px + 'px';
+      }
+
+      const placement = normalizeImagePlacement(alert.imagePlacement);
+      if (placement) {
+        content.style.flexDirection =
+          placement === 'left' ? 'row' :
+          placement === 'right' ? 'row-reverse' :
+          placement === 'top' ? 'column' : 'column-reverse';
+      }
+    }
+
     function getCleanAlertType(alert) {
       if (!alert) return '';
       if (alert.variant === 'clean-gift') return 'gift';
@@ -1004,8 +1162,9 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         animationIn: 'bounce',
         animationOut: 'fade',
         layout: 'stacked',
-        textColor: '#ffffff',
-        backgroundColor: 'rgba(10, 12, 18, 0.72)',
+        // No backgroundColor here on purpose: the preview card falls through
+        // to var(--glass-bg) so the widget editor's background color/opacity
+        // sliders are visible live in the preview.
         borderColor: 'gradient',
         fontSize: 42,
         fontWeight: 900,

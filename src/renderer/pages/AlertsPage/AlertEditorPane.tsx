@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { IconBolt, IconFilter, IconSend, IconTypography, IconVolume, IconPhoto, IconLayoutGrid, IconAdjustments } from '@tabler/icons-react'
+import { IconBolt, IconFilter, IconSend, IconTypography, IconVolume, IconPhoto, IconLayoutGrid, IconAdjustments, IconPalette } from '@tabler/icons-react'
 import { IconCopy, IconPlus, IconTrash } from '../../components/ui/icons'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import type { AlertRule, AlertRuleEventType, AlertRulePlatform } from '../../../shared/alert-rules'
 import {
   ALERT_RULE_EVENT_TYPES,
   ALERT_RULE_PLATFORMS,
-  SUPPORTED_EVENTS_BY_PLATFORM
+  SUPPORTED_EVENTS_BY_PLATFORM,
+  composeAlertBackground
 } from '../../../shared/alert-rules'
 import type { AssetFile } from '../../hooks/useAssets'
 import type { SoundFile } from '../../hooks/useSoundboard'
@@ -258,18 +259,20 @@ function Editor({
                   </Field>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     <ColorField label="Text" value={rule.textColor} onChange={(v) => update({ textColor: v })} />
-                    <ColorField label="Background" value={normalizeColorInput(rule.backgroundColor, '#000000')} onChange={(v) => update({ backgroundColor: v })} />
                     <NumberField label="Size" suffix="px" value={rule.fontSize} min={12} max={120} onChange={(v) => update({ fontSize: v })} />
                     <NumberField label="Weight" value={rule.fontWeight} min={100} max={900} onChange={(v) => update({ fontWeight: v })} />
+                    <SelectField label="Alignment" value={rule.textAlign ?? 'auto'} options={['auto', 'left', 'center', 'right']} onChange={(v) => update({ textAlign: v as AlertRule['textAlign'] })} />
                   </div>
                 </div>
               )}
             </EditorGroup>
 
+            <CardStyleGroup rule={rule} update={update} />
+
             <EditorGroup
               icon={IconLayoutGrid}
               title="Layout & animation"
-              subtitle="How the alert enters, holds, and exits"
+              subtitle="How the alert is arranged, enters, holds, and exits"
               headerExtras={
                 <div className="hidden md:flex items-center gap-1.5 ml-auto text-[10px]">
                   <MetaBadge label="In" value={rule.animationIn} />
@@ -284,20 +287,15 @@ function Editor({
                 <SelectField label="Animation out" value={rule.animationOut} options={['fade', 'slide', 'tv-warp']} onChange={(v) => update({ animationOut: v as AlertRule['animationOut'] })} />
                 <NumberField label="Duration" suffix="ms" value={rule.durationMs} min={500} max={20000} onChange={(v) => update({ durationMs: v })} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                <ColorField
-                  label="Border / edge color"
-                  value={rule.borderColor === 'gradient' ? '#19c8ff' : normalizeColorInput(rule.borderColor, '#ffffff')}
-                  disabled={rule.borderColor === 'gradient'}
-                  onChange={(v) => update({ borderColor: v })}
-                />
-                <ToggleLine
-                  label="Animated gradient edge"
-                  hint="moving cyan → violet border; overrides the color above"
-                  value={rule.borderColor === 'gradient'}
-                  onChange={(on) => update({ borderColor: on ? 'gradient' : 'rgba(255,255,255,0.2)' })}
-                />
-              </div>
+              {rule.layout !== 'text-only' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <SelectField label="Image placement" value={rule.imagePlacement ?? 'auto'} options={['auto', 'left', 'right', 'top', 'bottom']} onChange={(v) => update({ imagePlacement: v as AlertRule['imagePlacement'] })} />
+                  <NumberField label="Image size" suffix="px" hint="0 = automatic" value={rule.imageSize ?? 0} min={0} max={1024} onChange={(v) => update({ imageSize: v })} />
+                  <NumberField label="Image offset X" suffix="px" value={rule.imageLeft ?? 0} min={-1000} max={1000} onChange={(v) => update({ imageLeft: v })} />
+                  <NumberField label="Image offset Y" suffix="px" value={rule.imageTop ?? 0} min={-1000} max={1000} onChange={(v) => update({ imageTop: v })} />
+                </div>
+              )}
+              <PositionOverride rule={rule} update={update} />
             </EditorGroup>
           </div>
         )}
@@ -324,6 +322,101 @@ function Editor({
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * Card (background + border + shape) controls. Background color and opacity
+ * are separate: the opacity slider recomposes the color's alpha and goes all
+ * the way to 0 for a fully transparent card (the overlay also scales the
+ * card's shadow/blur away as opacity approaches 0).
+ */
+function CardStyleGroup({ rule, update }: { rule: AlertRule; update: (patch: Partial<AlertRule>) => void }) {
+  // Legacy rules carry the alpha inside the rgba() color string; show that as
+  // the slider position until the user takes explicit control of it.
+  const composed = composeAlertBackground(rule.backgroundColor, rule.backgroundOpacity ?? -1)
+  const bgOpacityPct = composed.alpha !== null ? Math.round(composed.alpha * 100) : 100
+
+  const hasCustomRadius = (rule.borderRadius ?? -1) >= 0
+  const hasCustomPadding = (rule.paddingX ?? -1) >= 0 || (rule.paddingY ?? -1) >= 0
+
+  return (
+    <EditorGroup icon={IconPalette} title="Card" subtitle="The panel behind the alert — turn opacity to 0 for no card at all">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+        <ColorField
+          label="Background"
+          value={normalizeColorInput(rule.backgroundColor, '#000000')}
+          onChange={(v) => update({
+            backgroundColor: v,
+            // Picking a hex color would otherwise snap a legacy rgba() rule to
+            // fully opaque — pin the slider's current value at the same time.
+            backgroundOpacity: (rule.backgroundOpacity ?? -1) >= 0 ? rule.backgroundOpacity : bgOpacityPct
+          })}
+        />
+        <RangeField label="Background opacity" value={bgOpacityPct} onChange={(v) => update({ backgroundOpacity: v })} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+        <ColorField
+          label="Border / edge color"
+          value={rule.borderColor === 'gradient' ? '#19c8ff' : normalizeColorInput(rule.borderColor, '#ffffff')}
+          disabled={rule.borderColor === 'gradient'}
+          onChange={(v) => update({ borderColor: v })}
+        />
+        <ToggleLine
+          label="Animated gradient edge"
+          hint="moving cyan → violet border; overrides the color above"
+          value={rule.borderColor === 'gradient'}
+          onChange={(on) => update({ borderColor: on ? 'gradient' : 'rgba(255,255,255,0.2)' })}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <NumberField label="Border width" suffix="px" hint="0 removes the border" value={rule.borderWidth ?? 1} min={0} max={20} onChange={(v) => update({ borderWidth: v })} />
+        {hasCustomRadius && (
+          <NumberField label="Corner radius" suffix="px" value={rule.borderRadius} min={0} max={200} onChange={(v) => update({ borderRadius: v })} />
+        )}
+        {hasCustomPadding && (
+          <>
+            <NumberField label="Padding X" suffix="px" value={Math.max(0, rule.paddingX ?? 50)} min={0} max={300} onChange={(v) => update({ paddingX: v, paddingY: (rule.paddingY ?? -1) >= 0 ? rule.paddingY : 35 })} />
+            <NumberField label="Padding Y" suffix="px" value={Math.max(0, rule.paddingY ?? 35)} min={0} max={300} onChange={(v) => update({ paddingY: v, paddingX: (rule.paddingX ?? -1) >= 0 ? rule.paddingX : 50 })} />
+          </>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ToggleLine
+          label="Custom corner radius"
+          hint="off = use the alerts widget's radius"
+          value={hasCustomRadius}
+          onChange={(on) => update({ borderRadius: on ? 24 : -1 })}
+        />
+        <ToggleLine
+          label="Custom padding"
+          hint="off = automatic per layout"
+          value={hasCustomPadding}
+          onChange={(on) => update(on ? { paddingX: 50, paddingY: 35 } : { paddingX: -1, paddingY: -1 })}
+        />
+      </div>
+    </EditorGroup>
+  )
+}
+
+/** Per-rule screen position; off defers to the global alert position setting. */
+function PositionOverride({ rule, update }: { rule: AlertRule; update: (patch: Partial<AlertRule>) => void }) {
+  const hasCustomPosition = (rule.alertTop ?? -1) >= 0 || (rule.alertLeft ?? -1) >= 0
+  return (
+    <>
+      <ToggleLine
+        label="Custom screen position"
+        hint="off = the global alert position from Settings → Alerts"
+        value={hasCustomPosition}
+        onChange={(on) => update(on ? { alertTop: 10, alertLeft: 50 } : { alertTop: -1, alertLeft: -1 })}
+      />
+      {hasCustomPosition && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in duration-200">
+          <RangeField label="Horizontal position" value={Math.max(0, rule.alertLeft ?? 50)} onChange={(v) => update({ alertLeft: v, alertTop: (rule.alertTop ?? -1) >= 0 ? rule.alertTop : 10 })} />
+          <RangeField label="Vertical position" value={Math.max(0, rule.alertTop ?? 10)} onChange={(v) => update({ alertTop: v, alertLeft: (rule.alertLeft ?? -1) >= 0 ? rule.alertLeft : 50 })} />
+        </div>
+      )}
+    </>
   )
 }
 

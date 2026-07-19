@@ -38,11 +38,13 @@ export const DEFAULT_LATEST_GIFTER_CONFIG: LatestGifterConfig = {
 export const DEFAULT_ALERTS_CONFIG: AlertsConfig = {
   accentColor: '#ff7a45',
   textColor: '#ffffff',
-  backgroundOpacity: 0.5,
-  blur: 50,
+  backgroundColor: '#0a0c12',
+  backgroundOpacity: 0.4,
+  blur: 30,
   duration: 5000,
   fontFamily: 'Inter',
   borderRadius: 40,
+  borderWidth: 1,
   glassIntensity: 0.5,
   animationStyle: 'fade',
   animationDuration: 800

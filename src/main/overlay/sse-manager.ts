@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { SSE_EVENT_HISTORY_LIMIT, SSE_PING_INTERVAL_MS, type OverlayChannel, type SseClient } from './types'
+import { writeToSseClient } from './sse-backpressure'
 
 export interface SseEventHistoryEntry {
   id: number
@@ -72,9 +73,7 @@ export class SSEManager {
 
     const data = `id: ${eventId}\ndata: ${serialized.json}\n\n`
     for (const client of [...clients]) {
-      try {
-        client.write(data)
-      } catch {
+      if (!writeToSseClient(client, data, `channel:${channel}`)) {
         clients.delete(client)
       }
     }
@@ -83,11 +82,9 @@ export class SSEManager {
 
   broadcastToAll(payload: unknown): void {
     const data = `data: ${serializeSsePayload(payload).json}\n\n`
-    for (const clients of this.channels.values()) {
+    for (const [channel, clients] of this.channels) {
       for (const client of [...clients]) {
-        try {
-          client.write(data)
-        } catch {
+        if (!writeToSseClient(client, data, `channel:${channel}`)) {
           clients.delete(client)
         }
       }
@@ -100,9 +97,7 @@ export class SSEManager {
     this.pingTimer = setInterval(() => {
       for (const [channel, clients] of this.channels) {
         for (const client of [...clients]) {
-          try {
-            client.write(': ping\n\n')
-          } catch {
+          if (!writeToSseClient(client, ': ping\n\n', `channel:${channel}`)) {
             clients.delete(client)
           }
         }

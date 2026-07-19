@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { IconPlayerPlay, IconRefresh } from '../../components/ui/icons'
-import { IconPhoto } from '@tabler/icons-react'
 import type { AlertRule } from '../../../shared/alert-rules'
+import { composeAlertBackground } from '../../../shared/alert-rules'
 import type { SoundFile } from '../../hooks/useSoundboard'
 import type { AssetFile } from '../../hooks/useAssets'
 
@@ -30,40 +30,85 @@ const SAMPLE_VARS: Record<string, string> = {
   gifterName: ''
 }
 
+/**
+ * Stand-in for the viewer avatar / gift icon the overlay resolves at runtime
+ * when "Use the event's image" is on and no asset is picked. Inline SVG so
+ * the preview never depends on the network.
+ */
+const SAMPLE_EVENT_IMAGE = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
+  '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+  '<stop offset="0" stop-color="#19C8FF"/><stop offset="1" stop-color="#6E80FF"/>' +
+  '</linearGradient></defs>' +
+  '<rect width="160" height="160" rx="80" fill="url(#g)"/>' +
+  '<text x="80" y="103" font-family="Inter,Segoe UI,Arial" font-size="64" font-weight="800" fill="rgba(10,14,24,0.62)" text-anchor="middle">S</text>' +
+  '</svg>'
+)
+
 function renderTemplate(template: string): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => SAMPLE_VARS[key] ?? `{${key}}`)
 }
 
 /**
- * Visual approximation of how the alert will render on the overlay. Renders
- * a frame of the alert at rest using the rule's actual colors / template /
- * layout, plus a "Play" button that re-mounts the alert with a fade-in so
- * the user gets immediate feedback when tweaking settings.
+ * Visual approximation of how the alert will render on the overlay, built
+ * from the rule's actual style fields (background + opacity, border, radius,
+ * padding, image placement/size, text alignment). A "Play" button re-mounts
+ * the card with a fade-in for quick feedback while tweaking.
  *
  * Not a perfect-fidelity preview — animations are simplified to a fade-in;
  * actual `animationIn`/`animationOut` (slide, bounce, zoom, tv-warp) still
- * fire on the real overlay. A note under the preview surfaces what's set.
+ * fire on the real overlay.
  */
 export function AlertLivePreview({ rule, sounds, images }: AlertLivePreviewProps) {
   const [replayKey, setReplayKey] = useState(0)
   const selectedSound = sounds.find(s => s.id === rule.soundId)
   const selectedImage = images.find(i => i.id === rule.imageAssetId)
 
+  // Same scheme + path the asset library thumbnails use. When no asset is
+  // picked but the rule uses the event's own image, show the sample avatar
+  // so the preview mirrors what the overlay does at runtime.
   const imageSrc = (() => {
     if (!rule.imageEnabled) return null
-    if (selectedImage) return `asset://image/${selectedImage.id}`
+    if (selectedImage) return `asset:///app/${encodeURIComponent(selectedImage.id)}`
+    if (rule.useEventImage) return SAMPLE_EVENT_IMAGE
     return null
   })()
   const text = rule.textEnabled ? renderTemplate(rule.textTemplate || '') : ''
   const showText = rule.textEnabled && text.trim().length > 0
   const showImage = rule.imageEnabled
-  const cleanType = getCleanPreviewType(rule)
 
   const useImageInLayout = showImage && rule.layout !== 'text-only'
   const useTextInLayout = showText && rule.layout !== 'image-only'
 
   const isSideBySide = rule.layout === 'side-by-side'
-  const imageSize = isSideBySide ? 60 : 80
+  // The preview renders at roughly 0.4× overlay scale.
+  const PREVIEW_SCALE = 0.4
+  // Overlay defaults: 200px stacked / 120px side-by-side.
+  const imageSize = (rule.imageSize ?? 0) > 0
+    ? Math.max(24, Math.min(160, Math.round(rule.imageSize * PREVIEW_SCALE)))
+    : (isSideBySide ? 48 : 80)
+
+  const composedBg = composeAlertBackground(rule.backgroundColor, rule.backgroundOpacity ?? -1)
+  // Fallback mirrors the overlay's widget-level default glass tint.
+  const previewBg = composedBg.css || rule.backgroundColor || 'rgba(10, 12, 18, 0.4)'
+  const previewBorderWidth = Math.min(12, Math.max(0, rule.borderWidth ?? 1))
+  const previewRadius = (rule.borderRadius ?? -1) >= 0 ? Math.min(60, rule.borderRadius) : 16
+  const placement = rule.imagePlacement && rule.imagePlacement !== 'auto'
+    ? rule.imagePlacement
+    : (isSideBySide ? 'left' : 'top')
+  const effectiveRow = placement === 'left' || placement === 'right'
+  const previewTextAlign = rule.textAlign && rule.textAlign !== 'auto'
+    ? rule.textAlign
+    : (effectiveRow ? 'left' : 'center')
+  const hasCustomPadding = (rule.paddingX ?? -1) >= 0 || (rule.paddingY ?? -1) >= 0
+  const previewPadding = hasCustomPadding
+    ? `${Math.round(Math.max(0, rule.paddingY ?? 35) * PREVIEW_SCALE)}px ${Math.round(Math.max(0, rule.paddingX ?? 50) * PREVIEW_SCALE)}px`
+    : '14px 18px'
+
+  // Offsets are overlay pixels too — scale them the same way so nudging the
+  // image in the editor moves the preview proportionally.
+  const imageOffsetX = Math.round((rule.imageLeft ?? 0) * PREVIEW_SCALE)
+  const imageOffsetY = Math.round((rule.imageTop ?? 0) * PREVIEW_SCALE)
 
   return (
     <div className="rounded-lg border border-white/[0.08] bg-black/30 overflow-hidden">
@@ -94,168 +139,82 @@ export function AlertLivePreview({ rule, sounds, images }: AlertLivePreviewProps
           background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0 8px, transparent 8px 16px)'
         }}
       >
-        {cleanType ? (
-          <CleanPreviewCard
-            key={replayKey}
-            type={cleanType}
-            imageSrc={imageSrc}
-            showImage={showImage}
-          />
-        ) : (
-          <div
-            key={replayKey}
-            className="animate-in fade-in zoom-in-95 duration-300"
-            style={{
-              maxWidth: 420,
-              padding: '14px 18px',
-              borderRadius: 12,
-              backgroundColor: rule.backgroundColor || 'rgba(0,0,0,0.6)',
-              border: rule.borderColor === 'gradient'
-                ? '2px solid transparent'
-                : `2px solid ${rule.borderColor || 'transparent'}`,
-              backgroundImage: rule.borderColor === 'gradient'
-                ? `linear-gradient(${rule.backgroundColor || 'rgba(0,0,0,0.6)'}, ${rule.backgroundColor || 'rgba(0,0,0,0.6)'}), linear-gradient(135deg, #19C8FF, #6E80FF)`
-                : undefined,
-              backgroundOrigin: rule.borderColor === 'gradient' ? 'border-box' : undefined,
-              backgroundClip: rule.borderColor === 'gradient' ? 'padding-box, border-box' : undefined,
-              display: 'flex',
-              flexDirection: isSideBySide ? 'row' : 'column',
-              alignItems: 'center',
-              gap: 12
-            }}
-          >
-            {useImageInLayout && (
-              imageSrc ? (
-                <img
-                  src={imageSrc}
-                  alt=""
-                  style={{ width: imageSize, height: imageSize, borderRadius: 999, objectFit: 'cover' }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: imageSize,
-                    height: imageSize,
-                    borderRadius: 999,
-                    background: 'linear-gradient(135deg, rgba(25,200,255,0.25), rgba(25,200,255,0.06))',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'rgba(255,255,255,0.4)'
-                  }}
-                  title={rule.useEventImage ? 'Will use the event\'s image at runtime (user avatar, gift icon, etc.)' : 'No image selected'}
-                >
-                  <IconPhoto size={28} />
-                </div>
-              )
-            )}
-            {useTextInLayout && (
-              <div
-                style={{
-                  color: rule.textColor || '#ffffff',
-                  fontSize: Math.min(rule.fontSize || 32, 36),
-                  fontWeight: rule.fontWeight || 700,
-                  textShadow: rule.textShadow || '0 2px 8px rgba(0,0,0,0.5)',
-                  textAlign: 'center',
-                  lineHeight: 1.15,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  flex: isSideBySide ? '1 1 auto' : undefined
-                }}
-              >
-                {text}
-              </div>
-            )}
-            {!useImageInLayout && !useTextInLayout && (
-              <span className="text-[11px] text-white/30">No outputs enabled — alert won't render</span>
-            )}
-          </div>
-        )}
-      </div>
-
-    </div>
-  )
-}
-
-function getCleanPreviewType(rule: AlertRule): 'gift' | 'follow' | null {
-  if (rule.id === 'default-gifts') return 'gift'
-  if (rule.id === 'default-follows') return 'follow'
-  return null
-}
-
-function CleanPreviewCard({
-  type,
-  imageSrc,
-  showImage
-}: {
-  type: 'gift' | 'follow'
-  imageSrc: string | null
-  showImage: boolean
-}) {
-  const accent = type === 'gift' ? '#f7c948' : '#38bdf8'
-  const eyebrow = type === 'gift' ? 'Gift received' : 'New follower'
-  const subtitle = type === 'gift' ? 'sent 5x Rose' : 'started following'
-
-  return (
-    <div
-      className="animate-in fade-in slide-in-from-bottom-3 duration-300"
-      style={{
-        width: 'min(520px, 100%)',
-        minHeight: 104,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '16px 20px',
-        borderRadius: 22,
-        border: `1px solid ${type === 'gift' ? 'rgba(247, 201, 72, 0.26)' : 'rgba(56, 189, 248, 0.24)'}`,
-        background: 'linear-gradient(135deg, rgba(18, 22, 30, 0.88), rgba(12, 15, 22, 0.74))',
-        boxShadow: '0 22px 70px rgba(0,0,0,0.46), inset 5px 0 0 ' + accent,
-        textAlign: 'left'
-      }}
-    >
-      {showImage && (
         <div
+          key={replayKey}
+          className="animate-in fade-in zoom-in-95 duration-300"
           style={{
-            width: 72,
-            height: 72,
-            borderRadius: 20,
-            border: '1px solid rgba(255,255,255,0.16)',
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03))',
+            position: 'relative',
+            maxWidth: 420,
+            padding: previewPadding,
+            borderRadius: previewRadius,
+            backgroundColor: previewBg,
+            border: rule.borderColor === 'gradient'
+              ? undefined
+              : `${previewBorderWidth}px solid ${rule.borderColor || 'transparent'}`,
             display: 'flex',
+            flexDirection: placement === 'left' ? 'row' : placement === 'right' ? 'row-reverse' : placement === 'bottom' ? 'column-reverse' : 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            color: 'rgba(255,255,255,0.92)',
-            fontSize: 28,
-            fontWeight: 800,
-            lineHeight: 1
+            gap: 12
           }}
         >
-          {imageSrc ? (
-            <img src={imageSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span>S</span>
+          {rule.borderColor === 'gradient' && (
+            // Ring-only gradient edge via mask compositing — the same approach
+            // as the overlay's cyber border. The old two-layer background
+            // trick painted the gradient across the whole card whenever the
+            // background was semi-transparent.
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: previewRadius,
+                padding: Math.max(2, previewBorderWidth),
+                background: 'linear-gradient(135deg, #19C8FF, #6E80FF)',
+                WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                WebkitMaskComposite: 'xor',
+                maskComposite: 'exclude',
+                pointerEvents: 'none'
+              }}
+            />
+          )}
+          {useImageInLayout && imageSrc && (
+            <img
+              src={imageSrc}
+              alt=""
+              style={{
+                width: imageSize,
+                height: imageSize,
+                objectFit: 'contain',
+                transform: (imageOffsetX || imageOffsetY) ? `translate(${imageOffsetX}px, ${imageOffsetY}px)` : undefined,
+                filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.5))',
+                flexShrink: 0
+              }}
+              onError={(e) => { (e.target as HTMLImageElement).src = SAMPLE_EVENT_IMAGE }}
+            />
+          )}
+          {useTextInLayout && (
+            <div
+              style={{
+                color: rule.textColor || '#ffffff',
+                fontSize: Math.min(rule.fontSize || 32, 36),
+                fontWeight: rule.fontWeight || 700,
+                textShadow: rule.textShadow || '0 2px 8px rgba(0,0,0,0.5)',
+                textAlign: previewTextAlign,
+                lineHeight: 1.15,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                flex: effectiveRow ? '1 1 auto' : undefined
+              }}
+            >
+              {text}
+            </div>
+          )}
+          {!useImageInLayout && !useTextInLayout && (
+            <span className="text-[11px] text-white/30">No outputs enabled — alert won't render</span>
           )}
         </div>
-      )}
-      <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-          <span style={{ color: 'rgba(255,255,255,0.58)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0 }}>
-            {eyebrow}
-          </span>
-          <span style={{ border: '1px solid rgba(255,255,255,0.10)', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.52)', padding: '4px 8px', fontSize: 11, fontWeight: 700 }}>
-            TikTok
-          </span>
-        </div>
-        <div style={{ color: '#ffffff', fontSize: 30, fontWeight: 760, lineHeight: 1.04, overflowWrap: 'anywhere', textShadow: '0 8px 26px rgba(0,0,0,0.36)' }}>
-          Sample Viewer
-        </div>
-        <div style={{ marginTop: 6, color: 'rgba(255,255,255,0.70)', fontSize: 16, fontWeight: 560, lineHeight: 1.28, overflowWrap: 'anywhere' }}>
-          {subtitle}
-        </div>
       </div>
+
     </div>
   )
 }

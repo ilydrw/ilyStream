@@ -121,9 +121,12 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
   .chat .head h4 { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.55); margin: 0; }
   .chat .head .count { margin-left: auto; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--color-accent); }
 
-  .chat .feed { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none; }
-  .chat .feed::-webkit-scrollbar { display: none; }
+  .chat .feed { flex: 1 1 auto; min-height: 0; overflow-y: scroll; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; padding: 0 10px 10px 14px; display: flex; flex-direction: column; gap: 6px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.24) transparent; }
+  .chat .feed::-webkit-scrollbar { width: 5px; }
+  .chat .feed::-webkit-scrollbar-track { background: transparent; }
+  .chat .feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,.24); border-radius: 999px; }
   .chat .feed .empty { margin: auto; font-size: 13px; color: rgba(255,255,255,.28); font-style: italic; }
+  .chat .feed > .msg:first-child { margin-top: auto; }
 
   .msg { display: flex; align-items: flex-start; gap: 8px; min-width: 0; flex: 0 0 auto; }
   .msg .av { width: 24px; height: 24px; border-radius: 50%; font: 700 11px var(--font-sans); display: grid; place-items: center; color: #fff; flex: 0 0 auto; background: rgba(255,255,255,.14); margin-top: 1px; }
@@ -358,15 +361,44 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
     // the list rolls upward as chat arrives, unless the user scrolled back.
 
     const CHAT_MAX_ROWS = 60;
+    const CHAT_BOTTOM_THRESHOLD = 40;
     const EVENT_GLYPHS = { gift: '🎁', subscription: '⭐', follow: '➕', raid: '🚀', share: '🔁' };
     let chatCount = 0;
     let stickToBottom = true;
+    let chatScrollFrame = 0;
+    let forceChatScroll = false;
 
     const feedEl = document.getElementById('chat-feed');
 
+    function isNearChatBottom() {
+      return feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight <= CHAT_BOTTOM_THRESHOLD;
+    }
+
+    function scheduleChatScrollToBottom(force = false) {
+      if (!force && !stickToBottom) return;
+      forceChatScroll = forceChatScroll || force;
+      if (chatScrollFrame) return;
+
+      chatScrollFrame = requestAnimationFrame(() => {
+        const shouldScroll = forceChatScroll || stickToBottom;
+        chatScrollFrame = 0;
+        forceChatScroll = false;
+        if (shouldScroll) {
+          feedEl.scrollTop = feedEl.scrollHeight;
+        }
+      });
+    }
+
     feedEl.addEventListener('scroll', () => {
-      stickToBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
-    });
+      stickToBottom = isNearChatBottom();
+    }, { passive: true });
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const chatResizeObserver = new ResizeObserver(() => scheduleChatScrollToBottom());
+      chatResizeObserver.observe(feedEl);
+    }
+
+    window.addEventListener('resize', () => scheduleChatScrollToBottom(), { passive: true });
 
     function chatRow(item) {
       const row = document.createElement('div');
@@ -420,7 +452,7 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
       }
 
       if (scroll && stickToBottom) {
-        feedEl.scrollTop = feedEl.scrollHeight;
+        scheduleChatScrollToBottom();
       }
     }
 
@@ -433,7 +465,8 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
         return;
       }
       items.slice(-CHAT_MAX_ROWS).forEach((item) => appendChat(item, false));
-      feedEl.scrollTop = feedEl.scrollHeight;
+      stickToBottom = true;
+      scheduleChatScrollToBottom(true);
     }
 
     // ---- Now playing -------------------------------------------------------

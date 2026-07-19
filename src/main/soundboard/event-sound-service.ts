@@ -9,6 +9,12 @@ type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
 const GIFT_ALERT_AGGREGATION_MS = 150
 const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
+// How often (per viewer) we're willing to run the DB-touching intro-sound match.
+// TikTok's join/member event is unreliable, so intros trigger on a viewer's
+// first activity of ANY kind; this throttle stops high like/chat volume from
+// resolving the same viewer on every event. Actual re-fire timing is still
+// governed by each rule's own cooldown.
+const INTRO_LOOKUP_THROTTLE_MS = 60 * 1000
 
 export type ViewerProfileResolver = (
   platform: string,
@@ -21,6 +27,7 @@ export class EventSoundService {
   private recentSuperfanJoinUsers = new Map<string, number>()
   private recentRuleHits = new Map<string, number>()
   private recentJoinSoundHits = new Map<string, number>()
+  private introLookupAt = new Map<string, number>()
   private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: GiftEvent }>()
   private lowValueGiftAlertCooldown = new LowValueGiftCooldown()
 
@@ -46,6 +53,13 @@ export class EventSoundService {
   processEvent(event: AnyStreamEvent): void {
     if (!this.settings) return
 
+    // Personal intro ("join") sounds fire on a viewer's FIRST activity of the
+    // session, from ANY event type — TikTok's member/join event is unreliable
+    // and frequently never fires for regulars (they chat/gift/like without ever
+    // producing a `join`), so gating intros on it alone means they never play.
+    // Runs independently of the superfan alert — a viewer can have both.
+    this.handleViewerIntroSound(event)
+
     switch (event.type) {
       case 'gift':
         this.aggregateGift(event)
@@ -60,9 +74,6 @@ export class EventSoundService {
         return
 
       case 'join':
-        // Personal join sounds fire independently of the superfan alert — a
-        // viewer can have both.
-        this.handleViewerJoinSound(event)
         if (this.shouldTreatJoinAsSuperfan(event)) {
           this.handleAlert('Superfan', event)
           return
@@ -321,17 +332,26 @@ export class EventSoundService {
         animationOut: rule.animationOut,
         textColor: rule.textColor,
         backgroundColor: rule.backgroundColor,
+        backgroundOpacity: rule.backgroundOpacity,
         borderColor: rule.borderColor,
+        borderWidth: rule.borderWidth,
+        borderRadius: rule.borderRadius,
         fontSize: rule.fontSize,
         audioUrl: hasSound ? rule.soundId : undefined,
         audioVolume: rule.soundVolume,
         fontWeight: rule.fontWeight,
         textShadow: rule.textShadow,
+        textAlign: rule.textAlign,
         layout: rule.layout,
         imageTop: rule.imageTop,
         imageLeft: rule.imageLeft,
-        alertTop: this.settings.alertTop,
-        alertLeft: this.settings.alertLeft
+        imageSize: rule.imageSize,
+        imagePlacement: rule.imagePlacement,
+        paddingX: rule.paddingX,
+        paddingY: rule.paddingY,
+        // Per-rule screen position wins over the global alert position when set.
+        alertTop: resolveAlertPositionValue(rule.alertTop, this.settings.alertTop),
+        alertLeft: resolveAlertPositionValue(rule.alertLeft, this.settings.alertLeft)
       },
       event.platform
     )
@@ -421,11 +441,42 @@ export class EventSoundService {
   }
 
   /**
-   * Plays a viewer's personal join sound, if one is configured on their viewer
-   * profile (or as a raw platform+username rule). Cooldown is per rule+viewer
-   * so a rejoin during the same stream doesn't spam the sound.
+   * Entry point for personal intro sounds. Gates the (DB-touching) match to at
+   * most once per viewer per {@link INTRO_LOOKUP_THROTTLE_MS} so a viewer's
+   * high-volume likes/chat don't resolve them on every event. The actual play
+   * decision (and its per-rule cooldown) lives in {@link playViewerIntroSound}.
    */
-  private handleViewerJoinSound(event: JoinEvent): void {
+  private handleViewerIntroSound(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
+    const rules = this.settings?.viewerJoinSounds
+    if (!rules?.length) return
+
+    const identity = event.user.id || event.user.username
+    if (!identity) return
+
+    const key = `${event.platform}:${identity}`
+    const now = Date.now()
+    const lastLookup = this.introLookupAt.get(key)
+    if (lastLookup !== undefined && now - lastLookup < INTRO_LOOKUP_THROTTLE_MS) return
+
+    this.introLookupAt.set(key, now)
+    if (this.introLookupAt.size > 20000) {
+      const cutoff = now - INTRO_LOOKUP_THROTTLE_MS
+      for (const [k, ts] of this.introLookupAt) {
+        if (ts < cutoff) this.introLookupAt.delete(k)
+      }
+    }
+
+    this.playViewerIntroSound(event)
+  }
+
+  /**
+   * Plays a viewer's personal intro sound, if one is configured on their viewer
+   * profile (or as a raw platform+username rule). Cooldown is per rule+viewer
+   * so repeat activity during the same stream doesn't spam the sound.
+   */
+  private playViewerIntroSound(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
     const rules = this.settings?.viewerJoinSounds
     if (!rules?.length) return
 
@@ -587,6 +638,16 @@ export class EventSoundService {
 
     return {}
   }
+}
+
+/**
+ * A rule-level screen position of -1 (or anything non-finite — rules saved
+ * before the field existed) defers to the global alert position setting.
+ */
+function resolveAlertPositionValue(ruleValue: unknown, globalValue: unknown): unknown {
+  const numeric = Number(ruleValue)
+  if (Number.isFinite(numeric) && numeric >= 0) return Math.min(100, numeric)
+  return globalValue
 }
 
 function normalizeJoinUsername(value: string): string {

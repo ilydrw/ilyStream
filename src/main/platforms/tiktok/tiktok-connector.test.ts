@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildTikTokConnectionOptions,
   buildTikTokConnectionOptionCandidates,
+  extractTikTokFollowerCount,
   isFatalTikTokConnectionErrorMessage,
   isTikTokOfflineErrorMessage,
   isTikTokFollowSocialPayload,
@@ -431,5 +432,132 @@ describe('TikTokConnector connection hardening', () => {
     })
 
     expect(user.isFollower).toBe(true)
+  })
+})
+
+describe('TikTokConnector listener cleanup', () => {
+  it('removes all connection listeners on cleanup so replaced connections release their closures', () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter() as EventEmitter & { disconnect: () => void }
+    connection.disconnect = vi.fn()
+
+    ;(connector as any).connection = connection
+    ;(connector as any).setupEventListeners(connection)
+    expect(connection.listenerCount('chat')).toBe(1)
+    expect(connection.listenerCount('gift')).toBe(1)
+    expect(connection.listenerCount('error')).toBe(1)
+
+    ;(connector as any).cleanupConnection()
+
+    expect(connection.listenerCount('chat')).toBe(0)
+    expect(connection.listenerCount('gift')).toBe(0)
+    expect(connection.listenerCount('error')).toBe(0)
+    expect(connection.disconnect).toHaveBeenCalled()
+    expect((connector as any).connection).toBeNull()
+  })
+
+  it('stops a zombie connection from emitting events after cleanup', () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter() as EventEmitter & { disconnect: () => void }
+    connection.disconnect = vi.fn()
+    const events: any[] = []
+    connector.on('event', (event) => events.push(event))
+
+    ;(connector as any).connection = connection
+    ;(connector as any).setupEventListeners(connection)
+    ;(connector as any).cleanupConnection()
+
+    // A connect() that resolves after our timeout race can still emit — with
+    // the listeners detached, none of it reaches the pipeline.
+    connection.emit('chat', { comment: 'zombie says hi', userId: '1', uniqueId: 'ghost' })
+    connection.emit('like', { likeCount: 3 })
+
+    expect(events).toHaveLength(0)
+  })
+})
+
+describe('TikTokConnector follower polling', () => {
+  it('polls room info while connected and emits a slim authoritative follower-count event', async () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter() as any
+    connection.disconnect = vi.fn()
+    connection.fetchRoomInfo = vi.fn().mockResolvedValue({
+      data: { owner: { followInfo: { followerCount: 4521 } } }
+    })
+    const events: any[] = []
+    connector.on('event', (event) => events.push(event))
+
+    ;(connector as any).connection = connection
+    ;(connector as any).startFollowerPolling(connection, (connector as any).connectionToken)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(connection.fetchRoomInfo).toHaveBeenCalled()
+    expect(events).toHaveLength(1)
+    expect(events[0]).toEqual(expect.objectContaining({
+      platform: 'tiktok',
+      type: 'follower-count',
+      count: 4521
+    }))
+    // The raw payload must stay slim — this event lands in event_history
+    // every 30s and full roomInfo is hundreds of KB of unused metadata.
+    expect(events[0].raw).toEqual({ source: 'tiktok-room-info' })
+
+    ;(connector as any).cleanupConnection()
+    expect((connector as any).followerPollTimer).toBeNull()
+  })
+
+  it('drops poll results that resolve after the connection was replaced', async () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter() as any
+    connection.disconnect = vi.fn()
+    let resolveFetch: (value: unknown) => void = () => {}
+    connection.fetchRoomInfo = vi.fn().mockReturnValue(new Promise((resolve) => { resolveFetch = resolve }))
+    const events: any[] = []
+    connector.on('event', (event) => events.push(event))
+
+    ;(connector as any).connection = connection
+    ;(connector as any).startFollowerPolling(connection, (connector as any).connectionToken)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // Reconnect happens while the fetch is still in flight...
+    ;(connector as any).cleanupConnection()
+    resolveFetch({ data: { owner: { followInfo: { followerCount: 9999 } } } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // ...so the stale result must not be reported.
+    expect(events).toHaveLength(0)
+  })
+})
+
+describe('extractTikTokFollowerCount', () => {
+  it('reads the primary owner followInfo path', () => {
+    expect(extractTikTokFollowerCount({
+      data: { owner: { followInfo: { followerCount: 1234 } } }
+    })).toBe(1234)
+  })
+
+  it('reads snake_case API variants', () => {
+    expect(extractTikTokFollowerCount({
+      data: { owner: { follow_info: { follower_count: 88 } } }
+    })).toBe(88)
+  })
+
+  it('normalizes formatted string counts', () => {
+    expect(extractTikTokFollowerCount({
+      user: { stats: { followerCount: '12,345' } }
+    })).toBe(12345)
+  })
+
+  it('finds follower-count-shaped keys via bounded deep search', () => {
+    expect(extractTikTokFollowerCount({
+      some: { unexpected: { nesting: { fans_count: 777 } } }
+    })).toBe(777)
+  })
+
+  it('returns null when no usable count exists', () => {
+    expect(extractTikTokFollowerCount(null)).toBeNull()
+    expect(extractTikTokFollowerCount({})).toBeNull()
+    expect(extractTikTokFollowerCount({ data: { owner: { followInfo: { followerCount: -5 } } } })).toBeNull()
+    expect(extractTikTokFollowerCount({ followerCount: 'soon' })).toBeNull()
   })
 })

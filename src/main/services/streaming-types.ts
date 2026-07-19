@@ -10,6 +10,11 @@ export type RecordingVideoEncoder =
   | 'hevc_amf'
   | 'hevc_qsv'
 
+export type VideoColorProfile =
+  | 'sdr-709-limited'
+  | 'sdr-709-full'
+  | 'hdr10-pq'
+
 export interface StreamConfig {
   outputId?: string
   outputName?: string
@@ -22,6 +27,7 @@ export interface StreamConfig {
   inputFormat?: 'h264' | 'mjpeg'
   audioFormat?: 'f32le' | 'silent'
   audioSampleRate?: number
+  colorProfile?: VideoColorProfile
 }
 
 export interface RecordingConfig {
@@ -33,6 +39,7 @@ export interface RecordingConfig {
   inputFormat?: 'h264' | 'mjpeg'
   audioFormat?: 'f32le' | 'silent'
   audioSampleRate?: number
+  colorProfile?: VideoColorProfile
   // Advanced
   container?: 'mkv' | 'mp4' | 'flv' | 'mov'
   codec?: RecordingVideoCodec

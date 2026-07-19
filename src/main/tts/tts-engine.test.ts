@@ -49,7 +49,9 @@ describe('TTSEngine settings', () => {
       priority: 'normal',
       eventType: 'chat'
     })
-    const duplicateRejected = engine.enqueue({
+    // The duplicate window is PER USER: a different viewer saying the same
+    // thing is still read (previously this was wrongly muted globally).
+    const otherUserAccepted = engine.enqueue({
       text: '123456789',
       username: 'bob',
       platform: 'youtube',
@@ -59,10 +61,14 @@ describe('TTSEngine settings', () => {
 
     expect(firstAdded).toBe(true)
     expect(perUserRejected).toBe(false)
-    expect(duplicateRejected).toBe(false)
+    expect(otherUserAccepted).toBe(true)
     expect(engine.getQueue()).toEqual([
       expect.objectContaining({
         username: 'alice',
+        text: '12345...'
+      }),
+      expect.objectContaining({
+        username: 'bob',
         text: '12345...'
       })
     ])

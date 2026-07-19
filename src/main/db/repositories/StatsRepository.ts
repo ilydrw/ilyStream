@@ -500,7 +500,7 @@ export class StatsRepository extends BaseRepository {
 
     if (!profileId.includes(':') && identity) {
       const profile = this.db.prepare(`
-        SELECT id, display_name, profile_picture_url, primary_platform, notes
+        SELECT id, display_name, profile_picture_url, primary_platform, primary_username, notes
         FROM viewer_profiles
         WHERE id = ?
       `).get(profileId) as ViewerProfileRow | undefined
@@ -509,6 +509,7 @@ export class StatsRepository extends BaseRepository {
         identity.displayName = profile.display_name || identity.displayName
         identity.profilePictureUrl = profile.profile_picture_url || identity.profilePictureUrl
         identity.primaryPlatform = (profile.primary_platform as Platform) || identity.primaryPlatform
+        identity.primaryUsername = profile.primary_username || identity.primaryUsername
       }
     }
 

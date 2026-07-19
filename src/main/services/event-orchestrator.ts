@@ -23,6 +23,7 @@ import { LowValueGiftCooldown } from '../../shared/gift-alert-protection'
 import { isCohostIdentity } from '../ai/cohost-identity'
 import { htmlToSingleLinePlainText } from '../../shared/plain-text'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
+import { AvatarUrlStabilizer } from '../../shared/avatar-url'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
 import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
 import type { AnyStreamEvent, Platform } from '../platforms/types'
@@ -37,6 +38,13 @@ export class EventOrchestrator {
   private countedSongRequestIds = new Set<string>()
   private initialized = false
   private lowValueGiftHardwareCooldown = new LowValueGiftCooldown()
+  /**
+   * Keeps each viewer's avatar URL stable across events. TikTok re-signs and
+   * host-rotates the same image on every event; without this the latest-gifter
+   * and likes-leaderboard overlays reset their `<img src>` constantly and the
+   * avatar never finishes loading. See shared/avatar-url.ts.
+   */
+  private avatarStabilizer = new AvatarUrlStabilizer()
   /** Wall-clock ms of the last history-prune pass. Throttles prune to at most
    * once every `HISTORY_PRUNE_INTERVAL_MS` instead of every event. */
   private lastHistoryPruneAt = 0
@@ -165,6 +173,8 @@ export class EventOrchestrator {
       console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
     }
 
+    this.stabilizeEventAvatar(event)
+
     // 1. Log to DB
     await this.runEventStage('event history', () => {
       this.db.addEvent(
@@ -256,6 +266,23 @@ export class EventOrchestrator {
     } catch (err) {
       console.error(`[EventOrchestrator] ${stage} failed:`, err)
     }
+  }
+
+  /**
+   * Pin each viewer's avatar URL to a stable string so the same underlying image
+   * stops re-signing/host-rotating between events. Mutating the event here means
+   * every downstream consumer (overlay widgets, sounds, stats, DB history) sees
+   * the same, cache-friendly URL. See shared/avatar-url.ts for the why.
+   */
+  private stabilizeEventAvatar(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
+    const identity = event.user.id || event.user.username
+    if (!identity) return
+    const stable = this.avatarStabilizer.stabilize(
+      `${event.platform}:${identity}`,
+      event.user.profilePictureUrl
+    )
+    event.user.profilePictureUrl = stable
   }
 
   private recordSongRequested(request: SpotifySongRequest): void {

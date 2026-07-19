@@ -83,14 +83,18 @@ export class StreamingEncoderResolver {
 
   getEncoderArgs(
     encoder: string,
-    config: Pick<RecordingConfig, 'fps' | 'bitrateKbps' | 'crf'>,
+    config: Pick<RecordingConfig, 'fps' | 'bitrateKbps' | 'crf' | 'colorProfile'>,
     mode: EncoderMode
   ): string[] {
     const args = ['-c:v', encoder]
     const fps = Math.max(1, Math.round(config.fps || 30))
     const gop = fps * 2
+    const hdr10 = config.colorProfile === 'hdr10-pq'
 
     if (encoder === 'copy') return args
+    if (hdr10 && !isHevcEncoder(encoder) && encoder !== 'libx265') {
+      throw new Error(`Encoder ${encoder} cannot produce the required 10-bit HDR10 HEVC output`)
+    }
 
     if (encoder === 'libx264') {
       if (mode === 'stream') {
@@ -167,6 +171,7 @@ export class StreamingEncoderResolver {
         args.push('-global_quality', config.crf?.toString() || '20', '-look_ahead', '1')
       }
     } else if (encoder === 'libx265') {
+      if (hdr10) args.push('-profile:v', 'main10')
       if (mode === 'stream') {
         args.push(
           '-preset', 'ultrafast',
@@ -185,7 +190,7 @@ export class StreamingEncoderResolver {
       if (mode === 'stream') {
         args.push(
           '-tune', 'll',
-          '-profile:v', 'main',
+          '-profile:v', hdr10 ? 'main10' : 'main',
           '-rc', 'cbr',
           '-bf', '0',
           '-zerolatency', '1',
@@ -197,21 +202,21 @@ export class StreamingEncoderResolver {
           '-rc-lookahead', '0'
         )
       } else {
-        args.push('-tune', 'hq', '-profile:v', 'main', '-rc', 'vbr', '-cq', config.crf?.toString() || '20')
+        args.push('-tune', 'hq', '-profile:v', hdr10 ? 'main10' : 'main', '-rc', 'vbr', '-cq', config.crf?.toString() || '20')
       }
     } else if (encoder === 'hevc_amf') {
       args.push('-quality', mode === 'stream' ? 'speed' : 'quality', '-usage', mode === 'stream' ? 'lowlatency' : 'transcoding')
       if (mode === 'stream') {
-        args.push('-rc', 'cbr', '-profile:v', 'main', '-bf', '0', '-max_b_frames', '0', '-enforce_hrd', '1', '-filler_data', '1')
+        args.push('-rc', 'cbr', '-profile:v', hdr10 ? 'main10' : 'main', '-bf', '0', '-max_b_frames', '0', '-enforce_hrd', '1', '-filler_data', '1')
       } else {
-        args.push('-rc', 'vbr_latency', '-profile:v', 'main')
+        args.push('-rc', 'vbr_latency', '-profile:v', hdr10 ? 'main10' : 'main')
       }
     } else if (encoder === 'hevc_qsv') {
       args.push('-preset', mode === 'stream' ? 'veryfast' : 'faster')
       if (mode === 'stream') {
-        args.push('-profile:v', 'main', '-bf', '0', '-look_ahead', '0', '-rc:v', 'cbr', '-forced_idr', '1', '-async_depth', '1', '-low_power', '0')
+        args.push('-profile:v', hdr10 ? 'main10' : 'main', '-bf', '0', '-look_ahead', '0', '-rc:v', 'cbr', '-forced_idr', '1', '-async_depth', '1', '-low_power', '0')
       } else {
-        args.push('-profile:v', 'main', '-global_quality', config.crf?.toString() || '20', '-look_ahead', '1')
+        args.push('-profile:v', hdr10 ? 'main10' : 'main', '-global_quality', config.crf?.toString() || '20', '-look_ahead', '1')
       }
     }
 
@@ -227,7 +232,7 @@ export class StreamingEncoderResolver {
     }
 
     args.push(
-      '-pix_fmt', 'yuv420p',
+      '-pix_fmt', hdr10 ? 'p010le' : 'yuv420p',
       '-g', `${gop}`,
       '-keyint_min', `${gop}`
     )

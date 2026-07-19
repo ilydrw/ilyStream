@@ -54,4 +54,50 @@ describe('alerts overlay template', () => {
     expect(html).toContain("alert.variant === 'clean-follow'")
     expect(html).toContain("alert.variant === 'clean-superfan'")
   })
+
+  it('keeps the legacy glass look when the widget has no explicit card settings', () => {
+    const html = buildAlertsOverlayHtml(widget, false)
+
+    // glassIntensity 0.5 → alpha 0.2 + 0.5*0.4 = 0.4, blur 30px, chrome at full strength.
+    expect(html).toContain('--glass-bg: rgba(10, 12, 18, 0.4)')
+    expect(html).toContain('--blur: 30.0px')
+    expect(html).toContain('--card-border-width: 1px')
+    expect(html).toContain('--card-shadow-alpha: 0.600')
+    expect(html).toContain('--card-shine: 1.000')
+  })
+
+  it('honors explicit widget card settings, including full transparency', () => {
+    const transparentWidget = {
+      ...widget,
+      config: {
+        backgroundColor: '#102030',
+        backgroundOpacity: 0,
+        blur: 40,
+        borderWidth: 3,
+        textColor: '#aabbcc'
+      }
+    }
+    const html = buildAlertsOverlayHtml(transparentWidget, false)
+
+    // Opacity 0 → fully transparent tint AND the panel chrome scales away:
+    // no drop shadow, no shine, no frost — a truly invisible card.
+    expect(html).toContain('--glass-bg: rgba(16, 32, 48, 0)')
+    expect(html).toContain('--card-shadow-alpha: 0.000')
+    expect(html).toContain('--card-shine: 0.000')
+    expect(html).toContain('--blur: 0.0px')
+    expect(html).toContain('--card-border-width: 3px')
+    expect(html).toContain('--alert-text-color: #aabbcc')
+  })
+
+  it('ships the per-alert card style machinery for rule-level overrides', () => {
+    const html = buildAlertsOverlayHtml(widget, false)
+
+    expect(html).toContain('function applyCardStyle(content, alert, isCyber)')
+    expect(html).toContain('function composeBackground(color, opacityPercent)')
+    expect(html).toContain('function normalizeImagePlacement(value)')
+    expect(html).toContain('function normalizeTextAlign(value)')
+    expect(html).toContain("clampNumber(alert.imageSize, 0, 1024, 0)")
+    expect(html).toContain('alert.paddingX')
+    expect(html).toContain('alert.borderRadius')
+  })
 })

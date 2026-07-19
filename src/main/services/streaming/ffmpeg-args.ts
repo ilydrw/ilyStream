@@ -1,4 +1,4 @@
-import type { StreamConfig, RecordingConfig } from '../streaming-types'
+import type { StreamConfig, RecordingConfig, VideoColorProfile } from '../streaming-types'
 import { isH264Encoder, isHevcEncoder, resolveRecordingCodec } from './encoder-resolver'
 
 export class FFmpegArgsBuilder {
@@ -28,6 +28,35 @@ export class FFmpegArgsBuilder {
     return [
       '-map', '0:v:0',
       '-map', '1:a:0'
+    ]
+  }
+
+  public buildVideoColorArgs(profile: VideoColorProfile = 'sdr-709-limited'): string[] {
+    if (profile === 'hdr10-pq') {
+      return [
+        '-color_primaries', 'bt2020',
+        '-color_trc', 'smpte2084',
+        '-colorspace', 'bt2020nc',
+        '-color_range', 'tv'
+      ]
+    }
+
+    return [
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709',
+      '-colorspace', 'bt709',
+      '-color_range', profile === 'sdr-709-full' ? 'pc' : 'tv'
+    ]
+  }
+
+  public buildH264ColorMetadataFilter(profile: VideoColorProfile = 'sdr-709-limited'): string[] {
+    if (profile === 'hdr10-pq') {
+      throw new Error('HDR10 output requires a 10-bit HEVC/AV1 path; H.264 copy cannot carry this profile safely')
+    }
+    const fullRange = profile === 'sdr-709-full' ? 1 : 0
+    return [
+      '-bsf:v',
+      `h264_metadata=video_full_range_flag=${fullRange}:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1`
     ]
   }
 
@@ -75,6 +104,7 @@ export class FFmpegArgsBuilder {
     const inputFormat = config.inputFormat || 'mjpeg'
     const audioFormat = config.audioFormat || 'silent'
     const copyEncodedVideo = inputFormat === 'h264'
+    const colorProfile = config.colorProfile ?? 'sdr-709-limited'
     const isVirtualCam = fullUrl.startsWith('video=') || fullUrl.startsWith('/dev/video')
     const format = isVirtualCam
       ? (process.platform === 'win32' ? 'dshow' : 'v4l2')
@@ -85,6 +115,8 @@ export class FFmpegArgsBuilder {
         ? this.buildH264PipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)
         : this.buildImagePipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)),
       ...this.encoderResolver.getEncoderArgs(copyEncodedVideo ? 'copy' : bestEncoder, { ...config, inputFormat }, 'stream'),
+      ...this.buildVideoColorArgs(colorProfile),
+      ...(copyEncodedVideo ? this.buildH264ColorMetadataFilter(colorProfile) : []),
       ...(copyEncodedVideo ? [] : ['-r', String(config.fps), '-fps_mode', 'cfr']),
       ...this.buildInputMap(audioFormat),
       '-c:a', 'aac',
@@ -139,6 +171,7 @@ export class FFmpegArgsBuilder {
     const inputFormat = config.inputFormat || 'mjpeg'
     const audioFormat = config.audioFormat || 'silent'
     const recordingCodec = resolveRecordingCodec(config)
+    const colorProfile = config.colorProfile ?? 'sdr-709-limited'
 
     // Support explicit encoder selection or fallback to best detected
     const explicitEncoder = config.encoder && config.encoder !== 'auto' ? config.encoder : undefined
@@ -165,6 +198,8 @@ export class FFmpegArgsBuilder {
         ? this.buildH264PipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)
         : this.buildImagePipeInput(config.width, config.height, config.fps, audioFormat, config.audioSampleRate)),
       ...this.encoderResolver.getEncoderArgs(encoder, { ...config, inputFormat }, 'record'),
+      ...this.buildVideoColorArgs(colorProfile),
+      ...(encoder === 'copy' ? this.buildH264ColorMetadataFilter(colorProfile) : []),
       ...this.buildInputMap(audioFormat),
       '-c:a', 'aac',
       '-b:a', `${config.audioBitrate || 192}k`,

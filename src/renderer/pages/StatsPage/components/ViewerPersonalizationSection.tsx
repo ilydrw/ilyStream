@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IconMusic, IconPlayerPlay, IconPlus, IconUpload, IconVolume } from '@tabler/icons-react'
+import { IconMusic, IconPlayerPlay, IconPlus, IconUpload, IconVolume, IconTrash } from '@tabler/icons-react'
 import { Select, type SelectOption } from '../../../components/ui/Select'
 import type { VoiceProfile } from '../../../../main/tts/voice-profiles'
 import {
@@ -33,6 +33,10 @@ interface ViewerPersonalizationSectionProps {
   ensureProfileId: () => Promise<string | null>
   /** Called after saving against a freshly created profile so the page can re-route. */
   onProfileCreated: (profileId: string) => void
+  draftOverrides: TTSUserVoiceOverride[]
+  draftJoinSounds: ViewerJoinSound[]
+  onUpdateOverrides: (overrides: TTSUserVoiceOverride[]) => void
+  onUpdateJoinSounds: (joinSounds: ViewerJoinSound[]) => void
 }
 
 const COOLDOWN_OPTIONS: SelectOption[] = [
@@ -52,12 +56,14 @@ export function ViewerPersonalizationSection({
   displayName,
   accounts,
   ensureProfileId,
-  onProfileCreated
+  onProfileCreated,
+  draftOverrides,
+  draftJoinSounds,
+  onUpdateOverrides,
+  onUpdateJoinSounds
 }: ViewerPersonalizationSectionProps) {
   const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([])
   const [sounds, setSounds] = useState<SoundFileEntry[]>([])
-  const [voiceOverrides, setVoiceOverrides] = useState<TTSUserVoiceOverride[]>([])
-  const [joinSounds, setJoinSounds] = useState<ViewerJoinSound[]>([])
   const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([])
   const [elevenlabsApiKeys, setElevenlabsApiKeys] = useState<ResolvedElevenLabsApiKey[]>([])
   const [syncedElevenLabsVoices, setSyncedElevenLabsVoices] = useState<SyncedElevenLabsVoicePreset[]>([])
@@ -76,8 +82,6 @@ export function ViewerPersonalizationSection({
 
     const applySettings = (raw: unknown) => {
       const resolved = resolveAppSettings((raw || {}) as Record<string, any>)
-      setVoiceOverrides(resolved.ttsUserVoiceOverrides || [])
-      setJoinSounds(resolved.viewerJoinSounds || [])
       setElevenlabsApiKeys(resolveElevenLabsApiKeys(resolved))
     }
 
@@ -137,7 +141,7 @@ export function ViewerPersonalizationSection({
 
   // Every rule that speaks for this viewer: profile-scoped rules, plus legacy
   // username rules that match one of their linked accounts (e.g. "queena.chaos").
-  const matchingRules = voiceOverrides.filter((rule) => {
+  const matchingRules = draftOverrides.filter((rule) => {
     if (profileId && rule.viewerProfileId === profileId) return true
     if (rule.viewerProfileId) return false
     const ruleUsername = normalizeUsername(rule.username)
@@ -149,7 +153,7 @@ export function ViewerPersonalizationSection({
   })
 
   const joinSound = profileId
-    ? joinSounds.find((rule) => rule.viewerProfileId === profileId) ?? null
+    ? draftJoinSounds.find((rule) => rule.viewerProfileId === profileId) ?? null
     : null
 
   const withEnsuredProfile = async (apply: (id: string) => Promise<void>) => {
@@ -164,67 +168,51 @@ export function ViewerPersonalizationSection({
     }
   }
 
-  const saveVoiceOverrides = async (mutate: (current: TTSUserVoiceOverride[]) => TTSUserVoiceOverride[]) => {
-    const current = await window.api.settings.get('ttsUserVoiceOverrides')
-    const next = mutate(Array.isArray(current) ? current : [])
-    setVoiceOverrides(next)
-    await window.api.settings.set('ttsUserVoiceOverrides', next)
-  }
-
-  const saveJoinSounds = async (mutate: (current: ViewerJoinSound[]) => ViewerJoinSound[]) => {
-    const current = await window.api.settings.get('viewerJoinSounds')
-    const next = mutate(Array.isArray(current) ? current : [])
-    setJoinSounds(next)
-    await window.api.settings.set('viewerJoinSounds', next)
-  }
-
   const addVoiceRule = () => {
     void withEnsuredProfile(async (id) => {
-      await saveVoiceOverrides((current) => [
-        ...current,
+      onUpdateOverrides([
+        ...draftOverrides,
         { ...createUserVoiceOverride(voiceProfiles[0]?.id ?? ''), viewerProfileId: id }
       ])
     })
   }
 
   const updateVoiceRule = (ruleId: string, patch: Partial<TTSUserVoiceOverride>) => {
-    void saveVoiceOverrides((current) =>
-      current.map((rule) => rule.id === ruleId ? normalizeOverridePatch(rule, patch) : rule)
-    )
+    onUpdateOverrides(draftOverrides.map((rule) => rule.id === ruleId ? normalizeOverridePatch(rule, patch) : rule))
   }
 
   const deleteVoiceRule = (ruleId: string) => {
-    void saveVoiceOverrides((current) => current.filter((rule) => rule.id !== ruleId))
+    onUpdateOverrides(draftOverrides.filter((rule) => rule.id !== ruleId))
   }
 
   const setJoinSoundId = (soundId: string) => {
     void withEnsuredProfile(async (id) => {
-      await saveJoinSounds((current) => {
-        if (!soundId) return current.filter((rule) => rule.viewerProfileId !== id)
-        const existing = current.find((rule) => rule.viewerProfileId === id)
-        if (existing) {
-          return current.map((rule) => rule.viewerProfileId === id ? { ...rule, soundId, enabled: true } : rule)
-        }
-        return [...current, {
-          id: crypto.randomUUID(),
-          viewerProfileId: id,
-          platform: 'all' as const,
-          username: '',
-          soundId,
-          volume: 1,
-          cooldownMinutes: 15,
-          enabled: true
-        }]
-      })
+      if (!soundId) {
+        onUpdateJoinSounds(draftJoinSounds.filter((rule) => rule.viewerProfileId !== id))
+        return
+      }
+      const existing = draftJoinSounds.find((rule) => rule.viewerProfileId === id)
+      if (existing) {
+        onUpdateJoinSounds(draftJoinSounds.map((rule) => rule.viewerProfileId === id ? { ...rule, soundId, enabled: true } : rule))
+        return
+      }
+      onUpdateJoinSounds([...draftJoinSounds, {
+        id: crypto.randomUUID(),
+        viewerProfileId: id,
+        platform: 'all' as const,
+        username: '',
+        soundId,
+        volume: 1,
+        cooldownMinutes: 15,
+        enabled: true
+      }])
     })
   }
 
   const patchJoinSound = (patch: Partial<ViewerJoinSound>) => {
     if (!profileId || !joinSound) return
     void withEnsuredProfile(async (id) => {
-      await saveJoinSounds((current) =>
-        current.map((rule) => rule.viewerProfileId === id ? { ...rule, ...patch } : rule)
-      )
+      onUpdateJoinSounds(draftJoinSounds.map((rule) => rule.viewerProfileId === id ? { ...rule, ...patch } : rule))
     })
   }
 
@@ -369,6 +357,17 @@ export function ViewerPersonalizationSection({
             <IconPlayerPlay size={14} />
             Test
           </button>
+          {joinSound?.soundId && (
+            <button
+              type="button"
+              onClick={() => setJoinSoundId('')}
+              disabled={saving}
+              className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-red-500/20 bg-red-500/5 px-3 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Remove join sound"
+            >
+              <IconTrash size={14} />
+            </button>
+          )}
         </div>
 
         {joinSound?.soundId && (

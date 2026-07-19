@@ -168,6 +168,80 @@ describe('EventSoundService', () => {
     )
   })
 
+  it('passes the full per-rule card style through to the overlay payload', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings(resolveAppSettings({
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          backgroundColor: '#102030',
+          backgroundOpacity: 0,
+          borderWidth: 4,
+          borderRadius: 18,
+          imageSize: 96,
+          imagePlacement: 'right',
+          textAlign: 'left',
+          paddingX: 12,
+          paddingY: 8,
+          alertTop: 72,
+          alertLeft: 25
+        }
+      ]
+    }))
+    service.processEvent(makeFollowEvent())
+
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backgroundColor: '#102030',
+        backgroundOpacity: 0,
+        borderWidth: 4,
+        borderRadius: 18,
+        imageSize: 96,
+        imagePlacement: 'right',
+        textAlign: 'left',
+        paddingX: 12,
+        paddingY: 8,
+        // Per-rule screen position overrides the global alert position.
+        alertTop: 72,
+        alertLeft: 25
+      }),
+      'tiktok'
+    )
+  })
+
+  it('defers to the global alert position when a rule has no position override', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(1))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    service.applySettings(resolveAppSettings({
+      alertTop: 33,
+      alertLeft: 66,
+      alertRules: [
+        {
+          ...DEFAULT_APP_SETTINGS.alertRules[1],
+          alertTop: -1,
+          alertLeft: -1
+        }
+      ]
+    }))
+    service.processEvent(makeFollowEvent())
+
+    expect(overlayServer.pushAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ alertTop: 33, alertLeft: 66 }),
+      'tiktok'
+    )
+  })
+
   it('routes the configured follow sound to the overlay (not the renderer) for follow events', () => {
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
@@ -658,6 +732,44 @@ describe('EventSoundService', () => {
 
     service.processEvent({ ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } })
     expect(soundboard.playSound).toHaveBeenCalledWith('join/hello.mp3', 1)
+  })
+
+  it('fires the intro sound on first activity when TikTok never sends a join event', () => {
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(0))
+    }
+    const resolver = vi.fn((platform: string, username: string) =>
+      platform === 'tiktok' && username === 'alice' ? 'viewer-alice' : null
+    )
+    const service = new EventSoundService(soundboard, overlayServer, resolver)
+
+    service.applySettings(resolveAppSettings({
+      ...DEFAULT_APP_SETTINGS,
+      viewerJoinSounds: [{
+        id: 'rule-3',
+        viewerProfileId: 'viewer-alice',
+        platform: 'all',
+        username: '',
+        soundId: 'join/airhorn.mp3',
+        volume: 0.9,
+        cooldownMinutes: 15,
+        enabled: true
+      }]
+    }))
+
+    // No join event ever arrives — the viewer only ever likes. The intro must
+    // still fire on that first like, then stay quiet for repeat activity.
+    const like = {
+      id: 'like-1', platform: 'tiktok' as const, timestamp: new Date(), type: 'like' as const,
+      raw: {}, user: { ...makeUser(), isFanClubMember: false }, likeCount: 1, totalLikes: 1
+    }
+    service.processEvent(like)
+    service.processEvent({ ...like, id: 'like-2' })
+
+    expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+    expect(soundboard.playSound).toHaveBeenCalledWith('join/airhorn.mp3', 0.9)
   })
 })
 

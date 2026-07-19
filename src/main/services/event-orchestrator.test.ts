@@ -184,6 +184,33 @@ describe('EventOrchestrator Spotify handling', () => {
     expect(ttsEngine.processEvent).not.toHaveBeenCalled()
   })
 
+  it('stabilizes a viewer avatar URL across re-signed/host-rotated events', async () => {
+    const handleStreamEvent = vi.fn()
+    const { platformManager } = makeOrchestrator(false, { handleStreamEvent })
+
+    // Same image, different shard host + signature — the exact TikTok churn.
+    const first = {
+      ...makeLike(),
+      id: 'like-a',
+      user: { ...makeLike().user, profilePictureUrl: 'https://p16-common-sign.tiktokcdn-us.com/x/hash~tplv.webp?x-signature=one' }
+    }
+    const second = {
+      ...makeLike(),
+      id: 'like-b',
+      user: { ...makeLike().user, profilePictureUrl: 'https://p19-common-sign.tiktokcdn-us.com/x/hash~tplv.webp?x-signature=two' }
+    }
+
+    platformManager.emit('event', first)
+    await flushAsyncHandlers()
+    platformManager.emit('event', second)
+    await flushAsyncHandlers()
+
+    const firstUrl = handleStreamEvent.mock.calls[0][0].user.profilePictureUrl
+    const secondUrl = handleStreamEvent.mock.calls[1][0].user.profilePictureUrl
+    // The second event must carry the SAME stable URL so overlays don't reset <img src>.
+    expect(secondUrl).toBe(firstUrl)
+  })
+
   it('does not route synthetic AI co-host chat back into TTS', async () => {
     const { platformManager, ttsEngine, overlayServer, eventSoundService, spotifyService, triggerEngine } = makeOrchestrator(false)
 
