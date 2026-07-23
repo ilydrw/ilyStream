@@ -38,9 +38,11 @@ public:
     // chroma and colorAdjust are optional (nullptr or enabled=false disables
     // each); cornerRadius <= 0 disables the rounded-corner mask, blurSigma <= 0
     // disables the Gaussian blur pipeline, circleMask (nullptr or enabled=false)
-    // disables the focus-circle sharp-region mask, and maskTexture
-    // (ILY_INVALID_HANDLE) disables the image-mask alpha multiply.
-    virtual IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr, const IlyColorAdjust* colorAdjust = nullptr, float cornerRadius = 0.0f, float blurSigma = 0.0f, const IlyCircleMask* circleMask = nullptr, ResourceHandle maskTexture = ILY_INVALID_HANDLE) = 0;
+    // disables the focus-circle sharp-region mask, maskTexture
+    // (ILY_INVALID_HANDLE) disables the image-mask alpha multiply, and
+    // maskTransform (nullptr = identity) maps the quad's UV into the layout rect
+    // the masks are positioned in (non-identity for letterboxed contain fits).
+    virtual IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr, const IlyColorAdjust* colorAdjust = nullptr, float cornerRadius = 0.0f, float blurSigma = 0.0f, const IlyCircleMask* circleMask = nullptr, ResourceHandle maskTexture = ILY_INVALID_HANDLE, const float* maskTransform = nullptr) = 0;
     virtual ResourceHandle CreateSpriteProgramHandle() = 0;
 
     // Return the engine-owned native handle for the compositor output texture.

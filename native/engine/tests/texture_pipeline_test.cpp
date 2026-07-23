@@ -970,3 +970,91 @@ TEST_CASE("Image mask cuts the layer by the mask texture's alpha", "[readback][i
     IlyDestroyEngine(engineHandle);
     IlyShutdownSystem();
 }
+
+TEST_CASE("Mask transform remaps mask UVs for letterboxed (contain) fits", "[readback][masktransform]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t W = 320;
+    const uint32_t H = 240;
+    IlyEngineConfig config{W, H, 60, false};
+    ResourceHandle engineHandle = ILY_INVALID_HANDLE;
+    res = IlyCreateEngine(&config, &engineHandle);
+    REQUIRE(res == ILY_SUCCESS);
+
+    // Opaque white quad at (80,60)..(240,180), 160x120.
+    ResourceHandle tex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateColorTexture(engineHandle, 0xFFFFFFFF, &tex);
+    REQUIRE(res == ILY_SUCCESS);
+
+    // 2x2 mask: left column opaque, right column transparent (only .a matters).
+    const uint8_t maskPixels[16] = {
+        255, 255, 255, 255,   255, 255, 255, 0,
+        255, 255, 255, 255,   255, 255, 255, 0
+    };
+    ResourceHandle maskTex = ILY_INVALID_HANDLE;
+    res = IlyEngineCreateTextureFromPixels(engineHandle, 2, 2, maskPixels, sizeof(maskPixels), &maskTex);
+    REQUIRE(res == ILY_SUCCESS);
+
+    IlyTransform t{};
+    t.position = {80.0f, 60.0f, 0.0f};
+    t.rotation = {0.0f, 0.0f, 0.0f};
+    t.scale = {160.0f, 120.0f, 1.0f};
+    t.anchor = {0.0f, 0.0f};
+    t.pivot = {0.0f, 0.0f};
+    t.crop = {0.0f, 0.0f, 0.0f, 0.0f};
+    t.visibility = true;
+    t.opacity = 1.0f;
+
+    IlyLayer layer{};
+    layer.texture = tex;
+    layer.transform = t;
+    layer.opacity = 1.0f;
+    layer.blendMode = ILY_BLEND_ALPHA;
+    layer.maskTexture = maskTex;
+    // The drawn quad is the far-RIGHT quarter of the layout rect the mask spans:
+    // layoutU = 0.75 + quadU*0.25 -> the whole quad samples the mask's opaque-0
+    // right column, so it is fully cut. Without the transform the quad would
+    // sample the full mask and its left half would survive.
+    layer.maskTransform[0] = 0.75f;
+    layer.maskTransform[1] = 0.0f;
+    layer.maskTransform[2] = 0.25f;
+    layer.maskTransform[3] = 1.0f;
+
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(W) * H * 4, 0);
+    uint32_t outW = 0, outH = 0;
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+
+    auto ch = [&](uint32_t x, uint32_t y, uint32_t c) -> int {
+        return pixels[(static_cast<size_t>(y) * W + x) * 4 + c];
+    };
+    const int background = ch(5, 5, 0);
+
+    // Remapped into the transparent column: the whole quad is cut, including the
+    // left side that survives under the identity transform.
+    REQUIRE(ch(100, 120, 0) == background);
+    REQUIRE(ch(160, 120, 0) == background);
+
+    // Identity transform: the quad samples the full mask, so its left half shows.
+    layer.maskTransform[0] = 0.0f;
+    layer.maskTransform[1] = 0.0f;
+    layer.maskTransform[2] = 1.0f;
+    layer.maskTransform[3] = 1.0f;
+    res = IlyEngineSetLayers(engineHandle, &layer, 1);
+    REQUIRE(res == ILY_SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    res = IlyEngineReadPixels(engineHandle, pixels.data(),
+                              static_cast<uint32_t>(pixels.size()), &outW, &outH);
+    REQUIRE(res == ILY_SUCCESS);
+    REQUIRE(ch(100, 120, 0) > 240);
+    REQUIRE(ch(220, 120, 0) == background);
+
+    IlyDestroyEngine(engineHandle);
+    IlyShutdownSystem();
+}

@@ -133,9 +133,9 @@ describe('getNativeSceneUnsupportedReason', () => {
     ]))).toBeNull()
   })
 
-  it('composites the focus circle natively only when the quad fills the layout rect', () => {
-    // Quad-filling fits (cover/stretch): the engine draws a blurred base plus a
-    // sharp circle-masked overlay, matching the canvas focus-circle two draws.
+  it('composites the focus circle natively on any fit (masks remap onto the quad)', () => {
+    // Cover/stretch: the engine draws a blurred base plus a sharp circle-masked
+    // overlay, matching the canvas focus-circle two draws.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({
         id: 'camera', type: 'camera',
@@ -143,16 +143,15 @@ describe('getNativeSceneUnsupportedReason', () => {
         enhancements: { focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } }
       })
     ]))).toBeNull()
-    // Contain fits can letterbox: the circle geometry maps off the layout rect
-    // while the engine's SDF covers the drawn quad, so they diverge — fall back.
+    // Contain (letterboxed) fits also compose now — the layer maskTransform maps
+    // the circle from layout-rect space onto the drawn sub-region quad.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({ enhancements: { focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } } })
-    ]))).toContain('canvas-only enhancements')
+    ]))).toBeNull()
   })
 
-  it('composites cornerRadius natively only when the quad fills the layout rect', () => {
-    // Cover/stretch fits draw edge to edge, so the engine's SDF mask matches
-    // the canvas roundRect clip exactly.
+  it('composites cornerRadius natively on any fit (masks remap onto the quad)', () => {
+    // Cover/stretch fits draw edge to edge; the SDF matches the roundRect clip.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({
         id: 'camera', type: 'camera',
@@ -160,17 +159,15 @@ describe('getNativeSceneUnsupportedReason', () => {
         enhancements: { cornerRadius: 20 }
       })
     ]))).toBeNull()
-    // Contain fits can letterbox: the canvas rounds the layout rect while the
-    // quad only covers the fitted content, so they keep the canvas compositor.
+    // Contain (letterboxed default displayLayer) composes too via maskTransform.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({ enhancements: { cornerRadius: 20 } })
-    ]))).toContain('canvas-only enhancements')
+    ]))).toBeNull()
   })
 
-  it('composites the image mask natively only when the quad fills the layout rect', () => {
-    // Quad-filling fits: the engine samples the mask texture in quad-local UV
-    // and multiplies its alpha, matching the canvas destination-in over the
-    // layout rect.
+  it('composites the image mask natively on any fit (masks remap onto the quad)', () => {
+    // Cover/stretch: the engine samples the mask texture and multiplies its
+    // alpha, matching the canvas destination-in over the layout rect.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({
         id: 'camera', type: 'camera',
@@ -178,11 +175,10 @@ describe('getNativeSceneUnsupportedReason', () => {
         enhancements: { imageMask: { enabled: true, assetPath: 'asset://mask.png' } }
       })
     ]))).toBeNull()
-    // Contain fits letterbox, so the mask (stretched to the layout rect) would
-    // not align with the drawn quad — keep those on the canvas compositor.
+    // Contain (letterboxed) composes via maskTransform mapping the sample UV.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({ enhancements: { imageMask: { enabled: true, assetPath: 'asset://mask.png' } } })
-    ]))).toContain('canvas-only enhancements')
+    ]))).toBeNull()
   })
 
   it('composites plain shapes and static borders natively but keeps animated/clipped shapes on canvas', () => {
@@ -237,10 +233,11 @@ describe('getNativeSceneUnsupportedReason', () => {
     ]))).toContain('canvas-only enhancements')
     // 'rect'/'none' keep the canvas path (phase 1 covers the six mask shapes).
     expect(getNativeSceneUnsupportedReason(scene([shapedCamera('rect')]))).toContain('canvas-only enhancements')
-    // Contain fits letterbox, so the shape geometry would not align with the quad.
+    // Contain (letterboxed default displayLayer) composes now — the shape mask
+    // is remapped from layout-rect space onto the drawn quad via maskTransform.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({ enhancements: { shape: 'circle' } })
-    ]))).toContain('canvas-only enhancements')
+    ]))).toBeNull()
   })
 })
 

@@ -204,9 +204,14 @@ export interface Layer {
   circleMask?: LayerCircleMask
   /**
    * Optional image-mask texture handle (OBS-style). Its alpha multiplies the
-   * layer's, stretched across the quad. Omit to disable.
+   * layer's, stretched across the layout rect. Omit to disable.
    */
   maskTexture?: bigint
+  /**
+   * Maps the drawn quad's UV into the layout rect masks are positioned in:
+   * [offsetU, offsetV, scaleU, scaleV]. Omit for identity (quad fills the rect).
+   */
+  maskTransform?: [number, number, number, number]
 }
 
 export interface Frame {

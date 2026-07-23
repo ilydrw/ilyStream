@@ -140,6 +140,12 @@ export interface NativeCompositorTransform {
   crop: { left: number; top: number; right: number; bottom: number }
   visibility: boolean
   opacity: number
+  /**
+   * Maps the drawn quad's UV into the LAYOUT rect that masks are positioned in:
+   * [offsetU, offsetV, scaleU, scaleV]. For a letterboxed contain fit the quad
+   * is a centered sub-region of the rect; identity [0,0,1,1] when it fills it.
+   */
+  maskTransform: [number, number, number, number]
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -202,6 +208,20 @@ export function computeNativeCompositorTransform(
   const scaleX = scaledWidth / croppedWidth
   const scaleY = scaledHeight / croppedHeight
 
+  // The quad occupies [drawX, drawX+drawWidth] within the layout rect
+  // [layout.x, layout.x+targetWidth]; the mask transform expresses that as a
+  // UV offset+scale so the engine evaluates layout-space masks over a
+  // letterboxed contain quad. Identity when the quad fills the rect.
+  const maskTransform: [number, number, number, number] =
+    targetWidth > 0 && targetHeight > 0
+      ? [
+          (drawX - layout.x) / targetWidth,
+          (drawY - layout.y) / targetHeight,
+          drawWidth / targetWidth,
+          drawHeight / targetHeight
+        ]
+      : [0, 0, 1, 1]
+
   return {
     position: {
       x: (drawX + drawWidth / 2) * outputScaleX,
@@ -223,6 +243,7 @@ export function computeNativeCompositorTransform(
       bottom: (sourceHeight - cropBottom) / sourceHeight
     },
     visibility: targetWidth > 0 && targetHeight > 0,
-    opacity: 1
+    opacity: 1,
+    maskTransform
   }
 }

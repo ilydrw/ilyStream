@@ -34,6 +34,11 @@ uniform vec4 u_circleMask;
 // the broadcast compositor. Sampled in quad-local UV via u_cornerRect.
 SAMPLER2D(s_maskTex, 1);
 uniform vec4 u_maskParams;
+// Maps this quad's UV into the LAYOUT rect the masks are positioned in, for
+// letterboxed (contain) fits: (offsetU, offsetV, scaleU, scaleV). All the mask
+// stages evaluate in layout space. Identity (0,0,1,1) when the quad fills the
+// rect (cover/stretch). The layout pixel size is quad size / scale.
+uniform vec4 u_maskTransform;
 
 vec3 linearToSrgb(vec3 value)
 {
@@ -146,15 +151,23 @@ void main()
 		}
 	}
 
-	// Rounded-corner mask: signed distance to a rounded rectangle in quad
+	// Mask coordinate frame. All masks are positioned by the host in LAYOUT-rect
+	// space, but the drawn quad may be a letterboxed sub-region of that rect
+	// (contain fits). u_maskTransform = (offsetU, offsetV, scaleU, scaleV) maps
+	// this quad's UV to layout-rect UV, and the layout size is recovered from the
+	// quad size the same way. Identity (0,0,1,1) for cover/stretch (quad == rect).
+	vec2 maskSpan = max(u_cornerRect.zw - u_cornerRect.xy, vec2_splat(0.0001));
+	vec2 quadUV = clamp((v_texcoord0.xy - u_cornerRect.xy) / maskSpan, vec2_splat(0.0), vec2_splat(1.0));
+	vec2 layoutUV = u_maskTransform.xy + quadUV * u_maskTransform.zw;
+	vec2 layoutSize = u_cornerRadius.yz / max(u_maskTransform.zw, vec2_splat(0.0001));
+	vec2 layoutPos = layoutUV * layoutSize;
+
+	// Rounded-corner mask: signed distance to a rounded rectangle in layout
 	// pixel space, feathered over ~1px like the canvas clip's antialiasing.
 	if (u_cornerRadius.w > 0.5) {
-		vec2 span = max(u_cornerRect.zw - u_cornerRect.xy, vec2_splat(0.0001));
-		vec2 quadUV = clamp((v_texcoord0.xy - u_cornerRect.xy) / span, vec2_splat(0.0), vec2_splat(1.0));
-		vec2 quadSize = u_cornerRadius.yz;
-		float radius = min(u_cornerRadius.x, 0.5 * min(quadSize.x, quadSize.y));
-		vec2 fromCenter = (quadUV - vec2_splat(0.5)) * quadSize;
-		vec2 cornerDist = abs(fromCenter) - (0.5 * quadSize - vec2_splat(radius));
+		float radius = min(u_cornerRadius.x, 0.5 * min(layoutSize.x, layoutSize.y));
+		vec2 fromCenter = layoutPos - 0.5 * layoutSize;
+		vec2 cornerDist = abs(fromCenter) - (0.5 * layoutSize - vec2_splat(radius));
 		float sdf = length(max(cornerDist, vec2_splat(0.0))) + min(max(cornerDist.x, cornerDist.y), 0.0) - radius;
 		float cornerMask = clamp(0.5 - sdf, 0.0, 1.0);
 		chromaAlpha *= cornerMask;
@@ -166,10 +179,7 @@ void main()
 	// Circle mask: antialiased disc, everything outside is cut. Matches the
 	// canvas focus-circle arc clip.
 	if (u_circleMask.w > 0.5) {
-		vec2 circleSpan = max(u_cornerRect.zw - u_cornerRect.xy, vec2_splat(0.0001));
-		vec2 circleUV = clamp((v_texcoord0.xy - u_cornerRect.xy) / circleSpan, vec2_splat(0.0), vec2_splat(1.0));
-		vec2 quadPos = circleUV * u_cornerRadius.yz;
-		float circleSdf = length(quadPos - u_circleMask.xy) - u_circleMask.z;
+		float circleSdf = length(layoutPos - u_circleMask.xy) - u_circleMask.z;
 		float circleMask = clamp(0.5 - circleSdf, 0.0, 1.0);
 		chromaAlpha *= circleMask;
 		if (u_sourceColor.z > 1.5) {
@@ -178,11 +188,9 @@ void main()
 	}
 
 	// Image mask: the mask texture's alpha multiplies the layer's, stretched
-	// across the quad (canvas destination-in over the layout rect). Alpha only.
+	// across the LAYOUT rect (canvas destination-in over it). Alpha only.
 	if (u_maskParams.x > 0.5) {
-		vec2 maskSpan = max(u_cornerRect.zw - u_cornerRect.xy, vec2_splat(0.0001));
-		vec2 maskUV = clamp((v_texcoord0.xy - u_cornerRect.xy) / maskSpan, vec2_splat(0.0), vec2_splat(1.0));
-		float maskAlpha = texture2D(s_maskTex, maskUV).a;
+		float maskAlpha = texture2D(s_maskTex, clamp(layoutUV, vec2_splat(0.0), vec2_splat(1.0))).a;
 		chromaAlpha *= maskAlpha;
 		if (u_sourceColor.z > 1.5) {
 			color.rgb *= maskAlpha;

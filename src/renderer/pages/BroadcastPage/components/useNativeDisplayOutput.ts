@@ -93,18 +93,6 @@ function hasEnhancements(layer: StudioLayer): boolean {
   )
 }
 
-/**
- * The canvas clips a rounded rect over the LAYOUT rect (the default shape is
- * an all-covering 'rect', so a corner radius applies even with no explicit
- * shape). The engine's SDF mask covers the drawn QUAD, so the two only agree
- * when the quad fills the layout rect: cover/stretch fits (and text, which
- * always stretches). Contain fits can letterbox, so they keep falling back.
- */
-function quadFillsLayoutRect(layer: StudioLayer): boolean {
-  if (layer.type === 'text') return true
-  return layer.config.fitMode === 'cover' || layer.config.fitMode === 'stretch'
-}
-
 // Shapes the engine composites natively in phase 1 by rasterizing the shape into
 // an alpha mask (the imageMask pipeline). 'rect'/'none' keep the canvas path.
 const NATIVE_SHAPE_TYPES = new Set(['circle', 'square', 'star', 'heart', 'hexagon', 'diamond'])
@@ -143,8 +131,9 @@ function isStaticBorder(border: StudioShapeBorder | undefined): boolean {
  * Still on canvas: animated/audio-reactive borders, a capture pan, and the
  * image mask (it needs the single mask-texture slot the shape already uses).
  * The shape's drop shadow is NOT gated — the broadcast compositor never draws
- * it (only the editor overlay does), so rendering no shadow matches. Native
- * shapes are in scope (16:9), quad-filling only.
+ * it (only the editor overlay does), so rendering no shadow matches. Letterboxed
+ * (contain) fits are fine: the engine remaps mask UVs into the layout rect (see
+ * the layer maskTransform), so the shape geometry aligns regardless of fit.
  */
 function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | null {
   const shapeObj = normalizeShape(layer)
@@ -157,7 +146,7 @@ function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | 
   const hasCapturePan = (shapeObj.captureX ?? 50) !== 50 || (shapeObj.captureY ?? 50) !== 50
   const conflictsMask = Boolean(layer.enhancements?.imageMask?.enabled)
 
-  if (!inScope || hasAnimatedBorder || hasCapturePan || conflictsMask || !quadFillsLayoutRect(layer)) {
+  if (!inScope || hasAnimatedBorder || hasCapturePan || conflictsMask) {
     return 'fallback'
   }
   return shapeObj
@@ -168,37 +157,30 @@ function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | 
  * longer disqualify a layer: chroma key (fs_sprite chroma stage), the
  * color-matrix chain — brightness, contrast, saturation, temperature, filter
  * presets (fs_sprite color-adjust stage) — vignette (a synthetic gradient
- * overlay layer, see createVignetteSource), cornerRadius on quad-filling fits
- * (fs_sprite rounded-corner SDF), beauty (engine Gaussian blur pipeline + a
- * contrast step folded into the color matrix), the focus circle on quad-filling
- * fits (engine blurred base draw + sharp circle-masked overlay), and the image
- * mask on quad-filling fits (engine second-texture alpha multiply). The `blur`
- * and `sharpen` fields are NOT gated: the broadcast canvas compositor never
- * applies them (only the enhancement modal's preview does), so ignoring them IS
- * parity. Everything else on the list still needs the canvas compositor.
+ * overlay layer, see createVignetteSource), cornerRadius (fs_sprite
+ * rounded-corner SDF), beauty (engine Gaussian blur pipeline + a contrast step
+ * folded into the color matrix), the focus circle (engine blurred base draw +
+ * sharp circle-masked overlay), and the image mask (engine second-texture alpha
+ * multiply). The `blur` and `sharpen` fields are NOT gated: the broadcast canvas
+ * compositor never applies them (only the enhancement modal's preview does), so
+ * ignoring them IS parity. Everything else on the list still needs the canvas
+ * compositor.
  *
- * The focus circle, cornerRadius, image mask, and shape masks all map their
- * geometry off the layout rect but the engine's masks cover the drawn quad, so
- * they only agree when the quad fills the layout rect (see quadFillsLayoutRect)
- * — contain fits fall back. The image mask is alpha-mode only, matching the
+ * All the engine masks are positioned in layout-rect space and remapped onto the
+ * drawn quad via the layer maskTransform, so they compose correctly on any fit,
+ * letterboxed contain included. The image mask is alpha-mode only, matching the
  * broadcast compositor (its mode/invert options are unimplemented there, so
- * honoring them would diverge).
- *
- * Shape masks (phase 1) are content-clip only: a plain mask shape rasterized to
- * an alpha texture (the imageMask pipeline). Shapes with borders, shadows, a
- * capture pan, or another mask-consuming enhancement clipped inside the shape
- * (image mask, focus circle, vignette) still fall back — see resolveNativeShape.
+ * honoring them would diverge). Shape masks that the engine can't reproduce
+ * (animated borders, a capture pan, or an image mask needing the same slot)
+ * still fall back — see resolveNativeShape.
  */
 function hasNonNativeEnhancements(layer: StudioLayer): boolean {
   const enhancements = layer.enhancements
   if (!enhancements) return false
 
   return Boolean(
-    ((enhancements.cornerRadius ?? 0) !== 0 && !quadFillsLayoutRect(layer)) ||
     enhancements.virtualBackground?.enabled ||
-    resolveNativeShape(layer) === 'fallback' ||
-    (enhancements.focusCircle?.enabled && !quadFillsLayoutRect(layer)) ||
-    (enhancements.imageMask?.enabled && !quadFillsLayoutRect(layer))
+    resolveNativeShape(layer) === 'fallback'
   )
 }
 

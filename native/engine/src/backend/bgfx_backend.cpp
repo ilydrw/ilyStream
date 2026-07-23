@@ -77,6 +77,7 @@ struct SpriteDrawParams {
     float cornerRadius = 0.0f;
     const IlyCircleMask* circleMask = nullptr;
     bgfx::TextureHandle maskTexture = BGFX_INVALID_HANDLE;
+    float maskTransform[4] = {0.0f, 0.0f, 1.0f, 1.0f};
     float sourceParams[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     bool encodeSrgbOutput = false;
 };
@@ -112,6 +113,8 @@ struct BgfxBackend::Impl {
     // alpha multiplied into the layer. u_maskParams = (enabled, 0, 0, 0).
     bgfx::UniformHandle m_maskSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_maskParamsUniform = BGFX_INVALID_HANDLE;
+    // Maps quad UV -> layout-rect UV for letterboxed fits (offset.xy, scale.zw).
+    bgfx::UniformHandle m_maskTransformUniform = BGFX_INVALID_HANDLE;
     // Blur pipeline: separable Gaussian over pooled padded intermediates.
     // u_blurParams = (stepU, stepV, 0, 0), u_blurWeights = 13 kernel weights.
     bgfx::ProgramHandle m_blurProgram = BGFX_INVALID_HANDLE;
@@ -485,6 +488,7 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     m_impl->m_circleMaskUniform = bgfx::createUniform("u_circleMask", bgfx::UniformType::Vec4);
     m_impl->m_maskSampler = bgfx::createUniform("s_maskTex", bgfx::UniformType::Sampler);
     m_impl->m_maskParamsUniform = bgfx::createUniform("u_maskParams", bgfx::UniformType::Vec4);
+    m_impl->m_maskTransformUniform = bgfx::createUniform("u_maskTransform", bgfx::UniformType::Vec4);
     m_impl->m_blurParamsUniform = bgfx::createUniform("u_blurParams", bgfx::UniformType::Vec4);
     m_impl->m_blurWeightsUniform = bgfx::createUniform("u_blurWeights", bgfx::UniformType::Vec4, 4);
 
@@ -578,6 +582,10 @@ void BgfxBackend::Shutdown() {
     if (bgfx::isValid(m_impl->m_maskParamsUniform)) {
         bgfx::destroy(m_impl->m_maskParamsUniform);
         m_impl->m_maskParamsUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_maskTransformUniform)) {
+        bgfx::destroy(m_impl->m_maskTransformUniform);
+        m_impl->m_maskTransformUniform = BGFX_INVALID_HANDLE;
     }
     if (bgfx::isValid(m_impl->m_blurProgram)) {
         bgfx::destroy(m_impl->m_blurProgram);
@@ -1137,6 +1145,9 @@ IlyResult BgfxBackend::Impl::SubmitSpriteDraw(const SpriteDrawParams& params) {
     const bool maskEnabled = bgfx::isValid(params.maskTexture);
     const float maskParams[4] = { maskEnabled ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
     bgfx::setUniform(m_maskParamsUniform, maskParams);
+    // Maps this quad's UV into the layout rect the masks are positioned in
+    // (identity when the quad fills the rect; a letterbox for contain fits).
+    bgfx::setUniform(m_maskTransformUniform, params.maskTransform);
 
     // Bind texture using the shared, pre-created sampler uniform.
     bgfx::setTexture(0, m_texColorSampler, params.texture);
@@ -1204,7 +1215,7 @@ void BgfxBackend::Impl::SubmitBlurPass(uint16_t viewId, bgfx::TextureHandle sour
     bgfx::submit(viewId, m_blurProgram);
 }
 
-IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture) {
+IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture, const float* maskTransform) {
     ILY_PROFILE_SCOPE("BgfxBackend::DrawQuad");
     if (!transform.visibility || transform.opacity <= 0.0f || opacity <= 0.0f) {
         return ILY_SUCCESS;
@@ -1265,6 +1276,15 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
         if (maskTex) {
             draw.maskTexture = maskTex->GetHandle();
         }
+    }
+    // A positive UV scale is required (the shader divides by it); anything else
+    // — including a value-initialized {0,0,0,0} from a direct IlyLayer — falls
+    // back to the identity default so masks map 1:1 onto a quad-filling layer.
+    if (maskTransform && maskTransform[2] > 0.0f && maskTransform[3] > 0.0f) {
+        draw.maskTransform[0] = maskTransform[0];
+        draw.maskTransform[1] = maskTransform[1];
+        draw.maskTransform[2] = maskTransform[2];
+        draw.maskTransform[3] = maskTransform[3];
     }
     draw.sourceParams[0] = transferMode;
     draw.sourceParams[1] = sourceColor.primaries == ILY_COLOR_PRIMARIES_BT2020 ? 1.0f : 0.0f;

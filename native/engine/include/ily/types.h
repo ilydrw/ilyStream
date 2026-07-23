@@ -243,10 +243,15 @@ typedef struct IlyLayer {
     float blurSigma;
     IlyCircleMask circleMask;
     /* Optional image-mask texture (OBS-style): its alpha multiplies the layer's,
-     * stretched across the quad (matches the canvas destination-in over the
-     * layout rect, so only valid when the quad fills that rect). Alpha-mode
-     * only, matching the broadcast compositor. ILY_INVALID_HANDLE disables it. */
+     * stretched across the layout rect (matches the canvas destination-in over
+     * it). Alpha-mode only, matching the broadcast compositor. ILY_INVALID_HANDLE
+     * disables it. */
     ResourceHandle maskTexture;
+    /* Maps the drawn quad's UV into the LAYOUT rect the masks (corner/circle/
+     * image/shape) are positioned in: (offsetU, offsetV, scaleU, scaleV). For a
+     * letterboxed contain fit the quad is a centered sub-region of the rect, so
+     * this is non-identity; identity {0,0,1,1} when the quad fills the rect. */
+    float maskTransform[4];
 } IlyLayer;
 
 typedef struct IlyRendererCapabilities {

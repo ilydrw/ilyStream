@@ -572,6 +572,32 @@ static Napi::Value EngineSetLayers(const Napi::CallbackInfo& info) {
             layer.maskTexture = Uint64ToResourceHandle(
                 lo.Get("maskTexture").As<Napi::BigInt>().Uint64Value(&lossless));
         }
+
+        // Optional mask transform [offsetU, offsetV, scaleU, scaleV] mapping the
+        // quad's UV into the layout rect the masks are positioned in. Defaults to
+        // identity (the quad fills the rect); a non-identity scale must stay
+        // positive so the shader's layout-size division is well-defined.
+        layer.maskTransform[0] = 0.0f;
+        layer.maskTransform[1] = 0.0f;
+        layer.maskTransform[2] = 1.0f;
+        layer.maskTransform[3] = 1.0f;
+        if (lo.Has("maskTransform") && lo.Get("maskTransform").IsArray()) {
+            Napi::Array mt = lo.Get("maskTransform").As<Napi::Array>();
+            if (mt.Length() == 4) {
+                float values[4];
+                bool ok = true;
+                for (uint32_t j = 0; j < 4; ++j) {
+                    values[j] = mt.Get(j).As<Napi::Number>().FloatValue();
+                    if (!std::isfinite(values[j])) { ok = false; break; }
+                }
+                if (ok && values[2] > 0.0f && values[3] > 0.0f) {
+                    layer.maskTransform[0] = values[0];
+                    layer.maskTransform[1] = values[1];
+                    layer.maskTransform[2] = values[2];
+                    layer.maskTransform[3] = values[3];
+                }
+            }
+        }
     }
 
     IlyResult res = IlyEngineSetLayers(Uint64ToResourceHandle(engineVal),

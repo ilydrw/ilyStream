@@ -564,17 +564,17 @@ ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer
                     // and any rounded-corner mask; the sharp overlay reuses the
                     // same source, transform, and color adjust with no blur. Both
                     // draws carry the image mask so it cuts the whole layer.
-                    IlyResult base = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture);
+                    IlyResult base = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
                     if (base != ILY_SUCCESS) {
                         return base;
                     }
-                    IlyResult sharp = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, 0.0f, &layer.circleMask, layer.maskTexture);
+                    IlyResult sharp = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, 0.0f, &layer.circleMask, layer.maskTexture, layer.maskTransform);
                     if (sharp != ILY_SUCCESS) {
                         return sharp;
                     }
                     continue;
                 }
-                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture);
+                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
                 if (r != ILY_SUCCESS) {
                     return r;
                 }

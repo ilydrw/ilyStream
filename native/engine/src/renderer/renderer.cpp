@@ -167,7 +167,7 @@ ResourceHandle Renderer::CreateSpriteProgram() {
     return future.get();
 }
 
-IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture) {
+IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture, const float* maskTransform) {
     if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
     auto promise = std::make_shared<std::promise<IlyResult>>();
     auto future = promise->get_future();
@@ -183,6 +183,12 @@ IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& t
     cmd.blurSigma = blurSigma;
     if (circleMask) cmd.circleMask = *circleMask;
     cmd.maskTexture = maskTexture;
+    if (maskTransform) {
+        cmd.maskTransform[0] = maskTransform[0];
+        cmd.maskTransform[1] = maskTransform[1];
+        cmd.maskTransform[2] = maskTransform[2];
+        cmd.maskTransform[3] = maskTransform[3];
+    }
     cmd.promise = promise;
     m_commandQueue.Push(cmd);
     return future.get();
@@ -316,7 +322,7 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::DrawQuad: {
-                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode, &cmd.chromaKey, &cmd.colorAdjust, cmd.cornerRadius, cmd.blurSigma, &cmd.circleMask, cmd.maskTexture);
+                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode, &cmd.chromaKey, &cmd.colorAdjust, cmd.cornerRadius, cmd.blurSigma, &cmd.circleMask, cmd.maskTexture, cmd.maskTransform);
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }

@@ -305,16 +305,20 @@ function buildLayersFromScene(
     if (!sourceTexture) return null
     const maskTexture = layer.maskSource ? textures.get(layer.maskSource.key) : undefined
     if (layer.maskSource && !maskTexture) return null
+    const transform = computeNativeCompositorTransform(
+      layer.layout,
+      sourceTexture,
+      scene.canvasWidth,
+      scene.canvasHeight,
+      eng.size.width,
+      eng.size.height
+    )
     layers.push({
       texture: sourceTexture.texture,
-      transform: computeNativeCompositorTransform(
-        layer.layout,
-        sourceTexture,
-        scene.canvasWidth,
-        scene.canvasHeight,
-        eng.size.width,
-        eng.size.height
-      ),
+      transform,
+      // The mask geometry lives in layout-rect space; a letterboxed contain fit
+      // draws a sub-region, so the engine remaps mask UVs with this transform.
+      maskTransform: transform.maskTransform,
       opacity: Math.max(0, Math.min(1, layer.opacity)),
       blendMode: toNativeBlendMode(layer.blendMode),
       ...(layer.chromaKey ? { chromaKey: layer.chromaKey } : {}),
