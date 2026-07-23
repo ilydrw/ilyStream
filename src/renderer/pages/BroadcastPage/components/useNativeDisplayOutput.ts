@@ -3,6 +3,7 @@ import {
   resolveLayerLayout,
   type StudioLayer,
   type StudioScene,
+  type StudioShapeBorder,
   type StudioShapeMask
 } from '../../../../shared/studio'
 import type {
@@ -117,15 +118,33 @@ function normalizeShape(layer: StudioLayer): StudioShapeMask | null {
 }
 
 /**
+ * A border the engine reproduces (phase 2): a plain colored stroke. The
+ * broadcast compositor's chroma/cyber borders animate per frame (hue cycling +
+ * glow) and audio-reactive borders pulse with volume, so those still fall back;
+ * solid/gob-the-stopper/custom all render as the same static stroke there.
+ */
+function isStaticBorder(border: StudioShapeBorder | undefined): boolean {
+  return Boolean(border?.enabled) &&
+    border!.type !== 'chroma' &&
+    border!.type !== 'cyber' &&
+    !border!.audioReactive
+}
+
+/**
  * Decide how a layer's shape maps onto the native path:
  *   - null       → no shape (or a shape that doesn't apply); nothing to do.
  *   - 'fallback' → a shape the engine can't reproduce yet; keep the canvas path.
- *   - object     → a plain content-clip the engine handles via a rasterized mask.
+ *   - object     → a content-clip (+ optional static border) the engine handles.
  *
- * Phase 1 is content-clip only: one of the six mask shapes, in scope for the
- * native (16:9) render, quad-filling, with no border, shadow, capture pan, or
- * other mask-consuming enhancement (image mask, focus circle, vignette — each
- * clipped inside the shape on canvas, deferred to later phases).
+ * Content-clip is a rasterized alpha mask; a static border is a rasterized
+ * stroke overlay (phase 2). A focus circle and a vignette compose with a shape:
+ * the focus circle rides its own circleMask uniform (the shape keeps the mask
+ * texture), and the vignette is a separate overlay the builder shape-clips.
+ * Still on canvas: animated/audio-reactive borders, a capture pan, and the
+ * image mask (it needs the single mask-texture slot the shape already uses).
+ * The shape's drop shadow is NOT gated — the broadcast compositor never draws
+ * it (only the editor overlay does), so rendering no shadow matches. Native
+ * shapes are in scope (16:9), quad-filling only.
  */
 function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | null {
   const shapeObj = normalizeShape(layer)
@@ -134,15 +153,11 @@ function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | 
 
   const scope = shapeObj.scope ?? 'both'
   const inScope = scope === 'both' || scope === '16:9'
-  const hasBorder = Boolean(shapeObj.border?.enabled)
-  const hasShadow = Boolean(shapeObj.shadow?.enabled)
+  const hasAnimatedBorder = Boolean(shapeObj.border?.enabled) && !isStaticBorder(shapeObj.border)
   const hasCapturePan = (shapeObj.captureX ?? 50) !== 50 || (shapeObj.captureY ?? 50) !== 50
-  const e = layer.enhancements
-  const consumesMask = Boolean(e?.imageMask?.enabled) ||
-    Boolean(e?.focusCircle?.enabled) ||
-    (e?.vignette ?? 0) > 0
+  const conflictsMask = Boolean(layer.enhancements?.imageMask?.enabled)
 
-  if (!inScope || hasBorder || hasShadow || hasCapturePan || consumesMask || !quadFillsLayoutRect(layer)) {
+  if (!inScope || hasAnimatedBorder || hasCapturePan || conflictsMask || !quadFillsLayoutRect(layer)) {
     return 'fallback'
   }
   return shapeObj
@@ -449,6 +464,71 @@ function createShapeMaskSource(
   return source
 }
 
+/**
+ * Rasterize a static shape border: stroke the shape path with the border's
+ * color/opacity/thickness (matching the broadcast compositor's solid border
+ * branch — round join/cap, no glow). Thickness is in canvas px, so it scales by
+ * the mask downscale to survive the stretch back across the quad. Drawn as a
+ * synthetic overlay layer above the shaped content, unclipped like the canvas.
+ */
+export function buildBorderPixels(
+  width: number,
+  height: number,
+  shapeObj: StudioShapeMask,
+  border: StudioShapeBorder,
+  cornerRadiusPct: number,
+  scale: number
+): Uint8Array {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: true })
+  if (!ctx) throw new Error('Could not rasterize native shape border')
+  ctx.clearRect(0, 0, width, height)
+
+  const sx = (shapeObj.x / 100) * width
+  const sy = (shapeObj.y / 100) * height
+  const sw = (shapeObj.scale / 100) * width
+  const sh = (shapeObj.scale / 100) * height
+  const r = Math.min(sw, sh) / 2
+  const cornerRadius = (cornerRadiusPct || 0) * (Math.min(sw, sh) / 200)
+
+  ctx.lineWidth = Math.max(0.1, (border.thickness ?? 1) * scale)
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = border.color || '#fff'
+  ctx.globalAlpha = Math.max(0, Math.min(1, (border.opacity ?? 100) / 100))
+  traceShapePath(ctx, shapeObj.type, sx, sy, r, sw, sh, cornerRadius, shapeObj.cutDepth)
+  ctx.stroke()
+
+  return new Uint8Array(ctx.getImageData(0, 0, width, height).data)
+}
+
+function createBorderSource(
+  layer: StudioLayer,
+  shapeObj: StudioShapeMask,
+  border: StudioShapeBorder,
+  cache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>
+): Extract<NativeSceneSource, { kind: 'pixels' }> {
+  const scale = Math.min(1, MAX_SHAPE_EDGE / Math.max(1, layer.width, layer.height))
+  const width = Math.max(1, Math.round(layer.width * scale))
+  const height = Math.max(1, Math.round(layer.height * scale))
+  const cornerRadiusPct = Math.max(0, Math.min(100, layer.enhancements?.cornerRadius ?? 0))
+  const key = `border:${shapeObj.type}:${width}x${height}:${shapeObj.x}:${shapeObj.y}:${shapeObj.scale}:${shapeObj.cutDepth ?? ''}:${cornerRadiusPct}:${border.color ?? ''}:${border.thickness}:${border.opacity ?? 100}`
+  const cached = cache.get(key)
+  if (cached) return cached
+
+  const source: Extract<NativeSceneSource, { kind: 'pixels' }> = {
+    kind: 'pixels',
+    key,
+    width,
+    height,
+    pixels: buildBorderPixels(width, height, shapeObj, border, cornerRadiusPct, scale)
+  }
+  cache.set(key, source)
+  return source
+}
+
 function constrainLiveSourceDimensions(width: number, height: number): { width: number; height: number } {
   const sourceWidth = Math.max(1, Math.round(width))
   const sourceHeight = Math.max(1, Math.round(height))
@@ -595,8 +675,10 @@ function buildNativeBroadcastScene(
       }
       // A native shape claims the mask slot (the gate guarantees a shape and an
       // image mask never coexist), rasterized once and cached by its geometry.
+      // The same mask is reused to shape-clip the vignette overlay below.
+      let shapeMaskSource: Extract<NativeSceneSource, { kind: 'pixels' }> | undefined
       if (shapeObj) {
-        const shapeMaskSource = createShapeMaskSource(layer, shapeObj, pixelCache)
+        shapeMaskSource = createShapeMaskSource(layer, shapeObj, pixelCache)
         usedPixelKeys.add(shapeMaskSource.key)
         maskSource = shapeMaskSource
       }
@@ -628,34 +710,48 @@ function buildNativeBroadcastScene(
         maskSource
       }
 
-      // The canvas compositor draws the vignette gradient over the layer's
-      // full layout rect right after the layer, under the same transform and
-      // globalAlpha, always source-over — and inside the same rounded-rect
-      // clip when a corner radius is set. A synthetic overlay layer directly
-      // above the parent reproduces that exactly.
+      // Overlays share the parent's transform and draw source-over above it, in
+      // the canvas Pass order: the static border stroke (Pass 2), then the
+      // vignette gradient (Pass 3). A shaped layer clips its vignette to the
+      // shape (the canvas draws it inside the shape clip) by reusing the shape
+      // mask; an unshaped one uses the corner radius, exactly like the parent.
+      const overlayLayout = {
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        rotation,
+        flipH: false,
+        flipV: false,
+        crop: undefined,
+        fitMode: 'stretch' as const
+      }
+      const overlays: NativeSceneLayer[] = []
+      if (shapeObj && isStaticBorder(shapeObj.border)) {
+        const borderSource = createBorderSource(layer, shapeObj, shapeObj.border!, pixelCache)
+        usedPixelKeys.add(borderSource.key)
+        overlays.push({
+          id: `${layer.id}:border`,
+          source: borderSource,
+          layout: overlayLayout,
+          opacity,
+          blendMode: 'normal'
+        })
+      }
       if ((layer.enhancements?.vignette ?? 0) > 0) {
         const vignetteSource = createVignetteSource(layer, pixelCache)
         usedPixelKeys.add(vignetteSource.key)
-        return [entry, {
+        overlays.push({
           id: `${layer.id}:vignette`,
           source: vignetteSource,
-          layout: {
-            x: layer.x,
-            y: layer.y,
-            width: layer.width,
-            height: layer.height,
-            rotation,
-            flipH: false,
-            flipV: false,
-            crop: undefined,
-            fitMode: 'stretch'
-          },
+          layout: overlayLayout,
           opacity,
           blendMode: 'normal',
-          cornerRadius
-        }]
+          cornerRadius,
+          maskSource: shapeMaskSource
+        })
       }
-      return [entry]
+      return overlays.length ? [entry, ...overlays] : [entry]
     })
 
   for (const key of pixelCache.keys()) {

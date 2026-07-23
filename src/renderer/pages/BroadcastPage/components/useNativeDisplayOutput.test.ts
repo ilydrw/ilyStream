@@ -185,7 +185,7 @@ describe('getNativeSceneUnsupportedReason', () => {
     ]))).toContain('canvas-only enhancements')
   })
 
-  it('composites plain shape masks natively but keeps decorated/clipped shapes on canvas', () => {
+  it('composites plain shapes and static borders natively but keeps animated/clipped shapes on canvas', () => {
     const shapedCamera = (shape: unknown) => displayLayer({
       id: 'camera', type: 'camera',
       config: { fitMode: 'cover' },
@@ -197,16 +197,42 @@ describe('getNativeSceneUnsupportedReason', () => {
     ]))).toBeNull()
     // The bare-string form is normalized the same way.
     expect(getNativeSceneUnsupportedReason(scene([shapedCamera('hexagon')]))).toBeNull()
-    // Borders/shadows are decorations the engine does not draw yet.
+    // Phase 2: a static solid border rasterizes to a stroke overlay layer.
     expect(getNativeSceneUnsupportedReason(scene([
-      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', border: { enabled: true, type: 'solid', thickness: 4 } })
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', border: { enabled: true, type: 'solid', thickness: 4, color: '#0ff' } })
+    ]))).toBeNull()
+    // The drop shadow is a no-op in the broadcast compositor, so it does not
+    // force fallback (rendering no shadow matches).
+    expect(getNativeSceneUnsupportedReason(scene([
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', shadow: { enabled: true, color: '#000', blur: 20, offsetX: 5, offsetY: 5 } })
+    ]))).toBeNull()
+    // Animated (chroma/cyber) and audio-reactive borders still need the canvas.
+    expect(getNativeSceneUnsupportedReason(scene([
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', border: { enabled: true, type: 'chroma', thickness: 4 } })
     ]))).toContain('canvas-only enhancements')
-    // A focus circle (or image mask/vignette) is clipped inside the shape on
-    // canvas — that combination still needs the canvas compositor.
+    expect(getNativeSceneUnsupportedReason(scene([
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', border: { enabled: true, type: 'solid', thickness: 4, audioReactive: true } })
+    ]))).toContain('canvas-only enhancements')
+    // A focus circle composes with a shape: the circle rides its own uniform
+    // while the shape keeps the mask texture, so both apply on the same draws.
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({
         id: 'camera', type: 'camera', config: { fitMode: 'cover' },
         enhancements: { shape: 'circle', focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } }
+      })
+    ]))).toBeNull()
+    // A vignette composes too — it becomes a shape-clipped overlay layer.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera', config: { fitMode: 'cover' },
+        enhancements: { shape: 'circle', vignette: 40 }
+      })
+    ]))).toBeNull()
+    // The image mask still conflicts — it needs the mask slot the shape uses.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera', config: { fitMode: 'cover' },
+        enhancements: { shape: 'circle', imageMask: { enabled: true, assetPath: 'asset://mask.png' } }
       })
     ]))).toContain('canvas-only enhancements')
     // 'rect'/'none' keep the canvas path (phase 1 covers the six mask shapes).
