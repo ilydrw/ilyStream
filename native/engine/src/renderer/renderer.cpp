@@ -167,7 +167,7 @@ ResourceHandle Renderer::CreateSpriteProgram() {
     return future.get();
 }
 
-IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma) {
+IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture) {
     if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
     auto promise = std::make_shared<std::promise<IlyResult>>();
     auto future = promise->get_future();
@@ -178,6 +178,11 @@ IlyResult Renderer::DrawQuad(ResourceHandle textureHandle, const IlyTransform& t
     cmd.opacity = opacity;
     cmd.blendMode = blendMode;
     if (chroma) cmd.chromaKey = *chroma;
+    if (colorAdjust) cmd.colorAdjust = *colorAdjust;
+    cmd.cornerRadius = cornerRadius;
+    cmd.blurSigma = blurSigma;
+    if (circleMask) cmd.circleMask = *circleMask;
+    cmd.maskTexture = maskTexture;
     cmd.promise = promise;
     m_commandQueue.Push(cmd);
     return future.get();
@@ -311,7 +316,7 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::DrawQuad: {
-                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode, &cmd.chromaKey);
+                    IlyResult res = m_device.DrawQuad(cmd.handle, cmd.transform, cmd.opacity, cmd.blendMode, &cmd.chromaKey, &cmd.colorAdjust, cmd.cornerRadius, cmd.blurSigma, &cmd.circleMask, cmd.maskTexture);
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }

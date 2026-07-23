@@ -56,6 +56,32 @@ export interface NativeSceneChromaKey {
   spill: number
 }
 
+/**
+ * Per-layer color adjustment: the layer's CSS-filter enhancement chain
+ * (brightness/contrast/saturation/temperature/presets) composed into one
+ * row-major 3x4 matrix (rows R,G,B; each row = mR,mG,mB,offset) plus an alpha
+ * multiplier, applied by the engine in gamma space for canvas parity.
+ */
+export interface NativeSceneColorAdjust {
+  matrix: number[]
+  alpha: number
+}
+
+/**
+ * Per-layer focus-circle sharp region: the engine draws the layer blurred, then
+ * a sharp copy clipped to this circle on top (the canvas focus-circle effect).
+ * Center and radius are CONTENT-local, in canvas pixels from the quad's
+ * top-left in texcoord orientation. Flips need no adjustment — the shader's
+ * circle SDF works in texcoord space and mirrors with the quad's negative-scale
+ * flip, matching the canvas arc (drawn inside its ctx.scale(-1) flip). Scaled to
+ * output pixels by the main process.
+ */
+export interface NativeSceneCircleMask {
+  x: number
+  y: number
+  radius: number
+}
+
 export interface NativeSceneLayer {
   id: string
   source: NativeSceneSource
@@ -64,6 +90,34 @@ export interface NativeSceneLayer {
   blendMode: NativeSceneBlendMode
   /** Present = chroma keying enabled for this layer. */
   chromaKey?: NativeSceneChromaKey
+  /** Present = color adjustment enabled for this layer. */
+  colorAdjust?: NativeSceneColorAdjust
+  /**
+   * Rounded-corner mask radius in CANVAS pixels (the canvas roundRect clip:
+   * cornerRadius/100 * min(w,h)/2). Scaled to output pixels by the main
+   * process. Only present for layers whose drawn quad fills the layout rect.
+   */
+  cornerRadius?: number
+  /**
+   * Gaussian blur sigma in CANVAS pixels for the blurred base draw. Combines
+   * the beauty enhancement (CSS blur(beauty/100 * 2px)) and, when a focus
+   * circle is set, its blur (CSS blur(focusCircle.blur/100 * 40px)) — sequential
+   * CSS blurs compose as hypot(a, b). Scaled to output pixels by the main
+   * process; the engine blurs a padded intermediate (downsampled for large
+   * sigmas) and clips the bleed back to the quad, matching the canvas rect clip.
+   */
+  blurSigma?: number
+  /**
+   * Present = focus-circle sharp region enabled. See NativeSceneCircleMask.
+   */
+  circleMask?: NativeSceneCircleMask
+  /**
+   * Present = OBS-style image mask enabled. An image source whose alpha cuts the
+   * layer (stretched across the quad, matching the canvas destination-in over
+   * the layout rect). The main process uploads it as a second texture. Only set
+   * for layers whose quad fills the layout rect.
+   */
+  maskSource?: NativeSceneSource
 }
 
 export interface NativeBroadcastScene {

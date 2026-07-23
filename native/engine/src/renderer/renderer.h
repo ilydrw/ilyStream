@@ -62,6 +62,11 @@ struct RenderThreadCommand {
     float opacity;
     IlyBlendMode blendMode;
     IlyChromaKey chromaKey{};
+    IlyColorAdjust colorAdjust{};
+    float cornerRadius = 0.0f;
+    float blurSigma = 0.0f;
+    IlyCircleMask circleMask{};
+    ResourceHandle maskTexture = ILY_INVALID_HANDLE;
     std::shared_ptr<RenderGraph> renderGraph;
     void** sharedOutputHandle = nullptr;
     uint32_t* sharedOutputWidth = nullptr;
@@ -96,7 +101,7 @@ public:
     IlyResult UpdateTexture(ResourceHandle handle, const void* data, uint32_t byteLength, bool isBGRA = false);
     void DestroyTexture(ResourceHandle handle);
     ResourceHandle CreateSpriteProgram();
-    IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr);
+    IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr, const IlyColorAdjust* colorAdjust = nullptr, float cornerRadius = 0.0f, float blurSigma = 0.0f, const IlyCircleMask* circleMask = nullptr, ResourceHandle maskTexture = ILY_INVALID_HANDLE);
     IlyResult GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
     IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight);
 

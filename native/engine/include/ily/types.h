@@ -194,6 +194,33 @@ typedef struct IlyChromaKey {
     float spill;       /* 0..1: green-spill suppression band */
 } IlyChromaKey;
 
+/**
+ * Per-layer color adjustment: one 3x4 color matrix (rgb' = M*rgb + offset)
+ * plus an alpha multiplier, applied in gamma space after chroma keying. The
+ * host composes the app's CSS-filter enhancement chain (brightness, contrast,
+ * saturate, hue-rotate, presets) into this matrix, so settings tuned on the
+ * canvas compositor look identical composited natively.
+ */
+typedef struct IlyColorAdjust {
+    bool enabled;
+    float matrix[12]; /* row-major rows R,G,B; each row = (mR, mG, mB, offset) */
+    float alpha;      /* extra alpha multiplier, 0..1 (CSS opacity() steps) */
+} IlyColorAdjust;
+
+/**
+ * Per-layer circle mask: only pixels inside the circle survive (antialiased
+ * SDF). Center/radius are in quad-local pixels measured from the quad's
+ * top-left in TEXCOORD (content) orientation, so the mask mirrors with the
+ * quad's negative-scale flip and needs no host-side flip adjustment. Used for
+ * the sharp inner region of the app's focus-circle effect.
+ */
+typedef struct IlyCircleMask {
+    bool enabled;
+    float x;
+    float y;
+    float radius;
+} IlyCircleMask;
+
 // A single composited layer: a texture drawn with a transform. The engine
 // redraws the current layer list into its offscreen target every frame, so the
 // composited result can be read back (IlyEngineReadPixels) and presented.
@@ -203,6 +230,23 @@ typedef struct IlyLayer {
     float opacity;
     IlyBlendMode blendMode;
     IlyChromaKey chromaKey;
+    IlyColorAdjust colorAdjust;
+    /* Rounded-corner mask radius in output pixels; 0 disables. Applied as an
+     * antialiased SDF over the drawn quad (matches the app's canvas
+     * roundRect clip for layers whose quad fills their layout rect). */
+    float cornerRadius;
+    /* Gaussian blur sigma in output pixels; 0 disables. Runs as a separable
+     * two-pass blur over a padded intermediate in sRGB-gamma space (the space
+     * the app's canvas ctx.filter blur() works in), clipped back to the quad
+     * like the canvas rect shape path clips blur bleed. Large sigmas render
+     * the intermediate downsampled (kernel sigma stays <= 4); clamped to 64. */
+    float blurSigma;
+    IlyCircleMask circleMask;
+    /* Optional image-mask texture (OBS-style): its alpha multiplies the layer's,
+     * stretched across the quad (matches the canvas destination-in over the
+     * layout rect, so only valid when the quad fills that rect). Alpha-mode
+     * only, matching the broadcast compositor. ILY_INVALID_HANDLE disables it. */
+    ResourceHandle maskTexture;
 } IlyLayer;
 
 typedef struct IlyRendererCapabilities {

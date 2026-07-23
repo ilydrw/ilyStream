@@ -161,6 +161,28 @@ export interface LayerChromaKey {
   spill: number
 }
 
+/**
+ * Per-layer color adjustment: row-major 3x4 matrix (rows R,G,B; each row =
+ * mR,mG,mB,offset) plus an alpha multiplier — the composed CSS-filter
+ * enhancement chain, applied by the sprite shader in gamma space.
+ */
+export interface LayerColorAdjust {
+  matrix: number[]
+  alpha: number
+}
+
+/**
+ * Focus-circle sharp region: center and radius in output pixels, content-local
+ * from the quad's top-left in texcoord orientation. Flips need no adjustment —
+ * the circle SDF mirrors with the quad's negative-scale flip. The engine draws
+ * it as a sharp overlay over the blurred base layer.
+ */
+export interface LayerCircleMask {
+  x: number
+  y: number
+  radius: number
+}
+
 export interface Layer {
   texture: bigint
   transform: Transform
@@ -168,6 +190,23 @@ export interface Layer {
   blendMode: BlendMode
   /** Present = keying enabled for this layer. */
   chromaKey?: LayerChromaKey
+  /** Present = color adjustment enabled for this layer. */
+  colorAdjust?: LayerColorAdjust
+  /** Rounded-corner mask radius in output pixels; omit or 0 disables. */
+  cornerRadius?: number
+  /**
+   * Gaussian blur sigma in output pixels for the blurred base draw; omit or 0
+   * disables. The engine downsamples the blur intermediate for large sigmas and
+   * clamps to 64.
+   */
+  blurSigma?: number
+  /** Present = focus-circle sharp overlay clipped to this circle. */
+  circleMask?: LayerCircleMask
+  /**
+   * Optional image-mask texture handle (OBS-style). Its alpha multiplies the
+   * layer's, stretched across the quad. Omit to disable.
+   */
+  maskTexture?: bigint
 }
 
 export interface Frame {

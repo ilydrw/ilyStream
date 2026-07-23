@@ -1,18 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { resolveLayerLayout, type StudioLayer, type StudioScene } from '../../../../shared/studio'
+import {
+  resolveLayerLayout,
+  type StudioLayer,
+  type StudioScene,
+  type StudioShapeMask
+} from '../../../../shared/studio'
 import type {
   NativeBroadcastScene,
   NativeLiveSourceFrame,
   NativeSceneBlendMode,
   NativeSceneChromaKey,
+  NativeSceneCircleMask,
+  NativeSceneColorAdjust,
   NativeSceneLayer,
   NativeSceneSource
 } from '../../../../shared/native-scene'
+import { buildEnhancementColorMatrix } from '../../../../shared/color-filter-matrix'
 import {
   resolveBrowserCaptureSettings,
+  traceShapePath,
   wrapCanvasText
 } from './CanvasEditor.utils'
 import type { BrowserFrameSurface, CachedMediaFrame } from './CanvasEditor.types'
+import { CameraFramePump, type CameraFrameSourceSpec } from './camera-frame-pump'
 
 interface NativeDisplayOutputOptions {
   enabled: boolean
@@ -83,29 +93,97 @@ function hasEnhancements(layer: StudioLayer): boolean {
 }
 
 /**
- * Like hasEnhancements, but chroma key no longer disqualifies a layer — the
- * engine composites it natively (fs_sprite chroma stage). Everything else on
- * the list still needs the canvas compositor.
+ * The canvas clips a rounded rect over the LAYOUT rect (the default shape is
+ * an all-covering 'rect', so a corner radius applies even with no explicit
+ * shape). The engine's SDF mask covers the drawn QUAD, so the two only agree
+ * when the quad fills the layout rect: cover/stretch fits (and text, which
+ * always stretches). Contain fits can letterbox, so they keep falling back.
+ */
+function quadFillsLayoutRect(layer: StudioLayer): boolean {
+  if (layer.type === 'text') return true
+  return layer.config.fitMode === 'cover' || layer.config.fitMode === 'stretch'
+}
+
+// Shapes the engine composites natively in phase 1 by rasterizing the shape into
+// an alpha mask (the imageMask pipeline). 'rect'/'none' keep the canvas path.
+const NATIVE_SHAPE_TYPES = new Set(['circle', 'square', 'star', 'heart', 'hexagon', 'diamond'])
+
+/** Normalize a layer's shape enhancement to its full object form (or null). */
+function normalizeShape(layer: StudioLayer): StudioShapeMask | null {
+  const shape = layer.enhancements?.shape
+  if (!shape) return null
+  if (typeof shape === 'object') return shape
+  return { type: shape, x: 50, y: 50, scale: 100, scope: 'both' }
+}
+
+/**
+ * Decide how a layer's shape maps onto the native path:
+ *   - null       → no shape (or a shape that doesn't apply); nothing to do.
+ *   - 'fallback' → a shape the engine can't reproduce yet; keep the canvas path.
+ *   - object     → a plain content-clip the engine handles via a rasterized mask.
+ *
+ * Phase 1 is content-clip only: one of the six mask shapes, in scope for the
+ * native (16:9) render, quad-filling, with no border, shadow, capture pan, or
+ * other mask-consuming enhancement (image mask, focus circle, vignette — each
+ * clipped inside the shape on canvas, deferred to later phases).
+ */
+function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | null {
+  const shapeObj = normalizeShape(layer)
+  if (!shapeObj) return null
+  if (!NATIVE_SHAPE_TYPES.has(shapeObj.type)) return 'fallback'
+
+  const scope = shapeObj.scope ?? 'both'
+  const inScope = scope === 'both' || scope === '16:9'
+  const hasBorder = Boolean(shapeObj.border?.enabled)
+  const hasShadow = Boolean(shapeObj.shadow?.enabled)
+  const hasCapturePan = (shapeObj.captureX ?? 50) !== 50 || (shapeObj.captureY ?? 50) !== 50
+  const e = layer.enhancements
+  const consumesMask = Boolean(e?.imageMask?.enabled) ||
+    Boolean(e?.focusCircle?.enabled) ||
+    (e?.vignette ?? 0) > 0
+
+  if (!inScope || hasBorder || hasShadow || hasCapturePan || consumesMask || !quadFillsLayoutRect(layer)) {
+    return 'fallback'
+  }
+  return shapeObj
+}
+
+/**
+ * Like hasEnhancements, but enhancements the engine composites natively no
+ * longer disqualify a layer: chroma key (fs_sprite chroma stage), the
+ * color-matrix chain — brightness, contrast, saturation, temperature, filter
+ * presets (fs_sprite color-adjust stage) — vignette (a synthetic gradient
+ * overlay layer, see createVignetteSource), cornerRadius on quad-filling fits
+ * (fs_sprite rounded-corner SDF), beauty (engine Gaussian blur pipeline + a
+ * contrast step folded into the color matrix), the focus circle on quad-filling
+ * fits (engine blurred base draw + sharp circle-masked overlay), and the image
+ * mask on quad-filling fits (engine second-texture alpha multiply). The `blur`
+ * and `sharpen` fields are NOT gated: the broadcast canvas compositor never
+ * applies them (only the enhancement modal's preview does), so ignoring them IS
+ * parity. Everything else on the list still needs the canvas compositor.
+ *
+ * The focus circle, cornerRadius, image mask, and shape masks all map their
+ * geometry off the layout rect but the engine's masks cover the drawn quad, so
+ * they only agree when the quad fills the layout rect (see quadFillsLayoutRect)
+ * — contain fits fall back. The image mask is alpha-mode only, matching the
+ * broadcast compositor (its mode/invert options are unimplemented there, so
+ * honoring them would diverge).
+ *
+ * Shape masks (phase 1) are content-clip only: a plain mask shape rasterized to
+ * an alpha texture (the imageMask pipeline). Shapes with borders, shadows, a
+ * capture pan, or another mask-consuming enhancement clipped inside the shape
+ * (image mask, focus circle, vignette) still fall back — see resolveNativeShape.
  */
 function hasNonNativeEnhancements(layer: StudioLayer): boolean {
   const enhancements = layer.enhancements
   if (!enhancements) return false
 
   return Boolean(
-    (enhancements.brightness ?? 100) !== 100 ||
-    (enhancements.contrast ?? 100) !== 100 ||
-    (enhancements.saturation ?? 100) !== 100 ||
-    (enhancements.sharpen ?? 0) !== 0 ||
-    (enhancements.beauty ?? 0) !== 0 ||
-    (enhancements.temperature ?? 0) !== 0 ||
-    (enhancements.vignette ?? 0) !== 0 ||
-    (enhancements.blur ?? 0) !== 0 ||
-    (enhancements.cornerRadius ?? 0) !== 0 ||
-    (enhancements.filterPreset && enhancements.filterPreset !== 'none') ||
+    ((enhancements.cornerRadius ?? 0) !== 0 && !quadFillsLayoutRect(layer)) ||
     enhancements.virtualBackground?.enabled ||
-    enhancements.shape ||
-    enhancements.focusCircle?.enabled ||
-    enhancements.imageMask?.enabled
+    resolveNativeShape(layer) === 'fallback' ||
+    (enhancements.focusCircle?.enabled && !quadFillsLayoutRect(layer)) ||
+    (enhancements.imageMask?.enabled && !quadFillsLayoutRect(layer))
   )
 }
 
@@ -128,6 +206,11 @@ function toNativeChromaKey(layer: StudioLayer): NativeSceneChromaKey | undefined
     smoothness: (chromaKey.smoothness || 10) / 100,
     spill: (chromaKey.spill || 10) / 100
   }
+}
+
+/** Compose the layer's color enhancements into the engine's 3x4 matrix. */
+function toNativeColorAdjust(layer: StudioLayer): NativeSceneColorAdjust | undefined {
+  return buildEnhancementColorMatrix(layer.enhancements) ?? undefined
 }
 
 function isNativeImagePath(assetPath: string): boolean {
@@ -256,6 +339,116 @@ function createTextSource(
   return source
 }
 
+const MAX_VIGNETTE_EDGE = 512
+
+/**
+ * Rasterize the canvas compositor's vignette overlay: a radial gradient from
+ * transparent at the layer center to black at radius max(w,h)/1.5, with peak
+ * alpha vignette/100 * 0.8 (see useRenderLoop). The gradient is low-frequency,
+ * so it renders at a capped resolution and stretches over the layer rect; the
+ * aspect ratio is preserved so the circular falloff stays circular.
+ */
+export function buildVignettePixels(width: number, height: number, vignette: number): Uint8Array {
+  const peakAlpha = Math.max(0, Math.min(1, vignette / 100)) * 0.8
+  const radius = Math.max(width, height) / 1.5
+  const centerX = width / 2
+  const centerY = height / 2
+  const pixels = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y += 1) {
+    const dy = y + 0.5 - centerY
+    for (let x = 0; x < width; x += 1) {
+      const dx = x + 0.5 - centerX
+      const t = Math.min(1, Math.sqrt(dx * dx + dy * dy) / radius)
+      pixels[(y * width + x) * 4 + 3] = Math.round(t * peakAlpha * 255)
+    }
+  }
+  return pixels
+}
+
+function createVignetteSource(
+  layer: StudioLayer,
+  cache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>
+): Extract<NativeSceneSource, { kind: 'pixels' }> {
+  const vignette = Math.max(0, Math.min(100, Math.round(layer.enhancements?.vignette ?? 0)))
+  const scale = Math.min(1, MAX_VIGNETTE_EDGE / Math.max(1, layer.width, layer.height))
+  const width = Math.max(1, Math.round(layer.width * scale))
+  const height = Math.max(1, Math.round(layer.height * scale))
+  const key = `vignette:${width}x${height}:${vignette}`
+  const cached = cache.get(key)
+  if (cached) return cached
+
+  const source: Extract<NativeSceneSource, { kind: 'pixels' }> = {
+    kind: 'pixels',
+    key,
+    width,
+    height,
+    pixels: buildVignettePixels(width, height, vignette)
+  }
+  cache.set(key, source)
+  return source
+}
+
+const MAX_SHAPE_EDGE = 1024
+
+/**
+ * Rasterize a mask shape into an alpha texture: opaque white inside the shape,
+ * transparent outside (canvas antialiases the edge, like the shape clip). The
+ * geometry mirrors the broadcast compositor's shape math (see useRenderLoop):
+ * center at x/y % of the rect, size scale % of it, radius min(w,h)/2, rounded
+ * corners cornerRadius/100 * min(w,h)/2. Rendered at a capped, aspect-preserving
+ * resolution and stretched across the quad by the engine's mask sampler.
+ */
+export function buildShapePixels(
+  width: number,
+  height: number,
+  shapeObj: StudioShapeMask,
+  cornerRadiusPct: number
+): Uint8Array {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: true })
+  if (!ctx) throw new Error('Could not rasterize native shape mask')
+  ctx.clearRect(0, 0, width, height)
+
+  const sx = (shapeObj.x / 100) * width
+  const sy = (shapeObj.y / 100) * height
+  const sw = (shapeObj.scale / 100) * width
+  const sh = (shapeObj.scale / 100) * height
+  const r = Math.min(sw, sh) / 2
+  const cornerRadius = (cornerRadiusPct || 0) * (Math.min(sw, sh) / 200)
+
+  ctx.fillStyle = '#fff'
+  traceShapePath(ctx, shapeObj.type, sx, sy, r, sw, sh, cornerRadius, shapeObj.cutDepth)
+  ctx.fill()
+
+  return new Uint8Array(ctx.getImageData(0, 0, width, height).data)
+}
+
+function createShapeMaskSource(
+  layer: StudioLayer,
+  shapeObj: StudioShapeMask,
+  cache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>
+): Extract<NativeSceneSource, { kind: 'pixels' }> {
+  const scale = Math.min(1, MAX_SHAPE_EDGE / Math.max(1, layer.width, layer.height))
+  const width = Math.max(1, Math.round(layer.width * scale))
+  const height = Math.max(1, Math.round(layer.height * scale))
+  const cornerRadiusPct = Math.max(0, Math.min(100, layer.enhancements?.cornerRadius ?? 0))
+  const key = `shape:${shapeObj.type}:${width}x${height}:${shapeObj.x}:${shapeObj.y}:${shapeObj.scale}:${shapeObj.cutDepth ?? ''}:${cornerRadiusPct}`
+  const cached = cache.get(key)
+  if (cached) return cached
+
+  const source: Extract<NativeSceneSource, { kind: 'pixels' }> = {
+    kind: 'pixels',
+    key,
+    width,
+    height,
+    pixels: buildShapePixels(width, height, shapeObj, cornerRadiusPct)
+  }
+  cache.set(key, source)
+  return source
+}
+
 function constrainLiveSourceDimensions(width: number, height: number): { width: number; height: number } {
   const sourceWidth = Math.max(1, Math.round(width))
   const sourceHeight = Math.max(1, Math.round(height))
@@ -308,16 +501,16 @@ function buildNativeBroadcastScene(
   scene: StudioScene,
   canvasWidth: number,
   canvasHeight: number,
-  textCache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>,
+  pixelCache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>,
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
   browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>
 ): NativeBroadcastScene {
-  const usedTextKeys = new Set<string>()
+  const usedPixelKeys = new Set<string>()
   const layers = scene.layers
     .map((layer) => resolveLayerLayout(layer, '16:9'))
     .filter((layer) => layer.visible && layer.opacity > 0 && layer.type !== 'audio')
     .sort((left, right) => left.zIndex - right.zIndex)
-    .map<NativeSceneLayer>((layer) => {
+    .flatMap<NativeSceneLayer>((layer) => {
       let source: NativeSceneSource
       if (layer.type === 'display' && !isLiveSourceLayer(layer)) {
         const sourceId = String(layer.config.desktopSourceId)
@@ -344,11 +537,70 @@ function buildNativeBroadcastScene(
           ...(mainFed ? { feed: 'browser-source' as const, browserSourceId: layer.id } : {})
         }
       } else {
-        source = createTextSource(layer, textCache)
-        usedTextKeys.add(source.key)
+        source = createTextSource(layer, pixelCache)
+        usedPixelKeys.add(source.key)
       }
 
-      return {
+      const opacity = Math.max(0, Math.min(1, layer.opacity ?? 1))
+      const rotation = Number(layer.rotation ?? 0)
+      // Shape mask (phase 1): a plain content-clip shape becomes a rasterized
+      // alpha mask. resolveNativeShape only returns 'fallback' for layers the
+      // whole scene already rejected, so here it is a shape object or null.
+      const resolvedShape = resolveNativeShape(layer)
+      const shapeObj = resolvedShape && resolvedShape !== 'fallback' ? resolvedShape : null
+      // Canvas roundRect radius: cornerRadius% of min(w,h)/2, in canvas px. When
+      // a shape mask is active the corner radius is baked into that mask (the
+      // canvas only rounds inside the shape path), so the separate SDF is off.
+      const cornerRadiusPct = Math.max(0, Math.min(100, layer.enhancements?.cornerRadius ?? 0))
+      const cornerRadius = !shapeObj && cornerRadiusPct > 0
+        ? cornerRadiusPct * Math.min(layer.width, layer.height) / 200
+        : undefined
+      // Beauty's blur half: CSS blur((beauty/100)*2px), canvas px. Its
+      // contrast half rides the color matrix (buildEnhancementColorMatrix).
+      const beauty = Math.max(0, Math.min(100, layer.enhancements?.beauty ?? 0))
+      const beautySigma = beauty > 0 ? (beauty / 100) * 2 : 0
+      // Focus circle: the canvas draws the layer blurred (CSS
+      // blur((focusCircle.blur/100)*40px), compounding on beauty — sequential
+      // blurs compose as hypot) then a sharp copy clipped to a circle. The
+      // circle center is CONTENT-local (focusCircle.x/y % of the layout rect).
+      // Flips need no adjustment: the engine's circle SDF lives in texcoord
+      // (content) space and mirrors with the quad's negative-scale flip exactly
+      // as the canvas mirrors its arc with ctx.scale(-1) — both track the same
+      // content point. Native focus circle is gated on quad == layout rect (see
+      // hasNonNativeEnhancements), so quad-local equals layout-local here.
+      const focus = layer.enhancements?.focusCircle
+      const focusEnabled = Boolean(focus?.enabled)
+      const focusSigma = focusEnabled
+        ? (Math.max(0, Math.min(100, focus!.blur)) / 100) * 40
+        : 0
+      const baseSigma = Math.hypot(beautySigma, focusSigma)
+      const blurSigma = baseSigma > 0 ? baseSigma : undefined
+      let circleMask: NativeSceneCircleMask | undefined
+      if (focusEnabled) {
+        circleMask = {
+          x: (Math.max(0, Math.min(100, focus!.x)) / 100) * layer.width,
+          y: (Math.max(0, Math.min(100, focus!.y)) / 100) * layer.height,
+          radius: (Math.max(0, Math.min(100, focus!.radius)) / 100) * (Math.max(layer.width, layer.height) / 2)
+        }
+      }
+      // Image mask: an image source whose alpha cuts the layer (canvas
+      // destination-in over the layout rect). Alpha-mode only, matching the
+      // broadcast compositor; mode/invert are ignored. The mask asset uploads
+      // like any image source, sharing its texture by asset path.
+      const imageMask = layer.enhancements?.imageMask
+      let maskSource: NativeSceneSource | undefined
+      if (imageMask?.enabled && imageMask.assetPath) {
+        const maskAssetPath = String(imageMask.assetPath)
+        maskSource = { kind: 'image', key: `image:${maskAssetPath}`, assetPath: maskAssetPath }
+      }
+      // A native shape claims the mask slot (the gate guarantees a shape and an
+      // image mask never coexist), rasterized once and cached by its geometry.
+      if (shapeObj) {
+        const shapeMaskSource = createShapeMaskSource(layer, shapeObj, pixelCache)
+        usedPixelKeys.add(shapeMaskSource.key)
+        maskSource = shapeMaskSource
+      }
+      const entry: NativeSceneLayer = {
         id: layer.id,
         source,
         layout: {
@@ -356,7 +608,7 @@ function buildNativeBroadcastScene(
           y: layer.y,
           width: layer.width,
           height: layer.height,
-          rotation: Number(layer.rotation ?? 0),
+          rotation,
           flipH: Boolean(layer.flipH),
           flipV: Boolean(layer.flipV),
           crop: layer.type === 'text' ? undefined : layer.crop,
@@ -366,14 +618,48 @@ function buildNativeBroadcastScene(
               ? layer.config.fitMode
               : 'contain'
         },
-        opacity: Math.max(0, Math.min(1, layer.opacity ?? 1)),
+        opacity,
         blendMode: (layer.blendMode ?? 'normal') as NativeSceneBlendMode,
-        chromaKey: toNativeChromaKey(layer)
+        chromaKey: toNativeChromaKey(layer),
+        colorAdjust: toNativeColorAdjust(layer),
+        cornerRadius,
+        blurSigma,
+        circleMask,
+        maskSource
       }
+
+      // The canvas compositor draws the vignette gradient over the layer's
+      // full layout rect right after the layer, under the same transform and
+      // globalAlpha, always source-over — and inside the same rounded-rect
+      // clip when a corner radius is set. A synthetic overlay layer directly
+      // above the parent reproduces that exactly.
+      if ((layer.enhancements?.vignette ?? 0) > 0) {
+        const vignetteSource = createVignetteSource(layer, pixelCache)
+        usedPixelKeys.add(vignetteSource.key)
+        return [entry, {
+          id: `${layer.id}:vignette`,
+          source: vignetteSource,
+          layout: {
+            x: layer.x,
+            y: layer.y,
+            width: layer.width,
+            height: layer.height,
+            rotation,
+            flipH: false,
+            flipV: false,
+            crop: undefined,
+            fitMode: 'stretch'
+          },
+          opacity,
+          blendMode: 'normal',
+          cornerRadius
+        }]
+      }
+      return [entry]
     })
 
-  for (const key of textCache.keys()) {
-    if (!usedTextKeys.has(key)) textCache.delete(key)
+  for (const key of pixelCache.keys()) {
+    if (!usedPixelKeys.has(key)) pixelCache.delete(key)
   }
 
   return { canvasWidth, canvasHeight, layers }
@@ -393,6 +679,51 @@ function resolveLiveSourceTargetFps(layer: StudioLayer, outputFps: number): numb
       ? Number(layer.config.fps)
       : 60
   return Math.max(1, Math.min(60, outputFps, Number.isFinite(configuredFps) ? configuredFps : 30))
+}
+
+/**
+ * The live MediaStreamTrack the layer's <video> element is currently
+ * displaying (the possibly-stabilized output stream, not the raw device
+ * stream), or null if none is available. The camera frame pump reads frames
+ * off this track directly; using the DISPLAYED stream keeps parity with the
+ * canvas path, which draws the same <video> element.
+ */
+function resolveDisplayedVideoTrack(video: HTMLVideoElement | undefined): MediaStreamTrack | null {
+  const stream = video?.srcObject as MediaStream | null
+  if (!stream || typeof stream.getVideoTracks !== 'function') return null
+  const track = stream.getVideoTracks()[0]
+  return track && track.readyState === 'live' ? track : null
+}
+
+/**
+ * Camera/window-capture sources eligible for the frame pump: renderer-fed live
+ * layers backed by a <video> element with a live track. Widgets/browser
+ * overlays (main-fed) and pixel/display/image sources are excluded.
+ */
+function buildCameraFrameSpecs(
+  nativeScene: NativeBroadcastScene,
+  studioScene: StudioScene,
+  outputFps: number,
+  videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>
+): CameraFrameSourceSpec[] {
+  const studioLayers = new Map(studioScene.layers.map((layer) => [layer.id, layer]))
+  const specs: CameraFrameSourceSpec[] = []
+  for (const nativeLayer of nativeScene.layers) {
+    const source = nativeLayer.source
+    if (source.kind !== 'live' || source.feed === 'browser-source') continue
+    const studioLayer = studioLayers.get(nativeLayer.id)
+    if (!studioLayer || (studioLayer.type !== 'camera' && studioLayer.type !== 'display')) continue
+    const track = resolveDisplayedVideoTrack(videoRefs.current[studioLayer.id])
+    if (!track) continue
+    specs.push({
+      key: source.key,
+      track,
+      width: source.width,
+      height: source.height,
+      targetFps: resolveLiveSourceTargetFps(studioLayer, outputFps)
+    })
+  }
+  return specs
 }
 
 function resolveLiveFrameSource(
@@ -426,7 +757,8 @@ async function uploadNativeLiveSources(
   browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>,
   mediaFrameCache: React.MutableRefObject<Record<string, CachedMediaFrame>>,
   surfaces: Map<string, LiveSourceUploadSurface>,
-  warnedSourceKeys: Set<string>
+  warnedSourceKeys: Set<string>,
+  cameraFramePump: CameraFramePump
 ): Promise<void> {
   const studioLayers = new Map(studioScene.layers.map(layer => [layer.id, layer]))
   const usedSourceKeys = new Set<string>()
@@ -439,6 +771,10 @@ async function uploadNativeLiveSources(
     // Main-fed sources (widgets/overlays) get their pixels directly from the
     // main-process browser-source capture — nothing to upload from here.
     if (source.feed === 'browser-source') continue
+    // The frame pump owns this source (MediaStreamTrackProcessor path); skip it
+    // here so it is never uploaded twice, and let its stale canvas surface (if
+    // any, from before the pump took over) be reclaimed below.
+    if (cameraFramePump.isHandling(source.key)) continue
     usedSourceKeys.add(source.key)
 
     const studioLayer = studioLayers.get(nativeLayer.id)
@@ -534,7 +870,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
   } = options
   const [active, setActive] = useState(false)
   const sceneRef = useRef(scene)
-  const textCacheRef = useRef(new Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>())
+  const pixelSourceCacheRef = useRef(new Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>())
   const syncSceneRef = useRef<((nextScene: StudioScene) => void) | null>(null)
   sceneRef.current = scene
 
@@ -560,6 +896,15 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
     let appliedNativeScene: NativeBroadcastScene | null = null
     const liveSourceSurfaces = new Map<string, LiveSourceUploadSurface>()
     const warnedSourceKeys = new Set<string>()
+    const pumpWarnedKeys = new Set<string>()
+    const cameraFramePump = new CameraFramePump({
+      uploadFrame: (frame) => window.api.engine.updateBroadcastSourceFrame(frame),
+      onWarn: (key, message) => {
+        if (pumpWarnedKeys.has(key)) return
+        pumpWarnedKeys.add(key)
+        console.warn(`[NativeSceneOutput] Camera frame pump ${key}: ${message}`)
+      }
+    })
     const frameIntervalMs = 1000 / Math.max(1, fps)
     const startedAt = performance.now()
     let frameIndex = 0
@@ -584,7 +929,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       nextScene,
       canvasWidth,
       canvasHeight,
-      textCacheRef.current,
+      pixelSourceCacheRef.current,
       videoRefs,
       browserFrameCache
     )
@@ -603,6 +948,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
         window.clearInterval(liveSourceTimer)
         liveSourceTimer = null
       }
+      cameraFramePump.dispose()
       await queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast()).catch(() => {})
     }
 
@@ -654,6 +1000,10 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
 
       const uploadLiveSources = () => {
         if (disposed || liveSourceUploadBusy || !appliedNativeScene) return
+        // Point the pump at the current camera/display tracks; it uploads their
+        // frames on its own read loop, and the canvas upload below skips any
+        // source the pump is actively serving.
+        cameraFramePump.sync(buildCameraFrameSpecs(appliedNativeScene, sceneRef.current, fps, videoRefs))
         liveSourceUploadBusy = true
         void uploadNativeLiveSources(
           appliedNativeScene,
@@ -663,7 +1013,8 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
           browserFrameCache,
           mediaFrameCache,
           liveSourceSurfaces,
-          warnedSourceKeys
+          warnedSourceKeys,
+          cameraFramePump
         ).finally(() => {
           liveSourceUploadBusy = false
         })
@@ -695,6 +1046,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       setActive(false)
       if (frameTimer !== null) window.clearInterval(frameTimer)
       if (liveSourceTimer !== null) window.clearInterval(liveSourceTimer)
+      cameraFramePump.dispose()
       liveSourceSurfaces.clear()
       window.removeEventListener('message', onNativeFrame)
       if (startRequested) {

@@ -78,11 +78,11 @@ IlyResult RenderDevice::UpdateTexture(ResourceHandle handle, const void* data, u
     return m_backend->UpdateTexture(handle, data, byteLength, isBGRA);
 }
 
-IlyResult RenderDevice::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma) {
+IlyResult RenderDevice::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture) {
     ILY_PROFILE_SCOPE("RenderDevice::DrawQuad");
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_initialized) return ILY_ERROR_INITIALIZATION_FAILED;
-    return m_backend->DrawQuad(textureHandle, transform, opacity, blendMode, chroma);
+    return m_backend->DrawQuad(textureHandle, transform, opacity, blendMode, chroma, colorAdjust, cornerRadius, blurSigma, circleMask, maskTexture);
 }
 
 IlyResult RenderDevice::GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {

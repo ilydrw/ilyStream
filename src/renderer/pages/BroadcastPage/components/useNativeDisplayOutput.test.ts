@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 import {
+  buildVignettePixels,
   getNativeSceneUnsupportedReason,
   resolveNativeMonitorIndex,
   shouldPresentNativeProgramPreview
@@ -106,6 +107,155 @@ describe('getNativeSceneUnsupportedReason', () => {
     expect(getNativeSceneUnsupportedReason(scene([
       displayLayer({ blendMode: 'overlay' })
     ]))).toContain('blend mode')
+  })
+
+  it('composites color enhancements natively but keeps sampling effects on canvas', () => {
+    // Brightness/contrast/saturation/temperature/presets are one shader-side
+    // color matrix now (engine fs_sprite color-adjust stage).
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { brightness: 120, contrast: 90, saturation: 140, temperature: 25 } })
+    ]))).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { filterPreset: 'kodachrome' } })
+    ]))).toBeNull()
+    // Vignette composites natively as a synthetic gradient overlay layer.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { vignette: 40 } })
+    ]))).toBeNull()
+    // Beauty runs through the engine's Gaussian blur pipeline + color matrix.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { beauty: 30 } })
+    ]))).toBeNull()
+    // The raw blur/sharpen fields are ignored by the broadcast canvas
+    // compositor, so ignoring them natively IS parity — no fallback.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { blur: 10, sharpen: 50 } })
+    ]))).toBeNull()
+  })
+
+  it('composites the focus circle natively only when the quad fills the layout rect', () => {
+    // Quad-filling fits (cover/stretch): the engine draws a blurred base plus a
+    // sharp circle-masked overlay, matching the canvas focus-circle two draws.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera',
+        config: { fitMode: 'cover' },
+        enhancements: { focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } }
+      })
+    ]))).toBeNull()
+    // Contain fits can letterbox: the circle geometry maps off the layout rect
+    // while the engine's SDF covers the drawn quad, so they diverge — fall back.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } } })
+    ]))).toContain('canvas-only enhancements')
+  })
+
+  it('composites cornerRadius natively only when the quad fills the layout rect', () => {
+    // Cover/stretch fits draw edge to edge, so the engine's SDF mask matches
+    // the canvas roundRect clip exactly.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera',
+        config: { fitMode: 'cover' },
+        enhancements: { cornerRadius: 20 }
+      })
+    ]))).toBeNull()
+    // Contain fits can letterbox: the canvas rounds the layout rect while the
+    // quad only covers the fitted content, so they keep the canvas compositor.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { cornerRadius: 20 } })
+    ]))).toContain('canvas-only enhancements')
+  })
+
+  it('composites the image mask natively only when the quad fills the layout rect', () => {
+    // Quad-filling fits: the engine samples the mask texture in quad-local UV
+    // and multiplies its alpha, matching the canvas destination-in over the
+    // layout rect.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera',
+        config: { fitMode: 'cover' },
+        enhancements: { imageMask: { enabled: true, assetPath: 'asset://mask.png' } }
+      })
+    ]))).toBeNull()
+    // Contain fits letterbox, so the mask (stretched to the layout rect) would
+    // not align with the drawn quad — keep those on the canvas compositor.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { imageMask: { enabled: true, assetPath: 'asset://mask.png' } } })
+    ]))).toContain('canvas-only enhancements')
+  })
+
+  it('composites plain shape masks natively but keeps decorated/clipped shapes on canvas', () => {
+    const shapedCamera = (shape: unknown) => displayLayer({
+      id: 'camera', type: 'camera',
+      config: { fitMode: 'cover' },
+      enhancements: { shape: shape as never }
+    })
+    // A plain mask shape on a quad-filling fit rasterizes to an alpha mask.
+    expect(getNativeSceneUnsupportedReason(scene([
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both' })
+    ]))).toBeNull()
+    // The bare-string form is normalized the same way.
+    expect(getNativeSceneUnsupportedReason(scene([shapedCamera('hexagon')]))).toBeNull()
+    // Borders/shadows are decorations the engine does not draw yet.
+    expect(getNativeSceneUnsupportedReason(scene([
+      shapedCamera({ type: 'circle', x: 50, y: 50, scale: 80, scope: 'both', border: { enabled: true, type: 'solid', thickness: 4 } })
+    ]))).toContain('canvas-only enhancements')
+    // A focus circle (or image mask/vignette) is clipped inside the shape on
+    // canvas — that combination still needs the canvas compositor.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera', config: { fitMode: 'cover' },
+        enhancements: { shape: 'circle', focusCircle: { enabled: true, x: 50, y: 50, radius: 30, blur: 40 } }
+      })
+    ]))).toContain('canvas-only enhancements')
+    // 'rect'/'none' keep the canvas path (phase 1 covers the six mask shapes).
+    expect(getNativeSceneUnsupportedReason(scene([shapedCamera('rect')]))).toContain('canvas-only enhancements')
+    // Contain fits letterbox, so the shape geometry would not align with the quad.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { shape: 'circle' } })
+    ]))).toContain('canvas-only enhancements')
+  })
+})
+
+describe('buildVignettePixels', () => {
+  it('matches the canvas radial gradient: transparent center, black edges', () => {
+    const width = 160
+    const height = 90
+    const vignette = 50
+    const pixels = buildVignettePixels(width, height, vignette)
+    const alphaAt = (x: number, y: number) => pixels[(y * width + x) * 4 + 3]
+    const rgbAt = (x: number, y: number) => [
+      pixels[(y * width + x) * 4],
+      pixels[(y * width + x) * 4 + 1],
+      pixels[(y * width + x) * 4 + 2]
+    ]
+
+    // Pure black everywhere; only alpha ramps.
+    expect(rgbAt(0, 0)).toEqual([0, 0, 0])
+    expect(rgbAt(80, 45)).toEqual([0, 0, 0])
+
+    // Center is (nearly) transparent, corners approach the peak.
+    expect(alphaAt(80, 45)).toBeLessThanOrEqual(1)
+    const peak = Math.round((vignette / 100) * 0.8 * 255)
+    expect(alphaAt(0, 0)).toBeGreaterThan(peak * 0.7)
+    expect(alphaAt(0, 0)).toBeLessThanOrEqual(peak)
+
+    // Alpha grows monotonically outward along the horizontal center line.
+    expect(alphaAt(40, 45)).toBeGreaterThan(alphaAt(70, 45))
+    expect(alphaAt(0, 45)).toBeGreaterThan(alphaAt(40, 45))
+
+    // The linear ramp against radius max(w,h)/1.5: halfway out along x from
+    // the center, dist = 40, R = 160/1.5 -> t = 0.375.
+    const expected = Math.round(0.375 * (vignette / 100) * 0.8 * 255)
+    expect(Math.abs(alphaAt(120, 45) - expected)).toBeLessThanOrEqual(1)
+  })
+
+  it('caps the peak alpha at 80% for a full-strength vignette', () => {
+    const pixels = buildVignettePixels(30, 30, 100)
+    const corner = pixels[3]
+    expect(corner).toBeLessThanOrEqual(Math.round(0.8 * 255))
+    expect(corner).toBeGreaterThan(Math.round(0.7 * 255))
   })
 })
 

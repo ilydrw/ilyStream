@@ -82,7 +82,8 @@ $backends = @(
 $shaders = @(
     @{ file = 'vs_sprite.sc'; type = 'vertex';   name = 'vs_sprite' },
     @{ file = 'fs_sprite.sc'; type = 'fragment'; name = 'fs_sprite' },
-    @{ file = 'fs_output_sdr.sc'; type = 'fragment'; name = 'fs_output_sdr' }
+    @{ file = 'fs_output_sdr.sc'; type = 'fragment'; name = 'fs_output_sdr' },
+    @{ file = 'fs_blur.sc'; type = 'fragment'; name = 'fs_blur' }
 )
 
 $failures = @()

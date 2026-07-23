@@ -1,5 +1,6 @@
 #include <napi.h>
 #include "ily/engine.h"
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -499,6 +500,77 @@ static Napi::Value EngineSetLayers(const Napi::CallbackInfo& info) {
             layer.chromaKey.similarity = readClamped("similarity", 0.4f);
             layer.chromaKey.smoothness = readClamped("smoothness", 0.1f);
             layer.chromaKey.spill = readClamped("spill", 0.1f);
+        }
+
+        // Optional color adjust: { matrix: number[12], alpha }. matrix is the
+        // row-major 3x4 CSS-filter composition (rows R,G,B; [3] = offset).
+        // Presence of a well-formed matrix enables the adjustment; any
+        // non-finite entry disables it rather than feeding NaN to the GPU.
+        layer.colorAdjust = IlyColorAdjust{};
+        if (lo.Has("colorAdjust") && lo.Get("colorAdjust").IsObject()) {
+            Napi::Object ca = lo.Get("colorAdjust").As<Napi::Object>();
+            if (ca.Has("matrix") && ca.Get("matrix").IsArray()) {
+                Napi::Array matrix = ca.Get("matrix").As<Napi::Array>();
+                if (matrix.Length() == 12) {
+                    bool finite = true;
+                    for (uint32_t j = 0; j < 12; ++j) {
+                        const float value = matrix.Get(j).As<Napi::Number>().FloatValue();
+                        if (!std::isfinite(value)) { finite = false; break; }
+                        layer.colorAdjust.matrix[j] = value;
+                    }
+                    float alpha = ca.Has("alpha") ? ca.Get("alpha").As<Napi::Number>().FloatValue() : 1.0f;
+                    if (!std::isfinite(alpha)) alpha = 1.0f;
+                    layer.colorAdjust.alpha = alpha < 0.0f ? 0.0f : (alpha > 1.0f ? 1.0f : alpha);
+                    layer.colorAdjust.enabled = finite;
+                }
+            }
+        }
+
+        // Optional rounded-corner mask radius in output pixels (0 disables).
+        layer.cornerRadius = 0.0f;
+        if (lo.Has("cornerRadius") && lo.Get("cornerRadius").IsNumber()) {
+            const float radius = lo.Get("cornerRadius").As<Napi::Number>().FloatValue();
+            if (std::isfinite(radius) && radius > 0.0f) {
+                layer.cornerRadius = radius;
+            }
+        }
+
+        // Optional Gaussian blur sigma in output pixels (0 disables). The
+        // engine downsamples the blur intermediate for large sigmas, so the
+        // clamp is the pipeline's overall ceiling (64px), not the kernel's
+        // per-texel reach; guard the input here too.
+        layer.blurSigma = 0.0f;
+        if (lo.Has("blurSigma") && lo.Get("blurSigma").IsNumber()) {
+            const float sigma = lo.Get("blurSigma").As<Napi::Number>().FloatValue();
+            if (std::isfinite(sigma) && sigma > 0.0f) {
+                layer.blurSigma = sigma > 64.0f ? 64.0f : sigma;
+            }
+        }
+
+        // Optional focus-circle sharp-region mask in output pixels:
+        // { x, y, radius }, content-local from the quad's top-left in texcoord
+        // orientation (flips need no adjustment — the SDF mirrors with the
+        // quad). The engine draws it as a sharp overlay over the blurred base.
+        layer.circleMask = IlyCircleMask{};
+        if (lo.Has("circleMask") && lo.Get("circleMask").IsObject()) {
+            Napi::Object cm = lo.Get("circleMask").As<Napi::Object>();
+            const float cx = cm.Has("x") ? cm.Get("x").As<Napi::Number>().FloatValue() : 0.0f;
+            const float cy = cm.Has("y") ? cm.Get("y").As<Napi::Number>().FloatValue() : 0.0f;
+            const float cr = cm.Has("radius") ? cm.Get("radius").As<Napi::Number>().FloatValue() : 0.0f;
+            if (std::isfinite(cx) && std::isfinite(cy) && std::isfinite(cr) && cr > 0.0f) {
+                layer.circleMask.enabled = true;
+                layer.circleMask.x = cx;
+                layer.circleMask.y = cy;
+                layer.circleMask.radius = cr;
+            }
+        }
+
+        // Optional image-mask texture handle (OBS-style alpha mask). Absent or
+        // invalid disables the mask; the engine binds it as a second sampler.
+        layer.maskTexture = ILY_INVALID_HANDLE;
+        if (lo.Has("maskTexture") && lo.Get("maskTexture").IsBigInt()) {
+            layer.maskTexture = Uint64ToResourceHandle(
+                lo.Get("maskTexture").As<Napi::BigInt>().Uint64Value(&lossless));
         }
     }
 

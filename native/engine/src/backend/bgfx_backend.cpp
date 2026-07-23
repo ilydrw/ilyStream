@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
 
 #ifdef _WIN32
 #include <d3d11.h>
@@ -46,6 +47,42 @@ static void destroy_dummy_window(HWND hwnd) {
 
 namespace ily {
 
+// Views execute in ascending id order each frame: blur pre-passes first (a
+// 3-view chain per blurred layer), then the composite, the SDR output encode,
+// and finally the readback blit.
+static constexpr uint16_t kViewBlurBase = 0;
+static constexpr uint16_t kViewBlurCount = 24; // up to 8 blurred layers per frame
+static constexpr uint16_t kViewComposite = kViewBlurBase + kViewBlurCount;
+static constexpr uint16_t kViewOutput = kViewComposite + 1;
+static constexpr uint16_t kViewBlit = kViewOutput + 1;
+
+namespace {
+
+// One sprite-shader draw into an arbitrary view/target. The normal composite
+// draw and the blur pipeline's stage passes all go through SubmitSpriteDraw
+// with one of these.
+struct SpriteDrawParams {
+    uint16_t viewId = kViewComposite;
+    float targetWidth = 0.0f;
+    float targetHeight = 0.0f;
+    bgfx::TextureHandle texture = BGFX_INVALID_HANDLE;
+    float texWidth = 0.0f;
+    float texHeight = 0.0f;
+    IlyTransform transform{};
+    float opacity = 1.0f;
+    IlyBlendMode blendMode = ILY_BLEND_ALPHA;
+    bool blendEnabled = true;
+    const IlyChromaKey* chroma = nullptr;
+    const IlyColorAdjust* colorAdjust = nullptr;
+    float cornerRadius = 0.0f;
+    const IlyCircleMask* circleMask = nullptr;
+    bgfx::TextureHandle maskTexture = BGFX_INVALID_HANDLE;
+    float sourceParams[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    bool encodeSrgbOutput = false;
+};
+
+} // namespace
+
 struct BgfxBackend::Impl {
     uint32_t m_width = 1280;
     uint32_t m_height = 720;
@@ -59,6 +96,49 @@ struct BgfxBackend::Impl {
     // u_chromaParams = (smoothness, spill, enabled, unused).
     bgfx::UniformHandle m_chromaKeyUniform = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_chromaParamsUniform = BGFX_INVALID_HANDLE;
+    // Per-draw color adjust: u_colorMatR/G/B = one 3x4 matrix row each
+    // (mR, mG, mB, offset), u_colorAdjust = (enabled, alphaMul, unused, unused).
+    bgfx::UniformHandle m_colorMatRUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_colorMatGUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_colorMatBUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_colorAdjustUniform = BGFX_INVALID_HANDLE;
+    // Per-draw rounded corners: u_cornerRadius = (radiusPx, quadWpx, quadHpx,
+    // enabled), u_cornerRect = the quad's texcoord bounds (u0, v0, u1, v1) so
+    // the shader can recover quad-local UVs from v_texcoord0 under crop.
+    bgfx::UniformHandle m_cornerRadiusUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_cornerRectUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_circleMaskUniform = BGFX_INVALID_HANDLE;
+    // Per-draw image mask: s_maskTex (slot 1) sampled in quad-local UV, its
+    // alpha multiplied into the layer. u_maskParams = (enabled, 0, 0, 0).
+    bgfx::UniformHandle m_maskSampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_maskParamsUniform = BGFX_INVALID_HANDLE;
+    // Blur pipeline: separable Gaussian over pooled padded intermediates.
+    // u_blurParams = (stepU, stepV, 0, 0), u_blurWeights = 13 kernel weights.
+    bgfx::ProgramHandle m_blurProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_blurParamsUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_blurWeightsUniform = BGFX_INVALID_HANDLE;
+
+    // Pooled ping/pong RGBA16F targets for blur chains, reused across frames
+    // and evicted after sitting unused for a while.
+    struct BlurTarget {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        bgfx::FrameBufferHandle fbA = BGFX_INVALID_HANDLE;
+        bgfx::TextureHandle texA = BGFX_INVALID_HANDLE;
+        bgfx::FrameBufferHandle fbB = BGFX_INVALID_HANDLE;
+        bgfx::TextureHandle texB = BGFX_INVALID_HANDLE;
+        uint64_t lastUsedFrame = 0;
+        bool usedThisFrame = false;
+    };
+    std::vector<BlurTarget> m_blurTargets;
+    uint16_t m_nextBlurView = kViewBlurBase;
+    uint64_t m_frameIndex = 0;
+
+    BlurTarget* AcquireBlurTarget(uint32_t width, uint32_t height);
+    void EvictStaleBlurTargets();
+    void DestroyBlurTargets();
+    IlyResult SubmitSpriteDraw(const SpriteDrawParams& params);
+    void SubmitBlurPass(uint16_t viewId, bgfx::TextureHandle sourceTex, uint32_t width, uint32_t height, bool horizontal, float sigma);
     IlyOutputColorConfig m_outputColor = IlyDefaultSdrOutputColor();
 
     // View 0 composites into a linear RGBA16F working surface. View 1 encodes
@@ -248,8 +328,8 @@ struct BgfxBackend::Impl {
             bgfx::TextureFormat::RGBA8,
             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
 
-        if (bgfx::isValid(m_compositeFb)) bgfx::setViewFrameBuffer(0, m_compositeFb);
-        if (bgfx::isValid(m_offscreenFb)) bgfx::setViewFrameBuffer(1, m_offscreenFb);
+        if (bgfx::isValid(m_compositeFb)) bgfx::setViewFrameBuffer(kViewComposite, m_compositeFb);
+        if (bgfx::isValid(m_offscreenFb)) bgfx::setViewFrameBuffer(kViewOutput, m_offscreenFb);
 
         // Point the view at the replacement before retiring the previous
         // framebuffer. This prevents bgfx from submitting a frame against a
@@ -343,8 +423,8 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 
     if (m_impl->m_initialized) {
         bgfx::reset(width, height, BGFX_RESET_NONE);
-        bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
-        bgfx::setViewRect(1, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+        bgfx::setViewRect(kViewComposite, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+        bgfx::setViewRect(kViewOutput, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         bgfx::setDebug(m_impl->m_debugStats ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
         // Offscreen targets are sized to the surface, so recreate them on resize.
         m_impl->CreateOffscreenTargets(width, height);
@@ -383,10 +463,10 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 
     const float defaultBackground = SrgbToLinear(30.0f / 255.0f);
     bgfx::setPaletteColor(0, defaultBackground, defaultBackground, defaultBackground, 1.0f);
-    bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
-    bgfx::setViewClear(1, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
-    bgfx::setViewRect(0, 0, 0, width, height);
-    bgfx::setViewRect(1, 0, 0, width, height);
+    bgfx::setViewClear(kViewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    bgfx::setViewClear(kViewOutput, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+    bgfx::setViewRect(kViewComposite, 0, 0, width, height);
+    bgfx::setViewRect(kViewOutput, 0, 0, width, height);
     bgfx::setDebug(m_impl->m_debugStats ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
 
     // Sampler uniform is shared by every quad draw; create it once here rather
@@ -396,12 +476,25 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
     m_impl->m_outputColorUniform = bgfx::createUniform("u_outputColor", bgfx::UniformType::Vec4);
     m_impl->m_chromaKeyUniform = bgfx::createUniform("u_chromaKey", bgfx::UniformType::Vec4);
     m_impl->m_chromaParamsUniform = bgfx::createUniform("u_chromaParams", bgfx::UniformType::Vec4);
+    m_impl->m_colorMatRUniform = bgfx::createUniform("u_colorMatR", bgfx::UniformType::Vec4);
+    m_impl->m_colorMatGUniform = bgfx::createUniform("u_colorMatG", bgfx::UniformType::Vec4);
+    m_impl->m_colorMatBUniform = bgfx::createUniform("u_colorMatB", bgfx::UniformType::Vec4);
+    m_impl->m_colorAdjustUniform = bgfx::createUniform("u_colorAdjust", bgfx::UniformType::Vec4);
+    m_impl->m_cornerRadiusUniform = bgfx::createUniform("u_cornerRadius", bgfx::UniformType::Vec4);
+    m_impl->m_cornerRectUniform = bgfx::createUniform("u_cornerRect", bgfx::UniformType::Vec4);
+    m_impl->m_circleMaskUniform = bgfx::createUniform("u_circleMask", bgfx::UniformType::Vec4);
+    m_impl->m_maskSampler = bgfx::createUniform("s_maskTex", bgfx::UniformType::Sampler);
+    m_impl->m_maskParamsUniform = bgfx::createUniform("u_maskParams", bgfx::UniformType::Vec4);
+    m_impl->m_blurParamsUniform = bgfx::createUniform("u_blurParams", bgfx::UniformType::Vec4);
+    m_impl->m_blurWeightsUniform = bgfx::createUniform("u_blurWeights", bgfx::UniformType::Vec4, 4);
 
     // Compile/load our textured quad sprite shader program
     m_impl->m_spriteProgram = CreateSpriteProgram();
     m_impl->m_outputProgram = CreateSdrOutputProgram();
+    m_impl->m_blurProgram = CreateBlurProgram();
 
-    if (!bgfx::isValid(m_impl->m_spriteProgram) || !bgfx::isValid(m_impl->m_outputProgram)) {
+    if (!bgfx::isValid(m_impl->m_spriteProgram) || !bgfx::isValid(m_impl->m_outputProgram) ||
+        !bgfx::isValid(m_impl->m_blurProgram)) {
         return ILY_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -450,6 +543,55 @@ void BgfxBackend::Shutdown() {
         bgfx::destroy(m_impl->m_chromaParamsUniform);
         m_impl->m_chromaParamsUniform = BGFX_INVALID_HANDLE;
     }
+    if (bgfx::isValid(m_impl->m_colorMatRUniform)) {
+        bgfx::destroy(m_impl->m_colorMatRUniform);
+        m_impl->m_colorMatRUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_colorMatGUniform)) {
+        bgfx::destroy(m_impl->m_colorMatGUniform);
+        m_impl->m_colorMatGUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_colorMatBUniform)) {
+        bgfx::destroy(m_impl->m_colorMatBUniform);
+        m_impl->m_colorMatBUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_colorAdjustUniform)) {
+        bgfx::destroy(m_impl->m_colorAdjustUniform);
+        m_impl->m_colorAdjustUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_cornerRadiusUniform)) {
+        bgfx::destroy(m_impl->m_cornerRadiusUniform);
+        m_impl->m_cornerRadiusUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_cornerRectUniform)) {
+        bgfx::destroy(m_impl->m_cornerRectUniform);
+        m_impl->m_cornerRectUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_circleMaskUniform)) {
+        bgfx::destroy(m_impl->m_circleMaskUniform);
+        m_impl->m_circleMaskUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_maskSampler)) {
+        bgfx::destroy(m_impl->m_maskSampler);
+        m_impl->m_maskSampler = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_maskParamsUniform)) {
+        bgfx::destroy(m_impl->m_maskParamsUniform);
+        m_impl->m_maskParamsUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_blurProgram)) {
+        bgfx::destroy(m_impl->m_blurProgram);
+        m_impl->m_blurProgram = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_blurParamsUniform)) {
+        bgfx::destroy(m_impl->m_blurParamsUniform);
+        m_impl->m_blurParamsUniform = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_impl->m_blurWeightsUniform)) {
+        bgfx::destroy(m_impl->m_blurWeightsUniform);
+        m_impl->m_blurWeightsUniform = BGFX_INVALID_HANDLE;
+    }
+    m_impl->DestroyBlurTargets();
 
     m_impl->DestroyOffscreenTargets();
 
@@ -471,9 +613,13 @@ void BgfxBackend::Shutdown() {
 IlyResult BgfxBackend::BeginFrame() {
     ILY_PROFILE_SCOPE("BgfxBackend::BeginFrame");
     m_impl->m_frameHasHdrSource = false;
-    bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
-    bgfx::setViewRect(1, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
-    bgfx::touch(0);
+    bgfx::setViewRect(kViewComposite, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
+    bgfx::setViewRect(kViewOutput, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
+    bgfx::touch(kViewComposite);
+    m_impl->m_nextBlurView = kViewBlurBase;
+    for (auto& target : m_impl->m_blurTargets) {
+        target.usedThisFrame = false;
+    }
     return ILY_SUCCESS;
 }
 
@@ -518,7 +664,7 @@ IlyResult BgfxBackend::EndFrame() {
     bgfx::setVertexBuffer(0, &outputVertices);
     bgfx::setIndexBuffer(&outputIndices);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
-    bgfx::submit(1, m_impl->m_outputProgram);
+    bgfx::submit(kViewOutput, m_impl->m_outputProgram);
 
     if (m_impl->m_debugStats) {
         bgfx::dbgTextClear();
@@ -539,6 +685,8 @@ IlyResult BgfxBackend::EndFrame() {
         bgfx::dbgTextPrintf(1, 4, 0x0f, "GPU Mem: %.2f MB / %.2f MB", gpuMemMb, gpuMemMaxMb);
     }
     
+    m_impl->EvictStaleBlurTargets();
+    m_impl->m_frameIndex += 1;
     bgfx::frame();
     return ILY_SUCCESS;
 }
@@ -546,7 +694,7 @@ IlyResult BgfxBackend::EndFrame() {
 void BgfxBackend::Clear(float r, float g, float b, float a) {
     ILY_PROFILE_SCOPE("BgfxBackend::Clear");
     bgfx::setPaletteColor(0, SrgbToLinear(r), SrgbToLinear(g), SrgbToLinear(b), a);
-    bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    bgfx::setViewClear(kViewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
 }
 
 ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA, const IlyColorDescription& colorDescription, IlyAlphaMode alphaMode) {
@@ -708,25 +856,69 @@ IlyResult BgfxBackend::UpdateTexture(ResourceHandle handle, const void* data, ui
     return ILY_SUCCESS;
 }
 
-IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma) {
-    ILY_PROFILE_SCOPE("BgfxBackend::DrawQuad");
-    if (!transform.visibility || transform.opacity <= 0.0f || opacity <= 0.0f) {
-        return ILY_SUCCESS;
-    }
-    
-    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
-    if (!m_impl->m_initialized) {
-        return ILY_ERROR_INITIALIZATION_FAILED;
+BgfxBackend::Impl::BlurTarget* BgfxBackend::Impl::AcquireBlurTarget(uint32_t width, uint32_t height) {
+    for (auto& target : m_blurTargets) {
+        if (!target.usedThisFrame && target.width == width && target.height == height) {
+            target.usedThisFrame = true;
+            target.lastUsedFrame = m_frameIndex;
+            return &target;
+        }
     }
 
-    auto tex = m_impl->m_resourceManager.GetAs<TextureResource>(textureHandle);
-    if (!tex) {
-        return ILY_ERROR_NOT_FOUND;
+    const uint64_t flags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+    BlurTarget target;
+    target.width = width;
+    target.height = height;
+    target.texA = bgfx::createTexture2D(static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1, bgfx::TextureFormat::RGBA16F, flags);
+    target.texB = bgfx::createTexture2D(static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1, bgfx::TextureFormat::RGBA16F, flags);
+    if (!bgfx::isValid(target.texA) || !bgfx::isValid(target.texB)) {
+        if (bgfx::isValid(target.texA)) bgfx::destroy(target.texA);
+        if (bgfx::isValid(target.texB)) bgfx::destroy(target.texB);
+        return nullptr;
     }
+    target.fbA = bgfx::createFrameBuffer(1, &target.texA, false);
+    target.fbB = bgfx::createFrameBuffer(1, &target.texB, false);
+    if (!bgfx::isValid(target.fbA) || !bgfx::isValid(target.fbB)) {
+        if (bgfx::isValid(target.fbA)) bgfx::destroy(target.fbA);
+        if (bgfx::isValid(target.fbB)) bgfx::destroy(target.fbB);
+        bgfx::destroy(target.texA);
+        bgfx::destroy(target.texB);
+        return nullptr;
+    }
+    target.usedThisFrame = true;
+    target.lastUsedFrame = m_frameIndex;
+    m_blurTargets.push_back(target);
+    return &m_blurTargets.back();
+}
 
+void BgfxBackend::Impl::EvictStaleBlurTargets() {
+    // Sizes track layer layouts, which rarely change; drop pairs that have sat
+    // unused for a while (~5s at 60fps) so resizes do not accumulate targets.
+    constexpr uint64_t kStaleFrames = 300;
+    for (size_t i = m_blurTargets.size(); i-- > 0;) {
+        BlurTarget& target = m_blurTargets[i];
+        if (!target.usedThisFrame && m_frameIndex - target.lastUsedFrame > kStaleFrames) {
+            bgfx::destroy(target.fbA);
+            bgfx::destroy(target.fbB);
+            bgfx::destroy(target.texA);
+            bgfx::destroy(target.texB);
+            m_blurTargets.erase(m_blurTargets.begin() + static_cast<ptrdiff_t>(i));
+        }
+    }
+}
+
+void BgfxBackend::Impl::DestroyBlurTargets() {
+    for (auto& target : m_blurTargets) {
+        if (bgfx::isValid(target.fbA)) bgfx::destroy(target.fbA);
+        if (bgfx::isValid(target.fbB)) bgfx::destroy(target.fbB);
+        if (bgfx::isValid(target.texA)) bgfx::destroy(target.texA);
+        if (bgfx::isValid(target.texB)) bgfx::destroy(target.texB);
+    }
+    m_blurTargets.clear();
+}
+
+IlyResult BgfxBackend::Impl::SubmitSpriteDraw(const SpriteDrawParams& params) {
     EnsureSpriteVertexLayout();
-
-    // Check transient buffers availability
     if (bgfx::getAvailTransientVertexBuffer(4, s_spriteVertexLayout) < 4 ||
         bgfx::getAvailTransientIndexBuffer(6) < 6) {
         return ILY_ERROR_RENDER_FAILED;
@@ -738,17 +930,15 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
     bgfx::TransientIndexBuffer tib;
     bgfx::allocTransientIndexBuffer(&tib, 6);
 
-    // Fill vertices
-    float texWidth = static_cast<float>(tex->GetWidth());
-    float texHeight = static_cast<float>(tex->GetHeight());
+    const IlyTransform& transform = params.transform;
 
     float u0 = transform.crop.left;
     float v0 = transform.crop.top;
     float u1 = transform.crop.right == 0.0f ? 1.0f : transform.crop.right;
     float v1 = transform.crop.bottom == 0.0f ? 1.0f : transform.crop.bottom;
 
-    float width = texWidth * (u1 - u0);
-    float height = texHeight * (v1 - v0);
+    float width = params.texWidth * (u1 - u0);
+    float height = params.texHeight * (v1 - v0);
 
     float localPts[4][2] = {
         { 0.0f, 0.0f },
@@ -767,18 +957,18 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
     float cosR = std::cos(rad);
     float sinR = std::sin(rad);
 
-    float viewWidth = static_cast<float>(m_impl->m_width);
-    float viewHeight = static_cast<float>(m_impl->m_height);
+    float viewWidth = params.targetWidth;
+    float viewHeight = params.targetHeight;
 
     // Compute vertex color: tint with overall opacity
-    float finalOpacity = transform.opacity * opacity;
+    float finalOpacity = transform.opacity * params.opacity;
     if (finalOpacity < 0.0f) finalOpacity = 0.0f;
     if (finalOpacity > 1.0f) finalOpacity = 1.0f;
     uint8_t alphaByte = static_cast<uint8_t>(finalOpacity * 255.0f);
     uint32_t color = (alphaByte << 24) | 0x00FFFFFF; // ABGR format (bgfx uses ABGR on DirectX)
 
     SpriteVertex* verts = reinterpret_cast<SpriteVertex*>(tvb.data);
-    
+
     // UV corners
     float uvs[4][2] = {
         { u0, v0 },
@@ -825,45 +1015,210 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
     indices[4] = 2;
     indices[5] = 3;
 
-    // Set state
+    // Set state. Intermediate stage-1 renders overwrite a transparent-cleared
+    // target, so they skip blending to preserve exact premultiplied values.
     uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA;
-    
-    switch (blendMode) {
-        case ILY_BLEND_NORMAL:
-        case ILY_BLEND_ALPHA:
-            state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA,
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA);
-            break;
-        case ILY_BLEND_ADD:
-            state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA);
-            break;
-        case ILY_BLEND_MULTIPLY:
-            state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
-                BGFX_STATE_BLEND_DST_COLOR,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA,
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA);
-            break;
-        case ILY_BLEND_SCREEN:
-            state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_COLOR,
-                BGFX_STATE_BLEND_ONE,
-                BGFX_STATE_BLEND_INV_SRC_ALPHA);
-            break;
-        default:
-            state |= BGFX_STATE_BLEND_NORMAL;
-            break;
+
+    if (params.blendEnabled) {
+        switch (params.blendMode) {
+            case ILY_BLEND_NORMAL:
+            case ILY_BLEND_ALPHA:
+                state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA,
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA);
+                break;
+            case ILY_BLEND_ADD:
+                state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA);
+                break;
+            case ILY_BLEND_MULTIPLY:
+                state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
+                    BGFX_STATE_BLEND_DST_COLOR,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA,
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA);
+                break;
+            case ILY_BLEND_SCREEN:
+                state |= BGFX_STATE_BLEND_FUNC_SEPARATE(
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_COLOR,
+                    BGFX_STATE_BLEND_ONE,
+                    BGFX_STATE_BLEND_INV_SRC_ALPHA);
+                break;
+            default:
+                state |= BGFX_STATE_BLEND_NORMAL;
+                break;
+        }
     }
 
     bgfx::setState(state);
+
+    bgfx::setUniform(m_sourceColorUniform, params.sourceParams);
+
+    const IlyChromaKey* chroma = params.chroma;
+    const bool chromaEnabled = chroma && chroma->enabled;
+    const float chromaKeyParams[4] = {
+        chromaEnabled ? chroma->keyR : 0.0f,
+        chromaEnabled ? chroma->keyG : 0.0f,
+        chromaEnabled ? chroma->keyB : 0.0f,
+        chromaEnabled ? chroma->similarity : 0.0f
+    };
+    const float chromaBandParams[4] = {
+        chromaEnabled ? chroma->smoothness : 0.0f,
+        chromaEnabled ? chroma->spill : 0.0f,
+        chromaEnabled ? 1.0f : 0.0f,
+        0.0f
+    };
+    bgfx::setUniform(m_chromaKeyUniform, chromaKeyParams);
+    bgfx::setUniform(m_chromaParamsUniform, chromaBandParams);
+
+    // Color adjust: uniforms persist across submits, so set them every draw
+    // (identity when disabled) exactly like the chroma uniforms above. The
+    // third u_colorAdjust component asks the shader to re-encode its output to
+    // sRGB gamma (blur intermediates only).
+    const IlyColorAdjust* colorAdjust = params.colorAdjust;
+    const bool colorAdjustEnabled = colorAdjust && colorAdjust->enabled;
+    static const float kIdentityRows[3][4] = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f}
+    };
+    const float* rowR = colorAdjustEnabled ? &colorAdjust->matrix[0] : kIdentityRows[0];
+    const float* rowG = colorAdjustEnabled ? &colorAdjust->matrix[4] : kIdentityRows[1];
+    const float* rowB = colorAdjustEnabled ? &colorAdjust->matrix[8] : kIdentityRows[2];
+    const float colorAdjustParams[4] = {
+        colorAdjustEnabled ? 1.0f : 0.0f,
+        colorAdjustEnabled ? colorAdjust->alpha : 1.0f,
+        params.encodeSrgbOutput ? 1.0f : 0.0f,
+        0.0f
+    };
+    bgfx::setUniform(m_colorMatRUniform, rowR);
+    bgfx::setUniform(m_colorMatGUniform, rowG);
+    bgfx::setUniform(m_colorMatBUniform, rowB);
+    bgfx::setUniform(m_colorAdjustUniform, colorAdjustParams);
+
+    // Rounded corners: an SDF mask evaluated in quad-local space, so the
+    // shader needs the quad's on-screen pixel size and the texcoord bounds
+    // (the vertex UVs span the crop rect, not 0..1).
+    const float quadWidthPx = width * std::fabs(transform.scale.x);
+    const float quadHeightPx = height * std::fabs(transform.scale.y);
+    const bool cornerEnabled = params.cornerRadius > 0.0f && quadWidthPx > 0.0f && quadHeightPx > 0.0f;
+    const float cornerRadiusParams[4] = {
+        cornerEnabled ? params.cornerRadius : 0.0f,
+        quadWidthPx,
+        quadHeightPx,
+        cornerEnabled ? 1.0f : 0.0f
+    };
+    const float cornerRectParams[4] = { u0, v0, u1, v1 };
+    bgfx::setUniform(m_cornerRadiusUniform, cornerRadiusParams);
+    bgfx::setUniform(m_cornerRectUniform, cornerRectParams);
+
+    // Circle mask (focus-circle sharp region), quad-local px, texcoord
+    // orientation. Reuses the corner uniforms for quad size/texcoord bounds.
+    const IlyCircleMask* circleMask = params.circleMask;
+    const bool circleEnabled = circleMask && circleMask->enabled &&
+        circleMask->radius > 0.0f && quadWidthPx > 0.0f && quadHeightPx > 0.0f;
+    const float circleMaskParams[4] = {
+        circleEnabled ? circleMask->x : 0.0f,
+        circleEnabled ? circleMask->y : 0.0f,
+        circleEnabled ? circleMask->radius : 0.0f,
+        circleEnabled ? 1.0f : 0.0f
+    };
+    bgfx::setUniform(m_circleMaskUniform, circleMaskParams);
+
+    // Image mask: alpha of s_maskTex (slot 1) multiplied into the layer,
+    // stretched across the quad. Bind a valid texture even when disabled (the
+    // main texture, harmlessly) so the sampler is never left dangling.
+    const bool maskEnabled = bgfx::isValid(params.maskTexture);
+    const float maskParams[4] = { maskEnabled ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
+    bgfx::setUniform(m_maskParamsUniform, maskParams);
+
+    // Bind texture using the shared, pre-created sampler uniform.
+    bgfx::setTexture(0, m_texColorSampler, params.texture);
+    bgfx::setTexture(1, m_maskSampler, maskEnabled ? params.maskTexture : params.texture);
+
+    // Submit transient buffers
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+
+    // Submit draw call
+    bgfx::submit(params.viewId, m_spriteProgram);
+
+    return ILY_SUCCESS;
+}
+
+void BgfxBackend::Impl::SubmitBlurPass(uint16_t viewId, bgfx::TextureHandle sourceTex, uint32_t width, uint32_t height, bool horizontal, float sigma) {
+    EnsureSpriteVertexLayout();
+    if (bgfx::getAvailTransientVertexBuffer(4, s_spriteVertexLayout) < 4 ||
+        bgfx::getAvailTransientIndexBuffer(6) < 6) {
+        return;
+    }
+
+    bgfx::TransientVertexBuffer tvb;
+    bgfx::TransientIndexBuffer tib;
+    bgfx::allocTransientVertexBuffer(&tvb, 4, s_spriteVertexLayout);
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+
+    SpriteVertex* verts = reinterpret_cast<SpriteVertex*>(tvb.data);
+    verts[0] = {-1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0xffffffff};
+    verts[1] = { 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0xffffffff};
+    verts[2] = { 1.0f,-1.0f, 0.0f, 1.0f, 1.0f, 0xffffffff};
+    verts[3] = {-1.0f,-1.0f, 0.0f, 0.0f, 1.0f, 0xffffffff};
+    uint16_t* indices = reinterpret_cast<uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    // Normalized Gaussian weights for the fixed 25-tap kernel; the tail decays
+    // to zero for small sigmas, so undersized blurs cost nothing extra.
+    double raw[13];
+    const double twoSigmaSq = 2.0 * static_cast<double>(sigma) * static_cast<double>(sigma);
+    for (int i = 0; i <= 12; ++i) {
+        raw[i] = twoSigmaSq > 0.0 ? std::exp(-static_cast<double>(i * i) / twoSigmaSq) : (i == 0 ? 1.0 : 0.0);
+    }
+    double sum = raw[0];
+    for (int i = 1; i <= 12; ++i) sum += 2.0 * raw[i];
+    float weights[16] = {0};
+    for (int i = 0; i <= 12; ++i) weights[i] = static_cast<float>(raw[i] / sum);
+
+    const float blurParams[4] = {
+        horizontal ? 1.0f / static_cast<float>(width) : 0.0f,
+        horizontal ? 0.0f : 1.0f / static_cast<float>(height),
+        0.0f,
+        0.0f
+    };
+    bgfx::setUniform(m_blurParamsUniform, blurParams);
+    bgfx::setUniform(m_blurWeightsUniform, weights, 4);
+    bgfx::setTexture(0, m_texColorSampler, sourceTex);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::submit(viewId, m_blurProgram);
+}
+
+IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma, const IlyColorAdjust* colorAdjust, float cornerRadius, float blurSigma, const IlyCircleMask* circleMask, ResourceHandle maskTexture) {
+    ILY_PROFILE_SCOPE("BgfxBackend::DrawQuad");
+    if (!transform.visibility || transform.opacity <= 0.0f || opacity <= 0.0f) {
+        return ILY_SUCCESS;
+    }
+
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_initialized) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+
+    auto tex = m_impl->m_resourceManager.GetAs<TextureResource>(textureHandle);
+    if (!tex) {
+        return ILY_ERROR_NOT_FOUND;
+    }
 
     float transferMode = 0.0f;
     const IlyColorDescription& sourceColor = tex->GetColorDescription();
@@ -887,41 +1242,143 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
         sourceColor.transfer == ILY_TRANSFER_HLG ||
         (sourceColor.transfer == ILY_TRANSFER_LINEAR && tex->GetFormat() == bgfx::TextureFormat::RGBA16F);
     m_impl->m_frameHasHdrSource = m_impl->m_frameHasHdrSource || hdrSource;
-    const float sourceParams[4] = {
-        transferMode,
-        sourceColor.primaries == ILY_COLOR_PRIMARIES_BT2020 ? 1.0f : 0.0f,
-        static_cast<float>(tex->GetAlphaMode()),
-        sourceScale
-    };
-    bgfx::setUniform(m_impl->m_sourceColorUniform, sourceParams);
 
-    const bool chromaEnabled = chroma && chroma->enabled;
-    const float chromaKeyParams[4] = {
-        chromaEnabled ? chroma->keyR : 0.0f,
-        chromaEnabled ? chroma->keyG : 0.0f,
-        chromaEnabled ? chroma->keyB : 0.0f,
-        chromaEnabled ? chroma->similarity : 0.0f
-    };
-    const float chromaBandParams[4] = {
-        chromaEnabled ? chroma->smoothness : 0.0f,
-        chromaEnabled ? chroma->spill : 0.0f,
-        chromaEnabled ? 1.0f : 0.0f,
-        0.0f
-    };
-    bgfx::setUniform(m_impl->m_chromaKeyUniform, chromaKeyParams);
-    bgfx::setUniform(m_impl->m_chromaParamsUniform, chromaBandParams);
+    SpriteDrawParams draw;
+    draw.viewId = kViewComposite;
+    draw.targetWidth = static_cast<float>(m_impl->m_width);
+    draw.targetHeight = static_cast<float>(m_impl->m_height);
+    draw.texture = tex->GetHandle();
+    draw.texWidth = static_cast<float>(tex->GetWidth());
+    draw.texHeight = static_cast<float>(tex->GetHeight());
+    draw.transform = transform;
+    draw.opacity = opacity;
+    draw.blendMode = blendMode;
+    draw.blendEnabled = true;
+    draw.chroma = chroma;
+    draw.colorAdjust = colorAdjust;
+    draw.cornerRadius = cornerRadius;
+    draw.circleMask = circleMask;
+    // Resolve the optional image-mask texture; an unknown/invalid handle simply
+    // leaves the mask disabled rather than failing the whole draw.
+    if (maskTexture != ILY_INVALID_HANDLE) {
+        auto maskTex = m_impl->m_resourceManager.GetAs<TextureResource>(maskTexture);
+        if (maskTex) {
+            draw.maskTexture = maskTex->GetHandle();
+        }
+    }
+    draw.sourceParams[0] = transferMode;
+    draw.sourceParams[1] = sourceColor.primaries == ILY_COLOR_PRIMARIES_BT2020 ? 1.0f : 0.0f;
+    draw.sourceParams[2] = static_cast<float>(tex->GetAlphaMode());
+    draw.sourceParams[3] = sourceScale;
+    draw.encodeSrgbOutput = false;
 
-    // Bind texture using the shared, pre-created sampler uniform.
-    bgfx::setTexture(0, m_impl->m_texColorSampler, tex->GetHandle());
+    // Blurred layers render through a padded intermediate: stage 1 draws the
+    // keyed/color-adjusted source into a transparent-padded RGBA16F target
+    // (re-encoded to sRGB gamma, the space CSS blur() works in), a separable
+    // Gaussian runs H then V, and the composite pass draws the blurred result
+    // cropped back to the unpadded quad — matching the canvas, whose default
+    // rect shape path clips blur bleed at the layout rect.
+    //
+    // The 25-tap kernel only reaches 3*sigma for sigma <= 4, so larger blurs
+    // (the focus-circle effect goes to 40px) render the intermediate DOWNSAMPLED
+    // by an integer factor — Skia's trick: the per-texel sigma stays <= 4 while
+    // still covering the full requested radius, and the composite upsamples the
+    // small blurred result bilinearly (the blur targets sample linear).
+    const float requestedSigma = std::min(blurSigma, 64.0f);
+    const int downscale = std::max(1, static_cast<int>(std::ceil(requestedSigma / 4.0f)));
+    const float sigma = requestedSigma / static_cast<float>(downscale);
+    if (requestedSigma >= 0.05f && bgfx::isValid(m_impl->m_blurProgram)) {
+        const float cropU0 = transform.crop.left;
+        const float cropV0 = transform.crop.top;
+        const float cropU1 = transform.crop.right == 0.0f ? 1.0f : transform.crop.right;
+        const float cropV1 = transform.crop.bottom == 0.0f ? 1.0f : transform.crop.bottom;
+        const float croppedWidth = draw.texWidth * (cropU1 - cropU0);
+        const float croppedHeight = draw.texHeight * (cropV1 - cropV0);
+        const float quadWidth = croppedWidth * std::fabs(transform.scale.x);
+        const float quadHeight = croppedHeight * std::fabs(transform.scale.y);
+        // Intermediate geometry in DOWNSAMPLED texels (1 texel = downscale px).
+        const float dsQuadWidth = quadWidth / static_cast<float>(downscale);
+        const float dsQuadHeight = quadHeight / static_cast<float>(downscale);
+        const int padding = static_cast<int>(std::ceil(3.0f * sigma));
+        const uint32_t paddedWidth = static_cast<uint32_t>(std::ceil(dsQuadWidth)) + 2 * padding;
+        const uint32_t paddedHeight = static_cast<uint32_t>(std::ceil(dsQuadHeight)) + 2 * padding;
 
-    // Submit transient buffers
-    bgfx::setVertexBuffer(0, &tvb);
-    bgfx::setIndexBuffer(&tib);
+        if (quadWidth >= 1.0f && quadHeight >= 1.0f &&
+            dsQuadWidth >= 1.0f && dsQuadHeight >= 1.0f &&
+            croppedWidth >= 1.0f && croppedHeight >= 1.0f &&
+            paddedWidth <= 8192 && paddedHeight <= 8192 &&
+            m_impl->m_nextBlurView + 3 <= kViewComposite) {
+            Impl::BlurTarget* target = m_impl->AcquireBlurTarget(paddedWidth, paddedHeight);
+            if (target) {
+                const uint16_t viewStage1 = m_impl->m_nextBlurView++;
+                const uint16_t viewBlurH = m_impl->m_nextBlurView++;
+                const uint16_t viewBlurV = m_impl->m_nextBlurView++;
 
-    // Submit draw call
-    bgfx::submit(0, m_impl->m_spriteProgram);
+                bgfx::setViewFrameBuffer(viewStage1, target->fbA);
+                bgfx::setViewRect(viewStage1, 0, 0, static_cast<uint16_t>(paddedWidth), static_cast<uint16_t>(paddedHeight));
+                bgfx::setViewClear(viewStage1, BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
 
-    return ILY_SUCCESS;
+                SpriteDrawParams stage1 = draw;
+                stage1.viewId = viewStage1;
+                stage1.targetWidth = static_cast<float>(paddedWidth);
+                stage1.targetHeight = static_cast<float>(paddedHeight);
+                stage1.blendEnabled = false;
+                stage1.cornerRadius = 0.0f;
+                stage1.circleMask = nullptr;
+                stage1.maskTexture = BGFX_INVALID_HANDLE;
+                stage1.encodeSrgbOutput = true;
+                stage1.opacity = 1.0f;
+                stage1.transform.position = {static_cast<float>(padding) + dsQuadWidth * 0.5f, static_cast<float>(padding) + dsQuadHeight * 0.5f, 0.0f};
+                stage1.transform.rotation = {0.0f, 0.0f, 0.0f};
+                stage1.transform.scale = {dsQuadWidth / croppedWidth, dsQuadHeight / croppedHeight, 1.0f};
+                stage1.transform.anchor = {0.0f, 0.0f};
+                stage1.transform.pivot = {0.5f, 0.5f};
+                stage1.transform.opacity = 1.0f;
+
+                if (m_impl->SubmitSpriteDraw(stage1) == ILY_SUCCESS) {
+                    bgfx::setViewFrameBuffer(viewBlurH, target->fbB);
+                    bgfx::setViewRect(viewBlurH, 0, 0, static_cast<uint16_t>(paddedWidth), static_cast<uint16_t>(paddedHeight));
+                    bgfx::setViewClear(viewBlurH, BGFX_CLEAR_NONE);
+                    m_impl->SubmitBlurPass(viewBlurH, target->texA, paddedWidth, paddedHeight, true, sigma);
+
+                    bgfx::setViewFrameBuffer(viewBlurV, target->fbA);
+                    bgfx::setViewRect(viewBlurV, 0, 0, static_cast<uint16_t>(paddedWidth), static_cast<uint16_t>(paddedHeight));
+                    bgfx::setViewClear(viewBlurV, BGFX_CLEAR_NONE);
+                    m_impl->SubmitBlurPass(viewBlurV, target->texB, paddedWidth, paddedHeight, false, sigma);
+
+                    // Composite the blurred intermediate under the ORIGINAL
+                    // transform: same center/rotation/pivot, scaled up by the
+                    // downscale factor (1 intermediate texel = downscale output
+                    // px), with a crop that trims the transparent padding off.
+                    SpriteDrawParams composite = draw;
+                    composite.texture = target->texA;
+                    composite.texWidth = static_cast<float>(paddedWidth);
+                    composite.texHeight = static_cast<float>(paddedHeight);
+                    composite.chroma = nullptr;
+                    composite.colorAdjust = nullptr;
+                    composite.transform.scale = {
+                        (transform.scale.x < 0.0f ? -1.0f : 1.0f) * static_cast<float>(downscale),
+                        (transform.scale.y < 0.0f ? -1.0f : 1.0f) * static_cast<float>(downscale),
+                        1.0f
+                    };
+                    composite.transform.crop = {
+                        static_cast<float>(padding) / static_cast<float>(paddedWidth),
+                        static_cast<float>(padding) / static_cast<float>(paddedHeight),
+                        (static_cast<float>(padding) + dsQuadWidth) / static_cast<float>(paddedWidth),
+                        (static_cast<float>(padding) + dsQuadHeight) / static_cast<float>(paddedHeight)
+                    };
+                    composite.sourceParams[0] = 4.0f; // shader sRGB decode (blur intermediate)
+                    composite.sourceParams[1] = 0.0f;
+                    composite.sourceParams[2] = static_cast<float>(ILY_ALPHA_PREMULTIPLIED);
+                    composite.sourceParams[3] = 1.0f;
+                    return m_impl->SubmitSpriteDraw(composite);
+                }
+                // Stage 1 failed; fall through to the direct unblurred draw.
+            }
+        }
+    }
+
+    return m_impl->SubmitSpriteDraw(draw);
 }
 
 BgfxBackend::RendererCapabilities BgfxBackend::capabilities() const {
@@ -1024,7 +1481,7 @@ IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidt
     // Copy the offscreen color target into the CPU-readable texture, then read
     // it back. readTexture reports the frame at which dst will be populated;
     // pump frames (bounded) until we reach it.
-    const bgfx::ViewId kBlitView = 2;
+    const bgfx::ViewId kBlitView = kViewBlit;
     bgfx::blit(kBlitView, m_impl->m_readbackTex, 0, 0, m_impl->m_offscreenColorTex);
     const uint32_t frameAvailable = bgfx::readTexture(m_impl->m_readbackTex, dst);
 

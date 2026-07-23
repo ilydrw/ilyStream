@@ -556,7 +556,25 @@ ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer
         pass.name = "layers";
         pass.execute = [layerList](ily::IRenderBackend* backend) -> IlyResult {
             for (const auto& layer : layerList) {
-                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey);
+                if (layer.circleMask.enabled && layer.circleMask.radius > 0.0f) {
+                    // Focus circle: a blurred base draw with a sharp overlay
+                    // clipped to a circle drawn on top — mirroring the canvas
+                    // compositor's two draws (getFilters(true) then, inside the
+                    // arc clip, getFilters(false)). The base carries the blur
+                    // and any rounded-corner mask; the sharp overlay reuses the
+                    // same source, transform, and color adjust with no blur. Both
+                    // draws carry the image mask so it cuts the whole layer.
+                    IlyResult base = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture);
+                    if (base != ILY_SUCCESS) {
+                        return base;
+                    }
+                    IlyResult sharp = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, 0.0f, &layer.circleMask, layer.maskTexture);
+                    if (sharp != ILY_SUCCESS) {
+                        return sharp;
+                    }
+                    continue;
+                }
+                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture);
                 if (r != ILY_SUCCESS) {
                     return r;
                 }

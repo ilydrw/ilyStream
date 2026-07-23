@@ -33,7 +33,8 @@ import {
   type NativeBroadcastScene,
   type NativeLiveSourceFrame,
   type NativeSceneBlendMode,
-  type NativeSceneLayer
+  type NativeSceneLayer,
+  type NativeSceneSource
 } from '../../../shared/native-scene'
 
 /**
@@ -204,9 +205,9 @@ function resolveNativeImagePath(assetPath: string): string {
 
 async function createBroadcastSceneTexture(
   eng: NativeEngine,
-  layer: NativeSceneLayer
+  source: NativeSceneSource,
+  layerId: string
 ): Promise<BroadcastSceneTexture> {
-  const source = layer.source
   if (source.kind === 'display') {
     const monitorIndex = broadcastDisplayIndexes.get(source.sourceId)
     if (monitorIndex === undefined) {
@@ -239,7 +240,7 @@ async function createBroadcastSceneTexture(
   const width = Math.max(1, Math.min(8192, Math.round(source.width)))
   const height = Math.max(1, Math.min(8192, Math.round(source.height)))
   if (width * height > MAX_LIVE_SOURCE_PIXELS) {
-    throw new Error(`Native source exceeds the 4K pixel budget for layer ${layer.id}`)
+    throw new Error(`Native source exceeds the 4K pixel budget for layer ${layerId}`)
   }
   if (source.kind === 'live') {
     if (source.feed === 'browser-source' && source.browserSourceId) {
@@ -274,7 +275,7 @@ async function createBroadcastSceneTexture(
 
   const pixels = source.pixels
   if (pixels.byteLength !== width * height * 4) {
-    throw new Error(`Invalid native pixel source size for layer ${layer.id}`)
+    throw new Error(`Invalid native pixel source size for layer ${layerId}`)
   }
   return {
     texture: eng.createTextureFromPixels(
@@ -302,6 +303,8 @@ function buildLayersFromScene(
   for (const layer of scene.layers) {
     const sourceTexture = textures.get(layer.source.key)
     if (!sourceTexture) return null
+    const maskTexture = layer.maskSource ? textures.get(layer.maskSource.key) : undefined
+    if (layer.maskSource && !maskTexture) return null
     layers.push({
       texture: sourceTexture.texture,
       transform: computeNativeCompositorTransform(
@@ -314,7 +317,26 @@ function buildLayersFromScene(
       ),
       opacity: Math.max(0, Math.min(1, layer.opacity)),
       blendMode: toNativeBlendMode(layer.blendMode),
-      ...(layer.chromaKey ? { chromaKey: layer.chromaKey } : {})
+      ...(layer.chromaKey ? { chromaKey: layer.chromaKey } : {}),
+      ...(layer.colorAdjust ? { colorAdjust: layer.colorAdjust } : {}),
+      // The scene carries the radius and blur sigma in canvas pixels; the
+      // engine masks and blurs in output pixels.
+      ...(layer.cornerRadius
+        ? { cornerRadius: layer.cornerRadius * (eng.size.width / Math.max(1, scene.canvasWidth)) }
+        : {}),
+      ...(layer.blurSigma
+        ? { blurSigma: layer.blurSigma * (eng.size.width / Math.max(1, scene.canvasWidth)) }
+        : {}),
+      ...(layer.circleMask
+        ? {
+            circleMask: {
+              x: layer.circleMask.x * (eng.size.width / Math.max(1, scene.canvasWidth)),
+              y: layer.circleMask.y * (eng.size.width / Math.max(1, scene.canvasWidth)),
+              radius: layer.circleMask.radius * (eng.size.width / Math.max(1, scene.canvasWidth))
+            }
+          }
+        : {}),
+      ...(maskTexture ? { maskTexture: maskTexture.texture } : {})
     })
   }
   return layers
@@ -396,17 +418,22 @@ async function applyNativeBroadcastScene(
 
   try {
     for (const layer of scene.layers) {
-      const sourceKey = layer.source.key
-      let sourceTexture = stagedTextures.get(sourceKey)
-      if (sourceTexture && sourceTexture.kind !== layer.source.kind) {
-        throw new Error(`Native source key changed kind: ${sourceKey}`)
+      const sources: NativeSceneSource[] = [layer.source]
+      // The image mask is a second image source uploaded like any other.
+      if (layer.maskSource) sources.push(layer.maskSource)
+      for (const source of sources) {
+        const sourceKey = source.key
+        let sourceTexture = stagedTextures.get(sourceKey)
+        if (sourceTexture && sourceTexture.kind !== source.kind) {
+          throw new Error(`Native source key changed kind: ${sourceKey}`)
+        }
+        if (!sourceTexture) {
+          sourceTexture = await createBroadcastSceneTexture(eng, source, layer.id)
+          stagedTextures.set(sourceKey, sourceTexture)
+          createdKeys.push(sourceKey)
+        }
+        usedKeys.add(sourceKey)
       }
-      if (!sourceTexture) {
-        sourceTexture = await createBroadcastSceneTexture(eng, layer)
-        stagedTextures.set(sourceKey, sourceTexture)
-        createdKeys.push(sourceKey)
-      }
-      usedKeys.add(sourceKey)
     }
 
     const layers = buildLayersFromScene(eng, scene, stagedTextures)
