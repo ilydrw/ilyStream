@@ -239,6 +239,38 @@ describe('getNativeSceneUnsupportedReason', () => {
       displayLayer({ enhancements: { shape: 'circle' } })
     ]))).toBeNull()
   })
+
+  it('composites a camera virtual background natively but keeps other cases on canvas', () => {
+    const vbCamera = (vb: unknown) => displayLayer({
+      id: 'camera', type: 'camera',
+      config: { fitMode: 'cover' },
+      enhancements: { virtualBackground: vb as never }
+    })
+    // A blur background on a camera decomposes into a blurred background layer
+    // plus a person layer cut out by the live segmentation mask.
+    expect(getNativeSceneUnsupportedReason(scene([
+      vbCamera({ enabled: true, type: 'blur', blurStrength: 40 })
+    ]))).toBeNull()
+    // Color / image backgrounds with a value also compose.
+    expect(getNativeSceneUnsupportedReason(scene([
+      vbCamera({ enabled: true, type: 'color', value: '#0a0a0a' })
+    ]))).toBeNull()
+    // Segmentation is camera-only: vb on a display source stays on canvas.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({ enhancements: { virtualBackground: { enabled: true, type: 'blur' } } })
+    ]))).toContain('canvas-only enhancements')
+    // A color/image background without a value can't be reproduced — fall back.
+    expect(getNativeSceneUnsupportedReason(scene([
+      vbCamera({ enabled: true, type: 'image' })
+    ]))).toContain('canvas-only enhancements')
+    // vb needs the mask slot, so it can't share with a shape or image mask.
+    expect(getNativeSceneUnsupportedReason(scene([
+      displayLayer({
+        id: 'camera', type: 'camera', config: { fitMode: 'cover' },
+        enhancements: { virtualBackground: { enabled: true, type: 'blur' }, shape: 'circle' }
+      })
+    ]))).toContain('canvas-only enhancements')
+  })
 })
 
 describe('buildVignettePixels', () => {

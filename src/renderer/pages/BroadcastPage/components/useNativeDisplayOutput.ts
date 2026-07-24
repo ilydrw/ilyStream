@@ -18,10 +18,14 @@ import type {
 } from '../../../../shared/native-scene'
 import { buildEnhancementColorMatrix } from '../../../../shared/color-filter-matrix'
 import {
+  croppedSourceRect,
+  drawFittedSource,
   resolveBrowserCaptureSettings,
+  resolveSourceFitMode,
   traceShapePath,
   wrapCanvasText
 } from './CanvasEditor.utils'
+import { segmentationService } from '../../../services/SegmentationService'
 import type { BrowserFrameSurface, CachedMediaFrame } from './CanvasEditor.types'
 import { CameraFramePump, type CameraFrameSourceSpec } from './camera-frame-pump'
 
@@ -152,6 +156,29 @@ function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | 
   return shapeObj
 }
 
+/** The virtual-background enhancement config (from the studio layer). */
+type StudioVirtualBackground = NonNullable<NonNullable<StudioLayer['enhancements']>['virtualBackground']>
+
+/**
+ * Decide whether the engine composites a layer's virtual background natively.
+ * It decomposes into a background layer (blurred camera / color / image) below a
+ * person layer masked by the live segmentation silhouette, so it needs a camera
+ * source (segmentation is camera-only) and the mask slot free of other masks
+ * (shape, image mask, focus circle). Returns the config when eligible,
+ * 'fallback' when vb is on but the engine can't reproduce it, else null.
+ */
+function resolveNativeVirtualBackground(layer: StudioLayer): StudioVirtualBackground | 'fallback' | null {
+  const vb = layer.enhancements?.virtualBackground
+  if (!vb?.enabled) return null
+  if (layer.type !== 'camera') return 'fallback'
+  if (vb.type !== 'blur' && vb.type !== 'color' && vb.type !== 'image') return 'fallback'
+  if ((vb.type === 'color' || vb.type === 'image') && !vb.value) return 'fallback'
+  const e = layer.enhancements
+  const consumesMask = Boolean(e?.shape) || Boolean(e?.imageMask?.enabled) || Boolean(e?.focusCircle?.enabled)
+  if (consumesMask) return 'fallback'
+  return vb
+}
+
 /**
  * Like hasEnhancements, but enhancements the engine composites natively no
  * longer disqualify a layer: chroma key (fs_sprite chroma stage), the
@@ -179,7 +206,7 @@ function hasNonNativeEnhancements(layer: StudioLayer): boolean {
   if (!enhancements) return false
 
   return Boolean(
-    enhancements.virtualBackground?.enabled ||
+    resolveNativeVirtualBackground(layer) === 'fallback' ||
     resolveNativeShape(layer) === 'fallback'
   )
 }
@@ -511,6 +538,34 @@ function createBorderSource(
   return source
 }
 
+// The live segmentation mask is low-frequency, so a small texture stretched over
+// the layout rect is plenty (and cheap to upload every frame).
+const MAX_VB_MASK_EDGE = 256
+
+/** A tiny solid-color pixels source for a 'color' virtual background. */
+function createColorSource(
+  color: string,
+  cache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>
+): Extract<NativeSceneSource, { kind: 'pixels' }> {
+  const key = `vbcolor:${color}`
+  const cached = cache.get(key)
+  if (cached) return cached
+  const hex = color.replace('#', '')
+  const r = parseInt(hex.substring(0, 2) || '00', 16) || 0
+  const g = parseInt(hex.substring(2, 4) || '00', 16) || 0
+  const b = parseInt(hex.substring(4, 6) || '00', 16) || 0
+  const pixels = new Uint8Array(2 * 2 * 4)
+  for (let i = 0; i < 4; i += 1) {
+    pixels[i * 4] = r
+    pixels[i * 4 + 1] = g
+    pixels[i * 4 + 2] = b
+    pixels[i * 4 + 3] = 255
+  }
+  const source: Extract<NativeSceneSource, { kind: 'pixels' }> = { kind: 'pixels', key, width: 2, height: 2, pixels }
+  cache.set(key, source)
+  return source
+}
+
 function constrainLiveSourceDimensions(width: number, height: number): { width: number; height: number } {
   const sourceWidth = Math.max(1, Math.round(width))
   const sourceHeight = Math.max(1, Math.round(height))
@@ -664,6 +719,56 @@ function buildNativeBroadcastScene(
         usedPixelKeys.add(shapeMaskSource.key)
         maskSource = shapeMaskSource
       }
+
+      // Virtual background: the person layer (this entry) is cut out by a LIVE
+      // segmentation mask (fed per frame, see the mask upload loop), drawn over a
+      // background layer prepended below. resolveNativeVirtualBackground only
+      // yields a config for eligible camera layers, so the mask slot is free.
+      let vbBackgroundLayer: NativeSceneLayer | undefined
+      const nativeVb = resolveNativeVirtualBackground(layer)
+      if (nativeVb && nativeVb !== 'fallback' && source.kind === 'live') {
+        const vbScale = Math.min(1, MAX_VB_MASK_EDGE / Math.max(1, layer.width, layer.height))
+        const maskW = Math.max(1, Math.round(layer.width * vbScale))
+        const maskH = Math.max(1, Math.round(layer.height * vbScale))
+        maskSource = { kind: 'live', key: `vbmask:${layer.id}:${maskW}x${maskH}`, width: maskW, height: maskH }
+
+        const vbOpacity = Math.max(0, Math.min(1, (nativeVb.opacity ?? 100) / 100))
+        const bgLayout = {
+          x: layer.x, y: layer.y, width: layer.width, height: layer.height,
+          rotation, flipH: false, flipV: false, crop: undefined, fitMode: 'stretch' as const
+        }
+        if (nativeVb.type === 'blur') {
+          // Blurred camera at 0.7 brightness, matching blur(Npx) brightness(70%).
+          vbBackgroundLayer = {
+            id: `${layer.id}:vbbg`, source, layout: bgLayout,
+            opacity: vbOpacity, blendMode: 'normal',
+            colorAdjust: { matrix: [0.7, 0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0.7, 0], alpha: 1 },
+            blurSigma: Math.max(1, nativeVb.blurStrength ?? 20)
+          }
+        } else if (nativeVb.type === 'color' && nativeVb.value) {
+          const colorSource = createColorSource(nativeVb.value, pixelCache)
+          usedPixelKeys.add(colorSource.key)
+          vbBackgroundLayer = {
+            id: `${layer.id}:vbbg`, source: colorSource, layout: bgLayout,
+            opacity: vbOpacity, blendMode: 'normal'
+          }
+        } else if (nativeVb.type === 'image' && nativeVb.value) {
+          const assetPath = String(nativeVb.value)
+          vbBackgroundLayer = {
+            id: `${layer.id}:vbbg`,
+            source: { kind: 'image', key: `image:${assetPath}`, assetPath },
+            layout: {
+              ...bgLayout,
+              fitMode: nativeVb.scalingMode === 'stretch' ? 'stretch'
+                : nativeVb.scalingMode === 'contain' ? 'contain' : 'cover'
+            },
+            opacity: vbOpacity, blendMode: 'normal',
+            // The canvas softens an image background by blurStrength/4.
+            ...(nativeVb.blurStrength ? { blurSigma: nativeVb.blurStrength / 4 } : {})
+          }
+        }
+      }
+
       const entry: NativeSceneLayer = {
         id: layer.id,
         source,
@@ -733,7 +838,8 @@ function buildNativeBroadcastScene(
           maskSource: shapeMaskSource
         })
       }
-      return overlays.length ? [entry, ...overlays] : [entry]
+      const base = overlays.length ? [entry, ...overlays] : [entry]
+      return vbBackgroundLayer ? [vbBackgroundLayer, ...base] : base
     })
 
   for (const key of pixelCache.keys()) {
@@ -928,6 +1034,95 @@ async function uploadNativeLiveSources(
   }
 }
 
+/**
+ * Feed each virtual-background layer's live segmentation mask. The MediaPipe
+ * model runs in the renderer (it can't move to the engine), so per frame we kick
+ * it, fit the latest silhouette the same way as the person into the mask texture
+ * (opaque during warmup, so the person shows unmasked like the canvas), and
+ * upload it. The engine then cuts the person out with it over the background.
+ */
+async function uploadVirtualBackgroundMasks(
+  nativeScene: NativeBroadcastScene,
+  studioScene: StudioScene,
+  outputFps: number,
+  videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
+  surfaces: Map<string, LiveSourceUploadSurface>,
+  warnedKeys: Set<string>
+): Promise<void> {
+  const studioLayers = new Map(studioScene.layers.map((layer) => [layer.id, layer]))
+  const usedKeys = new Set<string>()
+  const now = performance.now()
+  const uploads: Promise<void>[] = []
+
+  for (const nativeLayer of nativeScene.layers) {
+    const mask = nativeLayer.maskSource
+    if (!mask || mask.kind !== 'live' || !mask.key.startsWith('vbmask:')) continue
+    const studioLayer = studioLayers.get(nativeLayer.id)
+    if (!studioLayer) continue
+    const video = videoRefs.current[studioLayer.id]
+    if (!video || video.readyState < 2) continue
+    usedKeys.add(mask.key)
+
+    void segmentationService.processVideo(studioLayer.id, video)
+    const maskResult = segmentationService.getMask(studioLayer.id)
+
+    let surface = surfaces.get(mask.key)
+    if (!surface) {
+      const canvas = document.createElement('canvas')
+      canvas.width = mask.width
+      canvas.height = mask.height
+      const context = canvas.getContext('2d', { alpha: true, willReadFrequently: true })
+      if (!context) continue
+      surface = { canvas, context, lastUploadedAt: 0, lastVersion: -1 }
+      surfaces.set(mask.key, surface)
+    }
+    const targetFps = Math.max(1, Math.min(60, outputFps))
+    if (now - surface.lastUploadedAt < 1000 / targetFps) continue
+    surface.lastUploadedAt = now
+
+    const ctx = surface.context
+    ctx.clearRect(0, 0, mask.width, mask.height)
+    if (maskResult?.mask) {
+      drawFittedSource(
+        ctx,
+        maskResult.mask,
+        croppedSourceRect(maskResult.width, maskResult.height, studioLayer.crop),
+        { x: 0, y: 0, width: mask.width, height: mask.height },
+        resolveSourceFitMode(studioLayer)
+      )
+    } else {
+      // Warmup: opaque silhouette so the person shows unmasked.
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, mask.width, mask.height)
+    }
+
+    const imageData = ctx.getImageData(0, 0, mask.width, mask.height)
+    const frame: NativeLiveSourceFrame = {
+      key: mask.key,
+      width: mask.width,
+      height: mask.height,
+      pixels: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength)
+    }
+    uploads.push(
+      window.api.engine
+        .updateBroadcastSourceFrame(frame)
+        .then((result) => {
+          if (!result.ok && result.error !== 'Native live source is not ready' && !warnedKeys.has(mask.key)) {
+            warnedKeys.add(mask.key)
+            console.warn(`[NativeSceneOutput] VB mask ${studioLayer.name}: ${result.error ?? 'upload failed'}`)
+          }
+        })
+        .catch(() => {})
+    )
+  }
+
+  await Promise.all(uploads)
+
+  for (const key of surfaces.keys()) {
+    if (!usedKeys.has(key)) surfaces.delete(key)
+  }
+}
+
 export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): NativeDisplayOutputState {
   const {
     enabled,
@@ -973,7 +1168,9 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
     let syncing = false
     let appliedNativeScene: NativeBroadcastScene | null = null
     const liveSourceSurfaces = new Map<string, LiveSourceUploadSurface>()
+    const vbMaskSurfaces = new Map<string, LiveSourceUploadSurface>()
     const warnedSourceKeys = new Set<string>()
+    const vbMaskWarnedKeys = new Set<string>()
     const pumpWarnedKeys = new Set<string>()
     const cameraFramePump = new CameraFramePump({
       uploadFrame: (frame) => window.api.engine.updateBroadcastSourceFrame(frame),
@@ -1083,17 +1280,28 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
         // source the pump is actively serving.
         cameraFramePump.sync(buildCameraFrameSpecs(appliedNativeScene, sceneRef.current, fps, videoRefs))
         liveSourceUploadBusy = true
-        void uploadNativeLiveSources(
-          appliedNativeScene,
-          sceneRef.current,
-          fps,
-          videoRefs,
-          browserFrameCache,
-          mediaFrameCache,
-          liveSourceSurfaces,
-          warnedSourceKeys,
-          cameraFramePump
-        ).finally(() => {
+        void Promise.all([
+          uploadNativeLiveSources(
+            appliedNativeScene,
+            sceneRef.current,
+            fps,
+            videoRefs,
+            browserFrameCache,
+            mediaFrameCache,
+            liveSourceSurfaces,
+            warnedSourceKeys,
+            cameraFramePump
+          ),
+          // Feed each virtual-background layer's live segmentation mask.
+          uploadVirtualBackgroundMasks(
+            appliedNativeScene,
+            sceneRef.current,
+            fps,
+            videoRefs,
+            vbMaskSurfaces,
+            vbMaskWarnedKeys
+          )
+        ]).finally(() => {
           liveSourceUploadBusy = false
         })
       }
@@ -1126,6 +1334,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       if (liveSourceTimer !== null) window.clearInterval(liveSourceTimer)
       cameraFramePump.dispose()
       liveSourceSurfaces.clear()
+      vbMaskSurfaces.clear()
       window.removeEventListener('message', onNativeFrame)
       if (startRequested) {
         void queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast()).catch(() => {})
