@@ -306,7 +306,8 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         username: String(entry.username || '').toLowerCase().replace(/^@/, ''),
         soundId: normalizeSoundId(String(entry.soundId || '')),
         volume: Math.max(0, Math.min(1, Number(entry.volume ?? 1) || 0)),
-        cooldownMinutes: Math.max(0, Math.min(24 * 60, Math.round(Number(entry.cooldownMinutes ?? 15) || 0))),
+        // Older saves carry a cooldownMinutes field; intros are now strictly
+        // once per stream session, so it's dropped on resolve.
         enabled: entry.enabled !== false
       }))
   }

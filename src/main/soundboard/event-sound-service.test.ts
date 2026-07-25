@@ -664,7 +664,7 @@ describe('EventSoundService', () => {
     }
   })
 
-  it('plays a viewer profile join sound and honors its cooldown', () => {
+  it('plays the intro once per stream and re-arms only on a new stream session', () => {
     vi.useFakeTimers()
     const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
     const overlayServer = {
@@ -686,21 +686,35 @@ describe('EventSoundService', () => {
           username: '',
           soundId: 'join/airhorn.mp3',
           volume: 0.8,
-          cooldownMinutes: 15,
           enabled: true
         }]
       }))
+
+      service.handleConnectionStatus('tiktok', 'connected')
 
       const joinEvent = { ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } }
       service.processEvent(joinEvent)
       expect(soundboard.playSound).toHaveBeenCalledWith('join/airhorn.mp3', 0.8)
 
-      // A rejoin inside the cooldown window stays silent.
+      // Rejoins stay silent — even much later in the same stream.
+      service.processEvent(joinEvent)
+      vi.advanceTimersByTime(16 * 60_000)
       service.processEvent(joinEvent)
       expect(soundboard.playSound).toHaveBeenCalledTimes(1)
 
-      // After the cooldown it fires again.
-      vi.advanceTimersByTime(16 * 60_000)
+      // A mid-stream reconnect blip does not re-arm.
+      service.handleConnectionStatus('tiktok', 'disconnected')
+      vi.advanceTimersByTime(30_000)
+      service.handleConnectionStatus('tiktok', 'connected')
+      vi.advanceTimersByTime(2 * 60_000)
+      service.processEvent(joinEvent)
+      expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+
+      // Stream ends; the next one starts 20 minutes later — that's a new
+      // session, so the intro plays again.
+      service.handleConnectionStatus('tiktok', 'disconnected')
+      vi.advanceTimersByTime(20 * 60_000)
+      service.handleConnectionStatus('tiktok', 'connected')
       service.processEvent(joinEvent)
       expect(soundboard.playSound).toHaveBeenCalledTimes(2)
     } finally {
@@ -725,7 +739,6 @@ describe('EventSoundService', () => {
         username: '@Alice',
         soundId: 'join/hello.mp3',
         volume: 1,
-        cooldownMinutes: 0,
         enabled: true
       }]
     }))
@@ -754,7 +767,6 @@ describe('EventSoundService', () => {
         username: '',
         soundId: 'join/airhorn.mp3',
         volume: 0.9,
-        cooldownMinutes: 15,
         enabled: true
       }]
     }))
@@ -770,6 +782,90 @@ describe('EventSoundService', () => {
 
     expect(soundboard.playSound).toHaveBeenCalledTimes(1)
     expect(soundboard.playSound).toHaveBeenCalledWith('join/airhorn.mp3', 0.9)
+  })
+
+  it('never replays the intro mid-stream, even after a long viewer absence', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(0))
+    }
+    const service = new EventSoundService(soundboard, overlayServer)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        viewerJoinSounds: [{
+          id: 'rule-present',
+          viewerProfileId: '',
+          platform: 'tiktok',
+          username: 'alice',
+          soundId: 'join/airhorn.mp3',
+          volume: 0.8,
+          enabled: true
+        }]
+      }))
+      service.handleConnectionStatus('tiktok', 'connected')
+
+      const like = {
+        id: 'like-1', platform: 'tiktok' as const, timestamp: new Date(), type: 'like' as const,
+        raw: {}, user: { ...makeUser(), isFanClubMember: false }, likeCount: 1, totalLikes: 1
+      }
+
+      // Joins at t=0, stays active for half an hour, goes quiet for 20 minutes,
+      // then engages again. The stream never ended — one intro, total.
+      service.processEvent({ ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } })
+      for (let i = 1; i <= 6; i++) {
+        vi.advanceTimersByTime(5 * 60_000)
+        service.processEvent({ ...like, id: `like-${i}` })
+      }
+      vi.advanceTimersByTime(20 * 60_000)
+      service.processEvent({ ...like, id: 'like-return' })
+
+      expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the once-per-stream dedupe when viewer profile resolution changes mid-stream', () => {
+    vi.useFakeTimers()
+    const soundboard = { playSound: vi.fn(), stopAll: vi.fn() }
+    const overlayServer = {
+      pushAlert: vi.fn(),
+      getStatus: vi.fn(() => makeOverlayStatus(0))
+    }
+    // First lookup: no profile yet. Second lookup: a profile id appears (e.g.
+    // the stats service auto-created one). The cooldown key must not flip.
+    let resolvedId: string | null = null
+    const resolver = vi.fn(() => resolvedId)
+    const service = new EventSoundService(soundboard, overlayServer, resolver)
+
+    try {
+      service.applySettings(resolveAppSettings({
+        ...DEFAULT_APP_SETTINGS,
+        viewerJoinSounds: [{
+          id: 'rule-flip',
+          viewerProfileId: '',
+          platform: 'tiktok',
+          username: 'alice',
+          soundId: 'join/airhorn.mp3',
+          volume: 0.8,
+          enabled: true
+        }]
+      }))
+
+      service.processEvent({ ...makeJoinEvent(), user: { ...makeUser(), isFanClubMember: false } })
+      expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+
+      resolvedId = 'viewer-alice'
+      vi.advanceTimersByTime(2 * 60_000)
+      service.processEvent({ ...makeJoinEvent(), id: 'join-2', user: { ...makeUser(), isFanClubMember: false } })
+      expect(soundboard.playSound).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

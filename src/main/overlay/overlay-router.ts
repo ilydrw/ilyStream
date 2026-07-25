@@ -1,14 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 import { existsSync } from 'fs'
-import { readFile, mkdir, stat, writeFile } from 'fs/promises'
+import { readFile } from 'fs/promises'
 import { join, extname } from 'path'
-import { randomBytes, createHash } from 'crypto'
+import { randomBytes } from 'crypto'
 import { createRequire } from 'module'
 import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
-import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from '../lib/ssrf-guard'
-import { detectAvatarContentType, resolveAvatarContentType } from '../lib/avatar-content-type'
+import { AvatarFetchError, loadAvatar } from '../lib/avatar-cache'
 import { buildDeckHtml } from './templates/deck'
 import { buildCompanionHtml } from './templates/companion'
 import {
@@ -871,75 +870,21 @@ export class OverlayRouter {
         return
       }
 
-      // Block SSRF: this route is reachable from the LAN, so reject any target
-      // that is (or resolves to) a private/loopback/link-local address.
-      try {
-        await assertSafePublicHttpUrl(decodedUrl)
-      } catch (err) {
-        console.warn('[OverlayRouter] Blocked avatar URL:', err instanceof Error ? err.message : err)
-        this.writeJson(response, { error: 'Blocked URL' }, 400, request)
-        return
-      }
-
-      const hash = createHash('sha256').update(decodedUrl).digest('hex')
-      const cachePath = join(this.avatarCacheDir, hash)
-
-      try {
-        await mkdir(this.avatarCacheDir, { recursive: true })
-      } catch (e) {
-        // Ignore
-      }
-
-      try {
-        const fileStats = await stat(cachePath)
-        if (fileStats.isFile()) {
-          const data = await readFile(cachePath)
-          this.writeCorsHeaders(
-            response,
-            200,
-            detectAvatarContentType(data) || 'application/octet-stream',
-            request,
-            { 'Cache-Control': 'public, max-age=31536000' }
-          )
-          response.end(data)
-          return
-        }
-      } catch {
-        // Does not exist
-      }
-
-      const res = await fetch(decodedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://www.tiktok.com/'
-        }
-      })
-
-      if (!res.ok) {
-        this.writeJson(response, { error: 'Failed to fetch avatar' }, res.status, request)
-        return
-      }
-
-      const declaredContentType = res.headers.get('Content-Type') || ''
-      if (!declaredContentType.toLowerCase().startsWith('image/')) {
-        this.writeJson(response, { error: 'Not an image' }, 415, request)
-        return
-      }
-      const arrayBuffer = await res.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
-      if (buffer.byteLength > MAX_AVATAR_BYTES) {
-        this.writeJson(response, { error: 'Avatar too large' }, 413, request)
-        return
-      }
-
-      writeFile(cachePath, buffer).catch(err => console.error('[OverlayRouter] Failed to cache avatar', err))
-      const contentType = resolveAvatarContentType(buffer, declaredContentType) || 'application/octet-stream'
-
-      this.writeCorsHeaders(response, 200, contentType, request, {
+      // Cache-first by stable image identity, with SSRF guarding and an
+      // expired-signature retry inside loadAvatar. See lib/avatar-cache.ts.
+      const avatar = await loadAvatar(this.avatarCacheDir, decodedUrl)
+      this.writeCorsHeaders(response, 200, avatar.contentType, request, {
         'Cache-Control': 'public, max-age=31536000'
       })
-      response.end(buffer)
+      response.end(avatar.data)
     } catch (err) {
+      if (err instanceof AvatarFetchError) {
+        if (err.status === 400) {
+          console.warn('[OverlayRouter]', err.message)
+        }
+        this.writeJson(response, { error: err.message }, err.status, request)
+        return
+      }
       console.error('[OverlayRouter] Avatar proxy error:', err)
       this.writeJson(response, { error: 'Internal server error' }, 500, request)
     }

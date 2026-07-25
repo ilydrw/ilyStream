@@ -24,6 +24,7 @@ import { isCohostIdentity } from '../ai/cohost-identity'
 import { htmlToSingleLinePlainText } from '../../shared/plain-text'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import { AvatarUrlStabilizer } from '../../shared/avatar-url'
+import { warmAvatarCache } from '../lib/avatar-cache'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
 import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
 import type { AnyStreamEvent, Platform } from '../platforms/types'
@@ -278,11 +279,16 @@ export class EventOrchestrator {
     if (!('user' in event) || !event.user) return
     const identity = event.user.id || event.user.username
     if (!identity) return
+    const incoming = event.user.profilePictureUrl
     const stable = this.avatarStabilizer.stabilize(
       `${event.platform}:${identity}`,
-      event.user.profilePictureUrl
+      incoming
     )
     event.user.profilePictureUrl = stable
+    // Download the image now, while the just-issued signature is still valid —
+    // the pinned URL may have expired by the time an overlay first requests it.
+    // Deduped per image inside warmAvatarCache; never throws.
+    void warmAvatarCache(incoming || stable)
   }
 
   private recordSongRequested(request: SpotifySongRequest): void {

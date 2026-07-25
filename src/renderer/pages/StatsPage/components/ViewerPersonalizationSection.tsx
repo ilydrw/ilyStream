@@ -39,14 +39,6 @@ interface ViewerPersonalizationSectionProps {
   onUpdateJoinSounds: (joinSounds: ViewerJoinSound[]) => void
 }
 
-const COOLDOWN_OPTIONS: SelectOption[] = [
-  { value: '0', label: 'Every join' },
-  { value: '5', label: '5 min cooldown' },
-  { value: '15', label: '15 min cooldown' },
-  { value: '30', label: '30 min cooldown' },
-  { value: '60', label: '1 hour cooldown' }
-]
-
 function normalizeUsername(value: string): string {
   return String(value || '').trim().toLowerCase().replace(/^@+/, '')
 }
@@ -203,7 +195,6 @@ export function ViewerPersonalizationSection({
         username: '',
         soundId,
         volume: 1,
-        cooldownMinutes: 15,
         enabled: true
       }])
     })
@@ -387,12 +378,9 @@ export function ViewerPersonalizationSection({
                 {Math.round(joinSound.volume * 100)}%
               </span>
             </label>
-            <Select
-              value={String(joinSound.cooldownMinutes)}
-              options={COOLDOWN_OPTIONS}
-              onChange={(value) => patchJoinSound({ cooldownMinutes: Number(value) })}
-              buttonClassName="!h-8 !px-3 !text-xs"
-            />
+            <span className="shrink-0 text-[11px] font-semibold text-white/35">
+              Once per stream
+            </span>
           </div>
         )}
       </div>

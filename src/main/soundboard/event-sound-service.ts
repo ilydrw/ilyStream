@@ -9,6 +9,12 @@ type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
 const GIFT_ALERT_AGGREGATION_MS = 150
 const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
+// A platform must stay disconnected at least this long before the next
+// successful connect counts as a NEW stream session (re-arming intro sounds).
+// TikTok drops and auto-reconnects constantly mid-stream — and its connector
+// will even auto-reconnect into the next live after a streamEnd — so a long
+// offline gap is the stream-boundary signal, not the connect itself.
+const STREAM_SESSION_GAP_MS = 10 * 60 * 1000
 // How often (per viewer) we're willing to run the DB-touching intro-sound match.
 // TikTok's join/member event is unreliable, so intros trigger on a viewer's
 // first activity of ANY kind; this throttle stops high like/chat volume from
@@ -26,8 +32,13 @@ export class EventSoundService {
   private settings: AppSettings | null = null
   private recentSuperfanJoinUsers = new Map<string, number>()
   private recentRuleHits = new Map<string, number>()
-  private recentJoinSoundHits = new Map<string, number>()
   private introLookupAt = new Map<string, number>()
+  // Viewers whose intro already played this stream session, keyed by platform.
+  // One entry per configured intro rule per viewer, so no size management
+  // needed. Cleared on stream boundaries — see handleConnectionStatus.
+  private introPlayedByPlatform = new Map<string, Set<string>>()
+  private platformConnected = new Map<string, boolean>()
+  private platformDisconnectedAt = new Map<string, number>()
   private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: GiftEvent }>()
   private lowValueGiftAlertCooldown = new LowValueGiftCooldown()
 
@@ -39,6 +50,30 @@ export class EventSoundService {
 
   applySettings(settings: AppSettings): void {
     this.settings = this.withLegacyAlertRouteValues(settings)
+  }
+
+  /**
+   * Feed platform connection status changes in so intro sounds re-arm on
+   * stream boundaries. "New stream" = reaching 'connected' after being
+   * disconnected for at least {@link STREAM_SESSION_GAP_MS} (or for the first
+   * time). Quick reconnect blips keep the session — mid-stream drops must not
+   * replay every intro.
+   */
+  handleConnectionStatus(platform: string, status: string): void {
+    const wasConnected = this.platformConnected.get(platform) ?? false
+    const isConnected = status === 'connected'
+    if (isConnected === wasConnected) return
+    this.platformConnected.set(platform, isConnected)
+
+    if (!isConnected) {
+      this.platformDisconnectedAt.set(platform, Date.now())
+      return
+    }
+
+    const disconnectedAt = this.platformDisconnectedAt.get(platform)
+    if (disconnectedAt === undefined || Date.now() - disconnectedAt >= STREAM_SESSION_GAP_MS) {
+      this.introPlayedByPlatform.delete(platform)
+    }
   }
 
   playSound(soundId: string, volume: number): void {
@@ -472,8 +507,12 @@ export class EventSoundService {
 
   /**
    * Plays a viewer's personal intro sound, if one is configured on their viewer
-   * profile (or as a raw platform+username rule). Cooldown is per rule+viewer
-   * so repeat activity during the same stream doesn't spam the sound.
+   * profile (or as a raw platform+username rule). An intro announces arrival,
+   * so it plays at most ONCE per stream session — repeat activity stays
+   * silent, and the played set only re-arms on a stream boundary (see
+   * handleConnectionStatus). Previously this was a cooldown-based rate limit,
+   * which replayed the intro mid-stream for anyone who simply stayed active
+   * past the cooldown window.
    */
   private playViewerIntroSound(event: AnyStreamEvent): void {
     if (!('user' in event) || !event.user) return
@@ -499,24 +538,19 @@ export class EventSoundService {
     if (!rule) return
 
     const isSimulated = Boolean((event.raw as any)?.simulated)
-    const cooldownMs = rule.cooldownMinutes * 60_000
-    const hitKey = `${rule.id}:${viewerProfileId || `${event.platform}:${username}`}`
-    if (cooldownMs > 0 && !isSimulated) {
-      const previous = this.recentJoinSoundHits.get(hitKey)
-      if (previous && Date.now() - previous < cooldownMs) return
-    }
+    // Keyed by username, NOT viewerProfileId: profile resolution can start
+    // returning an id mid-stream (e.g. the profile is auto-created after the
+    // first play), and a key flip would replay the intro.
+    const playedKey = `${rule.id}:${username}`
+    const played = this.introPlayedByPlatform.get(event.platform)
+    if (!isSimulated && played?.has(playedKey)) return
 
     console.log(`[event-sound] Playing join sound for ${event.user.username} (rule ${rule.id})`)
     this.soundboardService.playSound(rule.soundId, rule.volume)
 
     if (!isSimulated) {
-      this.recentJoinSoundHits.set(hitKey, Date.now())
-      if (this.recentJoinSoundHits.size > 1000) {
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000
-        for (const [key, ts] of this.recentJoinSoundHits) {
-          if (ts < cutoff) this.recentJoinSoundHits.delete(key)
-        }
-      }
+      if (played) played.add(playedKey)
+      else this.introPlayedByPlatform.set(event.platform, new Set([playedKey]))
     }
   }
 

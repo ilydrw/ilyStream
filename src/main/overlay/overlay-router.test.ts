@@ -1,11 +1,11 @@
 import { once } from 'events'
-import { createHash } from 'crypto'
 import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { Readable, Writable } from 'stream'
 import { describe, expect, it, vi } from 'vitest'
 import { app } from 'electron'
+import { avatarCacheFileName } from '../lib/avatar-cache'
 import { OverlayRouter } from './overlay-router'
 
 vi.mock('electron', () => ({
@@ -286,11 +286,8 @@ describe('OverlayRouter avatar cache', () => {
     const userDataPath = await mkdtemp(join(tmpdir(), 'ilystream-avatar-test-'))
     const remoteUrl = 'https://p16-webcast.tiktokcdn.com/avatar.webp'
     const encodedUrl = Buffer.from(remoteUrl).toString('base64url')
-    const cachePath = join(
-      userDataPath,
-      'avatar_cache',
-      createHash('sha256').update(remoteUrl).digest('hex')
-    )
+    // Cache files are keyed on the stable image identity, not the signed URL.
+    const cachePath = join(userDataPath, 'avatar_cache', avatarCacheFileName(remoteUrl))
     const webp = Buffer.from('52494646040000005745425056503820', 'hex')
     const fetchMock = vi.fn(async () => new Response(webp, {
       status: 200,
@@ -324,6 +321,16 @@ describe('OverlayRouter avatar cache', () => {
       expect(cachedResponse.headers['Content-Type']).toBe('image/webp')
       expect(cachedResponse.headers['Cache-Control']).toBe('public, max-age=31536000')
       expect(cachedResponse.bytes()).toEqual(webp)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // A re-signed/host-rotated URL for the same image is also a cache hit.
+      const resignedUrl = 'https://p19-webcast.tiktokcdn.com/avatar.webp?x-signature=fresh&x-expires=2'
+      const resignedResponse = await dispatch(router, new TestRequest({
+        ...requestOptions,
+        url: `/avatar/${Buffer.from(resignedUrl).toString('base64url')}`
+      }))
+      expect(resignedResponse.statusCode).toBe(200)
+      expect(resignedResponse.bytes()).toEqual(webp)
       expect(fetchMock).toHaveBeenCalledTimes(1)
     } finally {
       vi.unstubAllGlobals()

@@ -197,6 +197,9 @@ export class ServiceRegistry {
     // has actually gone live. Fire the opt-in automations, with a cooldown so a
     // brief reconnect blip doesn't re-announce.
     this.platformManager.on('status', (platform, status) => {
+      // Intro sounds re-arm on stream boundaries (connected after a long gap).
+      this.eventSoundService.handleConnectionStatus(platform, status)
+
       if (platform !== 'tiktok' || status !== 'connected') return
       const now = Date.now()
       if (now - this.lastTikTokGoLiveAt < TIKTOK_GO_LIVE_COOLDOWN_MS) return

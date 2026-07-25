@@ -90,8 +90,6 @@ export interface ViewerJoinSound {
   /** Soundboard sound id, e.g. "board/airhorn.mp3". */
   soundId: string
   volume: number
-  /** Minutes before the same viewer's join sound can fire again. 0 = every join. */
-  cooldownMinutes: number
   enabled: boolean
 }
 
