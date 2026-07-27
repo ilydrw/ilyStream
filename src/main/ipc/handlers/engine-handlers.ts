@@ -111,6 +111,9 @@ interface BroadcastSession {
   fps: number
   lastScene: NativeBroadcastScene | null
   sceneUpdatePromise: Promise<void> | null
+  /** Presentation texture handed to the renderer, when this session has one. */
+  imported: SharedTextureImported | null
+  importedReleased: Promise<void> | null
 }
 const PROGRAM_SESSION_ID = 'program'
 const broadcastSessions = new Map<string, BroadcastSession>()
@@ -629,6 +632,13 @@ async function stopNativeBroadcast(): Promise<void> {
       const pendingSceneUpdate = session.sceneUpdatePromise
       if (pendingSceneUpdate) await pendingSceneUpdate.catch(() => {})
       session.sceneUpdatePromise = null
+      if (session.id === PROGRAM_SESSION_ID) continue
+      const importedTexture = session.imported
+      const importedReleased = session.importedReleased
+      session.imported = null
+      session.importedReleased = null
+      importedTexture?.release()
+      if (importedReleased) await waitForSharedTextureRelease(importedReleased)
     }
     await releaseImportedBroadcastOutput()
     engineToDestroy?.destroy()
@@ -697,13 +707,17 @@ async function startSharedTexturePresentation(window: BrowserWindow, eng: Native
   }
 }
 
-async function startBroadcastSharedTexturePresentation(window: BrowserWindow, eng: NativeEngine): Promise<boolean> {
+async function startBroadcastSharedTexturePresentation(
+  window: BrowserWindow,
+  eng: NativeEngine,
+  session: BroadcastSession
+): Promise<boolean> {
   if (process.platform !== 'win32') return false
 
   let imported: SharedTextureImported | null = null
   let referencesReleased: Promise<void> | null = null
   try {
-    const output = eng.getSharedOutputTexture()
+    const output = eng.getSharedOutputTexture(session.outputIndex)
     let markReferencesReleased: (() => void) | null = null
     referencesReleased = new Promise<void>((resolve) => {
       markReferencesReleased = resolve
@@ -720,8 +734,12 @@ async function startBroadcastSharedTexturePresentation(window: BrowserWindow, en
       allReferencesReleased: () => markReferencesReleased?.()
     })
 
-    importedBroadcastOutput = imported
-    broadcastOutputReferencesReleased = referencesReleased
+    session.imported = imported
+    session.importedReleased = referencesReleased
+    if (session.id === PROGRAM_SESSION_ID) {
+      importedBroadcastOutput = imported
+      broadcastOutputReferencesReleased = referencesReleased
+    }
     await sharedTexture.sendSharedTexture(
       {
         frame: window.webContents.mainFrame,
@@ -729,6 +747,7 @@ async function startBroadcastSharedTexturePresentation(window: BrowserWindow, en
       },
       {
         purpose: 'broadcast',
+        sessionId: session.id,
         width: output.width,
         height: output.height,
         pixelFormat: output.pixelFormat,
@@ -740,6 +759,10 @@ async function startBroadcastSharedTexturePresentation(window: BrowserWindow, en
     process.stderr.write(
       `[engine-broadcast] shared texture presentation unavailable: ${(error as Error).message}\n`
     )
+    if (session.imported === imported) {
+      session.imported = null
+      session.importedReleased = null
+    }
     if (importedBroadcastOutput === imported) {
       importedBroadcastOutput = null
       broadcastOutputReferencesReleased = null
@@ -1041,7 +1064,9 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
           height,
           fps,
           lastScene: null,
-          sceneUpdatePromise: null
+          sceneUpdatePromise: null,
+          imported: null,
+          importedReleased: null
         }
         broadcastSessions.set(sessionId, session)
 
@@ -1064,10 +1089,10 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
           }], session.outputIndex)
         }
 
-        // Only the program output is presented to the renderer as a shared
-        // texture; secondary outputs exist to be encoded, and are read back.
-        if (!joiningExistingEngine &&
-            !(await startBroadcastSharedTexturePresentation(window, eng))) {
+        // Every output is presented as its own shared texture so the renderer
+        // can encode it with no readback — that is the point of the extra
+        // output over a second canvas compositor.
+        if (!(await startBroadcastSharedTexturePresentation(window, eng, session))) {
           throw new Error('GPU shared-texture output is unavailable')
         }
 
@@ -1162,6 +1187,12 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
     if (!session) return { ok: true }
     broadcastSessions.delete(id)
     if (session.sceneUpdatePromise) await session.sceneUpdatePromise.catch(() => {})
+    const importedTexture = session.imported
+    const importedReleased = session.importedReleased
+    session.imported = null
+    session.importedReleased = null
+    importedTexture?.release()
+    if (importedReleased) await waitForSharedTextureRelease(importedReleased)
     const eng = broadcastEngine
     if (eng) {
       try { eng.destroyOutput(session.outputIndex) } catch { /* engine already gone */ }

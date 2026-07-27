@@ -792,8 +792,10 @@ static Napi::Value EngineGetSharedOutputTexture(const Napi::CallbackInfo& info) 
     void* nativeHandle = nullptr;
     uint32_t width = 0;
     uint32_t height = 0;
-    IlyResult res = IlyEngineGetSharedOutputTexture(
-        Uint64ToResourceHandle(engineVal), &nativeHandle, &width, &height);
+    const uint32_t outputIndex =
+        info.Length() > 1 && info[1].IsNumber() ? info[1].As<Napi::Number>().Uint32Value() : 0;
+    IlyResult res = IlyEngineGetSharedOutputTextureForOutput(
+        Uint64ToResourceHandle(engineVal), outputIndex, &nativeHandle, &width, &height);
     if (res != ILY_SUCCESS || !nativeHandle) {
         Napi::Error::New(
             env, "Shared output texture unavailable, code: " + std::to_string(res))

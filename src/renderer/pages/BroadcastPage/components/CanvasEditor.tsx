@@ -57,11 +57,11 @@ function CanvasGridOverlay({ gridSize }: { gridSize: number }) {
 export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((props, ref) => {
   const {
     activeScene, isStreaming, isRecording, captureInputFormat,
-    outputFps, outputBitrateKbps, videoRefs, streamReady, outputCodec,
+    outputFps, outputBitrateKbps, videoRefs, devices, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
     dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
     forceVerticalCanvas = false, forceHorizontalCanvas = false,
-    browserFramesNeeded = true,
+    browserFramesNeeded,
     onContextMenu, onSelectionContextChange, onLayerDoubleClick
   } = props
 
@@ -95,6 +95,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const safeGridSize = useMemo(() => normalizeGridSize(gridSize), [gridSize])
   const previewSceneId = useStudioStore(s => s.previewSceneId)
   const activeSceneId = useStudioStore(s => s.activeSceneId)
+  const studioMode = useStudioStore(s => s.studioMode)
   const transitionActive = useStudioStore(s => s.transitionState.isActive)
   const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
 
@@ -130,6 +131,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     outputWidth: nativeHorizontalOutputRequested ? (horizontalOutput?.width ?? 1920) : canvasWidth,
     outputHeight: nativeHorizontalOutputRequested ? (horizontalOutput?.height ?? 1080) : canvasHeight,
     fps: horizontalOutput?.fps ?? outputFps,
+    devices,
     transitionActive,
     sourceRevision: streamReady,
     videoRefs,
@@ -138,7 +140,58 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     encoderWorkerRef: horizontalEncoderWorkerRef
   })
   const nativeHorizontalOutputActive = nativeHorizontalOutputRequested && nativeDisplayOutput.active
+
+  // The 9:16 output on its own engine output: same engine, same textures, its
+  // own layer list built from the portrait layout. It only runs alongside a
+  // native program, since that session owns the engine.
+  const nativeVerticalOutputRequested =
+    !isPreview && Boolean(verticalOutput?.active) && nativeHorizontalOutputActive
+  const nativeVerticalOutput = useNativeDisplayOutput({
+    enabled: nativeVerticalOutputRequested,
+    encodeFrames: nativeVerticalOutputRequested,
+    scene: activeScene,
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    outputWidth: verticalOutput?.width ?? 1080,
+    outputHeight: verticalOutput?.height ?? 1920,
+    fps: verticalOutput?.fps ?? outputFps,
+    devices,
+    transitionActive,
+    sourceRevision: streamReady,
+    videoRefs,
+    browserFrameCache,
+    mediaFrameCache,
+    encoderWorkerRef: verticalEncoderWorkerRef,
+    aspectRatio: '9:16',
+    sessionId: 'vertical',
+    encodeOutputId: 'vertical'
+  })
+  const nativeVerticalOutputActive = nativeVerticalOutputRequested && nativeVerticalOutput.active
   const nativeProgramPreviewActive = nativeDisplayOutput.previewActive
+
+  // Renderer-side consumers of widget/browser frames are the on-screen preview
+  // (only when visible) and any CANVAS-composited output. When the studio page is
+  // hidden and every active output is served by the native engine (or none is
+  // active), the renderer draws nothing from these sources — so main can stop
+  // shipping their frames over IPC while the engine keeps consuming them. Frames
+  // resume the instant a consumer returns (page shown, or a canvas output starts).
+  const canvasOutputActive =
+    outputActive ||
+    (Boolean(horizontalOutput?.active) && !nativeHorizontalOutputActive) ||
+    (Boolean(verticalOutput?.active) && !nativeVerticalOutputActive) ||
+    Boolean(virtualCameraOutput?.active) ||
+    forceHorizontalCanvas || forceVerticalCanvas ||
+    dualVerticalOverlayEnabled
+  // A native program preview consumes browser-source paints directly in main;
+  // sending the same BGRA frames through renderer IPC only creates an unused
+  // second copy. Canvas previews and canvas-backed outputs still receive every
+  // frame they need.
+  const rendererPreviewNeedsFrames =
+    isVisible && (!nativeProgramPreviewActive || studioMode)
+  const deliverFramesToRenderer = rendererPreviewNeedsFrames || canvasOutputActive
+  const browserCaptureFramesNeeded =
+    browserFramesNeeded ??
+    (isVisible || canvasOutputActive || nativeHorizontalOutputRequested || nativeProgramPreviewRequested)
 
   // Adaptive bitrate: main watches per-output drop counters and asks the
   // matching layout encoder to step its bitrate down/up. Reconfigure is live
@@ -163,12 +216,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   // Browser Sources
   useBrowserSources({
     layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache,
-    framesNeeded: browserFramesNeeded || nativeHorizontalOutputRequested || nativeProgramPreviewRequested
+    framesNeeded: browserCaptureFramesNeeded,
+    deliverFramesToRenderer,
+    manageRendererDelivery: !isPreview
   })
 
   useEffect(() => {
     const activeImageIds = new Set<string>()
+    const activeMediaIds = new Set<string>()
     for (const layer of activeScene.layers) {
+      if (layer.type === 'camera' || layer.type === 'display') activeMediaIds.add(layer.id)
       if (layer.type !== 'image' || !layer.config.assetPath) continue
       const source = resolveImageSource(layer.config.assetPath)
       activeImageIds.add(layer.id)
@@ -185,6 +242,14 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       if (activeImageIds.has(layerId)) continue
       delete directImageSourcesRef.current[layerId]
       delete imageCache.current[layerId]
+    }
+
+    for (const layerId of Object.keys(mediaFrameCache.current)) {
+      if (activeMediaIds.has(layerId)) continue
+      const surface = mediaFrameCache.current[layerId]
+      surface.canvas.width = 0
+      surface.canvas.height = 0
+      delete mediaFrameCache.current[layerId]
     }
   }, [activeScene.layers])
 

@@ -265,7 +265,7 @@ interface NativeAddon {
   engineSetLayers(engine: bigint, layers: Layer[], outputIndex?: number): number
   engineCreateOutput(engine: bigint, width: number, height: number): number
   engineDestroyOutput(engine: bigint, outputIndex: number): number
-  engineGetSharedOutputTexture(engine: bigint): SharedOutputTexture
+  engineGetSharedOutputTexture(engine: bigint, outputIndex?: number): SharedOutputTexture
   engineGetOutputColorConfig(engine: bigint): OutputColorConfig
   engineReadPixels(
     engine: bigint,
@@ -461,10 +461,14 @@ export class NativeEngine {
     this.api.engineDestroyOutput(this.handle, outputIndex)
   }
 
-  /** Get the persistent GPU output texture used by the compositor. */
-  getSharedOutputTexture(): SharedOutputTexture {
+  /**
+   * The persistent GPU output texture for one output (0 = the engine's own).
+   * Each output has its own, so a secondary output can be presented and encoded
+   * without a readback.
+   */
+  getSharedOutputTexture(outputIndex = 0): SharedOutputTexture {
     this.assertAlive()
-    return this.api.engineGetSharedOutputTexture(this.handle)
+    return this.api.engineGetSharedOutputTexture(this.handle, outputIndex)
   }
 
   getOutputColorConfig(): OutputColorConfig {

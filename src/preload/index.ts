@@ -54,6 +54,23 @@ let sharedBroadcastFrameCount = 0
 let sharedBroadcastFps = 0
 let sharedBroadcastFpsStartedAt = 0
 let sharedBroadcastFpsFrames = 0
+/**
+ * Presentation textures for broadcast sessions other than the program, keyed by
+ * session id. They are never drawn to a canvas — they exist so an output can be
+ * handed straight to its encoder as a VideoFrame, with no readback.
+ */
+const sessionBroadcastTextures = new Map<string, {
+  texture: Electron.SharedTextureImported
+  width: number
+  height: number
+}>()
+
+function releaseSessionBroadcastTexture(sessionId: string): void {
+  const entry = sessionBroadcastTextures.get(sessionId)
+  if (!entry) return
+  sessionBroadcastTextures.delete(sessionId)
+  entry.texture.release()
+}
 
 function releaseSharedPreviewTexture(): void {
   if (sharedPreviewAnimationFrame !== null) {
@@ -162,7 +179,21 @@ function scheduleSharedPreviewFrame(): void {
 }
 
 sharedTexture.setSharedTextureReceiver(async (data, metadata?: unknown) => {
-  const info = metadata as { purpose?: string; width?: number; height?: number } | undefined
+  const info = metadata as {
+    purpose?: string
+    sessionId?: string
+    width?: number
+    height?: number
+  } | undefined
+  if (info?.purpose === 'broadcast' && info.sessionId && info.sessionId !== 'program') {
+    releaseSessionBroadcastTexture(info.sessionId)
+    sessionBroadcastTextures.set(info.sessionId, {
+      texture: data.importedSharedTexture,
+      width: Math.max(0, Math.round(info.width ?? 0)),
+      height: Math.max(0, Math.round(info.height ?? 0))
+    })
+    return
+  }
   if (info?.purpose === 'broadcast') {
     releaseSharedBroadcastTexture()
     sharedBroadcastTexture = data.importedSharedTexture
@@ -720,12 +751,23 @@ const api = {
         error?: string
       }>,
     stopBroadcast: async (sessionId?: string) => {
-      if (!sessionId || sessionId === 'program') releaseSharedBroadcastTexture()
+      if (!sessionId || sessionId === 'program') {
+        releaseSharedBroadcastTexture()
+        for (const id of [...sessionBroadcastTextures.keys()]) releaseSessionBroadcastTexture(id)
+      } else {
+        releaseSessionBroadcastTexture(sessionId)
+      }
       return ipcRenderer.invoke('engine:broadcast:stop', sessionId) as Promise<{ ok: boolean }>
     },
-    requestBroadcastFrame: (timestamp: number, outputId = 'horizontal') => {
-      const imported = sharedBroadcastTexture
-      if (!imported || sharedBroadcastWidth <= 0 || sharedBroadcastHeight <= 0) return false
+    requestBroadcastFrame: (timestamp: number, outputId = 'horizontal', sessionId?: string) => {
+      const session = sessionId && sessionId !== 'program'
+        ? sessionBroadcastTextures.get(sessionId)
+        : null
+      if (sessionId && sessionId !== 'program' && !session) return false
+      const imported = session ? session.texture : sharedBroadcastTexture
+      const width = session ? session.width : sharedBroadcastWidth
+      const height = session ? session.height : sharedBroadcastHeight
+      if (!imported || width <= 0 || height <= 0) return false
 
       const sourceFrame = imported.getVideoFrame()
       try {

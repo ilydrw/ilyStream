@@ -48,6 +48,14 @@ interface NativeDisplayOutputOptions {
   encoderWorkerRef: React.RefObject<Worker | null>
   /** Output layout this instance drives. Defaults to the 16:9 program output. */
   aspectRatio?: NativeOutputAspectRatio
+  /**
+   * Which engine output this instance owns. The program session owns the engine
+   * and the on-screen preview; any other id composites on its own output of the
+   * same engine, sharing its textures.
+   */
+  sessionId?: string
+  /** Stream output id the encoded frames belong to (horizontal, vertical, ...). */
+  encodeOutputId?: string
 }
 
 interface NativeDisplayOutputState {
@@ -1217,7 +1225,9 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
     browserFrameCache,
     mediaFrameCache,
     encoderWorkerRef,
-    aspectRatio = '16:9'
+    aspectRatio = '16:9',
+    sessionId = 'program',
+    encodeOutputId = 'horizontal'
   } = options
   const [active, setActive] = useState(false)
   const sceneRef = useRef(scene)
@@ -1305,7 +1315,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
         liveSourceTimer = null
       }
       cameraFramePump.dispose()
-      await queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast()).catch(() => {})
+      await queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast(sessionId)).catch(() => {})
     }
 
     const drainSceneUpdates = async () => {
@@ -1316,7 +1326,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
           const nextScene = pendingScene
           pendingScene = null
           const nextNativeScene = buildRequest(nextScene)
-          const result = await window.api.engine.updateBroadcastScene(nextNativeScene)
+          const result = await window.api.engine.updateBroadcastScene(nextNativeScene, sessionId)
           if (!result.ok) throw new Error(result.error ?? 'Native scene update failed')
           appliedNativeScene = nextNativeScene
         }
@@ -1343,7 +1353,8 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
           width: outputWidth,
           height: outputHeight,
           fps,
-          scene: initialNativeScene
+          scene: initialNativeScene,
+          sessionId
         })
       })
       if (!result || disposed) return
@@ -1393,7 +1404,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       const requestFrame = () => {
         frameIndex += 1
         const timestamp = Math.round((startedAt + frameIndex * frameIntervalMs) * 1000)
-        window.api.engine.requestBroadcastFrame(timestamp, 'horizontal')
+        window.api.engine.requestBroadcastFrame(timestamp, encodeOutputId, sessionId)
       }
       requestFrame()
       frameTimer = window.setInterval(requestFrame, frameIntervalMs)
@@ -1418,10 +1429,10 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       vbMaskSurfaces.clear()
       window.removeEventListener('message', onNativeFrame)
       if (startRequested) {
-        void queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast()).catch(() => {})
+        void queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast(sessionId)).catch(() => {})
       }
     }
-  }, [enabled, presentCanvasId, encodeFrames, transitionActive, supported, outputWidth, outputHeight, fps, devices, canvasWidth, canvasHeight, videoRefs, browserFrameCache, mediaFrameCache, encoderWorkerRef])
+  }, [enabled, presentCanvasId, encodeFrames, transitionActive, supported, outputWidth, outputHeight, fps, devices, canvasWidth, canvasHeight, videoRefs, browserFrameCache, mediaFrameCache, encoderWorkerRef, aspectRatio, sessionId, encodeOutputId])
 
   useEffect(() => {
     syncSceneRef.current?.(scene)
