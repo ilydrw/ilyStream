@@ -707,13 +707,52 @@ static Napi::Value EngineSetLayers(const Napi::CallbackInfo& info) {
         }
     }
 
-    IlyResult res = IlyEngineSetLayers(Uint64ToResourceHandle(engineVal),
+    const uint32_t outputIndex =
+        info.Length() > 2 && info[2].IsNumber() ? info[2].As<Napi::Number>().Uint32Value() : 0;
+    IlyResult res = IlyEngineSetLayersForOutput(Uint64ToResourceHandle(engineVal), outputIndex,
                                        count > 0 ? layers.data() : nullptr, count);
     return Napi::Number::New(env, static_cast<double>(res));
 }
 
 // engineReadPixels(engineHandle: BigInt, buffer: Buffer) ->
 // { result, width, height }. buffer is filled with tightly packed RGBA8.
+// engineCreateOutput(engineHandle: BigInt, width, height) -> Number (output index)
+static Napi::Value EngineCreateOutput(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3 || !info[0].IsBigInt() || !info[1].IsNumber() || !info[2].IsNumber()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Number, Number)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    const uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    uint32_t outputIndex = 0;
+    const IlyResult res = IlyEngineCreateOutput(
+        Uint64ToResourceHandle(engineVal),
+        info[1].As<Napi::Number>().Uint32Value(),
+        info[2].As<Napi::Number>().Uint32Value(),
+        &outputIndex);
+    if (res != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to create engine output, code: " + std::to_string(res))
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return Napi::Number::New(env, outputIndex);
+}
+
+// engineDestroyOutput(engineHandle: BigInt, outputIndex: Number) -> Number
+static Napi::Value EngineDestroyOutput(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsBigInt() || !info[1].IsNumber()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Number)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless;
+    const uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    const IlyResult res = IlyEngineDestroyOutput(
+        Uint64ToResourceHandle(engineVal), info[1].As<Napi::Number>().Uint32Value());
+    return Napi::Number::New(env, static_cast<double>(res));
+}
+
 static Napi::Value EngineReadPixels(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2 || !info[0].IsBigInt() || !info[1].IsBuffer()) {
@@ -726,9 +765,11 @@ static Napi::Value EngineReadPixels(const Napi::CallbackInfo& info) {
 
     uint32_t width = 0;
     uint32_t height = 0;
-    IlyResult res = IlyEngineReadPixels(Uint64ToResourceHandle(engineVal),
-                                        buf.Data(), static_cast<uint32_t>(buf.Length()),
-                                        &width, &height);
+    const uint32_t outputIndex =
+        info.Length() > 2 && info[2].IsNumber() ? info[2].As<Napi::Number>().Uint32Value() : 0;
+    IlyResult res = IlyEngineReadPixelsForOutput(Uint64ToResourceHandle(engineVal), outputIndex,
+                                                 buf.Data(), static_cast<uint32_t>(buf.Length()),
+                                                 &width, &height);
 
     Napi::Object result = Napi::Object::New(env);
     result.Set("result", Napi::Number::New(env, static_cast<double>(res)));
@@ -892,6 +933,8 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Compositor present surface
     exports.Set("engineSetLayers", Napi::Function::New(env, EngineSetLayers));
+    exports.Set("engineCreateOutput", Napi::Function::New(env, EngineCreateOutput));
+    exports.Set("engineDestroyOutput", Napi::Function::New(env, EngineDestroyOutput));
     exports.Set("engineGetSharedOutputTexture", Napi::Function::New(env, EngineGetSharedOutputTexture));
     exports.Set("engineGetOutputColorConfig", Napi::Function::New(env, EngineGetOutputColorConfig));
     exports.Set("engineReadPixels", Napi::Function::New(env, EngineReadPixels));

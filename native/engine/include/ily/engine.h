@@ -125,6 +125,29 @@ ILY_API IlyResult IlyEngineGetScreenCaptureDisplays(IlyScreenCaptureDisplayInfo*
 ILY_API IlyResult IlyEngineGetScreenCaptureInfo(ResourceHandle engineHandle, ResourceHandle textureHandle, IlyScreenCaptureInfo* outInfo);
 
 /**
+ * @brief Add a compositor output beside the engine's own (index 0).
+ *
+ * Outputs share this engine's textures and all composite inside one GPU frame,
+ * so a second output (e.g. a 9:16 feed beside the 16:9 program) costs one extra
+ * composite rather than a second engine, device and camera capture. Each output
+ * carries its own layer list via IlyEngineSetLayersForOutput. Writes the new
+ * output's index, which stays stable until it is destroyed.
+ */
+ILY_API IlyResult IlyEngineCreateOutput(ResourceHandle engineHandle, uint32_t width, uint32_t height, uint32_t* outOutputIndex);
+
+/** @brief Destroy an output created by IlyEngineCreateOutput. Output 0 is the engine's own and is ignored. */
+ILY_API IlyResult IlyEngineDestroyOutput(ResourceHandle engineHandle, uint32_t outputIndex);
+
+/** @brief Set the retained layer list for one output. Index 0 is equivalent to IlyEngineSetLayers. */
+ILY_API IlyResult IlyEngineSetLayersForOutput(ResourceHandle engineHandle, uint32_t outputIndex, const IlyLayer* layers, uint32_t count);
+
+/** @brief Read one output's composited frame back as RGBA8, at that output's own size. */
+ILY_API IlyResult IlyEngineReadPixelsForOutput(ResourceHandle engineHandle, uint32_t outputIndex, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight);
+
+/** @brief Native shared-texture handle for one output's presentation texture. */
+ILY_API IlyResult IlyEngineGetSharedOutputTextureForOutput(ResourceHandle engineHandle, uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
+
+/**
  * @brief Create a Windows Media Foundation camera capture session.
  *
  * deviceIdentity accepts a Media Foundation symbolic link, a browser camera

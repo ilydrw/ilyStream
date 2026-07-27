@@ -262,12 +262,15 @@ interface NativeAddon {
   listCameraCaptureDevices(): CameraCaptureDevice[]
   engineUpdateTexture(engine: bigint, texture: bigint, rgba: Buffer): number
   engineDestroyTexture(engine: bigint, texture: bigint): number
-  engineSetLayers(engine: bigint, layers: Layer[]): number
+  engineSetLayers(engine: bigint, layers: Layer[], outputIndex?: number): number
+  engineCreateOutput(engine: bigint, width: number, height: number): number
+  engineDestroyOutput(engine: bigint, outputIndex: number): number
   engineGetSharedOutputTexture(engine: bigint): SharedOutputTexture
   engineGetOutputColorConfig(engine: bigint): OutputColorConfig
   engineReadPixels(
     engine: bigint,
-    buffer: Buffer
+    buffer: Buffer,
+    outputIndex?: number
   ): { result: number; width: number; height: number }
 }
 
@@ -432,11 +435,30 @@ export class NativeEngine {
     this.api.engineDestroyTexture(this.handle, texture)
   }
 
-  /** Replace the retained layer list composited every frame. */
-  setLayers(layers: Layer[]): void {
+  /**
+   * Replace the retained layer list composited every frame. `outputIndex`
+   * selects which output the list belongs to; 0 is the engine's own.
+   */
+  setLayers(layers: Layer[], outputIndex = 0): void {
     this.assertAlive()
-    const result = this.api.engineSetLayers(this.handle, layers)
+    const result = this.api.engineSetLayers(this.handle, layers, outputIndex)
     if (result !== 0) throw new Error(`Native engine setLayers failed with code ${result}`)
+  }
+
+  /**
+   * Add an output beside this engine's own. Outputs share the engine's textures
+   * and composite in the same GPU frame, so a second one (a 9:16 feed beside
+   * the 16:9 program) costs one extra composite rather than a second engine and
+   * a second capture of every source. Returns the output's index.
+   */
+  createOutput(width: number, height: number): number {
+    this.assertAlive()
+    return this.api.engineCreateOutput(this.handle, width, height)
+  }
+
+  destroyOutput(outputIndex: number): void {
+    this.assertAlive()
+    this.api.engineDestroyOutput(this.handle, outputIndex)
   }
 
   /** Get the persistent GPU output texture used by the compositor. */
@@ -460,6 +482,18 @@ export class NativeEngine {
     const { result, width, height } = this.api.engineReadPixels(this.handle, this.frameBuffer)
     if (result !== 0) return null
     return { width, height, data: this.frameBuffer }
+  }
+
+  /**
+   * Read a secondary output's frame. Unlike readFrame this allocates per call:
+   * outputs have their own sizes, so there is no single reusable buffer.
+   */
+  readOutputFrame(outputIndex: number, width: number, height: number): Frame | null {
+    this.assertAlive()
+    const buffer = Buffer.alloc(width * height * 4)
+    const frame = this.api.engineReadPixels(this.handle, buffer, outputIndex)
+    if (frame.result !== 0) return null
+    return { width: frame.width, height: frame.height, data: buffer }
   }
 
   get size(): { width: number; height: number } {

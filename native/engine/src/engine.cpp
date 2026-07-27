@@ -679,6 +679,52 @@ ILY_API IlyResult IlyEngineDrawQuad(ResourceHandle engineHandle, ResourceHandle 
     return it->second->renderer->DrawQuad(textureHandle, *transform, opacity, blendMode);
 }
 
+namespace {
+
+/**
+ * Snapshot a layer list into a render graph. The pass copies the layers so the
+ * render thread never references caller memory; an empty list clears the graph.
+ */
+std::shared_ptr<ily::RenderGraph> BuildLayerGraph(const IlyLayer* layers, uint32_t count) {
+    auto graph = std::make_shared<ily::RenderGraph>();
+    if (count == 0) return graph;
+
+    std::vector<IlyLayer> layerList(layers, layers + count);
+    ily::RenderPass pass;
+    pass.name = "layers";
+    pass.execute = [layerList](ily::IRenderBackend* backend) -> IlyResult {
+        for (const auto& layer : layerList) {
+            if (layer.circleMask.enabled && layer.circleMask.radius > 0.0f) {
+                // Focus circle: a blurred base draw with a sharp overlay
+                // clipped to a circle drawn on top - mirroring the canvas
+                // compositor's two draws (getFilters(true) then, inside the
+                // arc clip, getFilters(false)). The base carries the blur and
+                // any rounded-corner mask; the sharp overlay reuses the same
+                // source, transform, and color adjust with no blur. Both draws
+                // carry the image mask so it cuts the whole layer.
+                IlyResult base = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
+                if (base != ILY_SUCCESS) {
+                    return base;
+                }
+                IlyResult sharp = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, 0.0f, &layer.circleMask, layer.maskTexture, layer.maskTransform);
+                if (sharp != ILY_SUCCESS) {
+                    return sharp;
+                }
+                continue;
+            }
+            IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
+            if (r != ILY_SUCCESS) {
+                return r;
+            }
+        }
+        return ILY_SUCCESS;
+    };
+    graph->AddPass(pass);
+    return graph;
+}
+
+} // namespace
+
 ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer* layers, uint32_t count) {
     if (count > 0 && !layers) {
         return ILY_ERROR_INVALID_ARGUMENT;
@@ -690,44 +736,53 @@ ILY_API IlyResult IlyEngineSetLayers(ResourceHandle engineHandle, const IlyLayer
     }
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
+    it->second->renderer->SetRenderGraph(BuildLayerGraph(layers, count));
+    return ILY_SUCCESS;
+}
 
-    // Snapshot the layers into the pass so the render thread draws them every
-    // frame without referencing caller memory. Empty list clears the graph.
-    auto graph = std::make_shared<ily::RenderGraph>();
-    if (count > 0) {
-        std::vector<IlyLayer> layerList(layers, layers + count);
-        ily::RenderPass pass;
-        pass.name = "layers";
-        pass.execute = [layerList](ily::IRenderBackend* backend) -> IlyResult {
-            for (const auto& layer : layerList) {
-                if (layer.circleMask.enabled && layer.circleMask.radius > 0.0f) {
-                    // Focus circle: a blurred base draw with a sharp overlay
-                    // clipped to a circle drawn on top — mirroring the canvas
-                    // compositor's two draws (getFilters(true) then, inside the
-                    // arc clip, getFilters(false)). The base carries the blur
-                    // and any rounded-corner mask; the sharp overlay reuses the
-                    // same source, transform, and color adjust with no blur. Both
-                    // draws carry the image mask so it cuts the whole layer.
-                    IlyResult base = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
-                    if (base != ILY_SUCCESS) {
-                        return base;
-                    }
-                    IlyResult sharp = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, 0.0f, &layer.circleMask, layer.maskTexture, layer.maskTransform);
-                    if (sharp != ILY_SUCCESS) {
-                        return sharp;
-                    }
-                    continue;
-                }
-                IlyResult r = backend->DrawQuad(layer.texture, layer.transform, layer.opacity, layer.blendMode, &layer.chromaKey, &layer.colorAdjust, layer.cornerRadius, layer.blurSigma, nullptr, layer.maskTexture, layer.maskTransform);
-                if (r != ILY_SUCCESS) {
-                    return r;
-                }
-            }
-            return ILY_SUCCESS;
-        };
-        graph->AddPass(pass);
+ILY_API IlyResult IlyEngineCreateOutput(ResourceHandle engineHandle, uint32_t width, uint32_t height, uint32_t* outOutputIndex) {
+    if (!outOutputIndex || width == 0 || height == 0) {
+        return ILY_ERROR_INVALID_ARGUMENT;
     }
-    it->second->renderer->SetRenderGraph(graph);
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    const int32_t index = it->second->renderer->CreateOutput(width, height);
+    if (index < 0) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+    *outOutputIndex = static_cast<uint32_t>(index);
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineDestroyOutput(ResourceHandle engineHandle, uint32_t outputIndex) {
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    it->second->renderer->DestroyOutput(outputIndex);
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineSetLayersForOutput(ResourceHandle engineHandle, uint32_t outputIndex, const IlyLayer* layers, uint32_t count) {
+    if (count > 0 && !layers) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    it->second->renderer->SetRenderGraphForOutput(outputIndex, BuildLayerGraph(layers, count));
     return ILY_SUCCESS;
 }
 
@@ -747,6 +802,22 @@ ILY_API IlyResult IlyEngineGetSharedOutputTexture(ResourceHandle engineHandle, v
     return it->second->renderer->GetSharedOutputTexture(outHandle, outWidth, outHeight);
 }
 
+ILY_API IlyResult IlyEngineGetSharedOutputTextureForOutput(ResourceHandle engineHandle, uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!outHandle) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    *outHandle = nullptr;
+
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->GetSharedOutputTextureForOutput(outputIndex, outHandle, outWidth, outHeight);
+}
+
 ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight) {
     if (!buffer) {
         return ILY_ERROR_INVALID_ARGUMENT;
@@ -759,6 +830,20 @@ ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer,
 
     std::lock_guard<std::mutex> instLock(it->second->mutex);
     return it->second->renderer->ReadPixels(buffer, bufferSize, outWidth, outHeight);
+}
+
+ILY_API IlyResult IlyEngineReadPixelsForOutput(ResourceHandle engineHandle, uint32_t outputIndex, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight) {
+    if (!buffer) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->ReadPixelsFromOutput(outputIndex, buffer, bufferSize, outWidth, outHeight);
 }
 
 }
