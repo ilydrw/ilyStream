@@ -29,6 +29,13 @@ public:
 
     IlyResult GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight) override;
     IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) override;
+
+    int32_t CreateOutput(uint32_t width, uint32_t height) override;
+    void DestroyOutput(uint32_t outputIndex) override;
+    void SetActiveOutput(uint32_t outputIndex) override;
+    uint32_t OutputCount() const override;
+    IlyResult ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) override;
+    IlyResult GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) override;
     
     RendererCapabilities capabilities() const override;
     IlyRendererCapabilities GetCapabilities() const override;
@@ -39,6 +46,9 @@ public:
     void SetActiveSpriteProgram(ResourceHandle programHandle);
 
 private:
+    /** Encode one output's composite into its presentation texture. */
+    IlyResult SubmitOutputPass(void* outputTarget);
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

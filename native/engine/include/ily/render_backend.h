@@ -55,6 +55,23 @@ public:
     // size. Blocks briefly while the GPU readback completes.
     virtual IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) = 0;
     
+    // Additional compositor outputs on this backend. Output 0 always exists and
+    // is the engine's own; further outputs render the same textures at their own
+    // size (e.g. a 9:16 output beside the 16:9 program), each with its own layer
+    // list, and all encode inside a single GPU frame. Returns the output's index
+    // or -1. Backends without multi-output support refuse politely.
+    virtual int32_t CreateOutput(uint32_t width, uint32_t height) { (void)width; (void)height; return -1; }
+    virtual void DestroyOutput(uint32_t outputIndex) { (void)outputIndex; }
+    // Which output subsequent DrawQuad calls composite into.
+    virtual void SetActiveOutput(uint32_t outputIndex) { (void)outputIndex; }
+    virtual uint32_t OutputCount() const { return 1; }
+    virtual IlyResult ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+        return outputIndex == 0 ? ReadPixels(dst, dstSize, outWidth, outHeight) : ILY_ERROR_NOT_FOUND;
+    }
+    virtual IlyResult GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+        return outputIndex == 0 ? GetSharedOutputTexture(outHandle, outWidth, outHeight) : ILY_ERROR_NOT_FOUND;
+    }
+
     // Packed LUID (high << 32 | low) of the GPU adapter the backend is running
     // on, when the platform has one. Native capture sources must create their
     // own D3D11 device on this adapter: a shared texture created on a different

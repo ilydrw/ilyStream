@@ -82,6 +82,72 @@ IlyResult Renderer::Resize(uint32_t width, uint32_t height) {
     return future.get();
 }
 
+int32_t Renderer::CreateOutput(uint32_t width, uint32_t height) {
+    ILY_PROFILE_SCOPE("Renderer::CreateOutput");
+    if (!m_threadRunning) return -1;
+    auto promise = std::make_shared<std::promise<int32_t>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::CreateOutput;
+    cmd.width = width;
+    cmd.height = height;
+    cmd.outputPromise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+void Renderer::DestroyOutput(uint32_t outputIndex) {
+    ILY_PROFILE_SCOPE("Renderer::DestroyOutput");
+    if (!m_threadRunning) return;
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::DestroyOutput;
+    cmd.outputIndex = outputIndex;
+    m_commandQueue.Push(cmd);
+}
+
+void Renderer::SetRenderGraphForOutput(uint32_t outputIndex, std::shared_ptr<RenderGraph> graph) {
+    ILY_PROFILE_SCOPE("Renderer::SetRenderGraphForOutput");
+    if (!m_threadRunning) return;
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::SetRenderGraphForOutput;
+    cmd.outputIndex = outputIndex;
+    cmd.renderGraph = graph;
+    m_commandQueue.Push(cmd);
+}
+
+IlyResult Renderer::ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+    ILY_PROFILE_SCOPE("Renderer::ReadPixelsFromOutput");
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::ReadPixels;
+    cmd.outputIndex = outputIndex;
+    cmd.readbackDst = dst;
+    cmd.readbackSize = dstSize;
+    cmd.readbackOutWidth = outWidth;
+    cmd.readbackOutHeight = outHeight;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+    ILY_PROFILE_SCOPE("Renderer::GetSharedOutputTextureForOutput");
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::GetSharedOutputTexture;
+    cmd.outputIndex = outputIndex;
+    cmd.sharedOutputHandle = outHandle;
+    cmd.sharedOutputWidth = outWidth;
+    cmd.sharedOutputHeight = outHeight;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
 void Renderer::SetRenderGraph(std::shared_ptr<RenderGraph> graph) {
     ILY_PROFILE_SCOPE("Renderer::SetRenderGraph");
     if (!m_threadRunning) {
@@ -231,6 +297,8 @@ void Renderer::RenderThreadLoop() {
     bool rendering = false;
     IlyEngineConfig activeConfig{};
     std::shared_ptr<RenderGraph> activeGraph = nullptr;
+    // Graphs for outputs beyond the engine's own, indexed by output id.
+    std::vector<std::shared_ptr<RenderGraph>> secondaryGraphs;
 
     // We pace frames ourselves against this deadline instead of blocking inside
     // the render call (vsync is disabled on the offscreen surface). This keeps
@@ -282,6 +350,36 @@ void Renderer::RenderThreadLoop() {
                     activeGraph = cmd.renderGraph;
                     break;
                 }
+                case RenderCommandType::CreateOutput: {
+                    IRenderBackend* backend = m_device.GetBackend();
+                    const int32_t index = backend
+                        ? backend->CreateOutput(cmd.width, cmd.height)
+                        : -1;
+                    if (cmd.outputPromise) {
+                        cmd.outputPromise->set_value(index);
+                    }
+                    break;
+                }
+                case RenderCommandType::DestroyOutput: {
+                    if (IRenderBackend* backend = m_device.GetBackend()) {
+                        backend->DestroyOutput(cmd.outputIndex);
+                    }
+                    if (cmd.outputIndex < secondaryGraphs.size()) {
+                        secondaryGraphs[cmd.outputIndex] = nullptr;
+                    }
+                    break;
+                }
+                case RenderCommandType::SetRenderGraphForOutput: {
+                    if (cmd.outputIndex == 0) {
+                        activeGraph = cmd.renderGraph;
+                    } else {
+                        if (cmd.outputIndex >= secondaryGraphs.size()) {
+                            secondaryGraphs.resize(cmd.outputIndex + 1);
+                        }
+                        secondaryGraphs[cmd.outputIndex] = cmd.renderGraph;
+                    }
+                    break;
+                }
                 case RenderCommandType::StopThread: {
                     running = false;
                     break;
@@ -329,16 +427,23 @@ void Renderer::RenderThreadLoop() {
                     break;
                 }
                 case RenderCommandType::GetSharedOutputTexture: {
-                    IlyResult res = m_device.GetSharedOutputTexture(
-                        cmd.sharedOutputHandle, cmd.sharedOutputWidth, cmd.sharedOutputHeight);
+                    IRenderBackend* backend = m_device.GetBackend();
+                    IlyResult res = backend
+                        ? backend->GetSharedOutputTextureForOutput(
+                              cmd.outputIndex, cmd.sharedOutputHandle,
+                              cmd.sharedOutputWidth, cmd.sharedOutputHeight)
+                        : ILY_ERROR_INITIALIZATION_FAILED;
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }
                     break;
                 }
                 case RenderCommandType::ReadPixels: {
-                    IlyResult res = m_device.ReadPixels(cmd.readbackDst, cmd.readbackSize,
-                                                        cmd.readbackOutWidth, cmd.readbackOutHeight);
+                    IRenderBackend* backend = m_device.GetBackend();
+                    IlyResult res = backend
+                        ? backend->ReadPixelsFromOutput(cmd.outputIndex, cmd.readbackDst, cmd.readbackSize,
+                                                        cmd.readbackOutWidth, cmd.readbackOutHeight)
+                        : ILY_ERROR_INITIALIZATION_FAILED;
                     if (cmd.promise) {
                         cmd.promise->set_value(res);
                     }
@@ -360,9 +465,19 @@ void Renderer::RenderThreadLoop() {
                 scheduler.StartFrame();
 
                 m_device.BeginFrame();
+                IRenderBackend* backend = m_device.GetBackend();
+                // Every output composites inside this one frame, sharing the
+                // engine's textures; EndFrame then encodes them all.
+                if (backend) backend->SetActiveOutput(0);
                 if (activeGraph) {
-                    activeGraph->Execute(m_device.GetBackend());
+                    activeGraph->Execute(backend);
                 }
+                for (uint32_t outputIndex = 1; outputIndex < secondaryGraphs.size(); ++outputIndex) {
+                    if (!secondaryGraphs[outputIndex] || !backend) continue;
+                    backend->SetActiveOutput(outputIndex);
+                    secondaryGraphs[outputIndex]->Execute(backend);
+                }
+                if (backend) backend->SetActiveOutput(0);
                 m_device.EndFrame();
 
                 const Clock::duration budget = frameBudget();

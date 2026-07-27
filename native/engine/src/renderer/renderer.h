@@ -28,7 +28,10 @@ enum class RenderCommandType {
     CreateSpriteProgram,
     DrawQuad,
     GetSharedOutputTexture,
-    ReadPixels
+    ReadPixels,
+    CreateOutput,
+    DestroyOutput,
+    SetRenderGraphForOutput
 };
 
 // Represents a command enqueued for the dedicated render thread.
@@ -69,6 +72,9 @@ struct RenderThreadCommand {
     ResourceHandle maskTexture = ILY_INVALID_HANDLE;
     float maskTransform[4] = {0.0f, 0.0f, 1.0f, 1.0f};
     std::shared_ptr<RenderGraph> renderGraph;
+    // Which compositor output the command addresses (0 = the engine's own).
+    uint32_t outputIndex = 0;
+    std::shared_ptr<std::promise<int32_t>> outputPromise;
     void** sharedOutputHandle = nullptr;
     uint32_t* sharedOutputWidth = nullptr;
     uint32_t* sharedOutputHeight = nullptr;
@@ -95,6 +101,15 @@ public:
 
     IlyResult Resize(uint32_t width, uint32_t height);
     void SetRenderGraph(std::shared_ptr<RenderGraph> graph);
+
+    // Additional outputs composited from the same textures in the same frame.
+    // Each carries its own render graph; output 0 is the engine's own and is
+    // driven by SetRenderGraph above.
+    int32_t CreateOutput(uint32_t width, uint32_t height);
+    void DestroyOutput(uint32_t outputIndex);
+    void SetRenderGraphForOutput(uint32_t outputIndex, std::shared_ptr<RenderGraph> graph);
+    IlyResult ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight);
+    IlyResult GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
     
     // Thread-safe Render Queue helpers
     ResourceHandle CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA = false, const IlyColorDescription& color = IlySrgbFullColor(), IlyAlphaMode alphaMode = ILY_ALPHA_STRAIGHT);

@@ -1218,3 +1218,102 @@ TEST_CASE("Imported shared sRGB texture composites its pixels, not black", "[sha
     renderer.Stop();
 }
 #endif // _WIN32
+
+/*
+ * Two outputs on ONE engine: different sizes, different layer lists, both
+ * drawing the SAME texture. This is the property that makes sharing an engine
+ * worth it — a camera uploaded once feeds the 16:9 and the 9:16 scene — and it
+ * also pins the view-block allocation, since overlapping view ids between
+ * outputs would show up as one output's content landing in the other.
+ */
+TEST_CASE("A second output composites independently from shared textures", "[multi_output]") {
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t primaryW = 320;
+    const uint32_t primaryH = 240;
+    const uint32_t secondW = 180;
+    const uint32_t secondH = 320;
+
+    ily::Renderer renderer;
+    REQUIRE(renderer.Start() == ILY_SUCCESS);
+    IlyEngineConfig config{primaryW, primaryH, 60, false};
+    REQUIRE(renderer.Initialize(config) == ILY_SUCCESS);
+    REQUIRE(renderer.CreateSpriteProgram() != ILY_INVALID_HANDLE);
+
+    const int32_t secondary = renderer.CreateOutput(secondW, secondH);
+    REQUIRE(secondary == 1);
+
+    // One red and one blue texture, both used by both outputs.
+    auto solid = [&](uint8_t r, uint8_t g, uint8_t b) {
+        std::vector<uint8_t> pixels(16 * 16 * 4);
+        for (size_t i = 0; i < pixels.size(); i += 4) {
+            pixels[i + 0] = r; pixels[i + 1] = g; pixels[i + 2] = b; pixels[i + 3] = 255;
+        }
+        return renderer.CreateTexture(16, 16, pixels.data(),
+                                      static_cast<uint32_t>(pixels.size()), false,
+                                      IlySrgbFullColor(), ILY_ALPHA_OPAQUE);
+    };
+    const ResourceHandle redTex = solid(220, 20, 20);
+    const ResourceHandle blueTex = solid(20, 20, 220);
+    REQUIRE(redTex != ILY_INVALID_HANDLE);
+    REQUIRE(blueTex != ILY_INVALID_HANDLE);
+
+    auto fullFrameGraph = [](ResourceHandle texture, uint32_t width, uint32_t height) {
+        IlyTransform transform{};
+        transform.position = {0.0f, 0.0f, 0.0f};
+        transform.scale = {static_cast<float>(width), static_cast<float>(height), 1.0f};
+        transform.visibility = true;
+        transform.opacity = 1.0f;
+
+        auto graph = std::make_shared<ily::RenderGraph>();
+        ily::RenderPass pass;
+        pass.name = "layer";
+        pass.execute = [texture, transform](ily::IRenderBackend* backend) -> IlyResult {
+            return backend->DrawQuad(texture, transform, 1.0f, ILY_BLEND_ALPHA);
+        };
+        graph->AddPass(pass);
+        return graph;
+    };
+
+    renderer.SetRenderGraph(fullFrameGraph(redTex, primaryW, primaryH));
+    renderer.SetRenderGraphForOutput(
+        static_cast<uint32_t>(secondary), fullFrameGraph(blueTex, secondW, secondH));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    std::vector<uint8_t> primaryPixels(static_cast<size_t>(primaryW) * primaryH * 4, 0);
+    uint32_t width = 0;
+    uint32_t height = 0;
+    REQUIRE(renderer.ReadPixelsFromOutput(
+        0, primaryPixels.data(), static_cast<uint32_t>(primaryPixels.size()),
+        &width, &height) == ILY_SUCCESS);
+    REQUIRE(width == primaryW);
+    REQUIRE(height == primaryH);
+
+    std::vector<uint8_t> secondPixels(static_cast<size_t>(secondW) * secondH * 4, 0);
+    REQUIRE(renderer.ReadPixelsFromOutput(
+        static_cast<uint32_t>(secondary), secondPixels.data(),
+        static_cast<uint32_t>(secondPixels.size()), &width, &height) == ILY_SUCCESS);
+    // Each output reports its OWN size, not the engine's.
+    REQUIRE(width == secondW);
+    REQUIRE(height == secondH);
+
+    const size_t primaryCenter = (static_cast<size_t>(primaryH / 2) * primaryW + primaryW / 2) * 4;
+    const size_t secondCenter = (static_cast<size_t>(secondH / 2) * secondW + secondW / 2) * 4;
+    std::cout << "[multi_output] primary=(" << int(primaryPixels[primaryCenter]) << ","
+              << int(primaryPixels[primaryCenter + 1]) << "," << int(primaryPixels[primaryCenter + 2])
+              << ") second=(" << int(secondPixels[secondCenter]) << ","
+              << int(secondPixels[secondCenter + 1]) << "," << int(secondPixels[secondCenter + 2])
+              << ")" << std::endl;
+
+    REQUIRE(primaryPixels[primaryCenter + 0] > 180);   // red output stayed red
+    REQUIRE(primaryPixels[primaryCenter + 2] < 70);
+    REQUIRE(secondPixels[secondCenter + 2] > 180);     // blue output stayed blue
+    REQUIRE(secondPixels[secondCenter + 0] < 70);
+
+    renderer.DestroyOutput(static_cast<uint32_t>(secondary));
+    renderer.DestroyTexture(redTex);
+    renderer.DestroyTexture(blueTex);
+    renderer.Stop();
+}

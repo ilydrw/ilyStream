@@ -54,6 +54,9 @@ namespace ily {
 // further output follows in its own range.
 static constexpr uint16_t kViewBlurCount = 24; // up to 8 blurred layers per frame
 static constexpr uint16_t kViewsPerOutput = kViewBlurCount + 3;
+// bgfx's default view budget; outputs are refused rather than allowed to
+// collide with another output's view block.
+static constexpr uint16_t kMaxViews = 256;
 
 namespace {
 
@@ -147,6 +150,9 @@ struct BgfxBackend::Impl {
     // (the program output); the surrounding code addresses it only through
     // Out(), so adding further outputs is a matter of growing m_outputs.
     struct OutputTarget {
+        // Index doubles as the caller-facing output id, so a destroyed output
+        // keeps its slot rather than shifting the ones after it.
+        bool valid = true;
         uint32_t width = 1280;
         uint32_t height = 720;
         bgfx::TextureHandle compositeColorTex = BGFX_INVALID_HANDLE;
@@ -383,6 +389,40 @@ struct BgfxBackend::Impl {
             previousSharedOutputTexture->Release();
         }
 #endif
+    }
+
+    void DestroyOutputTarget(OutputTarget& target) {
+#ifdef _WIN32
+        if (target.sharedOutputHandle) {
+            CloseHandle(target.sharedOutputHandle);
+            target.sharedOutputHandle = nullptr;
+        }
+        if (target.sharedOutputTexture) {
+            target.sharedOutputTexture->Release();
+            target.sharedOutputTexture = nullptr;
+        }
+#endif
+        if (bgfx::isValid(target.compositeFb)) {
+            bgfx::destroy(target.compositeFb);
+            target.compositeFb = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(target.compositeColorTex)) {
+            bgfx::destroy(target.compositeColorTex);
+            target.compositeColorTex = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(target.offscreenFb)) {
+            bgfx::destroy(target.offscreenFb);
+            target.offscreenFb = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(target.offscreenColorTex)) {
+            bgfx::destroy(target.offscreenColorTex);
+            target.offscreenColorTex = BGFX_INVALID_HANDLE;
+        }
+        if (bgfx::isValid(target.readbackTex)) {
+            bgfx::destroy(target.readbackTex);
+            target.readbackTex = BGFX_INVALID_HANDLE;
+        }
+        target.valid = false;
     }
 
     void DestroyOffscreenTargets() {
@@ -701,11 +741,47 @@ IlyResult BgfxBackend::EndFrame() {
     ILY_PROFILE_SCOPE("BgfxBackend::EndFrame");
 
     EnsureSpriteVertexLayout();
-    if (!bgfx::isValid(m_impl->Out().compositeColorTex) ||
+    // Every output's encode pass runs inside THIS bgfx frame — one submit for
+    // all of them, which is the reason outputs share an engine at all.
+    IlyResult result = ILY_SUCCESS;
+    for (size_t index = 0; index < m_impl->m_outputs.size(); ++index) {
+        if (!m_impl->m_outputs[index].valid) continue;
+        const IlyResult passResult = SubmitOutputPass(&m_impl->m_outputs[index]);
+        if (passResult != ILY_SUCCESS) result = passResult;
+    }
+
+    if (m_impl->m_debugStats) {
+        bgfx::dbgTextClear();
+        const bgfx::Stats* stats = bgfx::getStats();
+        double toMsCpu = 1000.0 / stats->cpuTimerFreq;
+        double toMsGpu = stats->gpuTimerFreq > 0 ? 1000.0 / stats->gpuTimerFreq : 0.0;
+
+        double cpuMs = double(stats->cpuTimeFrame) * toMsCpu;
+        double gpuMs = double(stats->gpuTimeEnd - stats->gpuTimeBegin) * toMsGpu;
+        double fps = cpuMs > 0.0 ? 1000.0 / cpuMs : 0.0;
+
+        bgfx::dbgTextPrintf(1, 1, 0x0f, "GPU: %s", bgfx::getRendererName(bgfx::getRendererType()));
+        bgfx::dbgTextPrintf(1, 2, 0x0f, "FPS: %.2f (CPU: %.2f ms, GPU: %.2f ms)", fps, cpuMs, gpuMs);
+        bgfx::dbgTextPrintf(1, 3, 0x0f, "Draw Calls: %u", stats->numDraw);
+
+        double gpuMemMb = double(stats->gpuMemoryUsed) / (1024.0 * 1024.0);
+        double gpuMemMaxMb = double(stats->gpuMemoryMax) / (1024.0 * 1024.0);
+        bgfx::dbgTextPrintf(1, 4, 0x0f, "GPU Mem: %.2f MB / %.2f MB", gpuMemMb, gpuMemMaxMb);
+    }
+
+    m_impl->EvictStaleBlurTargets();
+    m_impl->m_frameIndex += 1;
+    bgfx::frame();
+    return result;
+}
+
+/** Encode one output's linear composite into its presentation texture. */
+IlyResult BgfxBackend::SubmitOutputPass(void* outputTarget) {
+    auto& output = *static_cast<Impl::OutputTarget*>(outputTarget);
+    if (!bgfx::isValid(output.compositeColorTex) ||
         !bgfx::isValid(m_impl->m_outputProgram) ||
         bgfx::getAvailTransientVertexBuffer(4, s_spriteVertexLayout) < 4 ||
         bgfx::getAvailTransientIndexBuffer(6) < 6) {
-        bgfx::frame();
         return ILY_ERROR_RENDER_FAILED;
     }
 
@@ -734,35 +810,64 @@ IlyResult BgfxBackend::EndFrame() {
         m_impl->m_frameHasHdrSource ? 1.0f : 0.0f
     };
     bgfx::setUniform(m_impl->m_outputColorUniform, outputParams);
-    bgfx::setTexture(0, m_impl->m_texColorSampler, m_impl->Out().compositeColorTex);
+    bgfx::setTexture(0, m_impl->m_texColorSampler, output.compositeColorTex);
     bgfx::setVertexBuffer(0, &outputVertices);
     bgfx::setIndexBuffer(&outputIndices);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
-    bgfx::submit(m_impl->Out().viewOutput, m_impl->m_outputProgram);
-
-    if (m_impl->m_debugStats) {
-        bgfx::dbgTextClear();
-        const bgfx::Stats* stats = bgfx::getStats();
-        double toMsCpu = 1000.0 / stats->cpuTimerFreq;
-        double toMsGpu = stats->gpuTimerFreq > 0 ? 1000.0 / stats->gpuTimerFreq : 0.0;
-
-        double cpuMs = double(stats->cpuTimeFrame) * toMsCpu;
-        double gpuMs = double(stats->gpuTimeEnd - stats->gpuTimeBegin) * toMsGpu;
-        double fps = cpuMs > 0.0 ? 1000.0 / cpuMs : 0.0;
-
-        bgfx::dbgTextPrintf(1, 1, 0x0f, "GPU: %s", bgfx::getRendererName(bgfx::getRendererType()));
-        bgfx::dbgTextPrintf(1, 2, 0x0f, "FPS: %.2f (CPU: %.2f ms, GPU: %.2f ms)", fps, cpuMs, gpuMs);
-        bgfx::dbgTextPrintf(1, 3, 0x0f, "Draw Calls: %u", stats->numDraw);
-
-        double gpuMemMb = double(stats->gpuMemoryUsed) / (1024.0 * 1024.0);
-        double gpuMemMaxMb = double(stats->gpuMemoryMax) / (1024.0 * 1024.0);
-        bgfx::dbgTextPrintf(1, 4, 0x0f, "GPU Mem: %.2f MB / %.2f MB", gpuMemMb, gpuMemMaxMb);
-    }
-    
-    m_impl->EvictStaleBlurTargets();
-    m_impl->m_frameIndex += 1;
-    bgfx::frame();
+    bgfx::submit(output.viewOutput, m_impl->m_outputProgram);
     return ILY_SUCCESS;
+}
+
+int32_t BgfxBackend::CreateOutput(uint32_t width, uint32_t height) {
+    ILY_PROFILE_SCOPE("BgfxBackend::CreateOutput");
+    if (width == 0 || height == 0 || width > UINT16_MAX || height > UINT16_MAX) {
+        return -1;
+    }
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_initialized) return -1;
+
+    // Reuse a destroyed slot when there is one; ids stay stable either way.
+    size_t index = m_impl->m_outputs.size();
+    for (size_t candidate = 0; candidate < m_impl->m_outputs.size(); ++candidate) {
+        if (!m_impl->m_outputs[candidate].valid) { index = candidate; break; }
+    }
+    if (index == m_impl->m_outputs.size()) {
+        // Views are a fixed budget; refuse rather than colliding with another
+        // output's block.
+        if ((index + 1) * kViewsPerOutput > kMaxViews) return -1;
+        m_impl->m_outputs.emplace_back();
+    }
+
+    Impl::OutputTarget& target = m_impl->m_outputs[index];
+    target = Impl::OutputTarget{};
+    target.AssignViews(index);
+    bgfx::setViewClear(target.viewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    bgfx::setViewClear(target.viewOutput, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+    m_impl->CreateOffscreenTargets(target, width, height);
+    if (!bgfx::isValid(target.compositeFb) || !bgfx::isValid(target.offscreenFb)) {
+        target.valid = false;
+        return -1;
+    }
+    return static_cast<int32_t>(index);
+}
+
+void BgfxBackend::DestroyOutput(uint32_t outputIndex) {
+    ILY_PROFILE_SCOPE("BgfxBackend::DestroyOutput");
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    // Output 0 belongs to the engine itself and lives until Shutdown.
+    if (outputIndex == 0 || outputIndex >= m_impl->m_outputs.size()) return;
+    m_impl->DestroyOutputTarget(m_impl->m_outputs[outputIndex]);
+}
+
+void BgfxBackend::SetActiveOutput(uint32_t outputIndex) {
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (outputIndex >= m_impl->m_outputs.size() || !m_impl->m_outputs[outputIndex].valid) return;
+    m_impl->m_activeOutput = outputIndex;
+}
+
+uint32_t BgfxBackend::OutputCount() const {
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    return static_cast<uint32_t>(m_impl->m_outputs.size());
 }
 
 void BgfxBackend::Clear(float r, float g, float b, float a) {
@@ -1524,6 +1629,10 @@ ResourceHandle BgfxBackend::CreateSpriteProgramHandle() {
 }
 
 IlyResult BgfxBackend::GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
+    return GetSharedOutputTextureForOutput(0, outHandle, outWidth, outHeight);
+}
+
+IlyResult BgfxBackend::GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) {
     ILY_PROFILE_SCOPE("BgfxBackend::GetSharedOutputTexture");
     if (!outHandle) {
         return ILY_ERROR_INVALID_ARGUMENT;
@@ -1533,14 +1642,18 @@ IlyResult BgfxBackend::GetSharedOutputTexture(void** outHandle, uint32_t* outWid
     if (!m_impl->m_initialized) {
         return ILY_ERROR_INITIALIZATION_FAILED;
     }
+    if (outputIndex >= m_impl->m_outputs.size() || !m_impl->m_outputs[outputIndex].valid) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+    auto& output = m_impl->m_outputs[outputIndex];
 
 #ifdef _WIN32
-    if (!m_impl->Out().sharedOutputHandle) {
+    if (!output.sharedOutputHandle) {
         return ILY_ERROR_NOT_SUPPORTED;
     }
-    *outHandle = m_impl->Out().sharedOutputHandle;
-    if (outWidth) *outWidth = m_impl->Out().width;
-    if (outHeight) *outHeight = m_impl->Out().height;
+    *outHandle = output.sharedOutputHandle;
+    if (outWidth) *outWidth = output.width;
+    if (outHeight) *outHeight = output.height;
     return ILY_SUCCESS;
 #else
     (void)outWidth;
@@ -1550,6 +1663,10 @@ IlyResult BgfxBackend::GetSharedOutputTexture(void** outHandle, uint32_t* outWid
 }
 
 IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
+    return ReadPixelsFromOutput(0, dst, dstSize, outWidth, outHeight);
+}
+
+IlyResult BgfxBackend::ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
     ILY_PROFILE_SCOPE("BgfxBackend::ReadPixels");
     std::lock_guard<std::mutex> lock(m_impl->m_mutex);
 
@@ -1559,9 +1676,13 @@ IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidt
     if (!dst) {
         return ILY_ERROR_INVALID_ARGUMENT;
     }
+    if (outputIndex >= m_impl->m_outputs.size() || !m_impl->m_outputs[outputIndex].valid) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+    auto& output = m_impl->m_outputs[outputIndex];
 
-    const uint32_t width = m_impl->Out().width;
-    const uint32_t height = m_impl->Out().height;
+    const uint32_t width = output.width;
+    const uint32_t height = output.height;
     if (outWidth) *outWidth = width;
     if (outHeight) *outHeight = height;
 
@@ -1579,16 +1700,16 @@ IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidt
         !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
         return ILY_ERROR_NOT_SUPPORTED;
     }
-    if (!bgfx::isValid(m_impl->Out().offscreenColorTex) || !bgfx::isValid(m_impl->Out().readbackTex)) {
+    if (!bgfx::isValid(output.offscreenColorTex) || !bgfx::isValid(output.readbackTex)) {
         return ILY_ERROR_INITIALIZATION_FAILED;
     }
 
     // Copy the offscreen color target into the CPU-readable texture, then read
     // it back. readTexture reports the frame at which dst will be populated;
     // pump frames (bounded) until we reach it.
-    const bgfx::ViewId kBlitView = m_impl->Out().viewBlit;
-    bgfx::blit(kBlitView, m_impl->Out().readbackTex, 0, 0, m_impl->Out().offscreenColorTex);
-    const uint32_t frameAvailable = bgfx::readTexture(m_impl->Out().readbackTex, dst);
+    const bgfx::ViewId kBlitView = output.viewBlit;
+    bgfx::blit(kBlitView, output.readbackTex, 0, 0, output.offscreenColorTex);
+    const uint32_t frameAvailable = bgfx::readTexture(output.readbackTex, dst);
 
     uint32_t current = bgfx::frame();
     for (int i = 0; i < 8 && current < frameAvailable; ++i) {
