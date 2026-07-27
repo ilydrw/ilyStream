@@ -569,11 +569,6 @@ const api = {
     getStatus: () => ipcRenderer.invoke('virtualcamera:get-status'),
     installDriver: () => ipcRenderer.invoke('virtualcamera:install-driver')
   },
-  // --- Native Camera ---
-  nativeCamera: {
-    start: (deviceName: string, width: number, height: number, fps: number) => ipcRenderer.send('native-camera:start', deviceName, width, height, fps),
-    stop: (deviceName: string) => ipcRenderer.invoke('native-camera:stop', deviceName)
-  },
 
   // --- Native engine preview (bgfx compositor -> canvas) ---
   engine: {

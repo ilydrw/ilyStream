@@ -1058,3 +1058,163 @@ TEST_CASE("Mask transform remaps mask UVs for letterboxed (contain) fits", "[rea
     IlyDestroyEngine(engineHandle);
     IlyShutdownSystem();
 }
+
+#ifdef _WIN32
+#include "ily/render_graph.h"
+#include "ily/render_backend.h"
+#include <d3d11.h>
+#include <dxgi.h>
+#include <wrl/client.h>
+
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
+
+/*
+ * Regression: a shared D3D11 texture imported into the compositor must actually
+ * show its pixels. Two ways this has silently produced a BLACK layer instead:
+ *   1. BGFX_TEXTURE_SRGB on the imported texture — bgfx::overrideInternal
+ *      cannot build an _SRGB shader-resource view over a non-typeless
+ *      B8G8R8A8_UNORM resource, so it samples as black. The sprite shader does
+ *      the sRGB decode instead (transfer mode 5).
+ *   2. Writing the shared texture from the CPU (UpdateSubresource); only GPU
+ *      writes propagate to the importing device. This test therefore fills it
+ *      with CopyResource.
+ * Both failed without any error code — the frame just went black.
+ */
+TEST_CASE("Imported shared sRGB texture composites its pixels, not black", "[shared_texture]") {
+    using Microsoft::WRL::ComPtr;
+
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t W = 64;
+    const uint32_t H = 64;
+
+    ily::Renderer renderer;
+    REQUIRE(renderer.Start() == ILY_SUCCESS);
+    IlyEngineConfig config{W, H, 60, false};
+    REQUIRE(renderer.Initialize(config) == ILY_SUCCESS);
+
+    // The producing device MUST sit on the compositor's adapter: a shared
+    // texture created on another GPU can be opened but never updates.
+    ily::IRenderBackend* backend = renderer.GetDevice().GetBackend();
+    REQUIRE(backend != nullptr);
+    uint64_t targetLuid = 0;
+    REQUIRE(backend->GetAdapterLuid(&targetLuid));
+
+    ComPtr<IDXGIFactory1> factory;
+    REQUIRE(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))));
+    ComPtr<IDXGIAdapter1> adapter;
+    for (UINT index = 0;; ++index) {
+        ComPtr<IDXGIAdapter1> candidate;
+        if (factory->EnumAdapters1(index, &candidate) == DXGI_ERROR_NOT_FOUND) break;
+        DXGI_ADAPTER_DESC1 description{};
+        if (FAILED(candidate->GetDesc1(&description))) continue;
+        const uint64_t luid =
+            (static_cast<uint64_t>(
+                 static_cast<uint32_t>(description.AdapterLuid.HighPart)) << 32)
+            | static_cast<uint64_t>(description.AdapterLuid.LowPart);
+        if (luid == targetLuid) { adapter = candidate; break; }
+    }
+    REQUIRE(adapter != nullptr);
+
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+    D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
+    D3D_FEATURE_LEVEL selectedLevel;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(
+        adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0,
+        levels, 1, D3D11_SDK_VERSION, &device, &selectedLevel, &context)));
+
+    // A distinctive opaque colour, stored BGRA the way a camera/desktop frame is.
+    const uint8_t blue = 32;
+    const uint8_t green = 128;
+    const uint8_t red = 200;
+    std::vector<uint8_t> sourcePixels(static_cast<size_t>(W) * H * 4);
+    for (size_t i = 0; i < sourcePixels.size(); i += 4) {
+        sourcePixels[i + 0] = blue;
+        sourcePixels[i + 1] = green;
+        sourcePixels[i + 2] = red;
+        sourcePixels[i + 3] = 255;
+    }
+
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = W;
+    description.Height = H;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initialData{};
+    initialData.pSysMem = sourcePixels.data();
+    initialData.SysMemPitch = W * 4;
+    ComPtr<ID3D11Texture2D> stagingSource;
+    REQUIRE(SUCCEEDED(device->CreateTexture2D(&description, &initialData, &stagingSource)));
+
+    description.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    ComPtr<ID3D11Texture2D> sharedTexture;
+    REQUIRE(SUCCEEDED(device->CreateTexture2D(&description, nullptr, &sharedTexture)));
+
+    context->CopyResource(sharedTexture.Get(), stagingSource.Get());
+    context->Flush();
+
+    ComPtr<IDXGIResource> sharedResource;
+    REQUIRE(SUCCEEDED(sharedTexture.As(&sharedResource)));
+    HANDLE sharedHandle = nullptr;
+    REQUIRE(SUCCEEDED(sharedResource->GetSharedHandle(&sharedHandle)));
+    REQUIRE(sharedHandle != nullptr);
+
+    ResourceHandle imported = renderer.CreateSharedTextureFromHandle(
+        W, H, sharedHandle, ILY_PIXEL_FORMAT_BGRA8,
+        IlySrgbFullColor(), ILY_ALPHA_OPAQUE, 80.0f);
+    REQUIRE(imported != ILY_INVALID_HANDLE);
+    REQUIRE(renderer.CreateSpriteProgram() != ILY_INVALID_HANDLE);
+
+    IlyLayer layer{};
+    layer.texture = imported;
+    layer.transform.position = {0.0f, 0.0f, 0.0f};
+    layer.transform.scale = {static_cast<float>(W), static_cast<float>(H), 1.0f};
+    layer.transform.visibility = true;
+    layer.transform.opacity = 1.0f;
+    layer.opacity = 1.0f;
+    layer.blendMode = ILY_BLEND_ALPHA;
+
+    auto graph = std::make_shared<ily::RenderGraph>();
+    ily::RenderPass pass;
+    pass.name = "shared-texture-test";
+    pass.execute = [layer](ily::IRenderBackend* target) -> IlyResult {
+        return target->DrawQuad(
+            layer.texture, layer.transform, layer.opacity, layer.blendMode);
+    };
+    graph->AddPass(pass);
+    renderer.SetRenderGraph(graph);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(W) * H * 4, 0);
+    uint32_t outWidth = 0;
+    uint32_t outHeight = 0;
+    REQUIRE(renderer.ReadPixels(
+        pixels.data(), static_cast<uint32_t>(pixels.size()),
+        &outWidth, &outHeight) == ILY_SUCCESS);
+    REQUIRE(outWidth == W);
+    REQUIRE(outHeight == H);
+
+    // Readback is RGBA. The sRGB decode/encode round trip is lossy by a step or
+    // two, so compare with a small tolerance — the regression this guards is a
+    // black frame, not a colour shift.
+    const size_t center = (static_cast<size_t>(H / 2) * W + (W / 2)) * 4;
+    std::cout << "[shared_texture] center=("
+              << int(pixels[center]) << "," << int(pixels[center + 1]) << ","
+              << int(pixels[center + 2]) << ")" << std::endl;
+    REQUIRE(std::abs(int(pixels[center + 0]) - int(red)) <= 8);
+    REQUIRE(std::abs(int(pixels[center + 1]) - int(green)) <= 8);
+    REQUIRE(std::abs(int(pixels[center + 2]) - int(blue)) <= 8);
+
+    renderer.DestroyTexture(imported);
+    renderer.Stop();
+}
+#endif // _WIN32

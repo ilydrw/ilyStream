@@ -35,12 +35,24 @@ set(ENGINE_SOURCES
     src/renderer/shader_loader.cpp
     src/renderer/texture_producer.cpp
     src/capture/dxgi_capture.cpp
+    src/capture/mf_camera_capture.cpp
 )
 
 # Shared engine library
 add_library(ilystream_engine SHARED ${ENGINE_SOURCES})
 target_compile_definitions(ilystream_engine PRIVATE ILY_ENGINE_BUILD_DLL)
 target_link_libraries(ilystream_engine PRIVATE nlohmann_json::nlohmann_json)
+if(WIN32)
+    target_link_libraries(ilystream_engine PRIVATE
+        d3d11
+        dxgi
+        mf
+        mfplat
+        mfreadwrite
+        mfuuid
+        ole32
+    )
+endif()
 
 # Precompiled, committed sprite-shader bytecode headers (one dir per backend:
 # dx11/ spv/ glsl/ essl/ mtl/). shader_loader.cpp includes these by backend

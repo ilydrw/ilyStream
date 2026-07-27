@@ -39,6 +39,7 @@ interface NativeDisplayOutputOptions {
   outputWidth: number
   outputHeight: number
   fps: number
+  devices: MediaDeviceInfo[]
   transitionActive: boolean
   sourceRevision: number
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>
@@ -614,13 +615,32 @@ function isLiveSourceLayer(layer: StudioLayer): boolean {
   return layer.type === 'display' && !/^screen:\d+:\d+$/.test(String(layer.config.desktopSourceId ?? ''))
 }
 
+export function resolveNativeCameraDeviceName(
+  layer: StudioLayer,
+  devices: MediaDeviceInfo[]
+): string | null {
+  if (layer.type !== 'camera') return null
+  const storedLabel = String(layer.config.deviceLabel ?? '').trim()
+  if (storedLabel) return storedLabel
+
+  const configuredDeviceId = String(layer.config.deviceId ?? '')
+  const browserDevice = devices.find(
+    (device) =>
+      device.kind === 'videoinput' &&
+      device.deviceId === configuredDeviceId
+  )
+  return browserDevice?.label.trim() || null
+}
+
 function buildNativeBroadcastScene(
   scene: StudioScene,
   canvasWidth: number,
   canvasHeight: number,
+  outputFps: number,
   pixelCache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>,
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
-  browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>
+  browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>,
+  devices: MediaDeviceInfo[]
 ): NativeBroadcastScene {
   const usedPixelKeys = new Set<string>()
   const layers = scene.layers
@@ -643,15 +663,31 @@ function buildNativeBroadcastScene(
           videoRefs,
           browserFrameCache
         )
-        // Widgets/browser overlays are fed by the MAIN process straight from
-        // the offscreen browser-source capture (BGRA, no renderer round trip).
-        // Cameras/window-capture stay renderer-fed.
+        // Widgets/browser overlays are fed by the main process. Cameras are
+        // captured by Media Foundation when their browser label is known.
+        // Window capture and unlabeled cameras retain the renderer path.
         const mainFed = layer.type === 'widget' || layer.type === 'browser'
+        const nativeCameraDeviceName = resolveNativeCameraDeviceName(layer, devices)
+        const nativeCamera = layer.type === 'camera' && nativeCameraDeviceName
+        const nativeCameraTargetFps = nativeCamera
+          ? resolveLiveSourceTargetFps(layer, outputFps)
+          : undefined
+        const nativeCameraKey = nativeCamera
+          ? `native-camera:${encodeURIComponent(String(layer.config.deviceId ?? nativeCameraDeviceName))}:${nativeCameraTargetFps}:`
+          : ''
         source = {
           kind: 'live',
-          key: `live:${layer.id}:${dimensions.width}x${dimensions.height}`,
+          key: `live:${layer.id}:${nativeCameraKey}${dimensions.width}x${dimensions.height}`,
           ...dimensions,
-          ...(mainFed ? { feed: 'browser-source' as const, browserSourceId: layer.id } : {})
+          ...(mainFed
+            ? { feed: 'browser-source' as const, browserSourceId: layer.id }
+            : nativeCamera
+              ? {
+                  feed: 'native-camera' as const,
+                  deviceName: nativeCameraDeviceName,
+                  targetFps: nativeCameraTargetFps
+                }
+              : {})
         }
       } else {
         source = createTextSource(layer, pixelCache)
@@ -894,7 +930,7 @@ function buildCameraFrameSpecs(
   const specs: CameraFrameSourceSpec[] = []
   for (const nativeLayer of nativeScene.layers) {
     const source = nativeLayer.source
-    if (source.kind !== 'live' || source.feed === 'browser-source') continue
+    if (source.kind !== 'live' || (source.feed && source.feed !== 'renderer')) continue
     const studioLayer = studioLayers.get(nativeLayer.id)
     if (!studioLayer || (studioLayer.type !== 'camera' && studioLayer.type !== 'display')) continue
     const track = resolveDisplayedVideoTrack(videoRefs.current[studioLayer.id])
@@ -952,9 +988,9 @@ async function uploadNativeLiveSources(
   for (const nativeLayer of nativeScene.layers) {
     const source = nativeLayer.source
     if (source.kind !== 'live') continue
-    // Main-fed sources (widgets/overlays) get their pixels directly from the
-    // main-process browser-source capture — nothing to upload from here.
-    if (source.feed === 'browser-source') continue
+    // Main/native-fed sources update outside the renderer — nothing to upload
+    // from this canvas/IPC path.
+    if (source.feed && source.feed !== 'renderer') continue
     // The frame pump owns this source (MediaStreamTrackProcessor path); skip it
     // here so it is never uploaded twice, and let its stale canvas surface (if
     // any, from before the pump took over) be reclaimed below.
@@ -1080,6 +1116,17 @@ async function uploadVirtualBackgroundMasks(
     if (now - surface.lastUploadedAt < 1000 / targetFps) continue
     surface.lastUploadedAt = now
 
+    // Skip the getImageData + IPC upload when the segmentation mask hasn't
+    // changed since our last upload. MediaPipe produces masks at its own cadence
+    // (often well below output fps), so at 30/60fps most ticks would re-rasterize
+    // and re-send an identical silhouette — a steady w*h*4 allocation per tick per
+    // VB layer for no visual change. Warmup (no mask yet) uploads one opaque frame
+    // (version 0) so the person shows unmasked, then idles until a real mask lands;
+    // if segmentation later drops, it falls back to opaque once, the same way.
+    const maskVersion = getVirtualBackgroundMaskVersion(maskResult)
+    if (maskVersion === surface.lastVersion) continue
+    surface.lastVersion = maskVersion
+
     const ctx = surface.context
     ctx.clearRect(0, 0, mask.width, mask.height)
     if (maskResult?.mask) {
@@ -1123,6 +1170,12 @@ async function uploadVirtualBackgroundMasks(
   }
 }
 
+export function getVirtualBackgroundMaskVersion(
+  maskResult: { mask?: unknown; timestamp: number } | null | undefined
+): number {
+  return maskResult?.mask ? maskResult.timestamp : 0
+}
+
 export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): NativeDisplayOutputState {
   const {
     enabled,
@@ -1134,6 +1187,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
     outputWidth,
     outputHeight,
     fps,
+    devices,
     transitionActive,
     sourceRevision,
     videoRefs,
@@ -1204,9 +1258,11 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       nextScene,
       canvasWidth,
       canvasHeight,
+      fps,
       pixelSourceCacheRef.current,
       videoRefs,
-      browserFrameCache
+      browserFrameCache,
+      devices
     )
 
     const stopAfterFailure = async (error: unknown) => {
@@ -1340,7 +1396,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
         void queueNativeBroadcastLifecycle(() => window.api.engine.stopBroadcast()).catch(() => {})
       }
     }
-  }, [enabled, presentCanvasId, encodeFrames, transitionActive, supported, outputWidth, outputHeight, fps, canvasWidth, canvasHeight, videoRefs, browserFrameCache, mediaFrameCache, encoderWorkerRef])
+  }, [enabled, presentCanvasId, encodeFrames, transitionActive, supported, outputWidth, outputHeight, fps, devices, canvasWidth, canvasHeight, videoRefs, browserFrameCache, mediaFrameCache, encoderWorkerRef])
 
   useEffect(() => {
     syncSceneRef.current?.(scene)

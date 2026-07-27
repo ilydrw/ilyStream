@@ -13,6 +13,7 @@
 #include <stb_image.h>
 #include <vector>
 #include "capture/dxgi_capture.h"
+#include "capture/mf_camera_capture.h"
 
 class EngineInstance {
 public:
@@ -22,12 +23,15 @@ public:
     ResourceHandle nextSourceHandle = {1, 1};
     std::unique_ptr<ily::Renderer> renderer;
     std::unordered_map<ResourceHandle, std::shared_ptr<ily::DXGICapture>> captureSessions;
+    std::unordered_map<ResourceHandle, std::shared_ptr<ily::MFCameraCapture>> cameraCaptureSessions;
     std::mutex mutex;
 
     EngineInstance(const IlyEngineConfig& cfg) : config(cfg) {}
 };
 
-static std::unordered_map<ResourceHandle, std::unique_ptr<EngineInstance>> g_Engines;
+// shared_ptr so a slow, lock-free operation (opening a camera takes ~1s) can
+// hold the instance alive while g_EngineMutex is released.
+static std::unordered_map<ResourceHandle, std::shared_ptr<EngineInstance>> g_Engines;
 static ResourceHandle g_NextEngineHandle = {1, 1};
 static std::mutex g_EngineMutex;
 static bool g_SystemInitialized = false;
@@ -96,7 +100,7 @@ ILY_API IlyResult IlyCreateEngine(const IlyEngineConfig* config, ResourceHandle*
     g_NextEngineHandle.index++;
     
     const IlyEngineConfig normalizedConfig = NormalizeEngineConfig(*config);
-    auto inst = std::make_unique<EngineInstance>(normalizedConfig);
+    auto inst = std::make_shared<EngineInstance>(normalizedConfig);
     inst->renderer = std::make_unique<ily::Renderer>();
     IlyResult res = inst->renderer->Start();
     if (res != ILY_SUCCESS) {
@@ -128,6 +132,10 @@ ILY_API IlyResult IlyDestroyEngine(ResourceHandle engineHandle) {
         pair.second->Shutdown();
     }
     it->second->captureSessions.clear();
+    for (auto& pair : it->second->cameraCaptureSessions) {
+        pair.second->Shutdown();
+    }
+    it->second->cameraCaptureSessions.clear();
 
     // 2. Now it's safe to stop the render thread
     it->second->renderer->Stop();
@@ -302,6 +310,10 @@ ILY_API IlyResult IlyEngineDestroyTexture(ResourceHandle engineHandle, ResourceH
     if (capIt != it->second->captureSessions.end()) {
         capIt->second->Shutdown();
         it->second->captureSessions.erase(capIt);
+    } else if (auto cameraIt = it->second->cameraCaptureSessions.find(textureHandle);
+               cameraIt != it->second->cameraCaptureSessions.end()) {
+        cameraIt->second->Shutdown();
+        it->second->cameraCaptureSessions.erase(cameraIt);
     } else {
         it->second->renderer->DestroyTexture(textureHandle);
     }
@@ -396,6 +408,138 @@ ILY_API IlyResult IlyEngineGetScreenCaptureInfo(ResourceHandle engineHandle, Res
     outInfo->sdrWhiteNits = capture->second->GetSdrWhiteNits();
     outInfo->maxLuminance = capture->second->GetMaxLuminance();
     outInfo->maxFullFrameLuminance = capture->second->GetMaxFullFrameLuminance();
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineCreateCameraCapture(
+    ResourceHandle engineHandle,
+    const char* deviceIdentity,
+    uint32_t width,
+    uint32_t height,
+    uint32_t targetFps,
+    ResourceHandle* outTextureHandle) {
+    if (!deviceIdentity || !outTextureHandle || width == 0 || height == 0 || targetFps == 0) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::shared_ptr<EngineInstance> instance;
+    {
+        std::lock_guard<std::mutex> lock(g_EngineMutex);
+        auto engine = g_Engines.find(engineHandle);
+        if (engine == g_Engines.end()) {
+            return ILY_ERROR_NOT_FOUND;
+        }
+        instance = engine->second;
+    }
+
+    // Opening a camera takes ~1s (device power-up, format negotiation, first
+    // frame), so it runs with NO engine lock held: g_EngineMutex also guards
+    // IlyEngineSetLayers, and holding it here would freeze compositing for
+    // every engine in the process while a camera scene comes up. The instance
+    // is kept alive by the shared_ptr above.
+    auto capture = std::make_shared<ily::MFCameraCapture>(
+        deviceIdentity,
+        width,
+        height,
+        targetFps,
+        instance->renderer.get());
+    if (!capture->Initialize()) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+
+    const ResourceHandle textureHandle = capture->GetTexture();
+    if (textureHandle == ILY_INVALID_HANDLE) {
+        capture->Shutdown();
+        return ILY_ERROR_RENDER_FAILED;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_EngineMutex);
+        // The engine may have been destroyed while the camera was opening.
+        if (g_Engines.find(engineHandle) == g_Engines.end()) {
+            capture->Shutdown();
+            return ILY_ERROR_NOT_FOUND;
+        }
+        std::lock_guard<std::mutex> instLock(instance->mutex);
+        instance->cameraCaptureSessions[textureHandle] = capture;
+    }
+    *outTextureHandle = textureHandle;
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetCameraCaptureDevices(
+    IlyCameraCaptureDeviceInfo* outDevices,
+    uint32_t* ioCount) {
+    if (!ioCount) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    const std::vector<ily::MFCameraDeviceInfo> devices =
+        ily::MFCameraCapture::EnumerateDevices();
+    const uint32_t requiredCount = static_cast<uint32_t>(devices.size());
+    if (!outDevices) {
+        *ioCount = requiredCount;
+        return ILY_SUCCESS;
+    }
+    if (*ioCount < requiredCount) {
+        *ioCount = requiredCount;
+        return ILY_ERROR_OUT_OF_MEMORY;
+    }
+
+    for (uint32_t index = 0; index < requiredCount; ++index) {
+        const auto& source = devices[index];
+        auto& destination = outDevices[index];
+        destination = IlyCameraCaptureDeviceInfo{};
+        const size_t friendlyNameLength =
+            (std::min)(source.friendlyName.size(), sizeof(destination.friendlyName) - 1);
+        std::memcpy(
+            destination.friendlyName,
+            source.friendlyName.data(),
+            friendlyNameLength);
+        destination.friendlyName[friendlyNameLength] = '\0';
+        const size_t symbolicLinkLength =
+            (std::min)(source.symbolicLink.size(), sizeof(destination.symbolicLink) - 1);
+        std::memcpy(
+            destination.symbolicLink,
+            source.symbolicLink.data(),
+            symbolicLinkLength);
+        destination.symbolicLink[symbolicLinkLength] = '\0';
+    }
+    *ioCount = requiredCount;
+    return ILY_SUCCESS;
+}
+
+ILY_API IlyResult IlyEngineGetCameraCaptureInfo(
+    ResourceHandle engineHandle,
+    ResourceHandle textureHandle,
+    IlyCameraCaptureInfo* outInfo) {
+    if (!outInfo) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto engine = g_Engines.find(engineHandle);
+    if (engine == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(engine->second->mutex);
+    auto capture = engine->second->cameraCaptureSessions.find(textureHandle);
+    if (capture == engine->second->cameraCaptureSessions.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    *outInfo = IlyCameraCaptureInfo{};
+    outInfo->width = capture->second->GetWidth();
+    outInfo->height = capture->second->GetHeight();
+    outInfo->frameRateNumerator = capture->second->GetFrameRateNumerator();
+    outInfo->frameRateDenominator = capture->second->GetFrameRateDenominator();
+    outInfo->format = ILY_PIXEL_FORMAT_BGRA8;
+    outInfo->color = IlySrgbFullColor();
+    outInfo->gpuFrames = capture->second->UsesGpuFrames();
+    const std::string& deviceName = capture->second->GetDeviceName();
+    const size_t copyLength =
+        (std::min)(deviceName.size(), sizeof(outInfo->deviceName) - 1);
+    std::memcpy(outInfo->deviceName, deviceName.data(), copyLength);
+    outInfo->deviceName[copyLength] = '\0';
     return ILY_SUCCESS;
 }
 

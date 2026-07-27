@@ -32,10 +32,16 @@ export type NativeSceneSource =
        * uploads RGBA frames over IPC (cameras). 'browser-source': the main
        * process feeds BGRA paint frames straight from the offscreen
        * BrowserSourceService window — no renderer round trip (widgets/overlays).
+       * 'native-camera': Windows Media Foundation updates a shared D3D texture
+       * directly from a camera capture thread.
        */
-      feed?: 'renderer' | 'browser-source'
+      feed?: 'renderer' | 'browser-source' | 'native-camera'
       /** BrowserSourceService capture id when feed === 'browser-source'. */
       browserSourceId?: string
+      /** Browser camera label, native friendly name, or symbolic link. */
+      deviceName?: string
+      /** Requested native-camera frame rate. */
+      targetFps?: number
     }
   | { kind: 'pixels'; key: string; width: number; height: number; pixels: Uint8Array }
 

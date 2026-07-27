@@ -155,6 +155,11 @@ struct BgfxBackend::Impl {
 
     mutable std::mutex m_mutex;
     bool m_initialized = false;
+    // Adapter bgfx actually picked, captured at init (packed LUID). Native
+    // capture sources must create their D3D11 device on THIS adapter or their
+    // shared textures silently never propagate into the compositor.
+    uint64_t m_adapterLuid = 0;
+    bool m_adapterLuidValid = false;
     bool m_debugStats = false;
     bool m_frameHasHdrSource = false;
 
@@ -464,6 +469,33 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 
     m_impl->m_initialized = true;
 
+#if defined(_WIN32)
+    // Record which adapter bgfx bound to, while we are on the render thread.
+    if (const bgfx::InternalData* internalData = bgfx::getInternalData()) {
+        if (internalData->context) {
+            IDXGIDevice* dxgiDevice = nullptr;
+            if (SUCCEEDED(static_cast<ID3D11Device*>(internalData->context)
+                    ->QueryInterface(__uuidof(IDXGIDevice),
+                                     reinterpret_cast<void**>(&dxgiDevice)))
+                && dxgiDevice) {
+                IDXGIAdapter* adapter = nullptr;
+                if (SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) && adapter) {
+                    DXGI_ADAPTER_DESC adapterDesc{};
+                    if (SUCCEEDED(adapter->GetDesc(&adapterDesc))) {
+                        m_impl->m_adapterLuid =
+                            (static_cast<uint64_t>(
+                                 static_cast<uint32_t>(adapterDesc.AdapterLuid.HighPart)) << 32)
+                            | static_cast<uint64_t>(adapterDesc.AdapterLuid.LowPart);
+                        m_impl->m_adapterLuidValid = true;
+                    }
+                    adapter->Release();
+                }
+                dxgiDevice->Release();
+            }
+        }
+    }
+#endif
+
     const float defaultBackground = SrgbToLinear(30.0f / 255.0f);
     bgfx::setPaletteColor(0, defaultBackground, defaultBackground, defaultBackground, 1.0f);
     bgfx::setViewClear(kViewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
@@ -759,6 +791,14 @@ ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const
     return m_impl->m_resourceManager.Create(ResourceType::Texture, texResource);
 }
 
+bool BgfxBackend::GetAdapterLuid(uint64_t* outLuid) const {
+    if (!outLuid) return false;
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_adapterLuidValid) return false;
+    *outLuid = m_impl->m_adapterLuid;
+    return true;
+}
+
 ResourceHandle BgfxBackend::CreateSharedTextureFromHandle(uint32_t width, uint32_t height, void* sharedHandle, IlyPixelFormat pixelFormat, const IlyColorDescription& colorDescription, IlyAlphaMode alphaMode, float sdrWhiteNits) {
     ILY_PROFILE_SCOPE("BgfxBackend::CreateSharedTextureFromHandle");
     if (width == 0 || height == 0 || width > UINT16_MAX || height > UINT16_MAX || !sharedHandle) {
@@ -796,14 +836,20 @@ ResourceHandle BgfxBackend::CreateSharedTextureFromHandle(uint32_t width, uint32
         return ILY_INVALID_HANDLE;
     }
 
+    // NO BGFX_TEXTURE_SRGB here, deliberately. bgfx::overrideInternal swaps in
+    // the imported ID3D11Texture2D, and an _SRGB shader-resource view cannot be
+    // created over a plain (non-typeless) B8G8R8A8_UNORM resource — the texture
+    // then samples as black, silently. The sprite shader does the sRGB decode
+    // instead (transfer mode 5). Filtering therefore happens in gamma space,
+    // which matches what the canvas compositor does anyway.
+    const bool shaderDecodeSrgb = colorDescription.transfer == ILY_TRANSFER_SRGB;
     bgfx::TextureHandle handle = bgfx::createTexture2D(
         static_cast<uint16_t>(width),
         static_cast<uint16_t>(height),
         false,
         1,
         bgfxFormat,
-        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
-            (colorDescription.transfer == ILY_TRANSFER_SRGB ? BGFX_TEXTURE_SRGB : BGFX_TEXTURE_NONE),
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
         nullptr);
 
     if (!bgfx::isValid(handle)) {
@@ -819,7 +865,7 @@ ResourceHandle BgfxBackend::CreateSharedTextureFromHandle(uint32_t width, uint32
         return ILY_INVALID_HANDLE;
     }
 
-    auto texResource = std::make_shared<TextureResource>(width, height, bgfxFormat, handle, colorDescription, alphaMode, sdrWhiteNits);
+    auto texResource = std::make_shared<TextureResource>(width, height, bgfxFormat, handle, colorDescription, alphaMode, sdrWhiteNits, shaderDecodeSrgb);
     ResourceHandle resourceHandle = m_impl->m_resourceManager.Create(ResourceType::Texture, texResource);
     m_impl->m_importedSharedTextures[resourceHandle] = importedTexture;
     return resourceHandle;
@@ -1236,6 +1282,9 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
     if (sourceColor.transfer == ILY_TRANSFER_BT709) transferMode = 1.0f;
     if (sourceColor.transfer == ILY_TRANSFER_PQ) transferMode = 2.0f;
     if (sourceColor.transfer == ILY_TRANSFER_HLG) transferMode = 3.0f;
+    // Imported shared textures sample as raw sRGB (see
+    // CreateSharedTextureFromHandle) — the shader decodes them.
+    if (tex->NeedsShaderSrgbDecode()) transferMode = 5.0f;
     float sourceScale = 1.0f;
     if (sourceColor.transfer == ILY_TRANSFER_PQ) {
         sourceScale = 10000.0f / std::max(1.0f, m_impl->m_outputColor.sdrWhiteNits);

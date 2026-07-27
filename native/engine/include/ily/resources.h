@@ -13,6 +13,9 @@ private:
     IlyColorDescription m_color = IlySrgbFullColor();
     IlyAlphaMode m_alphaMode = ILY_ALPHA_STRAIGHT;
     float m_sdrWhiteNits = 0.0f;
+    // Set for sRGB textures the sampler does NOT decode (imported shared
+    // textures), so the sprite shader has to do the EOTF itself.
+    bool m_shaderDecodeSrgb = false;
 
 public:
     TextureResource(
@@ -22,14 +25,16 @@ public:
         bgfx::TextureHandle handle,
         IlyColorDescription color = IlySrgbFullColor(),
         IlyAlphaMode alphaMode = ILY_ALPHA_STRAIGHT,
-        float sdrWhiteNits = 0.0f)
+        float sdrWhiteNits = 0.0f,
+        bool shaderDecodeSrgb = false)
         : m_width(width),
           m_height(height),
           m_format(format),
           m_handle(handle),
           m_color(color),
           m_alphaMode(alphaMode),
-          m_sdrWhiteNits(sdrWhiteNits) {}
+          m_sdrWhiteNits(sdrWhiteNits),
+          m_shaderDecodeSrgb(shaderDecodeSrgb) {}
 
     ~TextureResource() override {
         if (bgfx::isValid(m_handle)) {
@@ -46,6 +51,7 @@ public:
     const IlyColorDescription& GetColorDescription() const { return m_color; }
     IlyAlphaMode GetAlphaMode() const { return m_alphaMode; }
     float GetSdrWhiteNits() const { return m_sdrWhiteNits; }
+    bool NeedsShaderSrgbDecode() const { return m_shaderDecodeSrgb; }
 };
 
 class ShaderResource : public IResource {

@@ -125,6 +125,27 @@ ILY_API IlyResult IlyEngineGetScreenCaptureDisplays(IlyScreenCaptureDisplayInfo*
 ILY_API IlyResult IlyEngineGetScreenCaptureInfo(ResourceHandle engineHandle, ResourceHandle textureHandle, IlyScreenCaptureInfo* outInfo);
 
 /**
+ * @brief Create a Windows Media Foundation camera capture session.
+ *
+ * deviceIdentity accepts a Media Foundation symbolic link, a browser camera
+ * label, or a friendly name. The returned texture updates on a native capture
+ * thread without sending RGBA frames through V8/Electron IPC. Destroy the
+ * texture to stop the capture session.
+ */
+ILY_API IlyResult IlyEngineCreateCameraCapture(ResourceHandle engineHandle, const char* deviceIdentity, uint32_t width, uint32_t height, uint32_t targetFps, ResourceHandle* outTextureHandle);
+
+/**
+ * @brief Enumerate Media Foundation camera devices.
+ * Pass NULL for outDevices to query the required count.
+ */
+ILY_API IlyResult IlyEngineGetCameraCaptureDevices(IlyCameraCaptureDeviceInfo* outDevices, uint32_t* ioCount);
+
+/**
+ * @brief Get the selected device and negotiated media format for a camera capture.
+ */
+ILY_API IlyResult IlyEngineGetCameraCaptureInfo(ResourceHandle engineHandle, ResourceHandle textureHandle, IlyCameraCaptureInfo* outInfo);
+
+/**
  * @brief Update an existing texture's pixels in place (RGBA8, width*height*4).
  *
  * Reuses the GPU texture rather than reallocating — the per-frame path for a

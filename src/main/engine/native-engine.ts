@@ -110,6 +110,22 @@ export interface ScreenCaptureDisplay {
   hdr: boolean
 }
 
+export interface CameraCaptureDescription {
+  width: number
+  height: number
+  frameRateNumerator: number
+  frameRateDenominator: number
+  format: PixelFormat
+  color: ColorDescription
+  gpuFrames: boolean
+  deviceName: string
+}
+
+export interface CameraCaptureDevice {
+  friendlyName: string
+  symbolicLink: string
+}
+
 export const SRGB_FULL_COLOR: ColorDescription = {
   primaries: ColorPrimaries.BT709,
   transfer: TransferFunction.SRGB,
@@ -242,6 +258,8 @@ interface NativeAddon {
   engineCreateTextureFromPixelsEx(engine: bigint, description: TextureDescription, pixels: Buffer): bigint
   engineCreateScreenCapture(engine: bigint, monitorIndex: number, targetFps: number): { texture: bigint; sharedMemoryName: string; description: ScreenCaptureDescription }
   listScreenCaptureDisplays(): ScreenCaptureDisplay[]
+  engineCreateCameraCapture(engine: bigint, deviceIdentity: string, width: number, height: number, targetFps: number): { texture: bigint; description: CameraCaptureDescription }
+  listCameraCaptureDevices(): CameraCaptureDevice[]
   engineUpdateTexture(engine: bigint, texture: bigint, rgba: Buffer): number
   engineDestroyTexture(engine: bigint, texture: bigint): number
   engineSetLayers(engine: bigint, layers: Layer[]): number
@@ -340,6 +358,10 @@ export class NativeEngine {
     return loadAddon().listScreenCaptureDisplays()
   }
 
+  static listCameraCaptureDevices(): CameraCaptureDevice[] {
+    return loadAddon().listCameraCaptureDevices()
+  }
+
   /** Load an image file (png/jpg/...) as a texture. Returns a texture handle. */
   loadTexture(filePath: string): bigint {
     this.assertAlive()
@@ -371,6 +393,26 @@ export class NativeEngine {
   createScreenCapture(monitorIndex: number, targetFps: number): { texture: bigint; sharedMemoryName: string; description: ScreenCaptureDescription } {
     this.assertAlive()
     return this.api.engineCreateScreenCapture(this.handle, monitorIndex, targetFps)
+  }
+
+  /**
+   * Create a Media Foundation camera texture that updates on a native thread.
+   * `deviceIdentity` may be a browser label or the native symbolic link.
+   */
+  createCameraCapture(
+    deviceIdentity: string,
+    width: number,
+    height: number,
+    targetFps: number
+  ): { texture: bigint; description: CameraCaptureDescription } {
+    this.assertAlive()
+    return this.api.engineCreateCameraCapture(
+      this.handle,
+      deviceIdentity,
+      width,
+      height,
+      targetFps
+    )
   }
 
   /**

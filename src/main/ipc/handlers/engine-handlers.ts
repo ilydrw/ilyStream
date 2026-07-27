@@ -73,6 +73,8 @@ interface BroadcastSceneTexture {
   width: number
   height: number
   kind: NativeSceneLayer['source']['kind']
+  /** Only renderer-fed live textures may accept RGBA IPC uploads. */
+  acceptsRendererFrames?: boolean
   /** Set when the main process feeds this texture from a browser-source capture. */
   browserSourceId?: string
 }
@@ -243,6 +245,25 @@ async function createBroadcastSceneTexture(
     throw new Error(`Native source exceeds the 4K pixel budget for layer ${layerId}`)
   }
   if (source.kind === 'live') {
+    if (source.feed === 'native-camera') {
+      const deviceName = source.deviceName?.trim()
+      if (!deviceName) {
+        throw new Error(`Native camera identity is missing for layer ${layerId}`)
+      }
+      const capture = eng.createCameraCapture(
+        deviceName,
+        width,
+        height,
+        Math.max(1, Math.min(144, Math.round(source.targetFps ?? broadcastFps)))
+      )
+      return {
+        texture: capture.texture,
+        width: capture.description.width,
+        height: capture.description.height,
+        kind: source.kind,
+        acceptsRendererFrames: false
+      }
+    }
     if (source.feed === 'browser-source' && source.browserSourceId) {
       // Main-fed widget/overlay: BGRA8 texture updated directly from the
       // offscreen browser-source paint frames (no renderer round trip, no
@@ -262,6 +283,7 @@ async function createBroadcastSceneTexture(
         width,
         height,
         kind: source.kind,
+        acceptsRendererFrames: false,
         browserSourceId: source.browserSourceId
       }
     }
@@ -269,7 +291,8 @@ async function createBroadcastSceneTexture(
       texture: eng.createTextureFromPixels(width, height, Buffer.alloc(width * height * 4)),
       width,
       height,
-      kind: source.kind
+      kind: source.kind,
+      acceptsRendererFrames: true
     }
   }
 
@@ -825,6 +848,7 @@ function startDesktopCapturerFallback(
 export function registerEngineHandlers(window: BrowserWindow, browserSourceService?: BrowserSourceService): void {
   browserSourceServiceRef = browserSourceService ?? null
   ipcMain.handle('engine:preview:displays', () => getMappedCaptureDisplays())
+  ipcMain.handle('engine:capture:cameras', () => NativeEngine.listCameraCaptureDevices())
 
   ipcMain.handle(
     'engine:preview:start',
@@ -1004,7 +1028,7 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
     }
 
     const sourceTexture = broadcastSceneTextures.get(frame.key)
-    if (!sourceTexture || sourceTexture.kind !== 'live') {
+    if (!sourceTexture || sourceTexture.kind !== 'live' || !sourceTexture.acceptsRendererFrames) {
       return { ok: false, error: 'Native live source is not ready' }
     }
 

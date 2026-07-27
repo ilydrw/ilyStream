@@ -33,6 +33,8 @@ public:
     RendererCapabilities capabilities() const override;
     IlyRendererCapabilities GetCapabilities() const override;
 
+    bool GetAdapterLuid(uint64_t* outLuid) const override;
+
     ResourceManager& GetResourceManager();
     void SetActiveSpriteProgram(ResourceHandle programHandle);
 

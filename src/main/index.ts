@@ -12,14 +12,11 @@ import { registerAssetProtocol } from './lib/asset-protocol'
 import { registerAvatarProtocol } from './lib/avatar-protocol'
 import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
-import { startNativeCameraServer, stopAllNativeCameras } from './native-camera'
 import { startMemoryTelemetry, stopMemoryTelemetry } from './system/memory-telemetry'
 import { disposeEnginePreview } from './ipc/handlers/engine-handlers'
 
 // Global logger setup
 setupLogger()
-
-startNativeCameraServer()
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock()
@@ -347,7 +344,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', (event) => {
   if (isQuitting) return
   isQuitting = true
-  stopAllNativeCameras()
   event.preventDefault()
   stopBackgroundTimers()
   disposeAutoUpdates()

@@ -403,6 +403,113 @@ static Napi::Value ListScreenCaptureDisplays(const Napi::CallbackInfo& info) {
     return result;
 }
 
+static Napi::Value EngineCreateCameraCapture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 5
+        || !info[0].IsBigInt()
+        || !info[1].IsString()
+        || !info[2].IsNumber()
+        || !info[3].IsNumber()
+        || !info[4].IsNumber()) {
+        Napi::TypeError::New(
+            env,
+            "Expected (BigInt, String, Number, Number, Number)")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool lossless;
+    const uint64_t engineValue =
+        info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    const std::string deviceIdentity =
+        info[1].As<Napi::String>().Utf8Value();
+    const uint32_t width = info[2].As<Napi::Number>().Uint32Value();
+    const uint32_t height = info[3].As<Napi::Number>().Uint32Value();
+    const uint32_t targetFps = info[4].As<Napi::Number>().Uint32Value();
+
+    ResourceHandle textureHandle = ILY_INVALID_HANDLE;
+    const ResourceHandle engineHandle = Uint64ToResourceHandle(engineValue);
+    const IlyResult result = IlyEngineCreateCameraCapture(
+        engineHandle,
+        deviceIdentity.c_str(),
+        width,
+        height,
+        targetFps,
+        &textureHandle);
+    if (result != ILY_SUCCESS) {
+        Napi::Error::New(
+            env,
+            "Failed to create camera capture, code: " + std::to_string(result))
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    IlyCameraCaptureInfo captureInfo{};
+    if (IlyEngineGetCameraCaptureInfo(
+            engineHandle, textureHandle, &captureInfo) != ILY_SUCCESS) {
+        IlyEngineDestroyTexture(engineHandle, textureHandle);
+        Napi::Error::New(env, "Failed to read camera capture description")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Object description = Napi::Object::New(env);
+    description.Set("width", Napi::Number::New(env, captureInfo.width));
+    description.Set("height", Napi::Number::New(env, captureInfo.height));
+    description.Set(
+        "frameRateNumerator",
+        Napi::Number::New(env, captureInfo.frameRateNumerator));
+    description.Set(
+        "frameRateDenominator",
+        Napi::Number::New(env, captureInfo.frameRateDenominator));
+    description.Set("format", Napi::Number::New(env, captureInfo.format));
+    description.Set("color", ColorDescriptionToObject(env, captureInfo.color));
+    description.Set(
+        "gpuFrames", Napi::Boolean::New(env, captureInfo.gpuFrames));
+    description.Set(
+        "deviceName", Napi::String::New(env, captureInfo.deviceName));
+
+    Napi::Object value = Napi::Object::New(env);
+    value.Set(
+        "texture",
+        Napi::BigInt::New(env, ResourceHandleToUint64(textureHandle)));
+    value.Set("description", description);
+    return value;
+}
+
+static Napi::Value ListCameraCaptureDevices(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    uint32_t count = 0;
+    IlyResult queryResult =
+        IlyEngineGetCameraCaptureDevices(nullptr, &count);
+    if (queryResult != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to enumerate camera capture devices")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    std::vector<IlyCameraCaptureDeviceInfo> devices(count);
+    IlyResult listResult =
+        IlyEngineGetCameraCaptureDevices(devices.data(), &count);
+    if (listResult != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to read camera capture devices")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Array result = Napi::Array::New(env, count);
+    for (uint32_t index = 0; index < count; ++index) {
+        const auto& device = devices[index];
+        Napi::Object item = Napi::Object::New(env);
+        item.Set(
+            "friendlyName", Napi::String::New(env, device.friendlyName));
+        item.Set(
+            "symbolicLink", Napi::String::New(env, device.symbolicLink));
+        result.Set(index, item);
+    }
+    return result;
+}
+
 static Napi::Value EngineCreateSpriteProgram(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1 || !info[0].IsBigInt()) {
@@ -777,6 +884,8 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineCreateTextureFromPixelsEx", Napi::Function::New(env, EngineCreateTextureFromPixelsEx));
     exports.Set("engineCreateScreenCapture", Napi::Function::New(env, EngineCreateScreenCapture));
     exports.Set("listScreenCaptureDisplays", Napi::Function::New(env, ListScreenCaptureDisplays));
+    exports.Set("engineCreateCameraCapture", Napi::Function::New(env, EngineCreateCameraCapture));
+    exports.Set("listCameraCaptureDevices", Napi::Function::New(env, ListCameraCaptureDevices));
     exports.Set("engineUpdateTexture", Napi::Function::New(env, EngineUpdateTexture));
     exports.Set("engineCreateSpriteProgram", Napi::Function::New(env, EngineCreateSpriteProgram));
     exports.Set("engineDrawQuad", Napi::Function::New(env, EngineDrawQuad));

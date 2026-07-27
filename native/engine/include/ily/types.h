@@ -129,6 +129,22 @@ typedef struct IlyScreenCaptureDisplayInfo {
     bool hdr;
 } IlyScreenCaptureDisplayInfo;
 
+typedef struct IlyCameraCaptureInfo {
+    uint32_t width;
+    uint32_t height;
+    uint32_t frameRateNumerator;
+    uint32_t frameRateDenominator;
+    IlyPixelFormat format;
+    IlyColorDescription color;
+    bool gpuFrames;
+    char deviceName[256];
+} IlyCameraCaptureInfo;
+
+typedef struct IlyCameraCaptureDeviceInfo {
+    char friendlyName[256];
+    char symbolicLink[1024];
+} IlyCameraCaptureDeviceInfo;
+
 
 typedef struct ResourceHandle {
     uint32_t index;

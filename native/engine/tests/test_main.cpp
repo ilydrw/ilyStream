@@ -57,6 +57,29 @@ TEST_CASE("BT.709 limited-range conversion uses legal reference levels", "[color
     REQUIRE(red.v == 240);
 }
 
+TEST_CASE("Media Foundation camera enumeration follows the two-call API", "[camera]") {
+    REQUIRE(
+        IlyEngineGetCameraCaptureDevices(nullptr, nullptr)
+        == ILY_ERROR_INVALID_ARGUMENT);
+
+    uint32_t count = 0;
+    REQUIRE(
+        IlyEngineGetCameraCaptureDevices(nullptr, &count)
+        == ILY_SUCCESS);
+
+    std::vector<IlyCameraCaptureDeviceInfo> devices(count);
+    uint32_t capacity = count;
+    REQUIRE(
+        IlyEngineGetCameraCaptureDevices(devices.data(), &capacity)
+        == ILY_SUCCESS);
+    REQUIRE(capacity == count);
+
+    for (const auto& device : devices) {
+        REQUIRE(device.friendlyName[0] != '\0');
+        REQUIRE(device.symbolicLink[0] != '\0');
+    }
+}
+
 TEST_CASE("Scene Serialization", "[scene]") {
     IlyResult initRes = IlyInitializeSystem();
     REQUIRE((initRes == ILY_SUCCESS || initRes == ILY_ERROR_ALREADY_EXISTS));

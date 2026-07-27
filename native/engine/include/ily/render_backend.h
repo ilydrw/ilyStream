@@ -55,6 +55,13 @@ public:
     // size. Blocks briefly while the GPU readback completes.
     virtual IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) = 0;
     
+    // Packed LUID (high << 32 | low) of the GPU adapter the backend is running
+    // on, when the platform has one. Native capture sources must create their
+    // own D3D11 device on this adapter: a shared texture created on a different
+    // adapter can still be opened, but its contents never reach the compositor
+    // (the layer just composites black).
+    virtual bool GetAdapterLuid(uint64_t* outLuid) const { (void)outLuid; return false; }
+
     // Capabilities Query
     using RendererCapabilities = IlyRendererCapabilities;
     virtual RendererCapabilities capabilities() const = 0;

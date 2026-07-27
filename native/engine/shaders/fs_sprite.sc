@@ -124,10 +124,10 @@ void main()
 
 	// Color adjust: CSS filters are defined on straight-alpha, gamma-encoded
 	// sRGB values (the space the canvas compositor's ctx.filter works in).
-	// sRGB sources carry BGFX_TEXTURE_SRGB, so the sampler hands us LINEAR
-	// values — round-trip through the sRGB encode so the matrix matches the
-	// canvas exactly. Other transfers (BT709/PQ/HLG) sample as stored values
-	// and are decoded below, so the matrix applies to them directly.
+	// Hardware-decoded sRGB sources (mode 0) hand us LINEAR values — round-trip
+	// through the sRGB encode so the matrix matches the canvas exactly. Every
+	// other mode (BT709/PQ/HLG, and mode 5's shader-decoded sRGB) samples as
+	// stored values and is decoded below, so the matrix applies directly.
 	if (u_colorAdjust.x > 0.5) {
 		float premulAlpha = u_sourceColor.z > 1.5 ? max(color.a, 0.0001) : 1.0;
 		vec3 adjusted = color.rgb / premulAlpha;
@@ -203,11 +203,16 @@ void main()
 		color.rgb = pqToLinear(color.rgb);
 	} else if (u_sourceColor.x > 2.5 && u_sourceColor.x < 3.5) {
 		color.rgb = hlgToLinear(color.rgb);
-	} else if (u_sourceColor.x > 3.5) {
+	} else if (u_sourceColor.x > 3.5 && u_sourceColor.x < 4.5) {
 		// Mode 4: blur intermediate — premultiplied sRGB-gamma RGBA16F written
 		// by an encode-output pass below. Unpremultiply, decode, repremultiply.
 		float intermediateAlpha = max(color.a, 0.0001);
 		color.rgb = srgbToLinear(color.rgb / intermediateAlpha) * intermediateAlpha;
+	} else if (u_sourceColor.x > 4.5) {
+		// Mode 5: sRGB source the sampler did not decode (imported shared
+		// texture — BGFX_TEXTURE_SRGB cannot be used on those, see
+		// BgfxBackend::CreateSharedTextureFromHandle).
+		color.rgb = srgbToLinear(color.rgb);
 	}
 	if (u_sourceColor.x < 0.5) {
 		color.rgb *= u_sourceColor.w;
