@@ -96,11 +96,26 @@ let broadcastOutputReferencesReleased: Promise<void> | null = null
 let stopBroadcastPromise: Promise<void> | null = null
 let broadcastSceneTextures = new Map<string, BroadcastSceneTexture>()
 let broadcastDisplayIndexes = new Map<string, number>()
-let broadcastSceneUpdatePromise: Promise<void> | null = null
 let broadcastFps = 60
+/**
+ * One broadcast session per engine OUTPUT. They share the engine and, more to
+ * the point, its textures: a camera uploaded for the 16:9 program scene is the
+ * same texture the 9:16 scene draws, so it is captured once. The engine belongs
+ * to whichever session starts first and is torn down with the last one.
+ */
+interface BroadcastSession {
+  id: string
+  outputIndex: number
+  width: number
+  height: number
+  fps: number
+  lastScene: NativeBroadcastScene | null
+  sceneUpdatePromise: Promise<void> | null
+}
+const PROGRAM_SESSION_ID = 'program'
+const broadcastSessions = new Map<string, BroadcastSession>()
 // Last successfully applied native scene, kept so main-fed sources can rebuild
 // the layer list (e.g. after a browser-source resize) without the renderer.
-let broadcastLastScene: NativeBroadcastScene | null = null
 let browserSourceServiceRef: BrowserSourceService | null = null
 
 function toElectronColorSpace(output: OutputColorConfig): Electron.ColorSpace {
@@ -312,15 +327,17 @@ async function createBroadcastSceneTexture(
   }
 }
 
-function waitForBroadcastComposite(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, Math.ceil(2000 / Math.max(1, broadcastFps))))
+function waitForBroadcastComposite(fps: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.ceil(2000 / Math.max(1, fps))))
 }
 
 /** Map a native scene onto the current texture set. Null if a texture is missing. */
 function buildLayersFromScene(
   eng: NativeEngine,
   scene: NativeBroadcastScene,
-  textures: Map<string, BroadcastSceneTexture>
+  textures: Map<string, BroadcastSceneTexture>,
+  outputWidth: number,
+  outputHeight: number
 ): Layer[] | null {
   const layers: Layer[] = []
   for (const layer of scene.layers) {
@@ -333,8 +350,8 @@ function buildLayersFromScene(
       sourceTexture,
       scene.canvasWidth,
       scene.canvasHeight,
-      eng.size.width,
-      eng.size.height
+      outputWidth,
+      outputHeight
     )
     layers.push({
       texture: sourceTexture.texture,
@@ -384,7 +401,9 @@ function attachBrowserSourceSink(eng: NativeEngine, sourceKey: string, browserSo
     if (!entry || entry.browserSourceId !== browserSourceId) return
 
     if (frame.width !== entry.width || frame.height !== entry.height) {
-      if (broadcastSceneUpdatePromise) return
+      // Any session mid-update will settle sizes; skip rather than race it.
+      const updating = [...broadcastSessions.values()].some((s) => s.sceneUpdatePromise)
+      if (updating) return
       const maxPixels = MAX_LIVE_SOURCE_PIXELS
       if (frame.width <= 0 || frame.height <= 0 || frame.width * frame.height > maxPixels) return
       try {
@@ -427,13 +446,32 @@ function detachBrowserSourceSinks(keys?: Iterable<string>): void {
 }
 
 function rebuildBroadcastLayers(eng: NativeEngine): void {
-  if (!broadcastLastScene || broadcastEngine !== eng) return
-  const layers = buildLayersFromScene(eng, broadcastLastScene, broadcastSceneTextures)
-  if (layers) eng.setLayers(layers)
+  if (broadcastEngine !== eng) return
+  // A texture swap affects every session drawing it, not just the program.
+  for (const session of broadcastSessions.values()) {
+    if (!session.lastScene) continue
+    const layers = buildLayersFromScene(
+      eng, session.lastScene, broadcastSceneTextures, session.width, session.height)
+    if (layers) eng.setLayers(layers, session.outputIndex)
+  }
+}
+
+/** Keys any OTHER session still draws, which this one must not retire. */
+function keysHeldByOtherSessions(sessionId: string): Set<string> {
+  const held = new Set<string>()
+  for (const session of broadcastSessions.values()) {
+    if (session.id === sessionId || !session.lastScene) continue
+    for (const layer of session.lastScene.layers) {
+      held.add(layer.source.key)
+      if (layer.maskSource) held.add(layer.maskSource.key)
+    }
+  }
+  return held
 }
 
 async function applyNativeBroadcastScene(
   eng: NativeEngine,
+  session: BroadcastSession,
   scene: NativeBroadcastScene
 ): Promise<void> {
   if (broadcastEngine !== eng) throw new Error('Native broadcast stopped before scene update')
@@ -463,17 +501,20 @@ async function applyNativeBroadcastScene(
       }
     }
 
-    const layers = buildLayersFromScene(eng, scene, stagedTextures)
+    const layers = buildLayersFromScene(
+      eng, scene, stagedTextures, session.width, session.height)
     if (!layers) throw new Error('Native scene textures missing after staging')
 
-    eng.setLayers(layers)
-    await waitForBroadcastComposite()
+    eng.setLayers(layers, session.outputIndex)
+    await waitForBroadcastComposite(session.fps)
     if (broadcastEngine !== eng) throw new Error('Native broadcast stopped during scene update')
 
-    // Retire textures no longer referenced (detach their sinks first).
+    // Retire textures no longer referenced (detach their sinks first). Textures
+    // are shared, so a key another session still draws stays alive.
+    const heldElsewhere = keysHeldByOtherSessions(session.id)
     const retiredKeys: string[] = []
     for (const [key] of broadcastSceneTextures) {
-      if (!usedKeys.has(key)) retiredKeys.push(key)
+      if (!usedKeys.has(key) && !heldElsewhere.has(key)) retiredKeys.push(key)
     }
     detachBrowserSourceSinks(retiredKeys)
     for (const key of retiredKeys) {
@@ -483,7 +524,7 @@ async function applyNativeBroadcastScene(
     }
 
     broadcastSceneTextures = stagedTextures
-    broadcastLastScene = scene
+    session.lastScene = scene
 
     // Attach sinks for newly created main-fed sources.
     for (const key of createdKeys) {
@@ -506,15 +547,16 @@ async function applyNativeBroadcastScene(
 
 function queueNativeBroadcastSceneUpdate(
   eng: NativeEngine,
+  session: BroadcastSession,
   scene: NativeBroadcastScene
 ): Promise<void> {
-  const previous = broadcastSceneUpdatePromise ?? Promise.resolve()
+  const previous = session.sceneUpdatePromise ?? Promise.resolve()
   const operation = previous
     .catch(() => {})
-    .then(() => applyNativeBroadcastScene(eng, scene))
-  broadcastSceneUpdatePromise = operation
+    .then(() => applyNativeBroadcastScene(eng, session, scene))
+  session.sceneUpdatePromise = operation
   void operation.finally(() => {
-    if (broadcastSceneUpdatePromise === operation) broadcastSceneUpdatePromise = null
+    if (session.sceneUpdatePromise === operation) session.sceneUpdatePromise = null
   }).catch(() => {})
   return operation
 }
@@ -583,14 +625,16 @@ async function stopNativeBroadcast(): Promise<void> {
     const engineToDestroy = broadcastEngine
     broadcastEngine = null
     detachBrowserSourceSinks()
-    const pendingSceneUpdate = broadcastSceneUpdatePromise
-    if (pendingSceneUpdate) await pendingSceneUpdate.catch(() => {})
-    broadcastSceneUpdatePromise = null
+    for (const session of broadcastSessions.values()) {
+      const pendingSceneUpdate = session.sceneUpdatePromise
+      if (pendingSceneUpdate) await pendingSceneUpdate.catch(() => {})
+      session.sceneUpdatePromise = null
+    }
     await releaseImportedBroadcastOutput()
     engineToDestroy?.destroy()
     broadcastSceneTextures = new Map()
     broadcastDisplayIndexes = new Map()
-    broadcastLastScene = null
+    broadcastSessions.clear()
   })()
 
   stopBroadcastPromise = operation
@@ -941,34 +985,69 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
         monitorIndex?: number
         desktopSourceId?: string
         scene?: NativeBroadcastScene
+        /** Which output this drives; omitted means the 16:9 program output. */
+        sessionId?: string
       }
     ) => {
-      await stopPreview()
-      await stopNativeBroadcast()
+      const sessionId = opts?.sessionId?.trim() || PROGRAM_SESSION_ID
+      // Starting the program output restarts everything; a secondary output
+      // joins the engine the program already owns.
+      const joiningExistingEngine = sessionId !== PROGRAM_SESSION_ID && broadcastEngine !== null
+      if (!joiningExistingEngine) {
+        await stopPreview()
+        await stopNativeBroadcast()
+      }
 
       const width = Math.max(16, Math.min(3840, Math.round(opts?.width ?? 1920)))
       const height = Math.max(16, Math.min(2160, Math.round(opts?.height ?? 1080)))
       const fps = Math.max(1, Math.min(144, Math.round(opts?.fps ?? 60)))
-      broadcastFps = fps
+      if (!joiningExistingEngine) broadcastFps = fps
       const requestedMonitorIndex = Math.max(0, Math.round(opts?.monitorIndex ?? 0))
       const mappedDisplays = opts?.scene?.layers.some((layer) => layer.source.kind === 'display') || opts?.desktopSourceId
         ? await getMappedCaptureDisplays()
         : []
-      broadcastDisplayIndexes = new Map(
-        mappedDisplays.flatMap((display) => display.sourceId ? [[display.sourceId, display.index] as const] : [])
-      )
+      if (mappedDisplays.length > 0 || !joiningExistingEngine) {
+        broadcastDisplayIndexes = new Map(
+          mappedDisplays.flatMap((display) => display.sourceId ? [[display.sourceId, display.index] as const] : [])
+        )
+      }
       const mappedDisplay = opts?.desktopSourceId
         ? mappedDisplays.find((display) => display.sourceId === opts.desktopSourceId)
         : undefined
       const monitorIndex = mappedDisplay?.index ?? requestedMonitorIndex
 
       let eng: NativeEngine | null = null
+      let createdOutputIndex: number | null = null
+      let session: BroadcastSession | null = null
       try {
-        eng = new NativeEngine({ width, height, fps })
-        broadcastEngine = eng
+        if (joiningExistingEngine) {
+          eng = broadcastEngine
+        } else {
+          eng = new NativeEngine({ width, height, fps })
+          broadcastEngine = eng
+        }
+        if (!eng) throw new Error('Native broadcast engine is unavailable')
+
+        // The program owns output 0; every other session gets its own output on
+        // the same engine, sharing its textures.
+        const outputIndex = joiningExistingEngine ? eng.createOutput(width, height) : 0
+        if (outputIndex < 0) throw new Error('Native engine could not create an output')
+        if (joiningExistingEngine) createdOutputIndex = outputIndex
+
+        session = {
+          id: sessionId,
+          outputIndex,
+          width,
+          height,
+          fps,
+          lastScene: null,
+          sceneUpdatePromise: null
+        }
+        broadcastSessions.set(sessionId, session)
+
         let captureDescription: ScreenCaptureDescription | undefined
         if (opts?.scene) {
-          await applyNativeBroadcastScene(eng, opts.scene)
+          await applyNativeBroadcastScene(eng, session, opts.scene)
         } else {
           const capture = eng.createScreenCapture(monitorIndex, fps)
           captureDescription = capture.description
@@ -982,10 +1061,13 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
             ),
             opacity: 1,
             blendMode: BlendMode.Alpha
-          }])
+          }], session.outputIndex)
         }
 
-        if (!(await startBroadcastSharedTexturePresentation(window, eng))) {
+        // Only the program output is presented to the renderer as a shared
+        // texture; secondary outputs exist to be encoded, and are read back.
+        if (!joiningExistingEngine &&
+            !(await startBroadcastSharedTexturePresentation(window, eng))) {
           throw new Error('GPU shared-texture output is unavailable')
         }
 
@@ -994,13 +1076,23 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
           width,
           height,
           fps,
+          sessionId,
+          outputIndex: session.outputIndex,
           captureDescription,
           outputColor: eng.getOutputColorConfig()
         }
       } catch (error) {
-        if (broadcastEngine === eng) broadcastEngine = null
-        await releaseImportedBroadcastOutput()
-        eng?.destroy()
+        if (session) broadcastSessions.delete(sessionId)
+        if (joiningExistingEngine) {
+          // Leave the program running; only unwind what this session added.
+          if (createdOutputIndex !== null && createdOutputIndex > 0) {
+            try { eng?.destroyOutput(createdOutputIndex) } catch { /* engine already gone */ }
+          }
+        } else {
+          if (broadcastEngine === eng) broadcastEngine = null
+          await releaseImportedBroadcastOutput()
+          eng?.destroy()
+        }
         return {
           ok: false,
           error: error instanceof Error ? error.message : String(error)
@@ -1009,11 +1101,17 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
     }
   )
 
-  ipcMain.handle('engine:broadcast:update-scene', async (_event, scene: NativeBroadcastScene) => {
+  ipcMain.handle('engine:broadcast:update-scene', async (
+    _event,
+    scene: NativeBroadcastScene,
+    sessionId?: string
+  ) => {
     const eng = broadcastEngine
     if (!eng) return { ok: false, error: 'Native broadcast is not running' }
+    const session = broadcastSessions.get(sessionId?.trim() || PROGRAM_SESSION_ID)
+    if (!session) return { ok: false, error: 'Native broadcast session is not running' }
     try {
-      await queueNativeBroadcastSceneUpdate(eng, scene)
+      await queueNativeBroadcastSceneUpdate(eng, session, scene)
       return { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -1052,8 +1150,31 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
     }
   })
 
-  ipcMain.handle('engine:broadcast:stop', async () => {
-    await stopNativeBroadcast()
+  ipcMain.handle('engine:broadcast:stop', async (_event, sessionId?: string) => {
+    const id = sessionId?.trim() || PROGRAM_SESSION_ID
+    // Stopping the program tears the engine down; a secondary session only
+    // gives up its own output, leaving the program running.
+    if (id === PROGRAM_SESSION_ID) {
+      await stopNativeBroadcast()
+      return { ok: true }
+    }
+    const session = broadcastSessions.get(id)
+    if (!session) return { ok: true }
+    broadcastSessions.delete(id)
+    if (session.sceneUpdatePromise) await session.sceneUpdatePromise.catch(() => {})
+    const eng = broadcastEngine
+    if (eng) {
+      try { eng.destroyOutput(session.outputIndex) } catch { /* engine already gone */ }
+      // Textures only this session drew are now unreferenced.
+      const held = keysHeldByOtherSessions(id)
+      const retired = [...broadcastSceneTextures.keys()].filter((key) => !held.has(key))
+      detachBrowserSourceSinks(retired)
+      for (const key of retired) {
+        const texture = broadcastSceneTextures.get(key)
+        if (texture) eng.destroyTexture(texture.texture)
+        broadcastSceneTextures.delete(key)
+      }
+    }
     return { ok: true }
   })
 

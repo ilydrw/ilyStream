@@ -16,6 +16,8 @@ import type {
 } from '../shared/tiktok-native'
 import type { BroadcastStreamInfo, StreamInfoPreset, TwitchCategory } from '../shared/stream-info'
 import type { NativeBroadcastScene, NativeLiveSourceFrame } from '../shared/native-scene'
+import type { KokoroSynthesisRequest } from '../shared/kokoro-worker'
+import type { SegmentationFrame, SegmentationMask } from '../shared/segmentation-worker'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -335,6 +337,10 @@ const api = {
     resume: () => ipcRenderer.invoke('tts:resume'),
     setEnabled: (enabled: boolean) => ipcRenderer.invoke('tts:set-enabled', enabled),
     getQueue: () => ipcRenderer.invoke('tts:get-queue'),
+    preloadKokoro: () => ipcRenderer.invoke('tts:kokoro:preload') as Promise<void>,
+    generateKokoro: (payload: KokoroSynthesisRequest) =>
+      ipcRenderer.invoke('tts:kokoro:generate', payload),
+    getKokoroStatus: () => ipcRenderer.invoke('tts:kokoro:get-status'),
     testSpeak: (payload: { text: string; voiceProfileId?: string }) =>
       ipcRenderer.invoke('tts:test-speak', payload),
     notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete'),
@@ -466,6 +472,7 @@ const api = {
     updateBrowserSource: (config: any) => ipcRenderer.invoke('studio:browser-source:update', config),
     reloadBrowserSource: (id: string) => ipcRenderer.invoke('studio:browser-source:reload', id),
     stopBrowserSource: (id: string) => ipcRenderer.invoke('studio:browser-source:stop', id),
+    browserSourceFrameConsumed: (id: string) => ipcRenderer.send('studio:browser-source:frame-consumed', id),
     getDeckActions: () => ipcRenderer.invoke('studio:get-deck-actions'),
     saveDeckAction: (action: any) => ipcRenderer.invoke('studio:save-deck-action', action),
     deleteDeckAction: (id: string) => ipcRenderer.invoke('studio:delete-deck-action', id),
@@ -511,6 +518,8 @@ const api = {
     stop: () => ipcRenderer.invoke('streaming:stop'),
     getStatus: () => ipcRenderer.invoke('streaming:get-status'),
     getOutputs: () => ipcRenderer.invoke('streaming:get-outputs'),
+    getPreflight: () => ipcRenderer.invoke('streaming:get-preflight'),
+    getIncidents: () => ipcRenderer.invoke('streaming:get-incidents'),
     stopOutput: (outputId: string) => ipcRenderer.invoke('streaming:stop-output', outputId),
     startRecording: (config: any) => ipcRenderer.invoke('streaming:start-recording', config),
     stopRecording: () => ipcRenderer.invoke('streaming:stop-recording'),
@@ -570,6 +579,19 @@ const api = {
     installDriver: () => ipcRenderer.invoke('virtualcamera:install-driver')
   },
 
+  // --- Native segmentation (virtual background masks via onnxruntime-node) ---
+  segmentation: {
+    preload: () => ipcRenderer.invoke('segmentation:preload') as Promise<void>,
+    segment: (frame: SegmentationFrame) =>
+      ipcRenderer.invoke('segmentation:segment', frame) as Promise<SegmentationMask>,
+    getStatus: () =>
+      ipcRenderer.invoke('segmentation:get-status') as Promise<{
+        running: boolean
+        pid?: number
+        pendingRequests: number
+      }>
+  },
+
   // --- Native engine preview (bgfx compositor -> canvas) ---
   engine: {
     getCaptureDisplays: () => ipcRenderer.invoke('engine:preview:displays') as Promise<Array<{
@@ -584,6 +606,10 @@ const api = {
       right: number
       bottom: number
       hdr: boolean
+    }>>,
+    getCameraCaptureDevices: () => ipcRenderer.invoke('engine:capture:cameras') as Promise<Array<{
+      friendlyName: string
+      symbolicLink: string
     }>>,
     attachPreview: (canvasId: string) => {
       sharedPreviewCanvasId = canvasId
@@ -644,14 +670,22 @@ const api = {
       monitorIndex?: number
       desktopSourceId?: string
       scene?: NativeBroadcastScene
+      /** Which engine output to drive; omitted means the 16:9 program. */
+      sessionId?: string
     }) => {
-      releaseSharedPreviewTexture()
-      releaseSharedBroadcastTexture()
+      // Only the program owns the shared preview texture; a secondary session
+      // joins the running engine and must not tear it down.
+      if (!opts.sessionId || opts.sessionId === 'program') {
+        releaseSharedPreviewTexture()
+        releaseSharedBroadcastTexture()
+      }
       return ipcRenderer.invoke('engine:broadcast:start', opts) as Promise<{
         ok: boolean
         width?: number
         height?: number
         fps?: number
+        sessionId?: string
+        outputIndex?: number
         error?: string
       }>
     },
@@ -675,8 +709,8 @@ const api = {
           fps: sharedBroadcastFps
         }
       : null,
-    updateBroadcastScene: (scene: NativeBroadcastScene) =>
-      ipcRenderer.invoke('engine:broadcast:update-scene', scene) as Promise<{
+    updateBroadcastScene: (scene: NativeBroadcastScene, sessionId?: string) =>
+      ipcRenderer.invoke('engine:broadcast:update-scene', scene, sessionId) as Promise<{
         ok: boolean
         error?: string
       }>,
@@ -685,9 +719,9 @@ const api = {
         ok: boolean
         error?: string
       }>,
-    stopBroadcast: async () => {
-      releaseSharedBroadcastTexture()
-      return ipcRenderer.invoke('engine:broadcast:stop') as Promise<{ ok: boolean }>
+    stopBroadcast: async (sessionId?: string) => {
+      if (!sessionId || sessionId === 'program') releaseSharedBroadcastTexture()
+      return ipcRenderer.invoke('engine:broadcast:stop', sessionId) as Promise<{ ok: boolean }>
     },
     requestBroadcastFrame: (timestamp: number, outputId = 'horizontal') => {
       const imported = sharedBroadcastTexture
