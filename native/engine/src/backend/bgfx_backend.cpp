@@ -49,12 +49,11 @@ namespace ily {
 
 // Views execute in ascending id order each frame: blur pre-passes first (a
 // 3-view chain per blurred layer), then the composite, the SDR output encode,
-// and finally the readback blit.
-static constexpr uint16_t kViewBlurBase = 0;
+// and finally the readback blit. Each output owns one such block, so output 0
+// keeps the original ids (blur 0-23, composite 24, output 25, blit 26) and any
+// further output follows in its own range.
 static constexpr uint16_t kViewBlurCount = 24; // up to 8 blurred layers per frame
-static constexpr uint16_t kViewComposite = kViewBlurBase + kViewBlurCount;
-static constexpr uint16_t kViewOutput = kViewComposite + 1;
-static constexpr uint16_t kViewBlit = kViewOutput + 1;
+static constexpr uint16_t kViewsPerOutput = kViewBlurCount + 3;
 
 namespace {
 
@@ -62,7 +61,7 @@ namespace {
 // draw and the blur pipeline's stage passes all go through SubmitSpriteDraw
 // with one of these.
 struct SpriteDrawParams {
-    uint16_t viewId = kViewComposite;
+    uint16_t viewId = 0;
     float targetWidth = 0.0f;
     float targetHeight = 0.0f;
     bgfx::TextureHandle texture = BGFX_INVALID_HANDLE;
@@ -85,8 +84,6 @@ struct SpriteDrawParams {
 } // namespace
 
 struct BgfxBackend::Impl {
-    uint32_t m_width = 1280;
-    uint32_t m_height = 720;
     ResourceManager m_resourceManager;
     bgfx::ProgramHandle m_spriteProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_outputProgram = BGFX_INVALID_HANDLE;
@@ -134,7 +131,6 @@ struct BgfxBackend::Impl {
         bool usedThisFrame = false;
     };
     std::vector<BlurTarget> m_blurTargets;
-    uint16_t m_nextBlurView = kViewBlurBase;
     uint64_t m_frameIndex = 0;
 
     BlurTarget* AcquireBlurTarget(uint32_t width, uint32_t height);
@@ -147,11 +143,40 @@ struct BgfxBackend::Impl {
     // View 0 composites into a linear RGBA16F working surface. View 1 encodes
     // that surface into the RGBA8 presentation texture shared with Electron.
     // Readback always copies the presentation texture, never the linear target.
-    bgfx::TextureHandle m_compositeColorTex = BGFX_INVALID_HANDLE;
-    bgfx::FrameBufferHandle m_compositeFb = BGFX_INVALID_HANDLE;
-    bgfx::TextureHandle m_offscreenColorTex = BGFX_INVALID_HANDLE;
-    bgfx::FrameBufferHandle m_offscreenFb = BGFX_INVALID_HANDLE;
-    bgfx::TextureHandle m_readbackTex = BGFX_INVALID_HANDLE;
+    // Everything that is per-OUTPUT rather than per-engine. One instance today
+    // (the program output); the surrounding code addresses it only through
+    // Out(), so adding further outputs is a matter of growing m_outputs.
+    struct OutputTarget {
+        uint32_t width = 1280;
+        uint32_t height = 720;
+        bgfx::TextureHandle compositeColorTex = BGFX_INVALID_HANDLE;
+        bgfx::FrameBufferHandle compositeFb = BGFX_INVALID_HANDLE;
+        bgfx::TextureHandle offscreenColorTex = BGFX_INVALID_HANDLE;
+        bgfx::FrameBufferHandle offscreenFb = BGFX_INVALID_HANDLE;
+        bgfx::TextureHandle readbackTex = BGFX_INVALID_HANDLE;
+        uint16_t nextBlurView = 0;
+        uint16_t viewBlurBase = 0;
+        uint16_t viewComposite = kViewBlurCount;
+        uint16_t viewOutput = kViewBlurCount + 1;
+        uint16_t viewBlit = kViewBlurCount + 2;
+#ifdef _WIN32
+        ID3D11Texture2D* sharedOutputTexture = nullptr;
+        HANDLE sharedOutputHandle = nullptr;
+#endif
+
+        void AssignViews(size_t index) {
+            const uint16_t base = static_cast<uint16_t>(index * kViewsPerOutput);
+            viewBlurBase = base;
+            viewComposite = static_cast<uint16_t>(base + kViewBlurCount);
+            viewOutput = static_cast<uint16_t>(viewComposite + 1);
+            viewBlit = static_cast<uint16_t>(viewOutput + 1);
+        }
+    };
+
+    std::vector<OutputTarget> m_outputs{OutputTarget{}};
+    size_t m_activeOutput = 0;
+    OutputTarget& Out() { return m_outputs[m_activeOutput]; }
+    const OutputTarget& Out() const { return m_outputs[m_activeOutput]; }
 
     mutable std::mutex m_mutex;
     bool m_initialized = false;
@@ -165,22 +190,22 @@ struct BgfxBackend::Impl {
 
 #ifdef _WIN32
     HWND m_dummyHwnd = nullptr;
-    ID3D11Texture2D* m_sharedOutputTexture = nullptr;
-    HANDLE m_sharedOutputHandle = nullptr;
     std::unordered_map<ResourceHandle, ID3D11Texture2D*> m_importedSharedTextures;
 
     void ReleaseSharedOutputTexture() {
-        if (m_sharedOutputHandle) {
-            CloseHandle(m_sharedOutputHandle);
-            m_sharedOutputHandle = nullptr;
-        }
-        if (m_sharedOutputTexture) {
-            m_sharedOutputTexture->Release();
-            m_sharedOutputTexture = nullptr;
+        for (auto& target : m_outputs) {
+            if (target.sharedOutputHandle) {
+                CloseHandle(target.sharedOutputHandle);
+                target.sharedOutputHandle = nullptr;
+            }
+            if (target.sharedOutputTexture) {
+                target.sharedOutputTexture->Release();
+                target.sharedOutputTexture = nullptr;
+            }
         }
     }
 
-    bool CreateSharedOutputTexture(uint32_t width, uint32_t height) {
+    bool CreateSharedOutputTexture(OutputTarget& target, uint32_t width, uint32_t height) {
         if (bgfx::getRendererType() != bgfx::RendererType::Direct3D11) {
             return false;
         }
@@ -258,9 +283,9 @@ struct BgfxBackend::Impl {
             return false;
         }
 
-        m_offscreenColorTex = textureHandle;
-        m_sharedOutputTexture = outputTexture;
-        m_sharedOutputHandle = outputHandle;
+        target.offscreenColorTex = textureHandle;
+        target.sharedOutputTexture = outputTexture;
+        target.sharedOutputHandle = outputHandle;
         return true;
     }
 
@@ -287,57 +312,59 @@ struct BgfxBackend::Impl {
 
     // (Re)create the offscreen and readback targets at the given size and point
     // view 0 at the offscreen framebuffer. Caller must hold m_mutex.
-    void CreateOffscreenTargets(uint32_t width, uint32_t height) {
-        const bgfx::TextureHandle previousComposite = m_compositeColorTex;
-        const bgfx::FrameBufferHandle previousCompositeFramebuffer = m_compositeFb;
-        const bgfx::TextureHandle previousColor = m_offscreenColorTex;
-        const bgfx::FrameBufferHandle previousFramebuffer = m_offscreenFb;
-        const bgfx::TextureHandle previousReadback = m_readbackTex;
-        m_compositeColorTex = BGFX_INVALID_HANDLE;
-        m_compositeFb = BGFX_INVALID_HANDLE;
-        m_offscreenColorTex = BGFX_INVALID_HANDLE;
-        m_offscreenFb = BGFX_INVALID_HANDLE;
-        m_readbackTex = BGFX_INVALID_HANDLE;
+    void CreateOffscreenTargets(OutputTarget& target, uint32_t width, uint32_t height) {
+        const bgfx::TextureHandle previousComposite = target.compositeColorTex;
+        const bgfx::FrameBufferHandle previousCompositeFramebuffer = target.compositeFb;
+        const bgfx::TextureHandle previousColor = target.offscreenColorTex;
+        const bgfx::FrameBufferHandle previousFramebuffer = target.offscreenFb;
+        const bgfx::TextureHandle previousReadback = target.readbackTex;
+        target.width = width;
+        target.height = height;
+        target.compositeColorTex = BGFX_INVALID_HANDLE;
+        target.compositeFb = BGFX_INVALID_HANDLE;
+        target.offscreenColorTex = BGFX_INVALID_HANDLE;
+        target.offscreenFb = BGFX_INVALID_HANDLE;
+        target.readbackTex = BGFX_INVALID_HANDLE;
 
 #ifdef _WIN32
-        ID3D11Texture2D* previousSharedOutputTexture = m_sharedOutputTexture;
-        HANDLE previousSharedOutputHandle = m_sharedOutputHandle;
-        m_sharedOutputTexture = nullptr;
-        m_sharedOutputHandle = nullptr;
-        CreateSharedOutputTexture(width, height);
+        ID3D11Texture2D* previousSharedOutputTexture = target.sharedOutputTexture;
+        HANDLE previousSharedOutputHandle = target.sharedOutputHandle;
+        target.sharedOutputTexture = nullptr;
+        target.sharedOutputHandle = nullptr;
+        CreateSharedOutputTexture(target, width, height);
 #endif
 
         // Preserve the normal offscreen target as a portable fallback when the
         // native shared texture path is unsupported by the backend or driver.
-        if (!bgfx::isValid(m_offscreenColorTex)) {
-            m_offscreenColorTex = bgfx::createTexture2D(
+        if (!bgfx::isValid(target.offscreenColorTex)) {
+            target.offscreenColorTex = bgfx::createTexture2D(
                 static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1,
                 bgfx::TextureFormat::RGBA8,
                 BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
         }
 
-        m_compositeColorTex = bgfx::createTexture2D(
+        target.compositeColorTex = bgfx::createTexture2D(
             static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1,
             bgfx::TextureFormat::RGBA16F,
             BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
-        if (!bgfx::isValid(m_compositeColorTex)) {
+        if (!bgfx::isValid(target.compositeColorTex)) {
             std::cerr << "[ily-engine] RGBA16F composite target creation failed" << std::endl;
         }
 
-        if (bgfx::isValid(m_compositeColorTex)) {
-            m_compositeFb = bgfx::createFrameBuffer(1, &m_compositeColorTex, false);
+        if (bgfx::isValid(target.compositeColorTex)) {
+            target.compositeFb = bgfx::createFrameBuffer(1, &target.compositeColorTex, false);
         }
-        if (bgfx::isValid(m_offscreenColorTex)) {
-            m_offscreenFb = bgfx::createFrameBuffer(1, &m_offscreenColorTex, false);
+        if (bgfx::isValid(target.offscreenColorTex)) {
+            target.offscreenFb = bgfx::createFrameBuffer(1, &target.offscreenColorTex, false);
         }
 
-        m_readbackTex = bgfx::createTexture2D(
+        target.readbackTex = bgfx::createTexture2D(
             static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1,
             bgfx::TextureFormat::RGBA8,
             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
 
-        if (bgfx::isValid(m_compositeFb)) bgfx::setViewFrameBuffer(kViewComposite, m_compositeFb);
-        if (bgfx::isValid(m_offscreenFb)) bgfx::setViewFrameBuffer(kViewOutput, m_offscreenFb);
+        if (bgfx::isValid(target.compositeFb)) bgfx::setViewFrameBuffer(target.viewComposite, target.compositeFb);
+        if (bgfx::isValid(target.offscreenFb)) bgfx::setViewFrameBuffer(target.viewOutput, target.offscreenFb);
 
         // Point the view at the replacement before retiring the previous
         // framebuffer. This prevents bgfx from submitting a frame against a
@@ -359,25 +386,27 @@ struct BgfxBackend::Impl {
     }
 
     void DestroyOffscreenTargets() {
-        if (bgfx::isValid(m_compositeFb)) {
-            bgfx::destroy(m_compositeFb);
-            m_compositeFb = BGFX_INVALID_HANDLE;
-        }
-        if (bgfx::isValid(m_compositeColorTex)) {
-            bgfx::destroy(m_compositeColorTex);
-            m_compositeColorTex = BGFX_INVALID_HANDLE;
-        }
-        if (bgfx::isValid(m_offscreenFb)) {
-            bgfx::destroy(m_offscreenFb);
-            m_offscreenFb = BGFX_INVALID_HANDLE;
-        }
-        if (bgfx::isValid(m_offscreenColorTex)) {
-            bgfx::destroy(m_offscreenColorTex);
-            m_offscreenColorTex = BGFX_INVALID_HANDLE;
-        }
-        if (bgfx::isValid(m_readbackTex)) {
-            bgfx::destroy(m_readbackTex);
-            m_readbackTex = BGFX_INVALID_HANDLE;
+        for (auto& target : m_outputs) {
+            if (bgfx::isValid(target.compositeFb)) {
+                bgfx::destroy(target.compositeFb);
+                target.compositeFb = BGFX_INVALID_HANDLE;
+            }
+            if (bgfx::isValid(target.compositeColorTex)) {
+                bgfx::destroy(target.compositeColorTex);
+                target.compositeColorTex = BGFX_INVALID_HANDLE;
+            }
+            if (bgfx::isValid(target.offscreenFb)) {
+                bgfx::destroy(target.offscreenFb);
+                target.offscreenFb = BGFX_INVALID_HANDLE;
+            }
+            if (bgfx::isValid(target.offscreenColorTex)) {
+                bgfx::destroy(target.offscreenColorTex);
+                target.offscreenColorTex = BGFX_INVALID_HANDLE;
+            }
+            if (bgfx::isValid(target.readbackTex)) {
+                bgfx::destroy(target.readbackTex);
+                target.readbackTex = BGFX_INVALID_HANDLE;
+            }
         }
     }
 };
@@ -424,19 +453,21 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
         return ILY_ERROR_INVALID_ARGUMENT;
     }
 
-    m_impl->m_width = width;
-    m_impl->m_height = height;
+    m_impl->m_activeOutput = 0;
+    m_impl->Out().AssignViews(0);
+    m_impl->Out().width = width;
+    m_impl->Out().height = height;
     m_impl->m_debugStats = config.enableValidation;
     m_impl->m_outputColor = config.outputColor;
 
     if (m_impl->m_initialized) {
         bgfx::reset(width, height, BGFX_RESET_NONE);
-        bgfx::setViewRect(kViewComposite, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
-        bgfx::setViewRect(kViewOutput, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+        bgfx::setViewRect(m_impl->Out().viewComposite, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+        bgfx::setViewRect(m_impl->Out().viewOutput, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         bgfx::setDebug(m_impl->m_debugStats ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
         // Offscreen targets are sized to the surface, so recreate them on resize.
-        m_impl->CreateOffscreenTargets(width, height);
-        return bgfx::isValid(m_impl->m_compositeFb) && bgfx::isValid(m_impl->m_offscreenFb)
+        m_impl->CreateOffscreenTargets(m_impl->Out(), width, height);
+        return bgfx::isValid(m_impl->Out().compositeFb) && bgfx::isValid(m_impl->Out().offscreenFb)
             ? ILY_SUCCESS
             : ILY_ERROR_RENDER_FAILED;
     }
@@ -498,10 +529,10 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 
     const float defaultBackground = SrgbToLinear(30.0f / 255.0f);
     bgfx::setPaletteColor(0, defaultBackground, defaultBackground, defaultBackground, 1.0f);
-    bgfx::setViewClear(kViewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
-    bgfx::setViewClear(kViewOutput, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
-    bgfx::setViewRect(kViewComposite, 0, 0, width, height);
-    bgfx::setViewRect(kViewOutput, 0, 0, width, height);
+    bgfx::setViewClear(m_impl->Out().viewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    bgfx::setViewClear(m_impl->Out().viewOutput, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+    bgfx::setViewRect(m_impl->Out().viewComposite, 0, 0, width, height);
+    bgfx::setViewRect(m_impl->Out().viewOutput, 0, 0, width, height);
     bgfx::setDebug(m_impl->m_debugStats ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
 
     // Sampler uniform is shared by every quad draw; create it once here rather
@@ -534,9 +565,10 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
         return ILY_ERROR_INITIALIZATION_FAILED;
     }
 
-    // Render offscreen; view 0 targets this framebuffer instead of the window.
-    m_impl->CreateOffscreenTargets(width, height);
-    return bgfx::isValid(m_impl->m_compositeFb) && bgfx::isValid(m_impl->m_offscreenFb)
+    // Render offscreen; the composite view targets this framebuffer instead of
+    // the window.
+    m_impl->CreateOffscreenTargets(m_impl->Out(), width, height);
+    return bgfx::isValid(m_impl->Out().compositeFb) && bgfx::isValid(m_impl->Out().offscreenFb)
         ? ILY_SUCCESS
         : ILY_ERROR_RENDER_FAILED;
 }
@@ -653,10 +685,12 @@ void BgfxBackend::Shutdown() {
 IlyResult BgfxBackend::BeginFrame() {
     ILY_PROFILE_SCOPE("BgfxBackend::BeginFrame");
     m_impl->m_frameHasHdrSource = false;
-    bgfx::setViewRect(kViewComposite, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
-    bgfx::setViewRect(kViewOutput, 0, 0, static_cast<uint16_t>(m_impl->m_width), static_cast<uint16_t>(m_impl->m_height));
-    bgfx::touch(kViewComposite);
-    m_impl->m_nextBlurView = kViewBlurBase;
+    for (auto& target : m_impl->m_outputs) {
+        bgfx::setViewRect(target.viewComposite, 0, 0, static_cast<uint16_t>(target.width), static_cast<uint16_t>(target.height));
+        bgfx::setViewRect(target.viewOutput, 0, 0, static_cast<uint16_t>(target.width), static_cast<uint16_t>(target.height));
+        bgfx::touch(target.viewComposite);
+        target.nextBlurView = target.viewBlurBase;
+    }
     for (auto& target : m_impl->m_blurTargets) {
         target.usedThisFrame = false;
     }
@@ -667,7 +701,7 @@ IlyResult BgfxBackend::EndFrame() {
     ILY_PROFILE_SCOPE("BgfxBackend::EndFrame");
 
     EnsureSpriteVertexLayout();
-    if (!bgfx::isValid(m_impl->m_compositeColorTex) ||
+    if (!bgfx::isValid(m_impl->Out().compositeColorTex) ||
         !bgfx::isValid(m_impl->m_outputProgram) ||
         bgfx::getAvailTransientVertexBuffer(4, s_spriteVertexLayout) < 4 ||
         bgfx::getAvailTransientIndexBuffer(6) < 6) {
@@ -700,11 +734,11 @@ IlyResult BgfxBackend::EndFrame() {
         m_impl->m_frameHasHdrSource ? 1.0f : 0.0f
     };
     bgfx::setUniform(m_impl->m_outputColorUniform, outputParams);
-    bgfx::setTexture(0, m_impl->m_texColorSampler, m_impl->m_compositeColorTex);
+    bgfx::setTexture(0, m_impl->m_texColorSampler, m_impl->Out().compositeColorTex);
     bgfx::setVertexBuffer(0, &outputVertices);
     bgfx::setIndexBuffer(&outputIndices);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
-    bgfx::submit(kViewOutput, m_impl->m_outputProgram);
+    bgfx::submit(m_impl->Out().viewOutput, m_impl->m_outputProgram);
 
     if (m_impl->m_debugStats) {
         bgfx::dbgTextClear();
@@ -734,7 +768,9 @@ IlyResult BgfxBackend::EndFrame() {
 void BgfxBackend::Clear(float r, float g, float b, float a) {
     ILY_PROFILE_SCOPE("BgfxBackend::Clear");
     bgfx::setPaletteColor(0, SrgbToLinear(r), SrgbToLinear(g), SrgbToLinear(b), a);
-    bgfx::setViewClear(kViewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    for (const auto& target : m_impl->m_outputs) {
+        bgfx::setViewClear(target.viewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
+    }
 }
 
 ResourceHandle BgfxBackend::CreateTexture(uint32_t width, uint32_t height, const void* data, uint32_t byteLength, bool isBGRA, const IlyColorDescription& colorDescription, IlyAlphaMode alphaMode) {
@@ -1304,9 +1340,9 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
     m_impl->m_frameHasHdrSource = m_impl->m_frameHasHdrSource || hdrSource;
 
     SpriteDrawParams draw;
-    draw.viewId = kViewComposite;
-    draw.targetWidth = static_cast<float>(m_impl->m_width);
-    draw.targetHeight = static_cast<float>(m_impl->m_height);
+    draw.viewId = m_impl->Out().viewComposite;
+    draw.targetWidth = static_cast<float>(m_impl->Out().width);
+    draw.targetHeight = static_cast<float>(m_impl->Out().height);
     draw.texture = tex->GetHandle();
     draw.texWidth = static_cast<float>(tex->GetWidth());
     draw.texHeight = static_cast<float>(tex->GetHeight());
@@ -1376,12 +1412,12 @@ IlyResult BgfxBackend::DrawQuad(ResourceHandle textureHandle, const IlyTransform
             dsQuadWidth >= 1.0f && dsQuadHeight >= 1.0f &&
             croppedWidth >= 1.0f && croppedHeight >= 1.0f &&
             paddedWidth <= 8192 && paddedHeight <= 8192 &&
-            m_impl->m_nextBlurView + 3 <= kViewComposite) {
+            m_impl->Out().nextBlurView + 3 <= m_impl->Out().viewComposite) {
             Impl::BlurTarget* target = m_impl->AcquireBlurTarget(paddedWidth, paddedHeight);
             if (target) {
-                const uint16_t viewStage1 = m_impl->m_nextBlurView++;
-                const uint16_t viewBlurH = m_impl->m_nextBlurView++;
-                const uint16_t viewBlurV = m_impl->m_nextBlurView++;
+                const uint16_t viewStage1 = m_impl->Out().nextBlurView++;
+                const uint16_t viewBlurH = m_impl->Out().nextBlurView++;
+                const uint16_t viewBlurV = m_impl->Out().nextBlurView++;
 
                 bgfx::setViewFrameBuffer(viewStage1, target->fbA);
                 bgfx::setViewRect(viewStage1, 0, 0, static_cast<uint16_t>(paddedWidth), static_cast<uint16_t>(paddedHeight));
@@ -1499,12 +1535,12 @@ IlyResult BgfxBackend::GetSharedOutputTexture(void** outHandle, uint32_t* outWid
     }
 
 #ifdef _WIN32
-    if (!m_impl->m_sharedOutputHandle) {
+    if (!m_impl->Out().sharedOutputHandle) {
         return ILY_ERROR_NOT_SUPPORTED;
     }
-    *outHandle = m_impl->m_sharedOutputHandle;
-    if (outWidth) *outWidth = m_impl->m_width;
-    if (outHeight) *outHeight = m_impl->m_height;
+    *outHandle = m_impl->Out().sharedOutputHandle;
+    if (outWidth) *outWidth = m_impl->Out().width;
+    if (outHeight) *outHeight = m_impl->Out().height;
     return ILY_SUCCESS;
 #else
     (void)outWidth;
@@ -1524,8 +1560,8 @@ IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidt
         return ILY_ERROR_INVALID_ARGUMENT;
     }
 
-    const uint32_t width = m_impl->m_width;
-    const uint32_t height = m_impl->m_height;
+    const uint32_t width = m_impl->Out().width;
+    const uint32_t height = m_impl->Out().height;
     if (outWidth) *outWidth = width;
     if (outHeight) *outHeight = height;
 
@@ -1543,16 +1579,16 @@ IlyResult BgfxBackend::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidt
         !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
         return ILY_ERROR_NOT_SUPPORTED;
     }
-    if (!bgfx::isValid(m_impl->m_offscreenColorTex) || !bgfx::isValid(m_impl->m_readbackTex)) {
+    if (!bgfx::isValid(m_impl->Out().offscreenColorTex) || !bgfx::isValid(m_impl->Out().readbackTex)) {
         return ILY_ERROR_INITIALIZATION_FAILED;
     }
 
     // Copy the offscreen color target into the CPU-readable texture, then read
     // it back. readTexture reports the frame at which dst will be populated;
     // pump frames (bounded) until we reach it.
-    const bgfx::ViewId kBlitView = kViewBlit;
-    bgfx::blit(kBlitView, m_impl->m_readbackTex, 0, 0, m_impl->m_offscreenColorTex);
-    const uint32_t frameAvailable = bgfx::readTexture(m_impl->m_readbackTex, dst);
+    const bgfx::ViewId kBlitView = m_impl->Out().viewBlit;
+    bgfx::blit(kBlitView, m_impl->Out().readbackTex, 0, 0, m_impl->Out().offscreenColorTex);
+    const uint32_t frameAvailable = bgfx::readTexture(m_impl->Out().readbackTex, dst);
 
     uint32_t current = bgfx::frame();
     for (int i = 0; i < 8 && current < frameAvailable; ++i) {
