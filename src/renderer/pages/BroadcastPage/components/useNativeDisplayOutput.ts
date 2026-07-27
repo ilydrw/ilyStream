@@ -46,6 +46,8 @@ interface NativeDisplayOutputOptions {
   browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>
   mediaFrameCache: React.MutableRefObject<Record<string, CachedMediaFrame>>
   encoderWorkerRef: React.RefObject<Worker | null>
+  /** Output layout this instance drives. Defaults to the 16:9 program output. */
+  aspectRatio?: NativeOutputAspectRatio
 }
 
 interface NativeDisplayOutputState {
@@ -98,6 +100,14 @@ function hasEnhancements(layer: StudioLayer): boolean {
   )
 }
 
+/**
+ * Which output layout a native scene is being built for. Layer geometry, shape
+ * scope and the fullscreen-display fast path all resolve per aspect, so every
+ * step from the scene builder down takes this rather than assuming the 16:9
+ * program output.
+ */
+export type NativeOutputAspectRatio = '16:9' | '9:16'
+
 // Shapes the engine composites natively in phase 1 by rasterizing the shape into
 // an alpha mask (the imageMask pipeline). 'rect'/'none' keep the canvas path.
 const NATIVE_SHAPE_TYPES = new Set(['circle', 'square', 'star', 'heart', 'hexagon', 'diamond'])
@@ -140,13 +150,16 @@ function isStaticBorder(border: StudioShapeBorder | undefined): boolean {
  * (contain) fits are fine: the engine remaps mask UVs into the layout rect (see
  * the layer maskTransform), so the shape geometry aligns regardless of fit.
  */
-function resolveNativeShape(layer: StudioLayer): 'fallback' | StudioShapeMask | null {
+function resolveNativeShape(
+  layer: StudioLayer,
+  aspectRatio: NativeOutputAspectRatio
+): 'fallback' | StudioShapeMask | null {
   const shapeObj = normalizeShape(layer)
   if (!shapeObj) return null
   if (!NATIVE_SHAPE_TYPES.has(shapeObj.type)) return 'fallback'
 
   const scope = shapeObj.scope ?? 'both'
-  const inScope = scope === 'both' || scope === '16:9'
+  const inScope = scope === 'both' || scope === aspectRatio
   const hasAnimatedBorder = Boolean(shapeObj.border?.enabled) && !isStaticBorder(shapeObj.border)
   const hasCapturePan = (shapeObj.captureX ?? 50) !== 50 || (shapeObj.captureY ?? 50) !== 50
   const conflictsMask = Boolean(layer.enhancements?.imageMask?.enabled)
@@ -202,13 +215,16 @@ function resolveNativeVirtualBackground(layer: StudioLayer): StudioVirtualBackgr
  * (animated borders, a capture pan, or an image mask needing the same slot)
  * still fall back — see resolveNativeShape.
  */
-function hasNonNativeEnhancements(layer: StudioLayer): boolean {
+function hasNonNativeEnhancements(
+  layer: StudioLayer,
+  aspectRatio: NativeOutputAspectRatio
+): boolean {
   const enhancements = layer.enhancements
   if (!enhancements) return false
 
   return Boolean(
     resolveNativeVirtualBackground(layer) === 'fallback' ||
-    resolveNativeShape(layer) === 'fallback'
+    resolveNativeShape(layer, aspectRatio) === 'fallback'
   )
 }
 
@@ -244,15 +260,18 @@ function isNativeImagePath(assetPath: string): boolean {
     /^[a-z]:[\\/]/i.test(assetPath)
 }
 
-export function getNativeSceneUnsupportedReason(scene: StudioScene): string | null {
+export function getNativeSceneUnsupportedReason(
+  scene: StudioScene,
+  aspectRatio: NativeOutputAspectRatio = '16:9'
+): string | null {
   const visibleLayers = scene.layers
-    .map((layer) => resolveLayerLayout(layer, '16:9'))
+    .map((layer) => resolveLayerLayout(layer, aspectRatio))
     .filter((layer) => layer.visible && layer.opacity > 0 && layer.type !== 'audio')
 
   for (const layer of visibleLayers) {
     const blendMode = (layer.blendMode ?? 'normal') as NativeSceneBlendMode
     if (!supportedBlendModes.has(blendMode)) return `blend mode ${layer.blendMode} is not native yet`
-    if (hasNonNativeEnhancements(layer)) return `${layer.name} uses canvas-only enhancements`
+    if (hasNonNativeEnhancements(layer, aspectRatio)) return `${layer.name} uses canvas-only enhancements`
     if (layer.width <= 0 || layer.height <= 0) return `${layer.name} has an invalid layout`
 
     if (layer.type === 'display') {
@@ -280,10 +299,11 @@ export function getNativeSceneUnsupportedReason(scene: StudioScene): string | nu
 export function resolveNativeMonitorIndex(
   scene: StudioScene,
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  aspectRatio: NativeOutputAspectRatio = '16:9'
 ): number | null {
   const visibleLayers = scene.layers
-    .map(layer => resolveLayerLayout(layer, '16:9'))
+    .map(layer => resolveLayerLayout(layer, aspectRatio))
     .filter(layer => layer.visible)
 
   if (visibleLayers.length !== 1) return null
@@ -584,7 +604,8 @@ function resolveLiveSourceDimensions(
   canvasWidth: number,
   canvasHeight: number,
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
-  browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>
+  browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>,
+  aspectRatio: NativeOutputAspectRatio
 ): { width: number; height: number } {
   if (layer.type === 'camera' || layer.type === 'display') {
     const video = videoRefs.current[layer.id]
@@ -605,7 +626,7 @@ function resolveLiveSourceDimensions(
     return constrainLiveSourceDimensions(browserSurface.width, browserSurface.height)
   }
 
-  const layout = resolveLayerLayout(layer, '16:9')
+  const layout = resolveLayerLayout(layer, aspectRatio)
   const capture = resolveBrowserCaptureSettings(layer, layout.width, layout.height)
   return constrainLiveSourceDimensions(capture.width, capture.height)
 }
@@ -640,11 +661,12 @@ function buildNativeBroadcastScene(
   pixelCache: Map<string, Extract<NativeSceneSource, { kind: 'pixels' }>>,
   videoRefs: React.MutableRefObject<Record<string, HTMLVideoElement>>,
   browserFrameCache: React.MutableRefObject<Record<string, BrowserFrameSurface>>,
-  devices: MediaDeviceInfo[]
+  devices: MediaDeviceInfo[],
+  aspectRatio: NativeOutputAspectRatio
 ): NativeBroadcastScene {
   const usedPixelKeys = new Set<string>()
   const layers = scene.layers
-    .map((layer) => resolveLayerLayout(layer, '16:9'))
+    .map((layer) => resolveLayerLayout(layer, aspectRatio))
     .filter((layer) => layer.visible && layer.opacity > 0 && layer.type !== 'audio')
     .sort((left, right) => left.zIndex - right.zIndex)
     .flatMap<NativeSceneLayer>((layer) => {
@@ -661,7 +683,8 @@ function buildNativeBroadcastScene(
           canvasWidth,
           canvasHeight,
           videoRefs,
-          browserFrameCache
+          browserFrameCache,
+          aspectRatio
         )
         // Widgets/browser overlays are fed by the main process. Cameras are
         // captured by Media Foundation when their browser label is known.
@@ -699,7 +722,7 @@ function buildNativeBroadcastScene(
       // Shape mask (phase 1): a plain content-clip shape becomes a rasterized
       // alpha mask. resolveNativeShape only returns 'fallback' for layers the
       // whole scene already rejected, so here it is a shape object or null.
-      const resolvedShape = resolveNativeShape(layer)
+      const resolvedShape = resolveNativeShape(layer, aspectRatio)
       const shapeObj = resolvedShape && resolvedShape !== 'fallback' ? resolvedShape : null
       // Canvas roundRect radius: cornerRadius% of min(w,h)/2, in canvas px. When
       // a shape mask is active the corner radius is baked into that mask (the
@@ -1193,7 +1216,8 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
     videoRefs,
     browserFrameCache,
     mediaFrameCache,
-    encoderWorkerRef
+    encoderWorkerRef,
+    aspectRatio = '16:9'
   } = options
   const [active, setActive] = useState(false)
   const sceneRef = useRef(scene)
@@ -1202,7 +1226,7 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
   sceneRef.current = scene
 
   const unsupportedReason = useMemo(
-    () => getNativeSceneUnsupportedReason(scene),
+    () => getNativeSceneUnsupportedReason(scene, aspectRatio),
     [scene]
   )
   const supported = unsupportedReason === null
@@ -1262,7 +1286,8 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
       pixelSourceCacheRef.current,
       videoRefs,
       browserFrameCache,
-      devices
+      devices,
+      aspectRatio
     )
 
     const stopAfterFailure = async (error: unknown) => {

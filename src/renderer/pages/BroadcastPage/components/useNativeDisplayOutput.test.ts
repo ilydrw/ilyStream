@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { StudioLayer, StudioScene } from '../../../../shared/studio'
 import {
   buildVignettePixels,
+  getVirtualBackgroundMaskVersion,
   getNativeSceneUnsupportedReason,
+  resolveNativeCameraDeviceName,
   resolveNativeMonitorIndex,
   shouldPresentNativeProgramPreview
 } from './useNativeDisplayOutput'
@@ -35,6 +37,37 @@ function scene(layers: StudioLayer[]): StudioScene {
   return { id: 'scene', name: 'Scene', layers }
 }
 
+describe('resolveNativeCameraDeviceName', () => {
+  const camera = displayLayer({
+    id: 'camera',
+    type: 'camera',
+    config: { deviceId: 'browser-camera-id', fitMode: 'contain' }
+  })
+  const devices = [{
+    deviceId: 'browser-camera-id',
+    groupId: 'camera-group',
+    kind: 'videoinput',
+    label: 'Logitech BRIO (046d:085e)',
+    toJSON: () => ({})
+  }] as MediaDeviceInfo[]
+
+  it('maps the browser device id to the stable camera label', () => {
+    expect(resolveNativeCameraDeviceName(camera, devices))
+      .toBe('Logitech BRIO (046d:085e)')
+  })
+
+  it('prefers a label persisted with the layer and declines unlabeled devices', () => {
+    expect(resolveNativeCameraDeviceName({
+      ...camera,
+      config: { ...camera.config, deviceLabel: 'Stored Camera Name' }
+    }, devices)).toBe('Stored Camera Name')
+    expect(resolveNativeCameraDeviceName(camera, [{
+      ...devices[0],
+      label: ''
+    }])).toBeNull()
+  })
+})
+
 describe('resolveNativeMonitorIndex', () => {
   it('accepts an unmodified fullscreen monitor layer', () => {
     expect(resolveNativeMonitorIndex(scene([displayLayer()]), 1920, 1080)).toBe(1)
@@ -51,6 +84,15 @@ describe('resolveNativeMonitorIndex', () => {
     expect(resolveNativeMonitorIndex(scene([
       displayLayer({ config: { desktopSourceId: 'window:123:0', fitMode: 'contain' } })
     ]), 1920, 1080)).toBeNull()
+  })
+})
+
+describe('getVirtualBackgroundMaskVersion', () => {
+  it('changes only when a real segmentation mask changes', () => {
+    expect(getVirtualBackgroundMaskVersion(null)).toBe(0)
+    expect(getVirtualBackgroundMaskVersion({ mask: undefined, timestamp: 42 })).toBe(0)
+    expect(getVirtualBackgroundMaskVersion({ mask: {}, timestamp: 42 })).toBe(42)
+    expect(getVirtualBackgroundMaskVersion({ mask: {}, timestamp: 43 })).toBe(43)
   })
 })
 
@@ -320,5 +362,58 @@ describe('shouldPresentNativeProgramPreview', () => {
     expect(shouldPresentNativeProgramPreview(true, true, '16:9')).toBe(false)
     expect(shouldPresentNativeProgramPreview(false, false, '16:9')).toBe(false)
     expect(shouldPresentNativeProgramPreview(false, true, '9:16')).toBe(false)
+  })
+})
+
+describe('aspect-ratio aware native scenes', () => {
+  it('resolves layer geometry per aspect, so 9:16 uses the portrait layout', () => {
+    // The portrait layout hides this layer, so the 9:16 scene has nothing to
+    // composite while the 16:9 one is fine — proof the aspect reaches
+    // resolveLayerLayout rather than every caller assuming 16:9.
+    const layer = displayLayer({ portraitVisible: false })
+    expect(getNativeSceneUnsupportedReason(scene([layer]), '16:9')).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([layer]), '9:16')).toBeNull()
+
+    const portraitOnly = displayLayer({
+      config: { desktopSourceId: 'not-a-screen-id', fitMode: 'contain' },
+      visible: false
+    })
+    expect(getNativeSceneUnsupportedReason(scene([portraitOnly]), '16:9')).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([portraitOnly]), '9:16'))
+      .toContain('does not have a valid screen or window source')
+  })
+
+  it('scopes shape masks to the aspect they were authored for', () => {
+    const shaped = (scope: '16:9' | '9:16' | 'both') => displayLayer({
+      enhancements: { shape: { type: 'circle', x: 50, y: 50, scale: 100, scope } }
+    })
+    // A shape scoped to the other aspect must not silently apply here: out of
+    // scope means the canvas draws no shape, so the engine has to fall back.
+    expect(getNativeSceneUnsupportedReason(scene([shaped('16:9')]), '16:9')).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([shaped('16:9')]), '9:16'))
+      .toContain('canvas-only enhancements')
+    expect(getNativeSceneUnsupportedReason(scene([shaped('9:16')]), '9:16')).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([shaped('9:16')]), '16:9'))
+      .toContain('canvas-only enhancements')
+    expect(getNativeSceneUnsupportedReason(scene([shaped('both')]), '16:9')).toBeNull()
+    expect(getNativeSceneUnsupportedReason(scene([shaped('both')]), '9:16')).toBeNull()
+  })
+
+  it('defaults to the 16:9 program output when no aspect is given', () => {
+    const shaped = displayLayer({
+      enhancements: { shape: { type: 'circle', x: 50, y: 50, scale: 100, scope: '16:9' } }
+    })
+    expect(getNativeSceneUnsupportedReason(scene([shaped])))
+      .toBe(getNativeSceneUnsupportedReason(scene([shaped]), '16:9'))
+    expect(resolveNativeMonitorIndex(scene([displayLayer()]), 1920, 1080))
+      .toBe(resolveNativeMonitorIndex(scene([displayLayer()]), 1920, 1080, '16:9'))
+  })
+
+  it('resolves the fullscreen-display fast path against the portrait layout', () => {
+    // Full-bleed in 16:9, but the portrait layout does not cover the 9:16
+    // canvas, so the monitor fast path must not claim it there.
+    const layer = displayLayer({ portraitWidth: 540, portraitHeight: 960 })
+    expect(resolveNativeMonitorIndex(scene([layer]), 1920, 1080, '16:9')).toBe(1)
+    expect(resolveNativeMonitorIndex(scene([layer]), 1080, 1920, '9:16')).toBeNull()
   })
 })
