@@ -1278,7 +1278,9 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
         outputId?: string
         frame?: VideoFrame
       } | undefined
-      if (!data?.__ilyNativeBroadcastFrame || data.outputId !== 'horizontal' || !data.frame) return
+      // Every session's frames arrive on the same window message channel, so
+      // each instance takes only the ones addressed to its own output.
+      if (!data?.__ilyNativeBroadcastFrame || data.outputId !== encodeOutputId || !data.frame) return
 
       const worker = encoderWorkerRef.current
       if (disposed || !worker) {

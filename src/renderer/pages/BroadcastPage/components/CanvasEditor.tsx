@@ -167,6 +167,34 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     encodeOutputId: 'vertical'
   })
   const nativeVerticalOutputActive = nativeVerticalOutputRequested && nativeVerticalOutput.active
+
+  // The virtual camera is a third output of the same engine: a 16:9 scene at
+  // its own (usually smaller) size. Its encoder still converts to BGRA for the
+  // Windows bridge, but the scene is no longer composited a second time here.
+  const nativeVirtualCameraRequested =
+    !isPreview && Boolean(virtualCameraOutput?.active) && nativeHorizontalOutputActive
+  const nativeVirtualCameraOutput = useNativeDisplayOutput({
+    enabled: nativeVirtualCameraRequested,
+    encodeFrames: nativeVirtualCameraRequested,
+    scene: activeScene,
+    canvasWidth,
+    canvasHeight,
+    outputWidth: virtualCameraOutput?.width ?? 1280,
+    outputHeight: virtualCameraOutput?.height ?? 720,
+    fps: virtualCameraOutput?.fps ?? outputFps,
+    devices,
+    transitionActive,
+    sourceRevision: streamReady,
+    videoRefs,
+    browserFrameCache,
+    mediaFrameCache,
+    encoderWorkerRef: virtualCameraEncoderWorkerRef,
+    aspectRatio: '16:9',
+    sessionId: 'virtual-camera',
+    encodeOutputId: 'virtual-camera-session'
+  })
+  const nativeVirtualCameraActive =
+    nativeVirtualCameraRequested && nativeVirtualCameraOutput.active
   const nativeProgramPreviewActive = nativeDisplayOutput.previewActive
 
   // Renderer-side consumers of widget/browser frames are the on-screen preview
@@ -179,7 +207,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     outputActive ||
     (Boolean(horizontalOutput?.active) && !nativeHorizontalOutputActive) ||
     (Boolean(verticalOutput?.active) && !nativeVerticalOutputActive) ||
-    Boolean(virtualCameraOutput?.active) ||
+    (Boolean(virtualCameraOutput?.active) && !nativeVirtualCameraActive) ||
     forceHorizontalCanvas || forceVerticalCanvas ||
     dualVerticalOverlayEnabled
   // A native program preview consumes browser-source paints directly in main;
