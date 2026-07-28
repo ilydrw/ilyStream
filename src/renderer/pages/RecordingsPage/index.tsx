@@ -8,9 +8,23 @@ import {
   IconRefresh,
   IconVideo
 } from '@tabler/icons-react'
-import { format } from 'date-fns'
 import { IconPlayerPlay, IconSearch, IconTrash } from '../../components/ui/icons'
 import { PageHeader } from '../../components/layout/PageHeader'
+
+const dayFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric'
+})
+const timeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
+})
+
+const formatDay = (timestamp: number) => dayFormatter.format(timestamp)
+const formatDayTime = (timestamp: number) =>
+  `${dayFormatter.format(timestamp)} · ${timeFormatter.format(timestamp)}`
 
 interface Recording {
   id: string
@@ -106,7 +120,7 @@ export default function RecordingsPage() {
         <LibraryStat
           icon={<IconCalendar size={17} />}
           label="Latest capture"
-          value={recordings[0] ? format(recordings[0].createdAt, 'MMM d, yyyy') : 'No captures'}
+          value={recordings[0] ? formatDay(recordings[0].createdAt) : 'No captures'}
         />
       </section>
 
@@ -191,7 +205,7 @@ function RecordingCard({
           <div className="mt-2 flex items-center gap-2 text-white/35">
             <IconCalendar size={13} />
             <span className="text-[10px] font-medium">
-              {format(recording.createdAt, 'MMM d, yyyy · h:mm a')}
+              {formatDayTime(recording.createdAt)}
             </span>
           </div>
         </div>
