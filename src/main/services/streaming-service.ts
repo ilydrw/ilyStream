@@ -1,6 +1,6 @@
 import ffmpegPath from 'ffmpeg-static'
 import { EventEmitter } from 'events'
-import { writeFileSync, mkdirSync, existsSync } from 'fs'
+import { accessSync, constants, existsSync, mkdirSync, statfsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { app, powerSaveBlocker } from 'electron'
 
@@ -10,13 +10,15 @@ const resolvedFfmpegPath = (ffmpegPath || 'ffmpeg').replace('app.asar', 'app.asa
 const RECORDING_CONTAINERS = new Set(['mkv', 'mp4', 'mov', 'flv'])
 
 import { resolveRecordingCodec, StreamingEncoderResolver } from './streaming/encoder-resolver'
-import type { AudioFramePayload, RecordingConfig, StreamConfig, StreamOutputStatus, VideoFramePayload } from './streaming-types'
-export type { AudioFramePayload, RecordingConfig, StreamConfig, StreamOutputStatus, VideoFramePayload } from './streaming-types'
+import type { AudioFramePayload, RecordingConfig, StreamConfig, StreamIncidentKind, StreamingPreflightStatus, StreamOutputStatus, VideoFramePayload } from './streaming-types'
+export type { AudioFramePayload, RecordingConfig, StreamConfig, StreamIncident, StreamingPreflightStatus, StreamOutputStatus, VideoFramePayload } from './streaming-types'
 import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
 import { StreamSession, type StreamSessionConfig } from './streaming/stream-session'
 import { MediaPumper } from './streaming/media-pumper'
+import { NativeAudioSource } from '../audio/native-audio-source'
 import { FFmpegProcessManager } from './streaming/ffmpeg-process-manager'
 import { AdaptiveBitrateController, type EncoderHealthSample } from './streaming/adaptive-bitrate'
+import { StreamIncidentLog } from './streaming/stream-incident-log'
 
 // Consecutive failures (within a stability window) before we give up on a
 // destination. Because `retries` resets after a session stays live for
@@ -74,6 +76,10 @@ export class StreamingService extends EventEmitter {
 
   private streamAudioEnabled = false
   private recordingAudioEnabled = false
+  // Opt-in native device capture. When it runs it REPLACES the renderer's
+  // AudioWorklet feed rather than adding to it — both feeding would double the
+  // audio and desync the sample clock.
+  private nativeAudio = new NativeAudioSource()
 
   // Recording auto-restart bookkeeping (see maybeRestartRecording).
   private recordingConfig: RecordingConfig | null = null
@@ -86,6 +92,7 @@ export class StreamingService extends EventEmitter {
   private lastDropSnapshot = new Map<string, { video: number; audio: number }>()
   private outputsHeartbeat: ReturnType<typeof setInterval> | null = null
   private adaptiveBitrate = new AdaptiveBitrateController()
+  private streamIncidents = new StreamIncidentLog()
 
   constructor() {
     super()
@@ -168,6 +175,7 @@ export class StreamingService extends EventEmitter {
     this.recordingAudioEnabled = false
     this.recordingConfig = null
     this.recordingRetries = 0
+    this.syncNativeAudio()
     this.checkPowerSave()
     this.stopSilentClockIfIdle()
     this.releaseInputFormatIfIdle()
@@ -186,6 +194,7 @@ export class StreamingService extends EventEmitter {
       streamAudioEnabled: this.streamAudioEnabled,
       recordingAudioEnabled: this.recordingAudioEnabled,
       outputs,
+      incidents: this.getRecentIncidents(),
       at: Date.now()
     })
     return outputs
@@ -222,7 +231,21 @@ export class StreamingService extends EventEmitter {
   public async startStream(config: StreamConfig): Promise<void> {
     // Every destination is its own StreamSession. Callers all pass an
     // explicit outputId today; the fallback keeps the API total.
-    return this.startStreamOutput(config.outputId || 'primary', config)
+    const outputId = config.outputId || 'primary'
+    try {
+      return await this.startStreamOutput(outputId, config)
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : String(error)
+      const message = this.redactConfigSecrets(rawMessage, config)
+      this.streamIncidents.add({
+        outputId,
+        outputName: config.outputName || outputId,
+        kind: 'failed',
+        message: `Could not start: ${message}`
+      })
+      this.emitStatusChanged('output-error', `${config.outputName || outputId}: ${message}`)
+      throw error
+    }
   }
 
   public stopStream(): void {
@@ -274,6 +297,7 @@ export class StreamingService extends EventEmitter {
     this.recordingStopping = false
     this.recordingRetries = 0
     this.isRecording = true
+    this.syncNativeAudio()
     this.emit('recording-started')
     this.emitStatusChanged('recording-started')
   }
@@ -293,6 +317,7 @@ export class StreamingService extends EventEmitter {
     this.isRecording = false
     this.recordingAudioEnabled = false
     this.activeRecordingPath = null
+    this.syncNativeAudio()
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
     this.releaseInputFormatIfIdle()
@@ -318,20 +343,49 @@ export class StreamingService extends EventEmitter {
   }
 
   public feedAudioFrame(audioData: Uint8Array | AudioFramePayload): void {
-    if (!this.isStreaming && !this.isRecording) return
+    // Native capture owns the encoder's audio input while it runs. The renderer
+    // keeps its worklet alive regardless (it still drives meters), so dropping
+    // its frames here is what prevents a doubled feed.
+    if (this.nativeAudio.active) return
     const frame = normalizeAudioFramePayload(audioData)
-    const framesInChunk = frame.data.byteLength / 4 / 2
+    this.writeAudioFrame(frame.data)
+  }
+
+  private writeAudioFrame(data: Uint8Array): void {
+    if (!this.isStreaming && !this.isRecording) return
+    const framesInChunk = data.byteLength / 4 / 2
 
     let acceptedByRecording = false
-    if (this.isRecording) acceptedByRecording = this.recordingManager.writeAudio(frame.data)
+    if (this.isRecording) acceptedByRecording = this.recordingManager.writeAudio(data)
 
     for (const runtime of this.streamOutputs.values()) {
-      if (runtime.sessionConfig.audioEnabled) runtime.session?.pushAudioFrame(frame.data)
+      if (runtime.sessionConfig.audioEnabled) runtime.session?.pushAudioFrame(data)
     }
 
     if (acceptedByRecording || this.streamOutputs.size > 0) {
       this.pumper.incrementSamples(framesInChunk)
     }
+  }
+
+  /**
+   * Bring native capture up once something needs audio, and take it down when
+   * nothing does. Called after every streaming/recording state transition.
+   */
+  private syncNativeAudio(): void {
+    const wanted = (this.isStreaming && this.streamAudioEnabled)
+      || (this.isRecording && this.recordingAudioEnabled)
+
+    if (!wanted) {
+      this.nativeAudio.stop()
+      return
+    }
+    if (this.nativeAudio.active) return
+
+    this.nativeAudio.start((pcm) => this.writeAudioFrame(pcm))
+  }
+
+  public getNativeAudioStatus(): { active: boolean; framesCaptured: number; framesDropped: number } {
+    return this.nativeAudio.status()
   }
 
   public takeScreenshot(frameData: Uint8Array): string {
@@ -345,6 +399,52 @@ export class StreamingService extends EventEmitter {
   public getStreamStatus() { return this.isStreaming }
   public getRecordingStatus() { return this.isRecording }
   public getRecordingOutputPath() { return this.activeRecordingPath }
+  public getRecentIncidents(limit = 12) { return this.streamIncidents.list(limit) }
+
+  public async getPreflightStatus(): Promise<StreamingPreflightStatus> {
+    const checkedAt = Date.now()
+    const ffmpegAvailable = Boolean(resolvedFfmpegPath && existsSync(resolvedFfmpegPath))
+    let encoder: StreamingPreflightStatus['encoder'] = null
+    let encoderKind: StreamingPreflightStatus['encoderKind'] = null
+    let recordingWritable = false
+    let recordingFreeBytes: number | null = null
+    let error: string | undefined
+
+    if (ffmpegAvailable) {
+      try {
+        encoder = await this.encoderResolver.getBestEncoder('h264')
+        encoderKind = encoder === 'libx264' ? 'software' : 'hardware'
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err)
+      }
+    } else {
+      error = 'Bundled FFmpeg binary is unavailable'
+    }
+
+    try {
+      this.ensureRecordingDirectory()
+      const recordingFolder = this.getRecordingFolder()
+      accessSync(recordingFolder, constants.W_OK)
+      recordingWritable = true
+      const stats = statfsSync(recordingFolder)
+      const freeBytes = Number(stats.bavail) * Number(stats.bsize)
+      recordingFreeBytes = Number.isFinite(freeBytes) ? Math.max(0, freeBytes) : null
+    } catch (err) {
+      if (!error) {
+        error = `Recording folder is unavailable: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }
+
+    return {
+      checkedAt,
+      ffmpegAvailable,
+      encoder,
+      encoderKind,
+      recordingWritable,
+      recordingFreeBytes,
+      ...(error ? { error } : {})
+    }
+  }
 
   /**
    * Graceful teardown on app quit. Without this, ServiceRegistry.dispose() never
@@ -389,6 +489,9 @@ export class StreamingService extends EventEmitter {
     this.activeInputFormat = null
     this.streamAudioEnabled = false
     this.recordingAudioEnabled = false
+    // Unconditional, not syncNativeAudio(): dispose must release the device
+    // even if state bookkeeping is inconsistent.
+    this.nativeAudio.stop()
 
     if (this.powerSaveId !== null) {
       try { powerSaveBlocker.stop(this.powerSaveId) } catch {}
@@ -449,6 +552,7 @@ export class StreamingService extends EventEmitter {
 
     this.streamOutputs.set(id, runtime)
     this.spawnOutputSession(runtime)
+    this.recordOutputIncident(runtime, 'started', 'Output process started')
     this.updateStreamingState()
     this.syncOutputsHeartbeat()
     this.emit('started')
@@ -552,8 +656,9 @@ export class StreamingService extends EventEmitter {
     const runtime = this.streamOutputs.get(id)
     if (!runtime) return
 
+    const safeMessage = runtime.sessionConfig.redactSecret(message)
     runtime.session = null
-    runtime.lastError = message
+    runtime.lastError = safeMessage
     // Failure before the stability window elapsed — this reconnect counts.
     if (runtime.stableTimer) {
       clearTimeout(runtime.stableTimer)
@@ -562,11 +667,17 @@ export class StreamingService extends EventEmitter {
 
     if (runtime.retries >= OUTPUT_MAX_RESTARTS) {
       const name = runtime.sessionConfig.name
-      console.error(`[Streaming:${id}] Giving up after ${runtime.retries} consecutive restarts: ${message}`)
+      console.error(`[Streaming:${id}] Giving up after ${runtime.retries} consecutive restarts: ${safeMessage}`)
+      this.recordOutputIncident(
+        runtime,
+        'failed',
+        `${safeMessage} (gave up after ${OUTPUT_MAX_RESTARTS} restarts)`,
+        runtime.retries
+      )
       this.removeStreamOutput(id)
-      this.emitStatusChanged('output-error', `${name}: ${message} (gave up after ${OUTPUT_MAX_RESTARTS} restarts)`)
+      this.emitStatusChanged('output-error', `${name}: ${safeMessage} (gave up after ${OUTPUT_MAX_RESTARTS} restarts)`)
       if (this.streamOutputs.size === 0 && !this.isStreaming) {
-        this.emitStatusChanged('error', `${name}: ${message}`)
+        this.emitStatusChanged('error', `${name}: ${safeMessage}`)
       }
       return
     }
@@ -578,7 +689,13 @@ export class StreamingService extends EventEmitter {
       OUTPUT_RESTART_MAX_DELAY_MS,
       OUTPUT_RESTART_BASE_DELAY_MS * 2 ** (runtime.retries - 1)
     )
-    console.warn(`[Streaming:${id}] ${message} — restarting in ${delay}ms (attempt ${runtime.retries}/${OUTPUT_MAX_RESTARTS})`)
+    console.warn(`[Streaming:${id}] ${safeMessage} — restarting in ${delay}ms (attempt ${runtime.retries}/${OUTPUT_MAX_RESTARTS})`)
+    this.recordOutputIncident(
+      runtime,
+      'reconnecting',
+      `${safeMessage}; retrying in ${Math.round(delay / 1000)}s`,
+      runtime.retries
+    )
     this.emitStatusChanged('output-reconnecting', `${runtime.sessionConfig.name}: reconnecting…`)
 
     runtime.retryTimer = setTimeout(() => {
@@ -586,6 +703,7 @@ export class StreamingService extends EventEmitter {
       // The user may have stopped the stream while we were waiting.
       if (!this.streamOutputs.has(id)) return
       this.spawnOutputSession(runtime)
+      this.recordOutputIncident(runtime, 'recovered', 'Output process restarted', runtime.retries)
       this.emitStatusChanged('output-recovered')
     }, delay)
     ;(runtime.retryTimer as any)?.unref?.()
@@ -597,6 +715,7 @@ export class StreamingService extends EventEmitter {
       if (runtime.retryTimer) clearTimeout(runtime.retryTimer)
       runtime.retryTimer = null
       runtime.session?.stop()
+      this.recordOutputIncident(runtime, 'stopped', 'Output stopped')
       this.removeStreamOutput(id)
       this.emitStatusChanged(this.isStreaming ? 'output-stopped' : 'stopped')
     }
@@ -612,6 +731,28 @@ export class StreamingService extends EventEmitter {
     this.syncOutputsHeartbeat()
     this.releaseInputFormatIfIdle()
     this.checkPowerSave()
+  }
+
+  private recordOutputIncident(
+    runtime: OutputRuntime,
+    kind: StreamIncidentKind,
+    message: string,
+    retry?: number
+  ): void {
+    this.streamIncidents.add({
+      outputId: runtime.sessionConfig.id,
+      outputName: runtime.sessionConfig.name,
+      kind,
+      message: runtime.sessionConfig.redactSecret(message),
+      ...(retry === undefined ? {} : { retry })
+    })
+  }
+
+  private redactConfigSecrets(message: string, config: StreamConfig): string {
+    let redacted = message
+    if (config.streamKey) redacted = redacted.replaceAll(config.streamKey, '[REDACTED]')
+    if (config.rtmpUrl) redacted = redacted.replaceAll(config.rtmpUrl, '[RTMP SERVER]')
+    return redacted
   }
 
   private reserveInputFormat(inputFormat: 'h264' | 'mjpeg'): void {
@@ -683,6 +824,7 @@ export class StreamingService extends EventEmitter {
   private updateStreamingState(): void {
     this.isStreaming = this.streamOutputs.size > 0
     this.streamAudioEnabled = this.computeStreamAudioEnabled()
+    this.syncNativeAudio()
   }
 
   private computeStreamAudioEnabled(): boolean {

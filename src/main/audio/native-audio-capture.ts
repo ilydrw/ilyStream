@@ -133,21 +133,3 @@ export function getCaptureStatus(): CaptureStatus {
   }
   return addon.getStatus()
 }
-
-/**
- * Convert interleaved f32 PCM to the interleaved s16le the encoder is fed.
- *
- * Kept here rather than in C++ so the conversion is unit-testable without a
- * device: it is the piece most likely to be wrong in a way that sounds like
- * distortion rather than silence.
- */
-export function floatToPcm16(input: Float32Array): Buffer {
-  const out = Buffer.allocUnsafe(input.length * 2)
-  for (let i = 0; i < input.length; i++) {
-    // Clamp before scaling: values outside [-1, 1] would wrap and click.
-    const clamped = Math.max(-1, Math.min(1, input[i]))
-    // Asymmetric scale — int16 has one more negative step than positive.
-    out.writeInt16LE(Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff), i * 2)
-  }
-  return out
-}
