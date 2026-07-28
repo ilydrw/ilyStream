@@ -58,6 +58,10 @@
         "to": "native-engine/ilystream_engine.dll"
       },
       {
+        "from": "native/engine/build/Release/ilystream_audio.node",
+        "to": "native-audio/ilystream_audio.node"
+      },
+      {
         "from": "resources/ilyStream-Logo.svg",
         "to": "ilystream-logo.svg"
       },

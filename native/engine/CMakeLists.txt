@@ -195,6 +195,31 @@ else()
     target_compile_definitions(ilystream_preview PRIVATE NAPI_CPP_EXCEPTIONS)
 endif()
 
+# Native audio capture addon. Independent of the render engine — it shares this
+# build only so there is one native toolchain to maintain, not two.
+add_library(ilystream_audio MODULE ../audio/audio_capture.cpp src/win_delay_load_hook.cc)
+set_target_properties(ilystream_audio PROPERTIES
+    PREFIX ""
+    SUFFIX ".node"
+)
+target_include_directories(ilystream_audio PRIVATE ${NODE_ADDON_API_DIR} ../audio)
+if(LATEST_NODE_INCLUDES)
+    target_include_directories(ilystream_audio PRIVATE ${LATEST_NODE_INCLUDES})
+endif()
+if(WIN32 AND LATEST_NODE_LIB)
+    target_link_libraries(ilystream_audio PRIVATE ${LATEST_NODE_LIB})
+endif()
+if(MSVC)
+    target_compile_options(ilystream_audio PRIVATE /bigobj)
+    # miniaudio pulls in windows.h, whose min/max macros otherwise swallow
+    # std::min in the SPSC queue.
+    target_compile_definitions(ilystream_audio PRIVATE NAPI_CPP_EXCEPTIONS NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_options(ilystream_audio PRIVATE /DELAYLOAD:node.exe)
+    target_link_libraries(ilystream_audio PRIVATE delayimp)
+else()
+    target_compile_definitions(ilystream_audio PRIVATE NAPI_CPP_EXCEPTIONS)
+endif()
+
 # Unit tests executable target
 add_executable(engine_tests tests/test_main.cpp)
 target_link_libraries(engine_tests PRIVATE 

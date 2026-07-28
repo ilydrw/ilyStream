@@ -1,0 +1,153 @@
+/**
+ * Main-process wrapper around the native audio capture addon
+ * (native/audio -> ilystream_audio.node).
+ *
+ * Captures a device on a real-time audio thread and delivers interleaved f32
+ * PCM to main, so broadcast audio can reach the encoder without travelling
+ * through a renderer WebAudio graph.
+ *
+ * The addon has no dependency on ilystream_engine.dll — it only shares the
+ * engine's CMake project — so this loader does not need the PATH dance
+ * native-engine.ts does.
+ */
+import { app } from 'electron'
+import { createRequire } from 'module'
+import { join } from 'path'
+import { existsSync } from 'fs'
+
+const requireNative = createRequire(import.meta.url)
+
+export interface CaptureDevice {
+  id: string
+  name: string
+  isDefault: boolean
+}
+
+export interface CaptureOptions {
+  deviceId?: string
+  sampleRate?: number
+  channels?: number
+  /**
+   * Ask for WASAPI exclusive mode. Lower latency, but it takes the device away
+   * from every other application and fails outright on a lot of consumer
+   * hardware — the addon falls back to shared mode rather than failing, so
+   * check `exclusive` on the returned CaptureSession to see what you got.
+   */
+  exclusive?: boolean
+}
+
+export interface CaptureSession {
+  sampleRate: number
+  channels: number
+  exclusive: boolean
+  chunkFrames: number
+}
+
+export interface CaptureFrame {
+  /** Interleaved f32 samples, `channels` per frame. */
+  pcm: Float32Array
+  framesCaptured: number
+  /** Frames the audio thread had to discard because main fell behind. */
+  framesDropped: number
+}
+
+export interface CaptureStatus {
+  running: boolean
+  framesCaptured: number
+  framesDropped: number
+  sampleRate: number
+  channels: number
+}
+
+interface AudioAddon {
+  listCaptureDevices(): CaptureDevice[]
+  startCapture(options: CaptureOptions, onFrame: (frame: CaptureFrame) => void): CaptureSession
+  stopCapture(): { framesCaptured: number; framesDropped: number }
+  getStatus(): CaptureStatus
+}
+
+/** Candidate locations for the built addon, dev and packaged. */
+function addonCandidates(): string[] {
+  const override = process.env.ILY_AUDIO_ADDON
+  const appPath = app.getAppPath()
+  return [
+    ...(override ? [override] : []),
+    // Packaged: electron-builder extraResources copies it here (see package.json).
+    join(process.resourcesPath ?? '', 'native-audio', 'ilystream_audio.node'),
+    // Dev: raw CMake build output, alongside the engine addons.
+    join(appPath, 'native', 'engine', 'build', 'Release', 'ilystream_audio.node'),
+    join(process.cwd(), 'native', 'engine', 'build', 'Release', 'ilystream_audio.node')
+  ].filter(Boolean)
+}
+
+let addon: AudioAddon | null = null
+
+function loadAddon(): AudioAddon {
+  if (addon) return addon
+
+  const found = addonCandidates().find((candidate) => existsSync(candidate))
+  if (!found) {
+    throw new Error(
+      `Native audio addon not found. Looked in:\n${addonCandidates().join('\n')}\n` +
+        `Build it with: npm run build:engine`
+    )
+  }
+
+  addon = requireNative(found) as AudioAddon
+  return addon
+}
+
+/** True when the addon is present and loadable; callers fall back to the renderer path. */
+export function isNativeAudioAvailable(): boolean {
+  try {
+    loadAddon()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function listCaptureDevices(): CaptureDevice[] {
+  return loadAddon().listCaptureDevices()
+}
+
+/**
+ * Start capturing. Only one capture runs at a time; starting while another is
+ * active throws rather than silently replacing it.
+ */
+export function startCapture(
+  options: CaptureOptions,
+  onFrame: (frame: CaptureFrame) => void
+): CaptureSession {
+  return loadAddon().startCapture(options, onFrame)
+}
+
+export function stopCapture(): { framesCaptured: number; framesDropped: number } {
+  if (!addon) return { framesCaptured: 0, framesDropped: 0 }
+  return addon.stopCapture()
+}
+
+export function getCaptureStatus(): CaptureStatus {
+  if (!addon) {
+    return { running: false, framesCaptured: 0, framesDropped: 0, sampleRate: 0, channels: 0 }
+  }
+  return addon.getStatus()
+}
+
+/**
+ * Convert interleaved f32 PCM to the interleaved s16le the encoder is fed.
+ *
+ * Kept here rather than in C++ so the conversion is unit-testable without a
+ * device: it is the piece most likely to be wrong in a way that sounds like
+ * distortion rather than silence.
+ */
+export function floatToPcm16(input: Float32Array): Buffer {
+  const out = Buffer.allocUnsafe(input.length * 2)
+  for (let i = 0; i < input.length; i++) {
+    // Clamp before scaling: values outside [-1, 1] would wrap and click.
+    const clamped = Math.max(-1, Math.min(1, input[i]))
+    // Asymmetric scale — int16 has one more negative step than positive.
+    out.writeInt16LE(Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff), i * 2)
+  }
+  return out
+}
