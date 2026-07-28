@@ -65,6 +65,64 @@ const sessionBroadcastTextures = new Map<string, {
   height: number
 }>()
 
+/**
+ * Canvases painted from a broadcast session's presentation texture, keyed by
+ * canvas id. This is how a projector mirrors an engine output: the canvas is a
+ * capture source for WebRTC, and painting it is one GPU blit rather than a
+ * second composite of the whole scene.
+ */
+const sessionCanvasPainters = new Map<string, { sessionId: string; frame: number | null }>()
+
+function sessionTextureFor(sessionId: string): {
+  texture: Electron.SharedTextureImported | null
+  width: number
+  height: number
+} {
+  if (!sessionId || sessionId === 'program') {
+    return {
+      texture: sharedBroadcastTexture,
+      width: sharedBroadcastWidth,
+      height: sharedBroadcastHeight
+    }
+  }
+  const entry = sessionBroadcastTextures.get(sessionId)
+  return {
+    texture: entry?.texture ?? null,
+    width: entry?.width ?? 0,
+    height: entry?.height ?? 0
+  }
+}
+
+function scheduleSessionCanvasFrame(canvasId: string): void {
+  const painter = sessionCanvasPainters.get(canvasId)
+  if (!painter || painter.frame !== null) return
+
+  painter.frame = (globalThis as any).requestAnimationFrame(() => {
+    const current = sessionCanvasPainters.get(canvasId)
+    if (!current) return
+    current.frame = null
+
+    const { texture, width, height } = sessionTextureFor(current.sessionId)
+    const canvas = (globalThis as any).document?.getElementById(canvasId)
+    if (texture && canvas && width > 0 && height > 0) {
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width
+        canvas.height = height
+      }
+      const context = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
+      if (context) {
+        const frame = texture.getVideoFrame()
+        try {
+          context.drawImage(frame, 0, 0, width, height)
+        } finally {
+          frame.close()
+        }
+      }
+    }
+    scheduleSessionCanvasFrame(canvasId)
+  })
+}
+
 function releaseSessionBroadcastTexture(sessionId: string): void {
   const entry = sessionBroadcastTextures.get(sessionId)
   if (!entry) return
@@ -750,6 +808,27 @@ const api = {
         ok: boolean
         error?: string
       }>,
+    /**
+     * Paint a session's output into a canvas every frame (projector mirroring).
+     * Returns false when that session has no presentation texture.
+     */
+    attachSessionCanvas: (sessionId: string, canvasId: string) => {
+      const { texture } = sessionTextureFor(sessionId)
+      if (!texture) return false
+      const existing = sessionCanvasPainters.get(canvasId)
+      if (existing?.frame !== null && existing !== undefined) {
+        ;(globalThis as any).cancelAnimationFrame(existing.frame)
+      }
+      sessionCanvasPainters.set(canvasId, { sessionId, frame: null })
+      scheduleSessionCanvasFrame(canvasId)
+      return true
+    },
+    detachSessionCanvas: (canvasId: string) => {
+      const painter = sessionCanvasPainters.get(canvasId)
+      if (!painter) return
+      if (painter.frame !== null) (globalThis as any).cancelAnimationFrame(painter.frame)
+      sessionCanvasPainters.delete(canvasId)
+    },
     stopBroadcast: async (sessionId?: string) => {
       if (!sessionId || sessionId === 'program') {
         releaseSharedBroadcastTexture()

@@ -4,7 +4,7 @@ import { IconPencil, IconCopy, IconTrash } from '../../components/ui/icons'
 
 import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
-import type { LayerType, StudioLayer } from '../../../shared/studio'
+import { resolveLayerLayout, type LayerType, type StudioLayer } from '../../../shared/studio'
 import { CanvasEditor } from './components/CanvasEditor'
 import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceOption } from './components/CanvasEditor.types'
 import { ContextMenu } from '../../components/ui/ContextMenu'
@@ -14,6 +14,7 @@ import { resolveWidgetStudioPreset } from './utils/widget-placement'
 
 // Modular Components & Hooks
 import { BroadcastHeader } from './components/BroadcastHeader'
+import { BroadcastIncidentBanner } from './components/BroadcastIncidentBanner'
 import { MultiViewModal } from './components/MultiViewModal'
 import { DualVerticalOverlayBar } from './components/DualVerticalOverlayBar'
 import { SceneSidebar } from './components/SceneSidebar'
@@ -47,6 +48,13 @@ import {
   usesTwitchIngest,
   type ProjectorAspectRatio
 } from './utils/broadcast-page-utils'
+import {
+  buildLiveReadinessReport,
+  createLiveReadinessDiagnosticReport,
+  type LiveReadinessIncident,
+  type LiveReadinessOutput,
+  type LiveReadinessSystemSnapshot
+} from './utils/live-readiness'
 
 interface SourceContextMenuState {
   x: number
@@ -56,7 +64,7 @@ interface SourceContextMenuState {
   aspectRatio: ProjectorAspectRatio
 }
 
-export default function BroadcastPage() {
+export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?: boolean }) {
   const store = useStudioStore()
   const [isStreaming, setIsStreaming] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -66,7 +74,13 @@ export default function BroadcastPage() {
   const [streamError, setStreamError] = useState<string | null>(null)
   // Per-destination health from the streaming service's status heartbeat —
   // drives the "reconnecting / dropping frames" chip in the header.
-  const [outputHealth, setOutputHealth] = useState<Array<{ id: string; name: string; state: string; degraded: boolean }>>([])
+  const [outputHealth, setOutputHealth] = useState<LiveReadinessOutput[]>([])
+  const [streamIncidents, setStreamIncidents] = useState<LiveReadinessIncident[]>([])
+  const [dismissedIncidentId, setDismissedIncidentId] = useState<string | null>(null)
+  const [systemReadiness, setSystemReadiness] = useState<LiveReadinessSystemSnapshot | null>(null)
+  const [readinessRefreshing, setReadinessRefreshing] = useState(false)
+  const [resourceUsage, setResourceUsage] = useState<{ cpuPercent: number; memoryMB: number; processCount: number } | null>(null)
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [mediaDeviceRevision, setMediaDeviceRevision] = useState(0)
   const [widgets, setWidgets] = useState<any[]>([])
@@ -155,7 +169,12 @@ export default function BroadcastPage() {
   const [isResizingMixer, setIsResizingMixer] = useState(false)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [selectionContext, setSelectionContext] = useState<ProjectorAspectRatio>(() => store.aspectRatio)
-  const isPageVisible = usePageVisibility()
+  const isDocumentVisible = usePageVisibility()
+  // App intentionally keeps Studio mounted after the first visit so a real
+  // stream can continue while the user checks another page. document.hidden
+  // does not change for that in-app navigation, though, so using it alone kept
+  // the entire preview/source pipeline alive while Studio sat offscreen.
+  const isPageVisible = isRouteActive && isDocumentVisible
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const canvasRef = useRef<CanvasEditorHandle>(null)
   const nativeTikTokLiveActiveRef = useRef(false)
@@ -274,6 +293,160 @@ export default function BroadcastPage() {
     activeAspectRatios: activeMediaAspectRatios, mediaDeviceRevision
   })
 
+  const readinessInput = useMemo(() => {
+    const assignedIdList = [
+      ...activeLayoutAssignments.horizontal,
+      ...activeLayoutAssignments.vertical
+    ]
+    const assignedIds = Array.from(new Set(assignedIdList))
+    const assignedPlatforms = assignedIds
+      .map(id => platforms.find(platform => platform.id === id))
+      .filter(Boolean)
+    const missingDestinationNames = assignedIds
+      .filter(id => !platforms.some(platform => platform.id === id))
+    const duplicateDestinationNames = assignedIds
+      .filter(id => assignedIdList.filter(assignedId => assignedId === id).length > 1)
+      .map(id => platforms.find(platform => platform.id === id)?.name || id)
+    const customUrlReady = customRtmpUrl.trim().length > 0
+    const customKeyReady = customStreamKey.trim().length > 0
+    const customSelected = assignedIds.length === 0 && (customUrlReady || customKeyReady)
+    const customComplete = customSelected && customUrlReady && customKeyReady
+    const destinationNames = [
+      ...assignedPlatforms.map(platform => platform.name || platform.id),
+      ...(customComplete ? ['Custom RTMP'] : [])
+    ]
+
+    const readinessAspectRatios: ProjectorAspectRatio[] =
+      broadcastLayoutMode === 'horizontal' || broadcastLayoutMode === 'dual-horizontal'
+        ? ['16:9']
+        : broadcastLayoutMode === 'vertical' || broadcastLayoutMode === 'dual-portrait'
+          ? ['9:16']
+          : ['16:9', '9:16']
+    const isLayerActive = (layer: StudioLayer) =>
+      layer.type === 'audio' ||
+      readinessAspectRatios.some(aspectRatio => resolveLayerLayout(layer, aspectRatio).visible)
+    const activeLayers = activeScene.layers.filter(isLayerActive)
+    const visibleVisualLayerCount = activeLayers.filter(layer => layer.type !== 'audio').length
+    const requiredMediaSources = activeLayers
+      .filter(layer => layer.type === 'camera' || layer.type === 'display' || layer.type === 'audio')
+      .map(layer => ({
+        id: layer.id,
+        name: layer.name || layer.type,
+        status: mediaStatuses[layer.id]
+      }))
+    const hasConfiguredAudio =
+      store.audioSources.some(source => !source.muted && source.volume > 0) ||
+      activeLayers.some(layer =>
+        layer.type === 'audio' ||
+        (layer.type === 'camera' && layer.config.audioDeviceId !== 'none') ||
+        (layer.type === 'display' && layer.config.captureAudio === true)
+      )
+    const audioContextState = audioEngine.getContextState()
+
+    return {
+      destinationNames,
+      hasIncompleteCustomDestination: customSelected && !customComplete,
+      missingDestinationNames,
+      duplicateDestinationNames,
+      sceneName: activeScene.name,
+      visibleVisualLayerCount,
+      mediaSources: requiredMediaSources,
+      hasAudioRoute: audioEngine.hasMixerRoute(),
+      hasConfiguredAudio,
+      masterMuted: Boolean(store.masterBus?.muted),
+      audioContextState: audioContextState === 'uninitialized' ? undefined : audioContextState,
+      online: isOnline,
+      isStreaming,
+      outputs: outputHealth,
+      incidents: streamIncidents
+    }
+  }, [
+    activeLayoutAssignments,
+    activeScene,
+    broadcastLayoutMode,
+    customRtmpUrl,
+    customStreamKey,
+    isOnline,
+    isStreaming,
+    mediaStatuses,
+    outputHealth,
+    streamIncidents,
+    platforms,
+    store.audioSources,
+    store.masterBus?.muted
+  ])
+
+  const readinessReport = useMemo(
+    () => buildLiveReadinessReport({ ...readinessInput, system: systemReadiness }),
+    [readinessInput, systemReadiness]
+  )
+
+  const refreshLiveReadiness = useCallback(async (): Promise<LiveReadinessSystemSnapshot> => {
+    setReadinessRefreshing(true)
+    try {
+      const [preflight, usage] = await Promise.all([
+        window.api.streaming.getPreflight() as Promise<LiveReadinessSystemSnapshot>,
+        window.api.system.getResourceUsage().catch(() => null)
+      ])
+      setSystemReadiness(preflight)
+      setResourceUsage(usage)
+      return preflight
+    } catch (error) {
+      const failed: LiveReadinessSystemSnapshot = {
+        checkedAt: Date.now(),
+        ffmpegAvailable: false,
+        encoder: null,
+        encoderKind: null,
+        recordingWritable: false,
+        recordingFreeBytes: null,
+        error: formatIpcError(error)
+      }
+      setSystemReadiness(failed)
+      return failed
+    } finally {
+      setReadinessRefreshing(false)
+    }
+  }, [])
+
+  const copyReadinessDiagnostic = useCallback(async () => {
+    const diagnostic = createLiveReadinessDiagnosticReport(readinessReport, {
+      sceneName: activeScene.name,
+      destinationNames: readinessInput.destinationNames,
+      system: systemReadiness,
+      outputs: outputHealth,
+      incidents: streamIncidents,
+      resourceUsage
+    })
+    await window.api.system.copyToClipboard(diagnostic)
+    toast.success('Live-readiness report copied')
+  }, [activeScene.name, outputHealth, readinessInput.destinationNames, readinessReport, resourceUsage, streamIncidents, systemReadiness])
+
+  const latestIncident = streamIncidents[streamIncidents.length - 1]
+  const visibleIncident = latestIncident &&
+    latestIncident.id !== dismissedIncidentId &&
+    (latestIncident.kind === 'failed' || latestIncident.kind === 'reconnecting' || latestIncident.kind === 'recovered')
+      ? latestIncident
+      : null
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOnline(navigator.onLine)
+    window.addEventListener('online', updateOnlineState)
+    window.addEventListener('offline', updateOnlineState)
+    return () => {
+      window.removeEventListener('online', updateOnlineState)
+      window.removeEventListener('offline', updateOnlineState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isRouteActive) return
+    void refreshLiveReadiness()
+    const interval = window.setInterval(() => {
+      void refreshLiveReadiness()
+    }, 30_000)
+    return () => window.clearInterval(interval)
+  }, [isRouteActive, refreshLiveReadiness])
+
   // Projector windows can't hold the cameras this window owns, so we mirror
   // our already-composed scene canvas to them. Primary transport is WebRTC:
   // canvas.captureStream() → RTCPeerConnection, signaled over the brokered
@@ -284,6 +457,8 @@ export default function BroadcastPage() {
   // VideoFrame — is cross-process structured-cloneable in Chromium).
   useEffect(() => {
     const sessions = new Set<{ stop: () => void }>()
+    // Unique ids for the hidden canvases engine-fed mirrors paint into.
+    let mirrorCanvasSeq = 0
 
     const refCount = (delta: 1 | -1, aspect: '16:9' | '9:16' | undefined) => {
       if (aspect === '9:16') setActiveMirrorAspects(prev => ({ ...prev, vertical: Math.max(0, prev.vertical + delta) }))
@@ -300,7 +475,47 @@ export default function BroadcastPage() {
       let remoteDescribed = false
       const pendingIce: RTCIceCandidateInit[] = []
 
-      refCount(1, aspectRatio)
+      // When the engine already composites this aspect, mirror ITS output: a
+      // hidden canvas painted from the session's presentation texture (one GPU
+      // blit) is the capture source, instead of forcing the whole scene to be
+      // composited again on canvas just to feed the projector.
+      const nativeSessionId = aspectRatio
+        ? canvasRef.current?.getNativeSessionId(aspectRatio) ?? null
+        : null
+      let nativeCanvas: HTMLCanvasElement | null = null
+      const nativeCanvasId = nativeSessionId
+        ? `ily-projector-mirror-${nativeSessionId}-${mirrorCanvasSeq++}`
+        : null
+
+      const releaseNativeCanvas = () => {
+        if (nativeCanvasId) window.api?.engine?.detachSessionCanvas?.(nativeCanvasId)
+        nativeCanvas?.remove()
+        nativeCanvas = null
+      }
+
+      /** Hidden canvas fed by the engine, or null to fall back to the compositor. */
+      const acquireNativeCanvas = (): HTMLCanvasElement | null => {
+        if (!nativeSessionId || !nativeCanvasId) return null
+        if (nativeCanvas) return nativeCanvas
+        const canvas = document.createElement('canvas')
+        canvas.id = nativeCanvasId
+        canvas.width = aspectRatio === '9:16' ? 1080 : 1920
+        canvas.height = aspectRatio === '9:16' ? 1920 : 1080
+        canvas.style.position = 'fixed'
+        canvas.style.left = '-10000px'
+        canvas.style.top = '0'
+        canvas.style.pointerEvents = 'none'
+        document.body.appendChild(canvas)
+        if (!window.api?.engine?.attachSessionCanvas?.(nativeSessionId, nativeCanvasId)) {
+          canvas.remove()
+          return null
+        }
+        nativeCanvas = canvas
+        return canvas
+      }
+
+      // Only a canvas-composited mirror needs the compositor kept alive.
+      if (!nativeSessionId) refCount(1, aspectRatio)
 
       const stop = () => {
         if (stopped) return
@@ -311,7 +526,8 @@ export default function BroadcastPage() {
         pc = null
         try { captureTrack?.stop() } catch {}
         captureTrack = null
-        refCount(-1, aspectRatio)
+        releaseNativeCanvas()
+        if (!nativeSessionId) refCount(-1, aspectRatio)
         sessions.delete(session)
         try { port.close() } catch {}
       }
@@ -359,8 +575,8 @@ export default function BroadcastPage() {
       const startWebRtc = async () => {
         // The per-aspect canvas is created lazily by the render loop once the
         // mirror ref-count forces it to render — poll briefly until it exists.
-        let canvas: HTMLCanvasElement | null = null
-        for (let attempt = 0; attempt < 20 && !stopped; attempt++) {
+        let canvas: HTMLCanvasElement | null = acquireNativeCanvas()
+        for (let attempt = 0; !canvas && attempt < 20 && !stopped; attempt++) {
           canvas = (aspectRatio && canvasRef.current?.getOutputCanvas(aspectRatio)) || null
           if (!canvas && attempt >= 10) canvas = canvasRef.current?.getCanvas() ?? null
           if (canvas) break
@@ -557,13 +773,21 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     if (!window.api?.on) return
+    void window.api.streaming.getIncidents()
+      .then((incidents: LiveReadinessIncident[]) => {
+        if (Array.isArray(incidents)) setStreamIncidents(incidents)
+      })
+      .catch(() => {})
+
     return window.api.on('streaming:status-changed', (next: any) => {
       setIsStreaming(Boolean(next.streaming))
       setIsRecording(Boolean(next.recording))
       setRecordingStartedAt(prev => next.recording ? (prev ?? Date.now()) : null)
       setStatus(next.streaming ? 'Live' : next.recording ? 'Recording' : 'Offline')
       if (Array.isArray(next.outputs)) setOutputHealth(next.outputs)
-      if (next.state === 'error') {
+      if (Array.isArray(next.incidents)) setStreamIncidents(next.incidents)
+      const newestIncident = Array.isArray(next.incidents) ? next.incidents[next.incidents.length - 1] : null
+      if (next.state === 'error' && newestIncident?.kind !== 'failed') {
         setStreamError(next.error || 'Broadcast output failed')
       }
     })
@@ -806,6 +1030,19 @@ export default function BroadcastPage() {
 
   const startBroadcast = async () => {
     setStreamError(null)
+    const freshSystemReadiness = await refreshLiveReadiness()
+    const freshReadinessReport = buildLiveReadinessReport({
+      ...readinessInput,
+      system: freshSystemReadiness
+    })
+    if (freshReadinessReport.blockerCount > 0) {
+      const firstBlocker = freshReadinessReport.checks.find(check => check.blocksGoLive && check.tone === 'blocked')
+      const message = firstBlocker?.summary || 'Live-readiness checks failed'
+      setStreamError(message)
+      toast.error(`${message}. Open Live Readiness for details.`)
+      return
+    }
+
     const destinations = (['horizontal', 'vertical'] as BroadcastLayoutId[]).flatMap(l => activeLayoutAssignments[l].map(pId => ({ layout: l, platform: platforms.find(p => p.id === pId) })))
     if (destinations.length === 0 && customRtmpUrl) destinations.push({ layout: store.aspectRatio === '9:16' ? 'vertical' : 'horizontal', platform: { id: 'custom', name: 'Custom', url: customRtmpUrl, key: customStreamKey } })
     if (destinations.length === 0) return setStreamError('No platforms assigned')
@@ -1112,6 +1349,20 @@ export default function BroadcastPage() {
         streamInfoTitle={streamInfo.title} onOpenStreamInfo={() => setShowStreamInfoModal(true)}
         onStartBroadcast={startBroadcast} onStopBroadcast={stopBroadcast}
         onShowMultiView={() => setShowMultiView(true)}
+        readinessReport={readinessReport}
+        readinessRefreshing={readinessRefreshing}
+        streamIncidents={streamIncidents}
+        onRefreshReadiness={() => { void refreshLiveReadiness() }}
+        onCopyReadinessDiagnostic={() => { void copyReadinessDiagnostic() }}
+      />
+
+      <BroadcastIncidentBanner
+        error={streamError}
+        incident={visibleIncident}
+        onDismiss={() => {
+          if (streamError) setStreamError(null)
+          else if (visibleIncident) setDismissedIncidentId(visibleIncident.id)
+        }}
       />
 
       <StreamInfoModal
@@ -1158,6 +1409,7 @@ export default function BroadcastPage() {
                   activeScene={previewScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
                   outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                  devices={devices}
                   isVisible={isPageVisible} isPreview={true}
                   streamReady={streamReady} streamOutputs={[]}
                   previewMode="single" selectionContext={selectionContext}
@@ -1230,6 +1482,7 @@ export default function BroadcastPage() {
                   activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
                   outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                  devices={devices}
                   isVisible={isPageVisible}
                   streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                   previewMode="single" selectionContext={selectionContext}
@@ -1251,6 +1504,7 @@ export default function BroadcastPage() {
                 activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                 captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
                 outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
+                devices={devices}
                 isVisible={isPageVisible}
                 streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                 previewMode={broadcastLayoutMode} selectionContext={selectionContext}

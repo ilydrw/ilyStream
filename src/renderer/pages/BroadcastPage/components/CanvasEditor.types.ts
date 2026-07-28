@@ -41,6 +41,7 @@ export interface CanvasEditorProps {
   outputFps: number
   outputBitrateKbps: number
   videoRefs: MutableRefObject<Record<string, HTMLVideoElement>>
+  devices: MediaDeviceInfo[]
   streamReady: number
   outputCodec?: string
   streamOutputs?: CanvasStreamOutput[]
@@ -132,4 +133,8 @@ export interface CanvasEditorHandle {
   // null if that aspect isn't currently being rendered (e.g. vertical canvas
   // is only created when dual mode / vertical stream output is active).
   getOutputCanvas: (aspect: '16:9' | '9:16') => HTMLCanvasElement | null
+  // The broadcast session compositing this aspect on the engine right now, or
+  // null when that aspect is still drawn on canvas. A projector uses this to
+  // mirror the engine's output instead of forcing a canvas composite.
+  getNativeSessionId: (aspect: '16:9' | '9:16') => string | null
 }

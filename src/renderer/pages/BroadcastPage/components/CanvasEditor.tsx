@@ -307,8 +307,23 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     },
     getCanvas: () => canvasRef.current,
     getOutputCanvas: (aspect: '16:9' | '9:16') =>
-      aspect === '9:16' ? verticalCanvasRef.current : horizontalCanvasRef.current
+      aspect === '9:16' ? verticalCanvasRef.current : horizontalCanvasRef.current,
+    // Read through a ref: the handle is created once, but which aspects are
+    // native changes as outputs start and stop.
+    getNativeSessionId: (aspect: '16:9' | '9:16') =>
+      aspect === '9:16' ? nativeSessionsRef.current.vertical : nativeSessionsRef.current.horizontal
   }), [])
+
+  // Which aspects the engine is compositing, for consumers reaching in through
+  // the imperative handle (the projector mirror).
+  const nativeSessionsRef = useRef<{ horizontal: string | null; vertical: string | null }>({
+    horizontal: null,
+    vertical: null
+  })
+  nativeSessionsRef.current = {
+    horizontal: nativeHorizontalOutputActive ? 'program' : null,
+    vertical: nativeVerticalOutputActive ? 'vertical' : null
+  }
 
   // Viewport & Zoom State
   const [zoom, setZoom] = useState(1)
