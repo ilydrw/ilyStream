@@ -1064,10 +1064,100 @@ TEST_CASE("Mask transform remaps mask UVs for letterboxed (contain) fits", "[rea
 #include "ily/render_backend.h"
 #include <d3d11.h>
 #include <dxgi.h>
+#include <dxgi1_2.h>
 #include <wrl/client.h>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+
+namespace {
+
+/**
+ * Build a D3D11 device on the compositor's own adapter.
+ *
+ * This is not incidental setup: a shared texture created on a different GPU
+ * opens successfully and then never updates, so a producer on the wrong adapter
+ * fails as a silently stale frame rather than an error.
+ */
+bool MakeProducerDeviceOnCompositorAdapter(
+    ily::Renderer& renderer,
+    Microsoft::WRL::ComPtr<ID3D11Device>& outDevice,
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext>& outContext) {
+    using Microsoft::WRL::ComPtr;
+
+    ily::IRenderBackend* backend = renderer.GetDevice().GetBackend();
+    if (!backend) return false;
+    uint64_t targetLuid = 0;
+    if (!backend->GetAdapterLuid(&targetLuid)) return false;
+
+    ComPtr<IDXGIFactory1> factory;
+    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return false;
+
+    ComPtr<IDXGIAdapter1> adapter;
+    for (UINT index = 0;; ++index) {
+        ComPtr<IDXGIAdapter1> candidate;
+        if (factory->EnumAdapters1(index, &candidate) == DXGI_ERROR_NOT_FOUND) break;
+        DXGI_ADAPTER_DESC1 description{};
+        if (FAILED(candidate->GetDesc1(&description))) continue;
+        const uint64_t luid =
+            (static_cast<uint64_t>(
+                 static_cast<uint32_t>(description.AdapterLuid.HighPart)) << 32)
+            | static_cast<uint64_t>(description.AdapterLuid.LowPart);
+        if (luid == targetLuid) { adapter = candidate; break; }
+    }
+    if (!adapter) return false;
+
+    D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
+    D3D_FEATURE_LEVEL selectedLevel;
+    return SUCCEEDED(D3D11CreateDevice(
+        adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0,
+        levels, 1, D3D11_SDK_VERSION, &outDevice, &selectedLevel, &outContext));
+}
+
+/** Draw one imported texture full-frame and read the centre pixel back (RGBA). */
+void CompositeAndReadCentre(
+    ily::Renderer& renderer,
+    ResourceHandle imported,
+    uint32_t width,
+    uint32_t height,
+    uint8_t outRgb[3]) {
+    IlyLayer layer{};
+    layer.texture = imported;
+    layer.transform.position = {0.0f, 0.0f, 0.0f};
+    layer.transform.scale = {static_cast<float>(width), static_cast<float>(height), 1.0f};
+    layer.transform.visibility = true;
+    layer.transform.opacity = 1.0f;
+    layer.opacity = 1.0f;
+    layer.blendMode = ILY_BLEND_ALPHA;
+
+    auto graph = std::make_shared<ily::RenderGraph>();
+    ily::RenderPass pass;
+    pass.name = "shared-texture-test";
+    pass.execute = [layer](ily::IRenderBackend* target) -> IlyResult {
+        return target->DrawQuad(
+            layer.texture, layer.transform, layer.opacity, layer.blendMode);
+    };
+    graph->AddPass(pass);
+    renderer.SetRenderGraph(graph);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4, 0);
+    uint32_t outWidth = 0;
+    uint32_t outHeight = 0;
+    REQUIRE(renderer.ReadPixels(
+        pixels.data(), static_cast<uint32_t>(pixels.size()),
+        &outWidth, &outHeight) == ILY_SUCCESS);
+    REQUIRE(outWidth == width);
+    REQUIRE(outHeight == height);
+
+    const size_t centre = (static_cast<size_t>(height / 2) * width + (width / 2)) * 4;
+    outRgb[0] = pixels[centre + 0];
+    outRgb[1] = pixels[centre + 1];
+    outRgb[2] = pixels[centre + 2];
+}
+
+} // namespace
 
 /*
  * Regression: a shared D3D11 texture imported into the compositor must actually
@@ -1216,6 +1306,108 @@ TEST_CASE("Imported shared sRGB texture composites its pixels, not black", "[sha
 
     renderer.DestroyTexture(imported);
     renderer.Stop();
+}
+
+/*
+ * Regression (shipped broken, caught only on real hardware): the import path
+ * used ID3D11Device::OpenSharedResource, which opens ONLY legacy
+ * D3D11_RESOURCE_MISC_SHARED handles and rejects NT handles outright.
+ *
+ * Chromium's offscreen browser sources hand out NT handles — created with
+ * CreateSharedHandle under D3D11_RESOURCE_MISC_SHARED_NTHANDLE — so every
+ * widget frame failed to import while the test above stayed green, because it
+ * produces the legacy flavour. This case pins the other flavour.
+ *
+ * Matching Chromium exactly matters here: its rgba/bgra textures carry NO
+ * keyed mutex, so the producer pairs NTHANDLE with SHARED rather than with
+ * SHARED_KEYEDMUTEX.
+ */
+TEST_CASE("Imported NT-handle shared texture composites its pixels", "[shared_texture]") {
+    using Microsoft::WRL::ComPtr;
+
+    IlyResult res = IlyInitializeSystem();
+    REQUIRE((res == ILY_SUCCESS || res == ILY_ERROR_ALREADY_EXISTS));
+
+    const uint32_t W = 64;
+    const uint32_t H = 64;
+
+    ily::Renderer renderer;
+    REQUIRE(renderer.Start() == ILY_SUCCESS);
+    IlyEngineConfig config{W, H, 60, false};
+    REQUIRE(renderer.Initialize(config) == ILY_SUCCESS);
+
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+    REQUIRE(MakeProducerDeviceOnCompositorAdapter(renderer, device, context));
+
+    // Distinct from the legacy case's colour so a copy/paste of the wrong
+    // texture would show up rather than coincidentally matching.
+    const uint8_t blue = 30;
+    const uint8_t green = 90;
+    const uint8_t red = 220;
+    std::vector<uint8_t> sourcePixels(static_cast<size_t>(W) * H * 4);
+    for (size_t i = 0; i < sourcePixels.size(); i += 4) {
+        sourcePixels[i + 0] = blue;
+        sourcePixels[i + 1] = green;
+        sourcePixels[i + 2] = red;
+        sourcePixels[i + 3] = 255;
+    }
+
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = W;
+    description.Height = H;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initialData{};
+    initialData.pSysMem = sourcePixels.data();
+    initialData.SysMemPitch = W * 4;
+    ComPtr<ID3D11Texture2D> stagingSource;
+    REQUIRE(SUCCEEDED(device->CreateTexture2D(&description, &initialData, &stagingSource)));
+
+    description.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;
+    ComPtr<ID3D11Texture2D> sharedTexture;
+    REQUIRE(SUCCEEDED(device->CreateTexture2D(&description, nullptr, &sharedTexture)));
+
+    // GPU copy, not UpdateSubresource: CPU writes do not propagate to the
+    // importing device (see the legacy case above).
+    context->CopyResource(sharedTexture.Get(), stagingSource.Get());
+    context->Flush();
+
+    // IDXGIResource::GetSharedHandle cannot produce this kind of handle —
+    // NT handles come from IDXGIResource1::CreateSharedHandle.
+    ComPtr<IDXGIResource1> sharedResource;
+    REQUIRE(SUCCEEDED(sharedTexture.As(&sharedResource)));
+    HANDLE sharedHandle = nullptr;
+    REQUIRE(SUCCEEDED(sharedResource->CreateSharedHandle(
+        nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr, &sharedHandle)));
+    REQUIRE(sharedHandle != nullptr);
+
+    ResourceHandle imported = renderer.CreateSharedTextureFromHandle(
+        W, H, sharedHandle, ILY_PIXEL_FORMAT_BGRA8,
+        IlySrgbFullColor(), ILY_ALPHA_OPAQUE, 80.0f);
+    REQUIRE(imported != ILY_INVALID_HANDLE);
+    REQUIRE(renderer.CreateSpriteProgram() != ILY_INVALID_HANDLE);
+
+    uint8_t centre[3] = {0, 0, 0};
+    CompositeAndReadCentre(renderer, imported, W, H, centre);
+
+    std::cout << "[shared_texture] nt_handle centre=("
+              << int(centre[0]) << "," << int(centre[1]) << ","
+              << int(centre[2]) << ")" << std::endl;
+
+    // Black here is the pre-fix failure; the sRGB round trip costs a step or two.
+    REQUIRE(std::abs(int(centre[0]) - int(red)) <= 8);
+    REQUIRE(std::abs(int(centre[1]) - int(green)) <= 8);
+    REQUIRE(std::abs(int(centre[2]) - int(blue)) <= 8);
+
+    renderer.DestroyTexture(imported);
+    renderer.Stop();
+    CloseHandle(sharedHandle);
 }
 #endif // _WIN32
 
