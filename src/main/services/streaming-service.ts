@@ -351,6 +351,22 @@ export class StreamingService extends EventEmitter {
     this.writeAudioFrame(frame.data)
   }
 
+  /**
+   * Renderer-generated audio (TTS + soundboard) for the native mix.
+   *
+   * These are synthesised in the WebAudio graph, so device capture cannot pick
+   * them up. While native capture runs they arrive here on their own bus and
+   * get summed into capture blocks; while it does not, they are already part of
+   * the renderer's combined broadcast bus and this is a no-op.
+   */
+  public feedGeneratedAudioFrame(audioData: Uint8Array | AudioFramePayload): void {
+    if (!this.nativeAudio.active) return
+    const frame = normalizeAudioFramePayload(audioData)
+    this.nativeAudio.pushGeneratedAudio(
+      new Float32Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength / 4)
+    )
+  }
+
   private writeAudioFrame(data: Uint8Array): void {
     if (!this.isStreaming && !this.isRecording) return
     const framesInChunk = data.byteLength / 4 / 2

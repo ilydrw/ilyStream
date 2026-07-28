@@ -31,6 +31,14 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     return streamingService.getOutputsStatus()
   })
 
+  ipcMain.handle('streaming:get-preflight', () => {
+    return streamingService.getPreflightStatus()
+  })
+
+  ipcMain.handle('streaming:get-incidents', () => {
+    return streamingService.getRecentIncidents()
+  })
+
   ipcMain.handle('streaming:stop-output', (_event, outputId: string) => {
     streamingService.stopStreamOutput(outputId)
     return { success: true }
@@ -77,6 +85,12 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
 
   ipcMain.on('streaming:feed-audio', (_event, audioData: Buffer | AudioFramePayload) => {
     streamingService.feedAudioFrame(audioData)
+  })
+
+  // TTS + soundboard only, on their own bus. Native device capture cannot pick
+  // up audio the renderer synthesises, so it is mixed in main instead.
+  ipcMain.on('streaming:feed-generated-audio', (_event, audioData: Buffer | AudioFramePayload) => {
+    streamingService.feedGeneratedAudioFrame(audioData)
   })
 }
 

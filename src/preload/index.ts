@@ -615,7 +615,9 @@ const api = {
     getRecordingStatus: () => ipcRenderer.invoke('streaming:get-recording-status'),
     takeScreenshot: (frameData: Uint8Array) => ipcRenderer.invoke('streaming:take-screenshot', frameData),
     feedFrame: (frameData: Uint8Array | VideoFramePayload) => ipcRenderer.send('streaming:feed-frame', frameData),
-    feedAudio: (audioData: Uint8Array | AudioFramePayload) => ipcRenderer.send('streaming:feed-audio', audioData)
+    feedAudio: (audioData: Uint8Array | AudioFramePayload) => ipcRenderer.send('streaming:feed-audio', audioData),
+    feedGeneratedAudio: (audioData: Uint8Array | AudioFramePayload) =>
+      ipcRenderer.send('streaming:feed-generated-audio', audioData)
   },
   // --- Recordings Library ---
   recordings: {

@@ -16,6 +16,7 @@ import {
   stopCapture,
   type CaptureSession
 } from './native-audio-capture'
+import { GeneratedAudioBuffer } from './generated-audio-buffer'
 
 export interface NativeAudioSourceOptions {
   deviceId?: string
@@ -51,6 +52,22 @@ export function resolveNativeAudioOptions(
 export class NativeAudioSource {
   private session: CaptureSession | null = null
   private lastReportedDrops = 0
+  /**
+   * TTS and soundboard, which are synthesised in the renderer's WebAudio graph
+   * and cannot be picked up by device capture. They arrive on the renderer's
+   * clock and get summed into capture chunks as those go out.
+   */
+  private generated = new GeneratedAudioBuffer()
+
+  /**
+   * Accept a block of renderer-generated audio (interleaved f32, same rate and
+   * layout as the capture stream). Ignored while capture is not running — the
+   * renderer feeds the encoder directly in that case.
+   */
+  pushGeneratedAudio(pcm: Float32Array): void {
+    if (!this.session) return
+    this.generated.push(pcm)
+  }
 
   /** True once capture is running and feeding the encoder. */
   get active(): boolean {
@@ -84,6 +101,12 @@ export class NativeAudioSource {
           this.lastReportedDrops = frame.framesDropped
           console.warn(`[NativeAudio] dropped ${frame.framesDropped} frames total`)
         }
+        // Sum TTS/soundboard into the captured block. The addon hands over a
+        // fresh array per callback, so mixing in place is safe. Capture is the
+        // clock: whatever generated audio is ready rides along, and silence
+        // fills the rest.
+        this.generated.mixInto(frame.pcm)
+
         // Float32Array -> byte view of the same memory; f32le is what the
         // encoder's audio input expects.
         onPcm(
@@ -118,6 +141,10 @@ export class NativeAudioSource {
     if (!this.session) return
     this.session = null
     this.lastReportedDrops = 0
+    // Whatever is still queued belongs to the session that just ended; playing
+    // it into the next one would leak a stale alert into a new stream.
+    this.generated.clear()
+    this.generated.resetStats()
     try {
       const totals = stopCapture()
       console.log(
@@ -129,13 +156,29 @@ export class NativeAudioSource {
     }
   }
 
-  status(): { active: boolean; framesCaptured: number; framesDropped: number } {
-    if (!this.session) return { active: false, framesCaptured: 0, framesDropped: 0 }
+  status(): {
+    active: boolean
+    framesCaptured: number
+    framesDropped: number
+    generatedQueued: number
+    generatedDropped: number
+  } {
+    if (!this.session) {
+      return {
+        active: false,
+        framesCaptured: 0,
+        framesDropped: 0,
+        generatedQueued: 0,
+        generatedDropped: 0
+      }
+    }
     const status = getCaptureStatus()
     return {
       active: status.running,
       framesCaptured: status.framesCaptured,
-      framesDropped: status.framesDropped
+      framesDropped: status.framesDropped,
+      generatedQueued: this.generated.available,
+      generatedDropped: this.generated.dropped
     }
   }
 }

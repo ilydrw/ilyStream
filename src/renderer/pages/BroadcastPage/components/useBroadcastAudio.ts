@@ -82,6 +82,12 @@ export function useBroadcastAudio(
   const programMonitorMixerRef = useRef<GainNode | null>(null)
   const mainMixMonitorGainRef = useRef<GainNode | null>(null)
   const processorRef = useRef<AudioWorkletNode | null>(null)
+  // TTS + soundboard on their own tap. Native device capture in main cannot
+  // pick up audio this graph synthesises, so when it drives the encoder these
+  // two are shipped separately and mixed there. Harmless otherwise: main
+  // ignores this bus unless native capture is running.
+  const generatedTapRef = useRef<GainNode | null>(null)
+  const generatedProcessorRef = useRef<AudioWorkletNode | null>(null)
   const sampleCountRef = useRef<number>(0)
   const tracksRef = useRef<Map<string, TrackNodes>>(new Map())
   const standaloneMicStreamsRef = useRef<Record<string, MediaStream>>({})
@@ -207,6 +213,15 @@ export function useBroadcastAudio(
         try { processorRef.current.disconnect() } catch {}
         processorRef.current = null
       }
+      if (generatedProcessorRef.current) {
+        try { generatedTapRef.current?.disconnect(generatedProcessorRef.current) } catch {}
+        try { generatedProcessorRef.current.disconnect() } catch {}
+        generatedProcessorRef.current = null
+      }
+      if (generatedTapRef.current) {
+        try { generatedTapRef.current.disconnect() } catch {}
+        generatedTapRef.current = null
+      }
       for (const nodes of tracksRef.current.values()) {
         try { nodes._sourceNode?.node?.disconnect() } catch {}
         nodes.channelMode.disconnect()
@@ -258,11 +273,23 @@ export function useBroadcastAudio(
     let disposed = false
 
     const disconnectProcessor = () => {
-      if (!processorRef.current) return
-      console.log('[useBroadcastAudio] Disconnecting broadcast processor')
-      try { broadcastLimiter.disconnect(processorRef.current) } catch {}
-      try { processorRef.current.disconnect() } catch {}
-      processorRef.current = null
+      if (processorRef.current) {
+        console.log('[useBroadcastAudio] Disconnecting broadcast processor')
+        try { broadcastLimiter.disconnect(processorRef.current) } catch {}
+        try { processorRef.current.disconnect() } catch {}
+        processorRef.current = null
+      }
+      if (generatedProcessorRef.current) {
+        try { generatedTapRef.current?.disconnect(generatedProcessorRef.current) } catch {}
+        try { generatedProcessorRef.current.disconnect() } catch {}
+        generatedProcessorRef.current = null
+      }
+      if (generatedTapRef.current) {
+        try { audioEngine.getTtsBus().disconnect(generatedTapRef.current) } catch {}
+        try { audioEngine.getSoundboardBus().disconnect(generatedTapRef.current) } catch {}
+        try { generatedTapRef.current.disconnect() } catch {}
+        generatedTapRef.current = null
+      }
     }
 
     if (!outputActive) {
@@ -296,6 +323,28 @@ export function useBroadcastAudio(
 
         broadcastLimiter.connect(processor)
         processor.connect(outputSilencer)
+
+        // Second tap: TTS + soundboard only. These already reach the stream
+        // inside the combined bus above; main discards this copy unless native
+        // capture is driving the encoder, in which case it discards the
+        // combined bus instead. Exactly one of the two is ever used.
+        const generatedTap = ctx.createGain()
+        const generatedProcessor = new AudioWorkletNode(ctx, 'broadcast-processor')
+        generatedTapRef.current = generatedTap
+        generatedProcessorRef.current = generatedProcessor
+
+        generatedProcessor.port.onmessage = (event) => {
+          const buffer = event.data
+          if (buffer instanceof ArrayBuffer && window.api?.streaming?.feedGeneratedAudio) {
+            window.api.streaming.feedGeneratedAudio({ data: new Uint8Array(buffer) })
+          }
+        }
+
+        audioEngine.getTtsBus().connect(generatedTap)
+        audioEngine.getSoundboardBus().connect(generatedTap)
+        generatedTap.connect(generatedProcessor)
+        generatedProcessor.connect(outputSilencer)
+
         console.log('[useBroadcastAudio] Broadcast pipeline ready.')
       } catch (err) {
         console.error('[useBroadcastAudio] Failed to initialize AudioWorklet:', err)
