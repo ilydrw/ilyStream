@@ -15,6 +15,7 @@
 
 #ifdef _WIN32
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi1_2.h>
 #include <windows.h>
 #pragma comment(lib, "d3d11.lib")
@@ -959,11 +960,35 @@ ResourceHandle BgfxBackend::CreateSharedTextureFromHandle(uint32_t width, uint32
 
     ID3D11Device* device = static_cast<ID3D11Device*>(internalData->context);
     ID3D11Texture2D* importedTexture = nullptr;
-    HRESULT hr = device->OpenSharedResource(
-        static_cast<HANDLE>(sharedHandle),
-        __uuidof(ID3D11Texture2D),
-        reinterpret_cast<void**>(&importedTexture));
+
+    // Two incompatible flavours of shared handle reach this function, and the
+    // API that opens one rejects the other:
+    //   - NT handles (D3D11_RESOURCE_MISC_SHARED_NTHANDLE, produced by
+    //     CreateSharedHandle) need OpenSharedResource1. Chromium's offscreen
+    //     browser-source textures are these.
+    //   - Legacy handles (D3D11_RESOURCE_MISC_SHARED) need OpenSharedResource.
+    // Try the NT path first, then fall back, so both kinds of producer work.
+    HRESULT hr = E_FAIL;
+    ID3D11Device1* device1 = nullptr;
+    if (SUCCEEDED(device->QueryInterface(__uuidof(ID3D11Device1), reinterpret_cast<void**>(&device1))) && device1) {
+        hr = device1->OpenSharedResource1(
+            static_cast<HANDLE>(sharedHandle),
+            __uuidof(ID3D11Texture2D),
+            reinterpret_cast<void**>(&importedTexture));
+        device1->Release();
+    }
+
     if (FAILED(hr) || !importedTexture) {
+        importedTexture = nullptr;
+        hr = device->OpenSharedResource(
+            static_cast<HANDLE>(sharedHandle),
+            __uuidof(ID3D11Texture2D),
+            reinterpret_cast<void**>(&importedTexture));
+    }
+
+    if (FAILED(hr) || !importedTexture) {
+        std::cerr << "[ily-engine] shared texture open failed: 0x"
+                  << std::hex << hr << std::dec << std::endl;
         return ILY_INVALID_HANDLE;
     }
 
