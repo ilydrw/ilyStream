@@ -256,6 +256,7 @@ interface NativeAddon {
   engineCreateColorTexture(engine: bigint, rgba: number): bigint
   engineCreateTextureFromPixels(engine: bigint, width: number, height: number, rgba: Buffer): bigint
   engineCreateTextureFromPixelsEx(engine: bigint, description: TextureDescription, pixels: Buffer): bigint
+  engineCreateSharedTexture(engine: bigint, description: TextureDescription, sharedHandle: Buffer): bigint
   engineCreateScreenCapture(engine: bigint, monitorIndex: number, targetFps: number): { texture: bigint; sharedMemoryName: string; description: ScreenCaptureDescription }
   listScreenCaptureDisplays(): ScreenCaptureDisplay[]
   engineCreateCameraCapture(engine: bigint, deviceIdentity: string, width: number, height: number, targetFps: number): { texture: bigint; description: CameraCaptureDescription }
@@ -387,6 +388,16 @@ export class NativeEngine {
   createDescribedTexture(description: TextureDescription, pixels: Buffer): bigint {
     this.assertAlive()
     return this.api.engineCreateTextureFromPixelsEx(this.handle, description, pixels)
+  }
+
+  /**
+   * Adopt a GPU surface the host already owns, by platform shared handle — the
+   * zero-copy counterpart to createDescribedTexture. The caller keeps ownership
+   * of the handle and must keep it alive until this texture is destroyed.
+   */
+  createSharedTexture(description: TextureDescription, sharedHandle: Buffer): bigint {
+    this.assertAlive()
+    return this.api.engineCreateSharedTexture(this.handle, description, sharedHandle)
   }
 
   /** 

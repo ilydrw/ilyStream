@@ -103,6 +103,20 @@ ILY_API IlyResult IlyEngineCreateTextureFromPixels(ResourceHandle engineHandle, 
 ILY_API IlyResult IlyEngineCreateTextureFromPixelsEx(ResourceHandle engineHandle, const IlyTextureDesc* textureDesc, const void* pixels, uint32_t byteLength, ResourceHandle* outTextureHandle);
 
 /**
+ * @brief Import a texture the host already owns on the GPU, by shared handle.
+ *
+ * The counterpart to IlyEngineGetSharedOutputTexture: instead of handing our
+ * output to someone else, we adopt someone else's surface as a source. The
+ * caller keeps ownership of @p sharedHandle and must keep it alive until the
+ * returned texture is passed to IlyEngineDestroyTexture.
+ *
+ * This is the zero-copy path for host-produced frames — Chromium offscreen
+ * browser sources hand over a D3D11 NT handle per paint, which would otherwise
+ * cost a GPU readback, a CPU bitmap and a re-upload per frame per source.
+ */
+ILY_API IlyResult IlyEngineCreateSharedTexture(ResourceHandle engineHandle, const IlyTextureDesc* textureDesc, void* sharedHandle, ResourceHandle* outTextureHandle);
+
+/**
  * @brief Create a hardware-accelerated screen capture session on the native engine.
  *
  * The engine will spawn a background thread using DXGI Desktop Duplication

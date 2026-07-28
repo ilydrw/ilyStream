@@ -1,6 +1,7 @@
 #include <napi.h>
 #include "ily/engine.h"
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -309,6 +310,62 @@ static Napi::Value EngineCreateTextureFromPixelsEx(const Napi::CallbackInfo& inf
         &outTexture);
     if (result != ILY_SUCCESS) {
         Napi::Error::New(env, "Failed to create described texture, code: " + std::to_string(result)).ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    return Napi::BigInt::New(env, ResourceHandleToUint64(outTexture));
+}
+
+// engineCreateSharedTexture(engine: BigInt, desc: Object, handle: Buffer) -> BigInt
+//
+// `handle` carries the raw platform handle bytes, matching the shape
+// engineGetSharedOutputTexture hands out and the one Electron's
+// textureInfo.handle.ntHandle arrives in.
+static Napi::Value EngineCreateSharedTexture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3 || !info[0].IsBigInt() || !info[1].IsObject() || !info[2].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Object, Buffer)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool lossless;
+    uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    Napi::Object object = info[1].As<Napi::Object>();
+    Napi::Buffer<uint8_t> handleBuffer = info[2].As<Napi::Buffer<uint8_t>>();
+
+    if (handleBuffer.Length() < sizeof(void*)) {
+        Napi::TypeError::New(env, "Shared handle buffer is too small").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    void* sharedHandle = nullptr;
+    std::memcpy(&sharedHandle, handleBuffer.Data(), sizeof(sharedHandle));
+    if (!sharedHandle) {
+        Napi::TypeError::New(env, "Shared handle is null").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    IlyTextureDesc desc{};
+    desc.width = object.Get("width").As<Napi::Number>().Uint32Value();
+    desc.height = object.Get("height").As<Napi::Number>().Uint32Value();
+    desc.format = object.Has("format")
+        ? static_cast<IlyPixelFormat>(object.Get("format").As<Napi::Number>().Uint32Value())
+        : ILY_PIXEL_FORMAT_BGRA8;
+    desc.color = IlySrgbFullColor();
+    if (object.Has("color") && object.Get("color").IsObject()) {
+        desc.color = ParseColorDescription(object.Get("color").As<Napi::Object>(), desc.color);
+    }
+    desc.alphaMode = object.Has("alphaMode")
+        ? static_cast<IlyAlphaMode>(object.Get("alphaMode").As<Napi::Number>().Uint32Value())
+        : ILY_ALPHA_STRAIGHT;
+
+    ResourceHandle outTexture = ILY_INVALID_HANDLE;
+    IlyResult result = IlyEngineCreateSharedTexture(
+        Uint64ToResourceHandle(engineVal),
+        &desc,
+        sharedHandle,
+        &outTexture);
+    if (result != ILY_SUCCESS) {
+        Napi::Error::New(env, "Failed to import shared texture, code: " + std::to_string(result)).ThrowAsJavaScriptException();
         return env.Null();
     }
     return Napi::BigInt::New(env, ResourceHandleToUint64(outTexture));
@@ -925,6 +982,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineCreateColorTexture", Napi::Function::New(env, EngineCreateColorTexture));
     exports.Set("engineCreateTextureFromPixels", Napi::Function::New(env, EngineCreateTextureFromPixels));
     exports.Set("engineCreateTextureFromPixelsEx", Napi::Function::New(env, EngineCreateTextureFromPixelsEx));
+    exports.Set("engineCreateSharedTexture", Napi::Function::New(env, EngineCreateSharedTexture));
     exports.Set("engineCreateScreenCapture", Napi::Function::New(env, EngineCreateScreenCapture));
     exports.Set("listScreenCaptureDisplays", Napi::Function::New(env, ListScreenCaptureDisplays));
     exports.Set("engineCreateCameraCapture", Napi::Function::New(env, EngineCreateCameraCapture));

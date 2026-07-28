@@ -616,6 +616,35 @@ ILY_API IlyResult IlyEngineCreateTextureFromPixelsEx(ResourceHandle engineHandle
     return ILY_SUCCESS;
 }
 
+ILY_API IlyResult IlyEngineCreateSharedTexture(ResourceHandle engineHandle, const IlyTextureDesc* textureDesc, void* sharedHandle, ResourceHandle* outTextureHandle) {
+    if (!textureDesc || !sharedHandle || !outTextureHandle || textureDesc->width == 0 || textureDesc->height == 0) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    if (textureDesc->format != ILY_PIXEL_FORMAT_RGBA8 && textureDesc->format != ILY_PIXEL_FORMAT_BGRA8) {
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    const IlyColorDescription color = NormalizeColorDescription(textureDesc->color, IlySrgbFullColor());
+    ResourceHandle texHandle = it->second->renderer->CreateSharedTextureFromHandle(
+        textureDesc->width,
+        textureDesc->height,
+        sharedHandle,
+        textureDesc->format,
+        color,
+        textureDesc->alphaMode);
+    if (texHandle == ILY_INVALID_HANDLE) {
+        return ILY_ERROR_RENDER_FAILED;
+    }
+    *outTextureHandle = texHandle;
+    return ILY_SUCCESS;
+}
+
 ILY_API IlyResult IlyEngineGetOutputColorConfig(ResourceHandle engineHandle, IlyOutputColorConfig* outConfig) {
     if (!outConfig) {
         return ILY_ERROR_INVALID_ARGUMENT;

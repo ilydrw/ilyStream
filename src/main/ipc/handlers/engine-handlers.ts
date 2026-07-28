@@ -403,6 +403,11 @@ function attachBrowserSourceSink(eng: NativeEngine, sourceKey: string, browserSo
     const entry = broadcastSceneTextures.get(sourceKey)
     if (!entry || entry.browserSourceId !== browserSourceId) return
 
+    if (frame.kind === 'shared') {
+      applySharedBrowserSourceFrame(eng, sourceKey, entry, frame)
+      return
+    }
+
     if (frame.width !== entry.width || frame.height !== entry.height) {
       // Any session mid-update will settle sizes; skip rather than race it.
       const updating = [...broadcastSessions.values()].some((s) => s.sceneUpdatePromise)
@@ -436,6 +441,113 @@ function attachBrowserSourceSink(eng: NativeEngine, sourceKey: string, browserSo
 
     eng.updateTexture(entry.texture, frame.bgra)
   })
+}
+
+/**
+ * Imported browser-source GPU textures, keyed by scene source and then by the
+ * shared handle's bytes.
+ *
+ * Chromium recycles a small pool of textures per offscreen page, so the same
+ * handles recur frame after frame. Importing is a synchronous round trip to the
+ * render thread, so doing it once per handle — rather than once per frame —
+ * is what keeps this path cheaper than the bitmap it replaces. The imported
+ * texture then tracks whatever Chromium paints into that surface with no
+ * further work from us.
+ */
+const browserSourceSharedTextures = new Map<string, Map<string, bigint>>()
+
+function destroySharedBrowserSourceTextures(eng: NativeEngine, sourceKey: string): void {
+  const pool = browserSourceSharedTextures.get(sourceKey)
+  if (!pool) return
+  browserSourceSharedTextures.delete(sourceKey)
+  for (const texture of pool.values()) {
+    try {
+      eng.destroyTexture(texture)
+    } catch (error) {
+      console.warn(`[engine-broadcast] shared browser-source texture cleanup failed:`, error)
+    }
+  }
+}
+
+function applySharedBrowserSourceFrame(
+  eng: NativeEngine,
+  sourceKey: string,
+  entry: BroadcastSceneTexture,
+  frame: { width: number; height: number; sharedHandle: Buffer }
+): void {
+  if (frame.width <= 0 || frame.height <= 0) return
+  if (frame.width * frame.height > MAX_LIVE_SOURCE_PIXELS) return
+
+  let pool = browserSourceSharedTextures.get(sourceKey)
+  if (!pool) {
+    pool = new Map<string, bigint>()
+    browserSourceSharedTextures.set(sourceKey, pool)
+  }
+
+  const handleKey = frame.sharedHandle.toString('base64')
+  let texture = pool.get(handleKey)
+
+  if (texture === undefined) {
+    // A size change invalidates every previously imported surface for this
+    // source; the page was resized and Chromium allocated a fresh pool.
+    if (frame.width !== entry.width || frame.height !== entry.height) {
+      const updating = [...broadcastSessions.values()].some((s) => s.sceneUpdatePromise)
+      if (updating) return
+      destroySharedBrowserSourceTextures(eng, sourceKey)
+      pool = new Map<string, bigint>()
+      browserSourceSharedTextures.set(sourceKey, pool)
+    }
+
+    try {
+      texture = eng.createSharedTexture(
+        {
+          width: frame.width,
+          height: frame.height,
+          format: PixelFormat.BGRA8,
+          color: SRGB_FULL_COLOR,
+          alphaMode: AlphaMode.Straight
+        },
+        frame.sharedHandle
+      )
+    } catch (error) {
+      console.warn(`[engine-broadcast] shared texture import failed for ${sourceKey}:`, error)
+      return
+    }
+    pool.set(handleKey, texture)
+  }
+
+  if (entry.texture === texture && entry.width === frame.width && entry.height === frame.height) {
+    // Same surface as last frame: Chromium repainted in place and the engine is
+    // already sampling it. Nothing to rebind.
+    return
+  }
+
+  const previous = entry.texture
+  broadcastSceneTextures.set(sourceKey, {
+    ...entry,
+    texture,
+    width: frame.width,
+    height: frame.height
+  })
+  // The texture this source started with was a CPU-uploaded placeholder, not
+  // one of ours; pooled imports are owned by the pool and outlive the swap.
+  if (!isPooledSharedTexture(sourceKey, previous)) {
+    try {
+      eng.destroyTexture(previous)
+    } catch {
+      // Already gone, or never ours to destroy.
+    }
+  }
+  rebuildBroadcastLayers(eng)
+}
+
+function isPooledSharedTexture(sourceKey: string, texture: bigint): boolean {
+  const pool = browserSourceSharedTextures.get(sourceKey)
+  if (!pool) return false
+  for (const pooled of pool.values()) {
+    if (pooled === texture) return true
+  }
+  return false
 }
 
 function detachBrowserSourceSinks(keys?: Iterable<string>): void {
@@ -522,7 +634,10 @@ async function applyNativeBroadcastScene(
     detachBrowserSourceSinks(retiredKeys)
     for (const key of retiredKeys) {
       const sourceTexture = broadcastSceneTextures.get(key)
-      if (sourceTexture) eng.destroyTexture(sourceTexture.texture)
+      if (sourceTexture && !isPooledSharedTexture(key, sourceTexture.texture)) {
+        eng.destroyTexture(sourceTexture.texture)
+      }
+      destroySharedBrowserSourceTextures(eng, key)
       stagedTextures.delete(key)
     }
 
@@ -643,6 +758,9 @@ async function stopNativeBroadcast(): Promise<void> {
     await releaseImportedBroadcastOutput()
     engineToDestroy?.destroy()
     broadcastSceneTextures = new Map()
+    // Destroying the engine takes its textures with it; drop the imports so a
+    // next engine never sees handles belonging to the old one.
+    browserSourceSharedTextures.clear()
     broadcastDisplayIndexes = new Map()
     broadcastSessions.clear()
   })()
