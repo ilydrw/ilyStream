@@ -12,3 +12,5 @@ npm run preview
 ```
 
 The production build outputs to `website/dist/`.
+
+<!-- Deployed: 2026-08-24 -->
