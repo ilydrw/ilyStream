@@ -18,8 +18,8 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     }
   })
 
-  ipcMain.handle('streaming:stop', () => {
-    streamingService.stopStream()
+  ipcMain.handle('streaming:stop', async () => {
+    await streamingService.stopStream()
     return { success: true }
   })
 
@@ -31,8 +31,16 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     return streamingService.getOutputsStatus()
   })
 
-  ipcMain.handle('streaming:stop-output', (_event, outputId: string) => {
-    streamingService.stopStreamOutput(outputId)
+  ipcMain.handle('streaming:get-preflight', () => {
+    return streamingService.getPreflightStatus()
+  })
+
+  ipcMain.handle('streaming:get-incidents', () => {
+    return streamingService.getRecentIncidents()
+  })
+
+  ipcMain.handle('streaming:stop-output', async (_event, outputId: string) => {
+    await streamingService.stopStreamOutput(outputId)
     return { success: true }
   })
 
@@ -46,9 +54,13 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     }
   })
 
-  ipcMain.handle('streaming:stop-recording', () => {
-    streamingService.stopRecording()
-    return { success: true }
+  ipcMain.handle('streaming:stop-recording', async () => {
+    try {
+      await streamingService.stopRecording()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   ipcMain.handle('streaming:get-recording-status', () => {
@@ -77,6 +89,12 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
 
   ipcMain.on('streaming:feed-audio', (_event, audioData: Buffer | AudioFramePayload) => {
     streamingService.feedAudioFrame(audioData)
+  })
+
+  // TTS + soundboard only, on their own bus. Native device capture cannot pick
+  // up audio the renderer synthesises, so it is mixed in main instead.
+  ipcMain.on('streaming:feed-generated-audio', (_event, audioData: Buffer | AudioFramePayload) => {
+    streamingService.feedGeneratedAudioFrame(audioData)
   })
 }
 

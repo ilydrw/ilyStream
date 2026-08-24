@@ -18,6 +18,7 @@ import { DEFAULT_ALERT_RULES, SUPPORTED_EVENTS_BY_PLATFORM } from '../../../shar
 
 import { normalizeAlertSettings, cloneAlertSettings, settingsMatch } from './utils'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { LikeMilestoneAlertSection } from './LikeMilestoneAlertSection'
 
 import './styles.css'
 // Two-pane overhaul — touch comment forces vite to re-transform if HMR got stuck.
@@ -237,7 +238,7 @@ export default function AlertsPage() {
       <div className="app-page alerts-page">
         <PageHeader
           kicker="Event routing & delivery"
-          title="Live alerts"
+          title="Alert Routes"
           icon={IconAlert}
           description="Route platform events to sound cues and on-screen visuals. Pick a route from the rail on the left, or create a new one for the platform you want to react to."
           actions={
@@ -305,7 +306,7 @@ export default function AlertsPage() {
             don't monitor their OBS audio hear nothing — this makes the app play
             the sound locally too. */}
         <label
-          className="app-section-card glass flex items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-white/[0.015] transition-colors"
+          className="app-section-card glass flex !flex-row shrink-0 items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-white/[0.015] transition-colors"
           onClick={(e) => {
             e.preventDefault()
             handleUpdate('alertSoundLocalMonitoring', !draftSettings.alertSoundLocalMonitoring)
@@ -324,6 +325,12 @@ export default function AlertsPage() {
           </div>
           <Toggle value={Boolean(draftSettings.alertSoundLocalMonitoring)} />
         </label>
+
+        <LikeMilestoneAlertSection
+          settings={draftSettings}
+          sounds={sounds}
+          onUpdate={handleUpdate}
+        />
 
         {/* ── Routes (rail) + Editor (pane) ───────────────────────────── */}
         <div className="alerts-two-pane">

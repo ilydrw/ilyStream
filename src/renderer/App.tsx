@@ -18,6 +18,7 @@ import { useUpdateSync } from './hooks/useUpdateSync'
 import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
 import { GoveeBleRuntime } from './components/govee/GoveeBleRuntime'
+import { isRendererAssetLoadError } from './lib/renderer-asset-error'
 
 function MountingDiagnostics() {
   useEffect(() => {
@@ -53,16 +54,34 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
   render() {
     if (this.state.error) {
+      const isAssetLoadError = isRendererAssetLoadError(this.state.error)
+
       return (
         <div style={{ padding: 40, color: '#ff5f56', fontFamily: 'monospace', fontSize: 14 }}>
-          <h2 style={{ color: '#fff', marginBottom: 12 }}>Something crashed</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', color: '#ff9999' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', color: '#666', marginTop: 8, fontSize: 11 }}>{this.state.error.stack}</pre>
+          <h2 style={{ color: '#fff', marginBottom: 12 }}>
+            {isAssetLoadError ? 'Reload required' : 'Something crashed'}
+          </h2>
+          <pre style={{ whiteSpace: 'pre-wrap', color: '#ff9999' }}>
+            {isAssetLoadError
+              ? 'ilyStream was rebuilt while this window was open. Reload the app to use the latest files.'
+              : this.state.error.message}
+          </pre>
+          {!isAssetLoadError && (
+            <pre style={{ whiteSpace: 'pre-wrap', color: '#666', marginTop: 8, fontSize: 11 }}>
+              {this.state.error.stack}
+            </pre>
+          )}
           <button
-            onClick={() => this.setState({ error: null })}
+            onClick={() => {
+              if (isAssetLoadError) {
+                window.location.reload()
+                return
+              }
+              this.setState({ error: null })
+            }}
             style={{ marginTop: 16, padding: '8px 16px', background: '#333', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
           >
-            Try Again
+            {isAssetLoadError ? 'Reload App' : 'Try Again'}
           </button>
         </div>
       )
@@ -103,6 +122,23 @@ export default function App() {
     }
   }, [isBroadcastRoute])
 
+  useEffect(() => {
+    if (isOverlay) return
+    let disposed = false
+    const ensureProgramRuntime = (value: number | { count?: number }) => {
+      const count = typeof value === 'number' ? value : Number(value?.count) || 0
+      if (!disposed && count > 0) setKeepBroadcastMounted(true)
+    }
+    void window.api?.obsWorkspace?.getAccess?.()
+      .then(access => ensureProgramRuntime(access.nativeBridge.programConsumers))
+      .catch(() => {})
+    const unsubscribe = window.api?.on?.('obs:program-consumers-changed', ensureProgramRuntime)
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [isOverlay])
+
   if (projectorSceneId) {
     return (
       <div className="fixed inset-0 overflow-hidden bg-black">
@@ -125,7 +161,7 @@ export default function App() {
                 : 'fixed left-[-10000px] top-0 h-screen w-screen overflow-hidden opacity-0 pointer-events-none'
             }
           >
-            <BroadcastPage />
+            <BroadcastPage isRouteActive={isBroadcastRoute} />
           </div>
         )}
 

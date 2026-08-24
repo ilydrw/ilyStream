@@ -21,9 +21,10 @@ export const KICK_REDIRECT_URI = `http://127.0.0.1:${KICK_REDIRECT_PORT}/callbac
 const AUTH_URL = 'https://id.kick.com/oauth/authorize'
 const TOKEN_URL = 'https://id.kick.com/oauth/token'
 
-// channel:read/write cover reading + patching stream title/category;
-// user:read lets us confirm which account authorized.
-const SCOPES = ['user:read', 'channel:read', 'channel:write'].join(' ')
+// user:read powers profile enrichment, channel:read/write cover stream metadata,
+// and events:subscribe lets the refreshable user token back the official event
+// path when app-token issuance is temporarily unavailable.
+const SCOPES = ['user:read', 'channel:read', 'channel:write', 'events:subscribe'].join(' ')
 
 export interface KickUserTokens {
   accessToken: string
@@ -39,6 +40,28 @@ function generateCodeVerifier(): string {
 
 function generateCodeChallenge(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url')
+}
+
+export function buildKickAuthorizeUrl(input: {
+  clientId: string
+  state: string
+  codeChallenge: string
+}): string {
+  const params = new URLSearchParams({
+    client_id: input.clientId,
+    response_type: 'code',
+    // Kick currently rewrites the first 127.0.0.1 query value to localhost.
+    // Keep this sacrificial parameter before redirect_uri so the registered
+    // callback remains unchanged. See Kick's OAuth 2.1 loopback workaround.
+    redirect: '127.0.0.1',
+    redirect_uri: KICK_REDIRECT_URI,
+    scope: SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: input.codeChallenge,
+    state: input.state
+  })
+
+  return `${AUTH_URL}?${params.toString()}`
 }
 
 // In-flight auth attempt. A second connect click cancels the first so the
@@ -59,17 +82,11 @@ export async function initiateKickUserAuth(
   const codeChallenge = generateCodeChallenge(codeVerifier)
   const state = randomBytes(32).toString('base64url')
 
-  const params = new URLSearchParams({
-    client_id: clientId.trim(),
-    response_type: 'code',
-    redirect_uri: KICK_REDIRECT_URI,
-    scope: SCOPES,
-    code_challenge_method: 'S256',
-    code_challenge: codeChallenge,
-    state
-  })
-
-  await shell.openExternal(`${AUTH_URL}?${params.toString()}`)
+  await shell.openExternal(buildKickAuthorizeUrl({
+    clientId: clientId.trim(),
+    state,
+    codeChallenge
+  }))
 
   const code = await waitForCallback(state)
   return exchangeCodeForTokens(clientId.trim(), clientSecret.trim(), code, codeVerifier)

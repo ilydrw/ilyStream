@@ -75,7 +75,7 @@ export function registerSoundHandlers(
     return result
   })
   ipcMain.handle('sound:play', (_event, id: string, volume?: number) =>
-    soundboardService.playSound(id, volume)
+    soundboardService.playSound(id, volume, 'overlap')
   )
   ipcMain.handle('sound:set-emoji', (_event, id: string, emoji: string | null) => {
     db.setSoundEmoji(id, emoji && emoji.trim() ? emoji.trim() : null)

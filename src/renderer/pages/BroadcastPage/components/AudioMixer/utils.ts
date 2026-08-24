@@ -1,5 +1,6 @@
 import React from 'react'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
+import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import {
   audioEngine,
   sanitizeChannelMode,
@@ -7,6 +8,7 @@ import {
   sanitizeVolume,
   type ChannelModeStage
 } from '../../../../utils/audio-engine'
+import { isAudioSourceEligible } from './audio-route-policy'
 
 export interface MeterFrame {
   left: number
@@ -41,13 +43,73 @@ export interface LiveMeterNode {
   dataR: Float32Array
   lastMode?: string
   lastFxHash?: any[]
-  elements?: {
-    peakL: HTMLElement[]
-    peakR: HTMLElement[]
-    clipL: HTMLElement[]
-    clipR: HTMLElement[]
-    spectrum: HTMLCanvasElement | null
+}
+
+/**
+ * The DOM nodes one meter (a channel strip, or the master bus) writes to.
+ *
+ * These are cached because the meter tick runs at ~30Hz: querying them per
+ * frame costs a full-document selector match per group per source, which at a
+ * realistic source count dwarfs the RMS/peak math the tick actually exists to
+ * do.
+ */
+export interface MeterElements {
+  peakL: HTMLElement[]
+  peakR: HTMLElement[]
+  hpeakL: HTMLElement[]
+  hpeakR: HTMLElement[]
+  clipL: HTMLElement[]
+  clipR: HTMLElement[]
+  holdL: HTMLElement[]
+  holdR: HTMLElement[]
+  clipIndicatorL: HTMLElement[]
+  clipIndicatorR: HTMLElement[]
+  spectrum: HTMLCanvasElement | null
+}
+
+const METER_ELEMENT_CLASSES: Record<Exclude<keyof MeterElements, 'spectrum'>, string> = {
+  peakL: 'meter-peak-l',
+  peakR: 'meter-peak-r',
+  hpeakL: 'meter-hpeak-l',
+  hpeakR: 'meter-hpeak-r',
+  clipL: 'meter-clip-l',
+  clipR: 'meter-clip-r',
+  holdL: 'meter-hold-l',
+  holdR: 'meter-hold-r',
+  clipIndicatorL: 'meter-clip-indicator-l',
+  clipIndicatorR: 'meter-clip-indicator-r'
+}
+
+export function queryMeterElements(id: string): MeterElements {
+  const elements = { spectrum: document.getElementById(`spectrum-canvas-${id}`) as HTMLCanvasElement | null } as MeterElements
+
+  for (const [key, className] of Object.entries(METER_ELEMENT_CLASSES)) {
+    elements[key as keyof typeof METER_ELEMENT_CLASSES] = Array.from(
+      document.querySelectorAll(`.${className}-${id}`)
+    ) as HTMLElement[]
   }
+
+  return elements
+}
+
+/**
+ * A cached set goes stale when React remounts the strip — toggling the mixer
+ * panel, adding or removing a source. Detached nodes still accept style writes
+ * without erroring, so the meter would silently freeze; checking `isConnected`
+ * is the only way to notice. An entry that matched nothing at all is also
+ * treated as stale so it retries once the strip mounts.
+ */
+export function meterElementsAreStale(elements: MeterElements): boolean {
+  let found = 0
+
+  for (const key of Object.keys(METER_ELEMENT_CLASSES) as Array<keyof typeof METER_ELEMENT_CLASSES>) {
+    for (const element of elements[key]) {
+      if (!element.isConnected) return true
+      found++
+    }
+  }
+
+  return found === 0
 }
 
 export function sanitizeAudioSourceUpdates(updates: Partial<AudioSource>): Partial<AudioSource> {
@@ -57,6 +119,14 @@ export function sanitizeAudioSourceUpdates(updates: Partial<AudioSource>): Parti
   if ('channelMode' in next) next.channelMode = sanitizeChannelMode(next.channelMode, 'stereo')
   if ('color' in next) next.color = normalizeTrackColor(next.color)
   if ('filters' in next && !Array.isArray(next.filters)) next.filters = []
+  if ('monitoringMode' in next) {
+    next.monitoringMode = normalizeAudioMonitoringMode(next.monitoringMode)
+    next.monitoring = next.monitoringMode !== 'off'
+  } else if ('monitoring' in next) {
+    next.monitoringMode = normalizeAudioMonitoringMode(undefined, next.monitoring)
+    next.monitoring = next.monitoringMode !== 'off'
+  }
+  if ('solo' in next) next.solo = Boolean(next.solo)
   return next
 }
 
@@ -141,7 +211,7 @@ export function getTrackStatuses(
   const statuses: Record<string, AudioTrackStatus> = {}
 
   for (const source of audioSources) {
-    if (source.id !== 'soundboard' && source.id !== 'tts-audio' && !activeLayerIds.has(source.id)) {
+    if (!isAudioSourceEligible(source, activeLayerIds)) {
       statuses[source.id] = { hasStream: false, hasAudio: false, live: false, label: 'Not in scene' }
       continue
     }

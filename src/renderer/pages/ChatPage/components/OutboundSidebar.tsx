@@ -57,7 +57,7 @@ export function OutboundSidebar({
         )}
 
         <div className="flex flex-col gap-3">
-          <label className="text-xs font-semibold tracking-tight text-white/50">Target Channels</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Target channels</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(capabilities) as Platform[]).map((p) => {
               const cap = capabilities[p]
@@ -95,7 +95,7 @@ export function OutboundSidebar({
           disabled={isSending || !composerText.trim() || selectedTargets.length === 0}
           className="app-button-primary !h-12 w-full font-semibold"
         >
-          {isSending ? 'Transmitting...' : 'Send Message'}
+          {isSending ? 'Transmitting...' : 'Send message'}
           <IconSend size={16} className="ml-2" />
         </button>
 

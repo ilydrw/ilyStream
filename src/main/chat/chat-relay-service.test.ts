@@ -17,6 +17,8 @@ class MockPlatformManager extends EventEmitter {
   >()
 }
 
+let chatEventSequence = 0
+
 function createSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   const {
     chatAutoRelayPlatforms: platformOverrides,
@@ -46,7 +48,7 @@ function createChatEvent(
   raw: Record<string, unknown> = {}
 ): ChatEvent {
   return {
-    id: `${platform}-chat-1`,
+    id: `${platform}-chat-${++chatEventSequence}`,
     platform,
     timestamp: new Date('2026-04-10T12:00:00.000Z'),
     type: 'chat',
@@ -98,6 +100,170 @@ describe('ChatRelayService', () => {
         expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledWith(
           ['youtube'],
           '[Twitch] Stream Friend: hello there'
+        )
+      })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('relays a platform chat message id only once when a connector replays it', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: true },
+      twitch: { platform: 'twitch', canSend: true }
+    })
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([{ platform: 'tiktok', ok: true }])
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({
+        chatAutoRelayPlatforms: {
+          tiktok: true,
+          twitch: true,
+          youtube: false,
+          kick: false
+        }
+      })
+    )
+
+    try {
+      const event = createChatEvent('twitch', 'send this once')
+      platformManager.emit('event', event)
+      platformManager.emit('event', { ...event })
+
+      await vi.waitFor(() => {
+        expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(1)
+      })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('keeps only a small fresh backlog while an auto-relay target is slow', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: true },
+      twitch: { platform: 'twitch', canSend: true }
+    })
+
+    let resolveFirstSend!: (results: PlatformChatSendResult[]) => void
+    const firstSend = new Promise<PlatformChatSendResult[]>((resolve) => {
+      resolveFirstSend = resolve
+    })
+    platformManager.sendChatMessageToPlatforms.mockImplementation(async () => {
+      if (platformManager.sendChatMessageToPlatforms.mock.calls.length === 1) {
+        return firstSend
+      }
+      return [{ platform: 'tiktok', ok: true }]
+    })
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({
+        chatAutoRelayPlatforms: {
+          tiktok: true,
+          twitch: true,
+          youtube: false,
+          kick: false
+        }
+      }),
+      { maxPendingAutoRelaysPerTarget: 2 }
+    )
+
+    try {
+      for (let index = 1; index <= 6; index += 1) {
+        platformManager.emit('event', createChatEvent('twitch', `message ${index}`))
+      }
+
+      expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(1)
+      resolveFirstSend([{ platform: 'tiktok', ok: true }])
+
+      await vi.waitFor(() => {
+        expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(3)
+      })
+      expect(platformManager.sendChatMessageToPlatforms.mock.calls.map((call) => call[1])).toEqual([
+        '[Twitch] Stream Friend: message 1',
+        '[Twitch] Stream Friend: message 5',
+        '[Twitch] Stream Friend: message 6'
+      ])
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('drops queued auto relays after a target failure', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: true },
+      twitch: { platform: 'twitch', canSend: true }
+    })
+
+    let resolveSend!: (results: PlatformChatSendResult[]) => void
+    platformManager.sendChatMessageToPlatforms.mockReturnValue(
+      new Promise<PlatformChatSendResult[]>((resolve) => {
+        resolveSend = resolve
+      })
+    )
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({
+        chatAutoRelayPlatforms: {
+          tiktok: true,
+          twitch: true,
+          youtube: false,
+          kick: false
+        }
+      })
+    )
+
+    try {
+      platformManager.emit('event', createChatEvent('twitch', 'first message'))
+      platformManager.emit('event', createChatEvent('twitch', 'stale message one'))
+      platformManager.emit('event', createChatEvent('twitch', 'stale message two'))
+
+      resolveSend([{ platform: 'tiktok', ok: false, error: 'sender page stopped' }])
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledTimes(1)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('uses readable emote fallbacks in automatic relays', async () => {
+    const platformManager = new MockPlatformManager()
+    platformManager.getChatCapabilities.mockReturnValue({
+      tiktok: { platform: 'tiktok', canSend: true },
+      twitch: { platform: 'twitch', canSend: true }
+    })
+    platformManager.sendChatMessageToPlatforms.mockResolvedValue([{ platform: 'twitch', ok: true }])
+    const service = new ChatRelayService(
+      platformManager as unknown as PlatformManager,
+      () => createSettings({
+        chatAutoRelayPlatforms: {
+          tiktok: true,
+          twitch: true,
+          youtube: false,
+          kick: false
+        }
+      })
+    )
+
+    try {
+      const event = createChatEvent('tiktok', ':7630614458817743630:')
+      event.emotes = [{
+        id: '7630614458817743630',
+        name: ':7630614458817743630:',
+        imageUrl: 'https://example.test/fan-emote.webp',
+        startIndex: 0,
+        endIndex: 20
+      }]
+      platformManager.emit('event', event)
+
+      await vi.waitFor(() => {
+        expect(platformManager.sendChatMessageToPlatforms).toHaveBeenCalledWith(
+          ['twitch'],
+          '[TikTok] Stream Friend: [TikTok Fan Club emote]'
         )
       })
     } finally {

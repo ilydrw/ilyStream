@@ -202,6 +202,21 @@ export class TikTokMapper {
 
   mapGift(data: any): GiftEvent {
     const gift = data?.extendedGiftInfo ?? data?.giftDetails ?? data?.gift ?? data
+    const giftId = String(gift?.id || data?.giftId || '0')
+    const giftName = normalizeTikTokGiftName(
+      giftId,
+      decodeHtmlEntities(gift?.name || gift?.giftName || data?.giftName || 'Gift')
+    )
+    const giftImageUrl = this.firstString(
+      gift?.giftImage?.url?.[0],
+      gift?.giftImage?.urlList?.[0],
+      gift?.gift_image?.url_list?.[0],
+      gift?.picture?.urlList?.[0],
+      gift?.picture?.url_list?.[0],
+      gift?.icon?.url?.[0],
+      gift?.icon?.urlList?.[0],
+      data?.giftImageUrl
+    )
     const diamondCount = this.firstNumber(
       gift?.diamond_count,
       gift?.diamondCount,
@@ -218,11 +233,48 @@ export class TikTokMapper {
       type: 'gift',
       raw: data,
       user: this.mapUser(data),
-      giftName: decodeHtmlEntities(gift?.name || data?.giftName || 'Gift'),
-      giftId: String(gift?.id || data?.giftId || '0'),
+      giftName,
+      giftId,
+      giftImageUrl: giftImageUrl || undefined,
       giftCount: data.repeatCount || data.giftCount || 1,
       monetaryValue: estimateTikTokCreatorGiftCents(diamondCount),
       isCombo: isTikTokGiftComboInProgress(data)
+    }
+  }
+
+  mapSuperFanBox(data: any): GiftEvent {
+    const envelope = data?.envelopeInfo ?? data?.envelope_info ?? {}
+    const userId = this.firstString(data?.userId, envelope?.sendUserId)
+    const senderName = this.firstString(data?.uniqueId, envelope?.sendUserName, userId)
+    const profilePictureUrl = this.firstString(
+      data?.profilePictureUrl,
+      envelope?.sendUserAvatar?.urlList?.[0],
+      envelope?.sendUserAvatar?.url_list?.[0],
+      envelope?.sendUserAvatar?.url?.[0]
+    )
+
+    return {
+      id: this.messageId(data),
+      platform: 'tiktok',
+      timestamp: new Date(),
+      type: 'gift',
+      raw: data,
+      user: this.mapUser({
+        ...data,
+        userId,
+        uniqueId: senderName,
+        nickname: this.firstString(data?.nickname, envelope?.sendUserName, senderName),
+        profilePictureUrl,
+        isSubscriber: true,
+        isFanClubMember: true,
+        isSuperFan: true
+      }),
+      giftName: 'Super Fan Box',
+      giftId: this.firstString(envelope?.envelopeId, data?.envelopeId, 'super-fan-box'),
+      giftCount: 1,
+      monetaryValue: estimateTikTokCreatorGiftCents(this.firstNumber(envelope?.diamondCount, data?.diamondCount)),
+      isCombo: false,
+      isSuperFanBox: true
     }
   }
 
@@ -327,9 +379,9 @@ export class TikTokMapper {
   }
 
   /**
-   * TikTok's roomUser payload includes a `topViewers` roster — the identifiable
-   * viewers currently in the room (even silent ones). We surface these so the
-   * "in stream" list reflects who's actually present, not just who's chatted.
+   * TikTok's roomUser payload can include a `topViewers` snapshot. It is a
+   * best-effort subset, not a durable room-membership list; consumers must
+   * replace prior snapshots and reconcile it against viewerCount.
    */
   mapRoomViewers(data: any): UserInfo[] {
     const raw = Array.isArray(data?.topViewers)
@@ -382,6 +434,17 @@ export class TikTokMapper {
     }
     return 0
   }
+}
+
+function normalizeTikTokGiftName(giftId: string, giftName: string): string {
+  // TikTok still emits this retired catalog label for the current Lightning
+  // Bolt asset. Scope the correction to both the stable ID and stale name so
+  // a future reassignment or corrected payload passes through untouched.
+  if (giftId === '6652' && giftName.trim().toLowerCase() === 'autumn 2024') {
+    return 'Lightning Bolt'
+  }
+
+  return giftName
 }
 
 function isTikTokGiftComboInProgress(data: any): boolean {

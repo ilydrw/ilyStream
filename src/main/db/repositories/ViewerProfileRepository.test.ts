@@ -58,6 +58,7 @@ function makeFakeDb() {
   const profiles = new Map<string, ProfileRow>()
   const accounts = new Map<string, AccountRow>()
   const stats = new Map<string, UserStatRow>()
+  const settings = new Map<string, string>()
   let clock = 0
 
   const rowKey = (platform: string, username: string) => `${platform}:${username.toLowerCase()}`
@@ -78,6 +79,16 @@ function makeFakeDb() {
             return profiles.get(args[0])
           }
 
+          if (normalized === 'select primary_platform, primary_username from viewer_profiles where id = ?') {
+            const row = profiles.get(args[0])
+            return row && { primary_platform: row.primary_platform, primary_username: row.primary_username }
+          }
+
+          if (normalized === 'select value_json from settings where key = ?') {
+            const stored = settings.get(args[0])
+            return stored === undefined ? undefined : { value_json: stored }
+          }
+
           if (normalized.includes('select profile_id from viewer_accounts where platform = ? and platform_user_id = ?')) {
             const [platform, platformUserId] = args
             return accountRows().find((row) => row.platform === platform && row.platform_user_id === platformUserId)
@@ -88,20 +99,17 @@ function makeFakeDb() {
             return statRows().find((row) => row.platform === platform && row.platform_user_id === platformUserId && row.profile_id)
           }
 
-          if (normalized.includes('select profile_id from viewer_accounts where platform = ? and (username = ? or lower(display_name) = ?)')) {
-            const [platform, username, displayName] = args
-            return accountRows().find((row) => (
-              row.platform === platform &&
-              (row.username === username || row.display_name.toLowerCase() === displayName)
-            ))
+          if (normalized.includes('select profile_id from viewer_accounts where platform = ? and username = ?')) {
+            const [platform, username] = args
+            return accountRows().find((row) => row.platform === platform && row.username === username)
           }
 
-          if (normalized.includes('select profile_id from user_stats where platform = ? and (lower(username) = ? or lower(display_name) = ?)')) {
-            const [platform, username, displayName] = args
+          if (normalized.includes('select profile_id from user_stats where platform = ? and lower(username) = ?')) {
+            const [platform, username] = args
             return statRows().find((row) => (
               row.platform === platform &&
               row.profile_id &&
-              (row.username.toLowerCase() === username || row.display_name.toLowerCase() === displayName)
+              row.username.toLowerCase() === username
             ))
           }
 
@@ -115,16 +123,16 @@ function makeFakeDb() {
             return statRows().find((row) => row.platform_user_id === platformUserId && row.profile_id)
           }
 
-          if (normalized.includes('select profile_id from viewer_accounts where username = ? or lower(display_name) = ?')) {
-            const [username, displayName] = args
-            return accountRows().find((row) => row.username === username || row.display_name.toLowerCase() === displayName)
+          if (normalized.includes('select profile_id from viewer_accounts where username = ?')) {
+            const [username] = args
+            return accountRows().find((row) => row.username === username)
           }
 
-          if (normalized.includes('select profile_id from user_stats where (lower(username) = ? or lower(display_name) = ?)')) {
-            const [username, displayName] = args
+          if (normalized.includes('select profile_id from user_stats where lower(username) = ?')) {
+            const [username] = args
             return statRows().find((row) => (
               row.profile_id &&
-              (row.username.toLowerCase() === username || row.display_name.toLowerCase() === displayName)
+              row.username.toLowerCase() === username
             ))
           }
 
@@ -167,15 +175,20 @@ function makeFakeDb() {
         },
 
         run(...args: any[]) {
+          if (normalized.includes('insert or replace into settings')) {
+            settings.set(args[0], args[1])
+            return { changes: 1 }
+          }
+
           if (normalized.includes('insert into viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform')) {
-            const [id, displayName, profilePictureUrl, notes, primaryPlatform] = args
+            const [id, displayName, profilePictureUrl, notes, primaryPlatform, primaryUsername] = args
             profiles.set(id, {
               id,
               display_name: displayName,
               profile_picture_url: profilePictureUrl,
               notes,
               primary_platform: primaryPlatform,
-              primary_username: null,
+              primary_username: primaryUsername,
               created_at: now(),
               updated_at: now()
             })
@@ -235,11 +248,23 @@ function makeFakeDb() {
             return { changes }
           }
 
-          if (normalized.includes('update viewer_profiles set primary_platform = ?')) {
-            const [primaryPlatform, profileId] = args
+          if (normalized.includes('update viewer_profiles set primary_platform = null, primary_username = null')) {
+            const [profileId] = args
+            const row = profiles.get(profileId)
+            if (row) {
+              row.primary_platform = null
+              row.primary_username = null
+              row.updated_at = now()
+            }
+            return { changes: row ? 1 : 0 }
+          }
+
+          if (normalized.includes('update viewer_profiles set primary_platform = ?, primary_username = ?')) {
+            const [primaryPlatform, primaryUsername, profileId] = args
             const row = profiles.get(profileId)
             if (row) {
               row.primary_platform = primaryPlatform
+              row.primary_username = primaryUsername
               row.updated_at = now()
             }
             return { changes: row ? 1 : 0 }
@@ -285,7 +310,12 @@ function makeFakeDb() {
     accounts,
     stats,
     getUserStat,
-    seedStat
+    seedStat,
+    setSetting: (key: string, value: unknown) => settings.set(key, JSON.stringify(value)),
+    getSetting: (key: string) => {
+      const stored = settings.get(key)
+      return stored === undefined ? undefined : JSON.parse(stored)
+    }
   }
 }
 
@@ -320,6 +350,38 @@ describe('ViewerProfileRepository', () => {
     expect(fake.stats.get('twitch:alice')?.profile_id).toBe(profile.id)
   })
 
+  it('keeps Discord as a non-streaming connection instead of making it primary', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({
+      platform: 'twitch',
+      username: 'alice',
+      platform_user_id: 'tw-1',
+      display_name: 'Alice Live'
+    }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const profile = repo.createViewerProfile({
+      displayName: 'Alice',
+      primaryPlatform: 'twitch',
+      primaryUsername: 'alice',
+      accounts: [{ platform: 'twitch', username: 'alice' }]
+    })
+
+    const linked = repo.addAccountToProfile(profile.id, {
+      platform: 'discord',
+      username: 'alice_on_discord',
+      platformUserId: 'discord-42',
+      displayName: 'Alice'
+    })
+
+    expect(linked?.primaryPlatform).toBe('twitch')
+    expect(linked?.primaryUsername).toBe('alice')
+    expect(linked?.accounts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ platform: 'twitch', username: 'alice' }),
+      expect.objectContaining({ platform: 'discord', username: 'alice_on_discord' })
+    ]))
+  })
+
   it('links accounts into one profile and resolves renamed accounts by platform user id', () => {
     const fake = makeFakeDb()
     fake.seedStat(makeStat({
@@ -345,5 +407,121 @@ describe('ViewerProfileRepository', () => {
     expect(fake.stats.get('twitch:snapandinu')?.profile_id).toBe(profile?.id)
     expect(fake.stats.get('youtube:snap_live')?.profile_id).toBe(profile?.id)
     expect(repo.getViewerProfileId('twitch', 'old_twitch_name', { platformUserId: 'tw-103' })).toBe(profile?.id)
+  })
+
+  it('does not merge different accounts that copy another account display name', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({
+      platform: 'tiktok',
+      username: 'restlesstinyspirit',
+      platform_user_id: 'real-tiktok-id',
+      display_name: 'Restlesstinyspirit'
+    }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const restless = repo.createViewerProfile({
+      displayName: 'Restlesstinyspirit',
+      accounts: [{ platform: 'tiktok', username: 'restlesstinyspirit' }]
+    })
+
+    expect(repo.getViewerProfileId('tiktok', 'mateovbqle5', {
+      platformUserId: 'different-tiktok-id',
+      displayName: 'Restlesstinyspirit'
+    })).toBeNull()
+    expect(repo.getViewerProfileId('tiktok', 'restlesstinyspirit', {
+      platformUserId: 'real-tiktok-id',
+      displayName: 'Restlesstinyspirit'
+    })).toBe(restless.id)
+  })
+
+  it('re-points viewer voice rules and join sounds onto the surviving profile when merging', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'mainacct', display_name: 'Main' }))
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'altacct', display_name: 'Alt' }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const main = repo.createViewerProfile({ displayName: 'Main', accounts: [{ platform: 'tiktok', username: 'mainacct' }] })
+    const alt = repo.createViewerProfile({ displayName: 'Alt', accounts: [{ platform: 'tiktok', username: 'altacct' }] })
+
+    fake.setSetting('ttsUserVoiceOverrides', [
+      { id: 'rule-main', viewerProfileId: main.id, voiceProfileId: 'voice-main' },
+      { id: 'rule-alt', viewerProfileId: alt.id, voiceProfileId: 'voice-alt' },
+      { id: 'rule-username', viewerProfileId: '', username: 'someoneelse' }
+    ])
+    fake.setSetting('viewerJoinSounds', [
+      { id: 'join-alt', viewerProfileId: alt.id, soundId: 'join/alt.mp3', volume: 0.5 }
+    ])
+
+    // Linking the alt into the main profile deletes the alt's profile row.
+    repo.addAccountToProfile(main.id, { platform: 'tiktok', username: 'altacct' })
+
+    expect(fake.profiles.has(alt.id)).toBe(false)
+    expect(fake.getSetting('ttsUserVoiceOverrides')).toEqual([
+      { id: 'rule-main', viewerProfileId: main.id, voiceProfileId: 'voice-main' },
+      { id: 'rule-alt', viewerProfileId: main.id, voiceProfileId: 'voice-alt' },
+      { id: 'rule-username', viewerProfileId: '', username: 'someoneelse' }
+    ])
+    expect(fake.getSetting('viewerJoinSounds')).toEqual([
+      { id: 'join-alt', viewerProfileId: main.id, soundId: 'join/alt.mp3', volume: 0.5 }
+    ])
+  })
+
+  it('prunes voice rules and join sounds left pointing at deleted profiles', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'mainacct', display_name: 'Main' }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const main = repo.createViewerProfile({ displayName: 'Main', accounts: [{ platform: 'tiktok', username: 'mainacct' }] })
+
+    fake.setSetting('ttsUserVoiceOverrides', [
+      { id: 'rule-live', viewerProfileId: main.id },
+      { id: 'rule-dead', viewerProfileId: 'a-profile-that-was-merged-away' },
+      { id: 'rule-username', viewerProfileId: '', username: 'someoneelse' }
+    ])
+    fake.setSetting('viewerJoinSounds', [
+      { id: 'join-dead', viewerProfileId: 'a-profile-that-was-merged-away', soundId: 'join/gone.mp3' }
+    ])
+
+    expect(repo.pruneOrphanedViewerScopedSettings()).toBe(2)
+    expect(fake.getSetting('ttsUserVoiceOverrides')).toEqual([
+      { id: 'rule-live', viewerProfileId: main.id },
+      { id: 'rule-username', viewerProfileId: '', username: 'someoneelse' }
+    ])
+    expect(fake.getSetting('viewerJoinSounds')).toEqual([])
+  })
+
+  it('leaves viewer-scoped settings untouched when nothing is orphaned', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'mainacct', display_name: 'Main' }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const main = repo.createViewerProfile({ displayName: 'Main', accounts: [{ platform: 'tiktok', username: 'mainacct' }] })
+    fake.setSetting('viewerJoinSounds', [{ id: 'join-live', viewerProfileId: main.id, soundId: 'join/keep.mp3' }])
+
+    expect(repo.pruneOrphanedViewerScopedSettings()).toBe(0)
+    expect(fake.getSetting('viewerJoinSounds')).toEqual([
+      { id: 'join-live', viewerProfileId: main.id, soundId: 'join/keep.mp3' }
+    ])
+  })
+
+  it('keeps the surviving profile\'s join sound when both sides of a merge have one', () => {
+    const fake = makeFakeDb()
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'mainacct', display_name: 'Main' }))
+    fake.seedStat(makeStat({ platform: 'tiktok', username: 'altacct', display_name: 'Alt' }))
+
+    const repo = new ViewerProfileRepository(fake.db as any, fake.getUserStat)
+    const main = repo.createViewerProfile({ displayName: 'Main', accounts: [{ platform: 'tiktok', username: 'mainacct' }] })
+    const alt = repo.createViewerProfile({ displayName: 'Alt', accounts: [{ platform: 'tiktok', username: 'altacct' }] })
+
+    fake.setSetting('viewerJoinSounds', [
+      { id: 'join-main', viewerProfileId: main.id, soundId: 'join/main.mp3' },
+      { id: 'join-alt', viewerProfileId: alt.id, soundId: 'join/alt.mp3' }
+    ])
+
+    repo.addAccountToProfile(main.id, { platform: 'tiktok', username: 'altacct' })
+
+    expect(fake.getSetting('viewerJoinSounds')).toEqual([
+      { id: 'join-main', viewerProfileId: main.id, soundId: 'join/main.mp3' }
+    ])
   })
 })

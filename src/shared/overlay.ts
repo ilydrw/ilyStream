@@ -6,6 +6,15 @@ export interface OverlayFeedBadge {
   imageUrl?: string
 }
 
+/** A platform emote positioned inside an overlay/companion chat message. */
+export interface OverlayFeedEmote {
+  id: string
+  name: string
+  imageUrl: string
+  startIndex: number
+  endIndex: number
+}
+
 export interface OverlayFeedItem {
   id: string
   kind: 'chat' | 'gift' | 'subscription' | 'follow' | 'raid' | 'like' | 'share'
@@ -21,6 +30,8 @@ export interface OverlayFeedItem {
   emphasis: boolean
   /** Role badges to render next to the name (mod, sub/fan-club, super fan). */
   badges?: OverlayFeedBadge[]
+  /** Platform emote art and text positions for rich chat clients. */
+  emotes?: OverlayFeedEmote[]
 }
 
 export interface OverlayAlertItem {
@@ -99,11 +110,14 @@ export interface OverlayRuntimeStatus {
   alertClientCount: number
   goalClientCount: number
   followerGoalClientCount?: number
+  textWidgetClientCount?: number
   socialsClientCount?: number
   borderClientCount?: number
   particleClientCount?: number
   roseClientCount?: number
   likesClientCount?: number
+  discordCallClientCount?: number
   leaderboardClientCount?: number
+  webSocketClientCount?: number
   dualVerticalClientCount?: number
 }

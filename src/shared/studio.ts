@@ -190,6 +190,22 @@ export interface StudioScene {
   layoutMode?: string
 }
 
+export type AudioMonitoringMode = 'off' | 'monitorOnly' | 'monitorAndOutput'
+
+/**
+ * Convert persisted monitoring settings to the explicit OBS-style mode.
+ *
+ * Older studio state only stored a boolean. `true` used to keep the source in
+ * the program mix while also opening its headphone send, so it maps to
+ * `monitorAndOutput`. Missing settings deliberately default to off: opening a
+ * studio must never start monitoring a microphone or desktop capture by
+ * surprise.
+ */
+export function normalizeAudioMonitoringMode(mode: unknown, legacyMonitoring?: unknown): AudioMonitoringMode {
+  if (mode === 'off' || mode === 'monitorOnly' || mode === 'monitorAndOutput') return mode
+  return legacyMonitoring === true ? 'monitorAndOutput' : 'off'
+}
+
 export interface AudioSource {
   id: string
   name: string
@@ -198,7 +214,12 @@ export interface AudioSource {
   deviceId?: string
   volume: number // 0 to 1
   muted: boolean
-  monitoring: boolean // Hear it in headphones
+  /** Explicit headphone/output routing. Defaults to `off`. */
+  monitoringMode?: AudioMonitoringMode
+  /** @deprecated Persisted for compatibility with pre-monitoring-mode builds. */
+  monitoring?: boolean
+  /** Solo is independent from monitoring and only affects the program mix. */
+  solo?: boolean
   locked?: boolean
   type: 'system' | 'mic' | 'media' | 'layer'
   channelMode: 'mono' | 'stereo'
@@ -323,10 +344,10 @@ export const DEFAULT_STUDIO_STATE: StudioState = {
   snapToGrid: false,
   gridSize: 20,
   audioSources: [
-    { id: 'desktop-audio', name: 'Desktop Audio', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoring: false, type: 'system', channelMode: 'stereo', pan: 0, filters: [] },
-    { id: 'mic-audio', name: 'Mic/Aux', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoring: false, type: 'mic', channelMode: 'mono', pan: 0, filters: [] },
-    { id: 'soundboard', name: 'Soundboard', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true },
-    { id: 'tts-audio', name: 'TTS (Neural)', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoring: true, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true }
+    { id: 'desktop-audio', name: 'Desktop Audio', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoringMode: 'off', monitoring: false, solo: false, type: 'system', channelMode: 'stereo', pan: 0, filters: [] },
+    { id: 'mic-audio', name: 'Mic/Aux', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoringMode: 'off', monitoring: false, solo: false, type: 'mic', channelMode: 'mono', pan: 0, filters: [] },
+    { id: 'soundboard', name: 'Soundboard', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoringMode: 'off', monitoring: false, solo: false, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true },
+    { id: 'tts-audio', name: 'TTS (Neural)', volume: DEFAULT_AUDIO_SOURCE_VOLUME, muted: false, monitoringMode: 'off', monitoring: false, solo: false, type: 'media', channelMode: 'stereo', pan: 0, filters: [], locked: true }
   ],
   stingerSettings: {
     path: '',

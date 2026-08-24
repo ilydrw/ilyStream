@@ -3,7 +3,7 @@ import React from 'react'
 interface AvatarProps {
   url?: string | null
   name: string
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
   className?: string
   style?: React.CSSProperties
 }
@@ -13,7 +13,8 @@ export function Avatar({ url, name, size = 'md', className = '', style }: Avatar
     sm: 'w-6 h-6 text-[10px]',
     md: 'w-8 h-8 text-[11px]',
     lg: 'w-10 h-10 text-xs',
-    xl: 'w-16 h-16 text-xl'
+    xl: 'w-16 h-16 text-xl',
+    '2xl': 'w-24 h-24 text-3xl'
   }
 
   const initials = name

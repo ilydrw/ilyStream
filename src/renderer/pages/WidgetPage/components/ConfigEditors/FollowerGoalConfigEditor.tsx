@@ -11,6 +11,7 @@ import {
   PositionGrid,
   SwitchRow,
   ColorRow,
+  EditorNote,
   NumberRow,
   SegmentedRow,
   TextRow
@@ -87,6 +88,9 @@ export function FollowerGoalConfigEditor({
           ]}
           onChange={(v) => update('platform', v)}
         />
+        {config.goalType === 'follows' && config.platform === 'tiktok' && (
+          <EditorNote>TikTok uses the live account total while connected: new follows advance immediately and room metadata reconciles the exact count about every 30 seconds. Leave Head start at 0 to show the exact total.</EditorNote>
+        )}
         <TextRow
           label="Label"
           hint="The heading above the bar."

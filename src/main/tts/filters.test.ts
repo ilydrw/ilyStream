@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import { TTSFilter } from './filters'
 
+describe('TTSFilter – duplicate detection is per user', () => {
+  it('mutes the same user repeating themselves', () => {
+    const filter = new TTSFilter()
+    expect(filter.apply('good game', 'alice')).toBe('good game')
+    expect(filter.apply('good game', 'alice')).toBeNull()
+  })
+
+  it('lets different users say the same thing', () => {
+    const filter = new TTSFilter()
+    expect(filter.apply('good game', 'alice')).toBe('good game')
+    // Bob echoing Alice must still be read — this was the reported bug.
+    expect(filter.apply('good game', 'bob')).toBe('good game')
+  })
+
+  it('does not collide across username/text boundaries', () => {
+    const filter = new TTSFilter()
+    // "ab" + "cthing" vs "abc" + "thing" must not be treated as the same.
+    expect(filter.apply('cthing', 'ab')).toBe('cthing')
+    expect(filter.apply('thing', 'abc')).toBe('thing')
+  })
+})
+
 describe('TTSFilter – blocked patterns', () => {
   it('ignores invalid blocked regex patterns', () => {
     const filter = new TTSFilter()

@@ -223,7 +223,7 @@ export function CropModal({ open, onClose, layer, sceneId, aspectContext, videoR
           <div className="grid grid-cols-4 gap-4">
             {(['top', 'right', 'bottom', 'left'] as const).map(edge => (
               <label key={edge} className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-semibold uppercase tracking-wide text-white/50">{edge}</span>
+                <span className="text-[12px] font-semibold text-white/50">{edge}</span>
                 <input
                   type="number"
                   min={0}

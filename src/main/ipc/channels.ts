@@ -18,12 +18,19 @@ import { AppSettings, AppSettingKey } from '../../shared/app-settings'
 import type { WindowsSettingsTarget } from '../system/windows-settings'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
 import type { OBSRuntimeStatus } from '../../shared/obs'
+import type {
+  OBSWorkspaceAccess,
+  OBSWorkspaceSetupResult,
+  OBSWorkspaceSetupStatus,
+  OBSWorkspaceSnapshot
+} from '../../shared/obs-workspace'
 import type { SpotifySongRequest, SpotifyStatus } from '../../shared/spotify-types'
 import type { XPostResult, XStatus } from '../../shared/x-types'
 import type { NowPlayingPayload } from '../../shared/widgets'
 import type {
   EventLabDeviceBroadcast,
   EventLabOverlayBroadcast,
+  EventLabOverlayPerformance,
   EventLabSimulationPayload
 } from '../../shared/event-lab'
 import type { AutomationRunReceipt } from '../../shared/automation-receipts'
@@ -34,6 +41,17 @@ import type {
   TikTokNativeLiveDestination
 } from '../../shared/tiktok-native'
 import type { BroadcastStreamInfo, StreamInfoPreset, TwitchCategory } from '../../shared/stream-info'
+import type {
+  KokoroSynthesisRequest,
+  KokoroSynthesisResult
+} from '../../shared/kokoro-worker'
+import type { KokoroWorkerStatus } from '../services/kokoro-worker-service'
+import type {
+  SegmentationFrame,
+  SegmentationMask
+} from '../../shared/segmentation-worker'
+import type { SegmentationWorkerStatus } from '../services/segmentation-worker-service'
+import type { DiscordCallState } from '../../shared/discord-call'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -46,6 +64,7 @@ export interface IpcInvokeChannels {
   'platform:get-errors': () => Promise<Record<Platform, string | null>>
   'platform:get-configs': () => Promise<Partial<Record<Platform, AnyPlatformConfig>>>
   'platform:get-chat-capabilities': () => Promise<Record<Platform, PlatformChatCapability>>
+  'discord:get-call-state': () => Promise<DiscordCallState>
   'platform:send-chat-message': (payload: {
     platforms: Platform[]
     text: string
@@ -111,6 +130,14 @@ export interface IpcInvokeChannels {
   'tts:resume': () => void
   'tts:set-enabled': (enabled: boolean) => void
   'tts:get-queue': () => TTSQueueItem[]
+  'tts:kokoro:preload': () => Promise<void>
+  'tts:kokoro:generate': (payload: KokoroSynthesisRequest) => Promise<KokoroSynthesisResult>
+  'tts:kokoro:get-status': () => KokoroWorkerStatus
+
+  // Native segmentation (virtual background masks)
+  'segmentation:preload': () => Promise<void>
+  'segmentation:segment': (frame: SegmentationFrame) => Promise<SegmentationMask>
+  'segmentation:get-status': () => SegmentationWorkerStatus
   'tts:test-speak': (payload: { text: string; voiceProfileId?: string }) => {
     ok: boolean
     reason?: string
@@ -137,6 +164,14 @@ export interface IpcInvokeChannels {
   // OBS
   'obs:get-status': () => OBSRuntimeStatus
   'obs:reconnect': () => OBSRuntimeStatus
+  'obs-workspace:get-access': () => OBSWorkspaceAccess
+  'obs-workspace:get-snapshot': () => Promise<OBSWorkspaceSnapshot>
+  'obs-workspace:rotate-pairing': () => OBSWorkspaceAccess
+  'obs-workspace:open-control-center': () => Promise<boolean>
+  'obs-workspace:get-setup-status': () => Promise<OBSWorkspaceSetupStatus>
+  'obs-workspace:install-theme': () => Promise<OBSWorkspaceSetupResult>
+  'obs-workspace:stage-plugin': () => Promise<OBSWorkspaceSetupResult>
+  'obs-workspace:install-staged-plugin': () => Promise<OBSWorkspaceSetupResult>
 
   // Window controls
   'window:minimize': () => void
@@ -189,18 +224,20 @@ export interface HueLight {
 export interface IpcEventChannels {
   'event:stream': AnyStreamEvent
   'event:overlay-broadcast': EventLabOverlayBroadcast
+  'event:overlay-performance': EventLabOverlayPerformance
   'event:device-broadcast': EventLabDeviceBroadcast
   'automation:run-receipt': AutomationRunReceipt
   'platform:status-change': { platform: Platform; status: ConnectionStatus }
   'platform:error': { platform: Platform; message: string; code?: string }
   'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number; reason?: string }
+  'platform:profile-health': { platform: Platform; state: 'idle' | 'healthy' | 'degraded'; lastSuccessAt?: number; lastFailureAt?: number; retryAt?: number; error?: string }
   'tiktok:native-auth-progress': TikTokNativeAuthProgress
   'settings:changed': AppSettings
   'obs:status-changed': OBSRuntimeStatus
   'voice:changed': VoiceProfile[]
   'tts:queue-update': TTSQueueItem[]
-  'tts:speak': { id: string; text: string; username: string; voice: VoiceProfile }
-  'tts:prefetch': { id: string; text: string; voice: VoiceProfile | undefined }
+  'tts:speak': { id: string; text: string; username: string; voice: VoiceProfile; eventType: string; enqueuedAt: number }
+  'tts:prefetch': { id: string; text: string; voice: VoiceProfile | undefined; eventType: string; enqueuedAt: number }
   'tts:stop-speaking': void
   'tts:pause': void
   'tts:resume': void

@@ -42,7 +42,6 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             display: block;
             width: 100%;
             height: 100%;
-            filter: drop-shadow(0px 0px 4px rgba(${primaryRgb}, 0.2));
         }
     </style>
 </head>
@@ -71,7 +70,10 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
         let distanceMultiplier = 1.0;
 
         function resize() {
-            const ratio = window.devicePixelRatio || 1;
+            // Very high desktop scale factors multiply every full-screen
+            // clear, line and glow. Two physical pixels per CSS pixel is
+            // already beyond what a browser-source composite can resolve.
+            const ratio = Math.min(window.devicePixelRatio || 1, 2);
             w = canvas.width = window.innerWidth * ratio;
             h = canvas.height = window.innerHeight * ratio;
 
@@ -79,7 +81,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             densityMultiplier = (w * h) / (800 * 600 * ratio * ratio);
             distanceMultiplier = Math.sqrt(w * h) / Math.sqrt(800 * 600 * ratio * ratio);
 
-            ctx.scale(ratio, ratio);
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
             w /= ratio;
             h /= ratio;
 
@@ -98,17 +100,17 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
                 this.pulseLife = 0;
             }
 
-            update() {
+            update(frameScale) {
                 // Now 2x faster instead of 4x
                 const multiplier = isAITalking ? 2.0 : 1.0;
-                this.x += this.vx * multiplier;
-                this.y += this.vy * multiplier;
+                this.x += this.vx * multiplier * frameScale;
+                this.y += this.vy * multiplier * frameScale;
 
                 if (this.x < 0 || this.x > w) this.vx *= -1;
                 if (this.y < 0 || this.y > h) this.vy *= -1;
 
                 if (this.isPulsing) {
-                    this.pulseLife -= 0.025; // Slightly faster decay for snappier pulses
+                    this.pulseLife -= 0.025 * frameScale; // Keep timing stable across 30/60fps captures
                     this.radius = this.baseRadius + (this.pulseLife * 3.5);
                     if (this.pulseLife <= 0) {
                         this.isPulsing = false;
@@ -151,11 +153,29 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             }
         }
 
-        function animate() {
+        function buildSpatialGrid(cellSize) {
+            const grid = new Map();
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const key = Math.floor(node.x / cellSize) + ',' + Math.floor(node.y / cellSize);
+                const bucket = grid.get(key);
+                if (bucket) bucket.push(i);
+                else grid.set(key, [i]);
+            }
+            return grid;
+        }
+
+        let lastFrameAt = 0;
+        function animate(now) {
+            // Motion was historically tuned at 60fps. Use elapsed time so a
+            // dropped frame advances the animation instead of slowing it down,
+            // while clamping long stalls to avoid visible teleports.
+            const frameScale = lastFrameAt ? Math.min(3, Math.max(0.25, (now - lastFrameAt) / (1000 / 60))) : 1;
+            lastFrameAt = now;
             ctx.clearRect(0, 0, w, h);
 
             // Random neural bursts - much more frequent when talking
-            if (isAITalking && Math.random() < 0.6) {
+            if (isAITalking && Math.random() < 1 - Math.pow(0.4, frameScale)) {
                 const flareCount = Math.floor(Math.random() * 4) + 1;
                 for(let k=0; k<flareCount; k++) {
                     const randomNode = nodes[Math.floor(Math.random() * nodes.length)];
@@ -164,34 +184,48 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             }
 
             const maxDist = config.maxDistance * Math.max(1, distanceMultiplier * 0.7);
+            const maxDistSq = maxDist * maxDist;
+            const cellSize = Math.max(1, maxDist);
+            const grid = buildSpatialGrid(cellSize);
 
             for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    let dx = nodes[i].x - nodes[j].x;
-                    let dy = nodes[i].y - nodes[j].y;
-                    let distance = Math.sqrt(dx * dx + dy * dy);
+                const node = nodes[i];
+                const cellX = Math.floor(node.x / cellSize);
+                const cellY = Math.floor(node.y / cellSize);
+                for (let offsetY = -1; offsetY <= 1; offsetY++) {
+                    for (let offsetX = -1; offsetX <= 1; offsetX++) {
+                        const bucket = grid.get((cellX + offsetX) + ',' + (cellY + offsetY));
+                        if (!bucket) continue;
+                        for (let bucketIndex = 0; bucketIndex < bucket.length; bucketIndex++) {
+                            const j = bucket[bucketIndex];
+                            if (j <= i) continue;
+                            const other = nodes[j];
+                            const dx = node.x - other.x;
+                            const dy = node.y - other.y;
+                            const distanceSq = dx * dx + dy * dy;
+                            if (distanceSq >= maxDistSq) continue;
 
-                    if (distance < maxDist) {
-                        ctx.beginPath();
-                        ctx.moveTo(nodes[i].x, nodes[i].y);
-                        ctx.lineTo(nodes[j].x, nodes[j].y);
-                        let opacity = 1 - (distance / maxDist);
+                            const opacity = 1 - (Math.sqrt(distanceSq) / maxDist);
+                            ctx.beginPath();
+                            ctx.moveTo(node.x, node.y);
+                            ctx.lineTo(other.x, other.y);
 
-                        if (nodes[i].isPulsing || nodes[j].isPulsing) {
-                            let pulseIntensity = Math.max(nodes[i].pulseLife || 0, nodes[j].pulseLife || 0);
-                            ctx.strokeStyle = 'rgba(' + config.secondary + ', ' + (opacity * (pulseIntensity + 0.3)) + ')';
-                            ctx.lineWidth = 3.0;
-                        } else {
-                            ctx.strokeStyle = 'rgba(' + config.primary + ', ' + (opacity * 0.65) + ')';
-                            ctx.lineWidth = 1.2;
+                            if (node.isPulsing || other.isPulsing) {
+                                const pulseIntensity = Math.max(node.pulseLife || 0, other.pulseLife || 0);
+                                ctx.strokeStyle = 'rgba(' + config.secondary + ', ' + (opacity * (pulseIntensity + 0.3)) + ')';
+                                ctx.lineWidth = 3.0;
+                            } else {
+                                ctx.strokeStyle = 'rgba(' + config.primary + ', ' + (opacity * 0.65) + ')';
+                                ctx.lineWidth = 1.2;
+                            }
+                            ctx.stroke();
                         }
-                        ctx.stroke();
                     }
                 }
             }
 
             for (let node of nodes) {
-                node.update();
+                node.update(frameScale);
                 node.draw();
             }
             requestAnimationFrame(animate);
@@ -209,7 +243,7 @@ export function buildNodeNetworkHtml(widget?: any, isPreview = false): string {
             }
         }, 1500);
 
-        animate();
+        requestAnimationFrame(animate);
 
         var src = new EventSource('/overlay/events?channel=node-network');
         src.onmessage = function(e) {

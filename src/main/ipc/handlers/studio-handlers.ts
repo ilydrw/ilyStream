@@ -8,6 +8,7 @@ import { Database } from '../../db/database'
 import { OverlayServer } from '../../overlay/overlay-server'
 import { BrowserSourceService, type BrowserSourceCaptureConfig } from '../../services/browser-source-service'
 import { sendToRenderer } from '../safe-send'
+import { resolveDisplayCaptureAudioSource } from './display-capture'
 
 let pendingDisplayMediaRequest: {
   sourceId: string
@@ -72,20 +73,26 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
   })
 
   ipcMain.handle('studio:get-desktop-sources', async () => {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen', 'window'],
-      thumbnailSize: { width: 280, height: 158 },
-      fetchWindowIcons: true
-    })
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 280, height: 158 },
+        fetchWindowIcons: true
+      })
 
-    return sources.map(source => ({
-      id: source.id,
-      name: source.name,
-      displayId: source.display_id,
-      appIcon: source.appIcon?.isEmpty() ? null : source.appIcon?.toDataURL(),
-      thumbnail: source.thumbnail.isEmpty() ? null : source.thumbnail.toDataURL(),
-      type: source.id.startsWith('screen:') ? 'screen' : 'window'
-    }))
+      return sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        displayId: source.display_id,
+        appIcon: source.appIcon?.isEmpty() ? null : source.appIcon?.toDataURL(),
+        thumbnail: source.thumbnail.isEmpty() ? null : source.thumbnail.toDataURL(),
+        type: source.id.startsWith('screen:') ? 'screen' : 'window'
+      }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      process.stderr.write(`[studio] unable to enumerate desktop sources: ${message}\n`)
+      throw new Error(`Could not read available screens and windows: ${message}`)
+    }
   })
 
   ipcMain.handle('studio:prepare-display-capture', async (_event, request: { sourceId?: string; withAudio?: boolean; audioOnly?: boolean; forceLoopback?: boolean }) => {
@@ -158,17 +165,10 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
 
       const source = sources.find(s => s.id === pending.sourceId)
 
-      let audioSource: 'loopback' | 'loopbackWithMute' | undefined
-      if (pending.withAudio) {
-        // We use loopbackWithMute to prevent the IlyStream application's own
-        // audio output (like TTS or mixer monitoring) from being captured
-        // back into the desktop/app audio stream, which causes doubling and
-        // feedback loops.
-        audioSource = 'loopbackWithMute'
+      const audioSource = resolveDisplayCaptureAudioSource(pending.withAudio)
 
-        if (source && source.id.startsWith('window:')) {
-          console.log(`[StudioHandlers] Using loopbackWithMute for isolated window capture: ${source.name}`)
-        }
+      if (audioSource && source && source.id.startsWith('window:')) {
+        console.log(`[StudioHandlers] Using non-mutating loopback audio for window capture: ${source.name}`)
       }
 
       if (!source) {
@@ -301,6 +301,14 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     if (!owner) return { success: false, error: 'No renderer window is available' }
     browserSourceService.stop(owner, id)
     return { success: true }
+  })
+
+  // Renderer acknowledgement bounds full-frame IPC to one in-flight bitmap per
+  // source. If the renderer is busy, paint continues for native consumers while
+  // stale preview frames are dropped at the producer instead of queuing in V8.
+  ipcMain.on('studio:browser-source:frame-consumed', (event, id: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (owner) browserSourceService.rendererFrameConsumed(owner, id)
   })
 
   // Persistence — routine and frequent, so no logging here.

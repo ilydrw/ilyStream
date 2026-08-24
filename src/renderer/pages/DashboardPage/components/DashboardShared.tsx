@@ -60,9 +60,9 @@ export function SpotifyMetricCard() {
   return (
     <MetricCard
       icon={<SpotifyIcon size={20} />}
-      label="Spotify Engine"
+      label="Spotify engine"
       value={status.connected ? activeQueue.length.toString() : 'OFF'}
-      subValue={status.connected ? `${activeQueue.length} Tracks in Queue` : "Service Disabled"}
+      subValue={status.connected ? `${activeQueue.length} tracks in queue` : "Service disabled"}
       trend={status.connected ? 'neutral' : 'down'}
     />
   )

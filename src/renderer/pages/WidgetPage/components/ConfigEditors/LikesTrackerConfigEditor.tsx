@@ -131,7 +131,7 @@ export function LikesTrackerConfigEditor({
                 key={shape}
                 type="button"
                 onClick={() => update('avatarShape', shape)}
-                className={`h-9 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ config.avatarShape === shape ? 'border-[#19c8ff]/70 bg-[#19c8ff]/20 text-white ' : 'border-white/10 bg-white/[0.03] text-white/40 hover:border-white/20 hover:text-white/70' }`}
+                className={`h-9 rounded-lg border text-[10px] font-semibold tracking-normal transition-all ${ config.avatarShape === shape ? 'border-accent/70 bg-accent/20 text-white ' : 'border-white/10 bg-white/[0.03] text-white/40 hover:border-white/20 hover:text-white/70' }`}
               >
                 {shape}
               </button>
@@ -200,7 +200,7 @@ export function LikesTrackerConfigEditor({
             step={0.05}
             value={config.opacity}
             onChange={(e) => update('opacity', Number(e.currentTarget.value))}
-            className="w-full accent-[#19c8ff]"
+            className="w-full accent-accent"
           />
         </Field>
 
@@ -212,7 +212,7 @@ export function LikesTrackerConfigEditor({
             step={0.1}
             value={config.scale}
             onChange={(e) => update('scale', Number(e.currentTarget.value))}
-            className="w-full accent-[#19c8ff]"
+            className="w-full accent-accent"
           />
         </Field>
       </Section>

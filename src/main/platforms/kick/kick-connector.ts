@@ -1,12 +1,30 @@
 import { type IncomingMessage, type ServerResponse } from 'http'
 import { randomUUID, verify as verifySignature } from 'crypto'
 import { BaseConnector } from '../base-connector'
-import { loadOptionalModule } from '../load-optional-module'
 import { ensureKickEventSubscriptions } from './kick-api'
+import {
+  KickProfileResolver,
+  type KickProfile,
+  type KickProfileHealth,
+  type KickProfileResolverLike
+} from './kick-profile-resolver'
+import type { KickUserTokens } from './kick-user-auth'
+import { ensureKickUserToken } from './kick-stream-info'
+import type { Database } from '../../db/database'
 import {
   registerLoopbackRoute,
   type LoopbackRouteRegistration
 } from '../loopback-route-server'
+import {
+  KICK_PUSHER_WS_URL,
+  KICK_PUSHER_DEFAULT_ACTIVITY_TIMEOUT_S,
+  buildKickSubscriptionChannels,
+  normalizeKickPusherEventName,
+  resolveKickChannel,
+  resolveKickViewerCount,
+  sanitizeKickSlug,
+  type KickChannelInfo
+} from './kick-realtime'
 import {
   Platform,
   KickConfig,
@@ -16,13 +34,25 @@ import {
   Emote,
   SubscriptionEvent,
   FollowEvent,
+  FollowerCountEvent,
+  ViewerCountEvent,
   StreamInfoEvent,
-  UserInfo
+  UserInfo,
+  AnyStreamEvent
 } from '../types'
 
 const DEFAULT_WEBHOOK_PORT = 8792
 const DEFAULT_WEBHOOK_PATH = '/kick/webhook'
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
+const REALTIME_CONNECT_TIMEOUT_MS = 15_000
+const REALTIME_PONG_GRACE_MS = 30_000
+const VIEWER_POLL_INTERVAL_MS = 30_000
+const VIEWER_POLL_MAX_BACKOFF_MS = 5 * 60_000
+const PROFILE_ENRICHMENT_TIMEOUT_MS = 1_750
+const SEMANTIC_EVENT_DEDUPE_TTL_MS = 15_000
+// A live chat socket should keep reconnecting through overnight blips rather
+// than giving up after a handful of drops — mirrors the TikTok connector.
+const KICK_MAX_RECONNECT_ATTEMPTS = 120
 
 const FALLBACK_KICK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq/+l1WnlRrGSolDMA+A8
@@ -42,16 +72,54 @@ interface KickWebhookHeaders {
   eventVersion: string
 }
 
+interface KickConnectorDependencies {
+  db?: Pick<Database, 'getUserStat'>
+  resolveViewerCount?: typeof resolveKickViewerCount
+  profileResolver?: KickProfileResolverLike
+}
+
 export class KickConnector extends BaseConnector {
   readonly platform: Platform = 'kick'
-  private client: any = null
+  private readonly db?: Pick<Database, 'getUserStat'>
+  private readonly resolveViewerCount: typeof resolveKickViewerCount
+  private readonly profileResolver: KickProfileResolverLike
   private ws: any = null
-  private channelId: number | null = null
+  private channelInfo: KickChannelInfo | null = null
+  private connectionToken = 0
+  private activityTimeoutMs = KICK_PUSHER_DEFAULT_ACTIVITY_TIMEOUT_S * 1000
+  private activityTimer: ReturnType<typeof setTimeout> | null = null
+  private pongTimer: ReturnType<typeof setTimeout> | null = null
+  private viewerPollTimer: ReturnType<typeof setTimeout> | null = null
+  private viewerPollFailures = 0
   private webhookRoute: LoopbackRouteRegistration | null = null
   private webhookPort = DEFAULT_WEBHOOK_PORT
   private webhookPath = DEFAULT_WEBHOOK_PATH
   private publicKeyCache: string | null = null
   private processedWebhookIds = new Set<string>()
+  // Chat ids we've already emitted, so the (optional) official webhook path and
+  // the real-time socket never surface the same message twice.
+  private processedChatIds = new Set<string>()
+  private processedSemanticEvents = new Map<string, number>()
+  private profileHealth: KickProfileHealth = { state: 'idle' }
+
+  constructor(deps: KickConnectorDependencies = {}) {
+    super()
+    this.db = deps.db
+    this.resolveViewerCount = deps.resolveViewerCount ?? resolveKickViewerCount
+    this.profileResolver = deps.profileResolver ?? new KickProfileResolver({
+      getConfig: () => this.currentConfig as KickConfig | null,
+      onTokensRefreshed: (tokens) => this.handleRefreshedUserTokens(tokens),
+      onHealthChange: (health) => {
+        this.profileHealth = health
+        this.emit('profile-health', { platform: 'kick', ...health })
+      }
+    })
+    this.setMaxReconnectAttempts(KICK_MAX_RECONNECT_ATTEMPTS)
+  }
+
+  getProfileHealth(): KickProfileHealth {
+    return { ...this.profileHealth }
+  }
 
   validateConfig(config: PlatformConfig): string | null {
     const c = config as KickConfig
@@ -63,25 +131,23 @@ export class KickConnector extends BaseConnector {
 
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const kickConfig = config as KickConfig
-    const channelName = sanitizeKickChannelName(kickConfig.channelName)
+    const channelName = sanitizeKickSlug(kickConfig.channelName)
 
     await this.cleanup()
-    await this.startWebhookReceiver(kickConfig)
-    this.ensureEventSubscriptions(kickConfig, channelName)
 
-    if (kickConfig.legacySocket === true) {
-      try {
-        const KickJS = await loadOptionalModule('@retconned/kick-js')
-        if (KickJS) {
-          await this.connectViaKickJS(KickJS, channelName)
-        } else {
-          await this.connectViaPusher(channelName)
-        }
-      } catch (error) {
-        console.warn(`[kick] Legacy socket fallback unavailable; webhook receiver remains active: ${formatError(error)}`)
-      }
+    // Primary path: Kick's real-time Pusher socket. Outbound, no public endpoint
+    // or OAuth required, and carries chat + subs + gifts + follows + live status.
+    await this.connectRealtime(channelName)
+
+    // Supplementary path: the official signed webhook API. Only useful when the
+    // user has a public tunnel (webhookPublicUrl) — otherwise Kick's servers
+    // can't reach a 127.0.0.1 receiver. Never the sole path anymore.
+    if (String(kickConfig.webhookPublicUrl || '').trim()) {
+      await this.startWebhookReceiver(kickConfig)
+      this.ensureEventSubscriptions(kickConfig, channelName)
     }
 
+    this.startViewerCountPolling(channelName)
     this.lastError = null
   }
 
@@ -97,11 +163,263 @@ export class KickConnector extends BaseConnector {
     }
   }
 
+  // --- Real-time Pusher transport (primary) ---
+
+  private async connectRealtime(channelName: string): Promise<void> {
+    const info = await resolveKickChannel(channelName)
+    this.channelInfo = info
+    console.log(
+      `[kick] Resolved channel "${info.slug}" (channel ${info.channelId}, chatroom ${info.chatroomId}); connecting real-time socket…`
+    )
+
+    const WebSocket = (await import('ws')).default
+    const token = ++this.connectionToken
+    const ws = new WebSocket(KICK_PUSHER_WS_URL)
+    this.ws = ws
+
+    await new Promise<void>((resolve, reject) => {
+      let established = false
+      let settled = false
+
+      const finishConnecting = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        resolve()
+      }
+      const failConnecting = (error: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        // Abandon this socket so a failed handshake can't leave an orphan open.
+        this.clearActivityTimers()
+        try {
+          ws.removeAllListeners()
+          ws.close()
+        } catch {}
+        reject(error instanceof Error ? error : new Error(formatError(error)))
+      }
+
+      const timeout = setTimeout(
+        () => failConnecting(new Error(`Kick real-time connection timed out after ${REALTIME_CONNECT_TIMEOUT_MS / 1000}s`)),
+        REALTIME_CONNECT_TIMEOUT_MS
+      )
+
+      ws.on('message', (raw: any) => {
+        if (token !== this.connectionToken) return
+        this.resetActivityTimer()
+
+        const frame = safeParseFrame(raw)
+        if (!frame) return
+
+        if (frame.event === 'pusher:connection_established') {
+          const data = coerceObject(safeParseData(frame.data))
+          const activityTimeout = Number(data.activity_timeout)
+          this.activityTimeoutMs =
+            (Number.isFinite(activityTimeout) && activityTimeout > 0
+              ? activityTimeout
+              : KICK_PUSHER_DEFAULT_ACTIVITY_TIMEOUT_S) * 1000
+          established = true
+          this.subscribeChannels(ws, info)
+          this.resetActivityTimer()
+          console.log(`[kick] Real-time socket established for "${info.slug}"`)
+          finishConnecting()
+          return
+        }
+
+        if (frame.event === 'pusher:error') {
+          const data = coerceObject(safeParseData(frame.data))
+          console.warn(`[kick] Pusher error: ${data.message || JSON.stringify(data)}`)
+          return
+        }
+
+        this.handleRealtimeFrame(frame)
+      })
+
+      ws.on('close', () => {
+        if (token !== this.connectionToken) return
+        this.clearActivityTimers()
+        if (!established) {
+          failConnecting(new Error('Kick real-time socket closed before the handshake completed'))
+        } else {
+          this.onUnexpectedDisconnect('Kick real-time socket closed')
+        }
+      })
+
+      ws.on('error', (error: any) => {
+        if (token !== this.connectionToken) return
+        if (!established) {
+          failConnecting(error)
+        } else {
+          this.clearActivityTimers()
+          this.onRecoverableError(error, 'kick-realtime')
+        }
+      })
+    })
+  }
+
+  private subscribeChannels(ws: any, info: KickChannelInfo): void {
+    for (const channel of buildKickSubscriptionChannels(info)) {
+      try {
+        ws.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel } }))
+      } catch (error) {
+        console.warn(`[kick] Failed to subscribe to ${channel}: ${formatError(error)}`)
+      }
+    }
+  }
+
+  private handleRealtimeFrame(frame: { event: string; data?: unknown }): void {
+    const event = frame.event || ''
+    if (/^pusher(_internal)?:/.test(event)) {
+      if (event === 'pusher:ping') {
+        try {
+          this.ws?.send(JSON.stringify({ event: 'pusher:pong', data: {} }))
+        } catch {}
+      }
+      return
+    }
+
+    const data = coerceObject(safeParseData(frame.data))
+    this.handleRealtimeEvent(normalizeKickPusherEventName(event), data)
+  }
+
+  private handleRealtimeEvent(eventName: string, data: any): void {
+    switch (eventName) {
+      case 'ChatMessageEvent':
+        void this.emitEnriched(this.mapWebhookChat(data, syntheticChatHeaders(data)))
+        break
+      case 'SubscriptionEvent':
+      case 'ChannelSubscriptionEvent':
+        void this.emitEnriched(this.mapRealtimeSubscription(data))
+        break
+      case 'GiftedSubscriptionsEvent':
+      case 'LuckyUsersWhoGotGiftSubscriptionsEvent': {
+        const gifter = data.gifter || data.sender || data.gifter_username
+        for (const giftee of extractGifteeUsers(data)) {
+          void this.emitEnriched(this.mapRealtimeGiftSubscription(giftee, gifter, data))
+        }
+        break
+      }
+      case 'FollowersUpdated':
+        this.emitFollowerUpdate(data)
+        break
+      case 'StreamerIsLive':
+        this.emitDedupedEvent(this.mapRealtimeStreamInfo(data, true))
+        break
+      case 'StopStreamBroadcast':
+        this.emitDedupedEvent(this.mapRealtimeStreamInfo(data, false))
+        break
+      // Chat moderation / presence frames we don't surface yet.
+      case 'MessageDeletedEvent':
+      case 'UserBannedEvent':
+      case 'UserUnbannedEvent':
+      case 'PinnedMessageCreatedEvent':
+      case 'PinnedMessageDeletedEvent':
+      case 'ChatMoveToSupportedChannelEvent':
+      case 'PollUpdateEvent':
+      case 'PollDeleteEvent':
+        break
+      default:
+        console.log(`[kick] Ignored real-time event "${eventName}"`)
+    }
+  }
+
+  private resetActivityTimer(): void {
+    this.clearActivityTimers()
+    this.activityTimer = setTimeout(() => {
+      // No inbound activity within the window — nudge the server with a ping and
+      // treat a missing reply as a dead socket so the base connector reconnects.
+      try {
+        this.ws?.send(JSON.stringify({ event: 'pusher:ping', data: {} }))
+      } catch {}
+      this.pongTimer = setTimeout(() => {
+        this.onUnexpectedDisconnect('Kick real-time heartbeat timed out')
+      }, REALTIME_PONG_GRACE_MS)
+    }, this.activityTimeoutMs)
+  }
+
+  private clearActivityTimers(): void {
+    if (this.activityTimer) {
+      clearTimeout(this.activityTimer)
+      this.activityTimer = null
+    }
+    if (this.pongTimer) {
+      clearTimeout(this.pongTimer)
+      this.pongTimer = null
+    }
+  }
+
+  // --- Best-effort viewer telemetry ---
+
+  private startViewerCountPolling(channelName: string): void {
+    this.stopViewerCountPolling()
+    const token = this.connectionToken
+
+    const tick = async () => {
+      if (token !== this.connectionToken) return
+
+      let nextDelay = VIEWER_POLL_INTERVAL_MS
+      try {
+        const snapshot = await this.resolveViewerCount(channelName)
+        if (token !== this.connectionToken) return
+
+        if (snapshot) {
+          if (this.viewerPollFailures > 0) {
+            console.log('[kick] Viewer-count polling recovered')
+          }
+          this.viewerPollFailures = 0
+          this.emitEvent({
+            id: randomUUID(),
+            platform: 'kick',
+            timestamp: new Date(),
+            type: 'viewer-count',
+            count: snapshot.count,
+            raw: snapshot.raw
+          } as ViewerCountEvent)
+        } else {
+          this.viewerPollFailures++
+          if (this.viewerPollFailures === 1) {
+            console.warn('[kick] Viewer-count lookup failed; real-time events remain connected')
+          }
+          nextDelay = Math.min(
+            VIEWER_POLL_INTERVAL_MS * Math.pow(2, Math.min(this.viewerPollFailures, 4)),
+            VIEWER_POLL_MAX_BACKOFF_MS
+          )
+        }
+      } catch (error) {
+        this.viewerPollFailures++
+        if (this.viewerPollFailures === 1) {
+          console.warn(`[kick] Viewer-count lookup failed; real-time events remain connected: ${formatError(error)}`)
+        }
+        nextDelay = Math.min(
+          VIEWER_POLL_INTERVAL_MS * Math.pow(2, Math.min(this.viewerPollFailures, 4)),
+          VIEWER_POLL_MAX_BACKOFF_MS
+        )
+      }
+
+      if (token === this.connectionToken) {
+        this.viewerPollTimer = setTimeout(() => void tick(), nextDelay)
+      }
+    }
+
+    void tick()
+  }
+
+  private stopViewerCountPolling(): void {
+    if (this.viewerPollTimer) {
+      clearTimeout(this.viewerPollTimer)
+      this.viewerPollTimer = null
+    }
+    this.viewerPollFailures = 0
+  }
+
+  // --- Official webhook receiver (supplementary; requires a public tunnel) ---
+
   /**
    * Best-effort, fire-and-forget re-subscribe on every connect. Kick event
    * subscriptions are keyed to the app + broadcaster; refreshing them here
    * removes the manual "Subscribe Events" click after restarts. Failures only
-   * warn — the webhook receiver still works for any subscriptions that exist.
+   * warn — the real-time socket already carries every event regardless.
    */
   private ensureEventSubscriptions(config: KickConfig, channelName: string): void {
     const clientId = String(config.clientId || '').trim()
@@ -109,12 +427,18 @@ export class KickConnector extends BaseConnector {
     const broadcasterUserId = String(config.broadcasterUserId || '').trim()
     if (!clientId || !clientSecret || (!broadcasterUserId && !channelName)) return
 
-    void ensureKickEventSubscriptions({
+    const userScopes = String(config.userScopes || '').split(/[\s,]+/).filter(Boolean)
+    const accessToken = userScopes.includes('events:subscribe')
+      ? ensureKickUserToken(config, (tokens) => this.handleRefreshedUserTokens(tokens)).catch(() => '')
+      : Promise.resolve('')
+
+    void accessToken.then((resolvedAccessToken) => ensureKickEventSubscriptions({
       clientId,
       clientSecret,
+      accessToken: resolvedAccessToken || undefined,
       broadcasterUserId: broadcasterUserId || undefined,
       channelName
-    }).then((result) => {
+    })).then((result) => {
       const failed = result.subscriptions.filter((entry) => entry.error)
       if (failed.length > 0) {
         console.warn(`[kick] ${failed.length} event subscription(s) failed: ${failed.map((entry) => entry.name).join(', ')}`)
@@ -262,213 +586,44 @@ export class KickConnector extends BaseConnector {
 
     switch (resolvedType) {
       case 'chat.message.sent':
-        this.emitEvent(this.mapWebhookChat(data, headers))
+        void this.emitEnriched(this.mapWebhookChat(data, headers))
         break
       case 'channel.followed':
-        this.emitEvent(this.mapWebhookFollow(data))
+        void this.emitEnriched(this.mapWebhookFollow(data))
         break
       case 'subscription.new':
       case 'channel.subscription.new':
       case 'subscription.renewal':
       case 'channel.subscription.renewal':
-        this.emitEvent(this.mapWebhookSubscription(data, false))
+        void this.emitEnriched(this.mapWebhookSubscription(data, false))
         break
       case 'subscription.gifts':
       case 'channel.subscription.gifts': {
         const giftees = Array.isArray(data.giftees) ? data.giftees : []
         if (giftees.length === 0) {
-          this.emitEvent(this.mapWebhookSubscription(data, true))
+          void this.emitEnriched(this.mapWebhookSubscription(data, true))
           break
         }
         giftees.forEach((giftee: unknown) => {
-          this.emitEvent(this.mapWebhookSubscription({ ...data, giftee }, true))
+          void this.emitEnriched(this.mapWebhookSubscription({ ...data, giftee }, true))
         })
         break
       }
       case 'livestream.status.updated':
       case 'livestream.metadata.updated':
-        this.emitEvent(this.mapStreamInfo(data))
+        this.emitDedupedEvent(this.mapStreamInfo(data))
         break
       default:
         console.warn(`[kick] Ignored webhook event "${resolvedType || 'unknown'}"`)
     }
   }
 
-  private async connectViaKickJS(KickJS: any, channelName: string): Promise<void> {
-    const ClientClass = KickJS.default || KickJS.KickClient || KickJS
-    this.client = new ClientClass(channelName)
-
-    this.client.on('ChatMessage', (data: any) => {
-      this.emitEvent(this.mapChat(data))
-    })
-
-    this.client.on('Subscription', (data: any) => {
-      this.emitEvent(this.mapSubscription(data, false))
-    })
-
-    this.client.on('GiftedSubscription', (data: any) => {
-      this.emitEvent(this.mapSubscription(data, true))
-    })
-
-    this.client.on('Follow', (data: any) => {
-      this.emitEvent(this.mapFollow(data))
-    })
-
-    this.client.on('disconnect', () => {
-      this.handleLegacyDisconnect('Kick client disconnected')
-    })
-
-    this.client.on('error', (err: any) => {
-      this.handleLegacyError(err, 'kick-js')
-    })
-
-    await this.client.connect()
-  }
-
-  /**
-   * Optional legacy fallback: Connect directly via Kick's Pusher WebSocket.
-   * Kick's official real-time chat path is webhook events; this is best-effort.
-   */
-  private async connectViaPusher(channelName: string): Promise<void> {
-    const WebSocket = (await import('ws')).default
-
-    const fetchOptions = {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://kick.com/',
-        'Origin': 'https://kick.com',
-        'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-site',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    }
-
-    let channelResponse = await fetch(`https://kick.com/api/v2/channels/${channelName}`, fetchOptions)
-    
-    if (!channelResponse.ok) {
-      console.warn(`[kick] v2 API failed (${channelResponse.status}), trying v1...`)
-      channelResponse = await fetch(`https://kick.com/api/v1/channels/${channelName}`, fetchOptions)
-    }
-
-    if (!channelResponse.ok) {
-      const errorMsg = channelResponse.status === 403 
-        ? 'Kick blocked the legacy socket lookup (403). Cloudflare protection is active.'
-        : `Kick channel "${channelName}" not found (${channelResponse.status})`
-      throw new Error(errorMsg)
-    }
-
-    const channelData = await (channelResponse as any).json()
-    this.channelId = channelData.chatroom?.id || channelData.id || channelData.chatroom_id
-
-    if (!this.channelId) {
-      throw new Error(`Could not resolve chat room ID for channel "${channelName}"`)
-    }
-
-    const pusherKey = '32cbd69e4b950bf97679'
-    const wsUrl = `wss://ws-us2.pusher.com/app/${pusherKey}?protocol=7&client=js&version=8.3.0&flash=false`
-
-    this.ws = new WebSocket(wsUrl)
-
-    this.ws.on('open', () => {
-      const subscribeMsg = JSON.stringify({
-        event: 'pusher:subscribe',
-        data: { channel: `chatrooms.${this.channelId}.v2` }
-      })
-      this.ws.send(subscribeMsg)
-    })
-
-    this.ws.on('message', (raw: any) => {
-      try {
-        const msg = JSON.parse(raw.toString())
-        this.handlePusherMessage(msg)
-      } catch {}
-    })
-
-    this.ws.on('close', () => {
-      this.handleLegacyDisconnect('Kick WebSocket closed')
-    })
-
-    this.ws.on('error', (err: any) => {
-      this.handleLegacyError(err, 'kick-websocket')
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      let settled = false
-      const settle = (callback: () => void) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeout)
-        this.ws?.off?.('message', onMessage)
-        this.ws?.off?.('error', onError)
-        this.ws?.off?.('close', onClose)
-        callback()
-      }
-      const onMessage = (raw: any) => {
-        try {
-          const msg = JSON.parse(raw.toString())
-          if (msg.event === 'pusher:connection_established') {
-            settle(resolve)
-          } else {
-            settle(() => reject(new Error('Unexpected first message from Kick WebSocket')))
-          }
-        } catch (e) {
-          settle(() => reject(e))
-        }
-      }
-      const onError = (err: unknown) => settle(() => reject(err))
-      const onClose = () => settle(() => reject(new Error('Kick WebSocket closed before connection established')))
-      const timeout = setTimeout(() => {
-        settle(() => reject(new Error('Kick WebSocket connection timeout')))
-      }, 10_000)
-
-      this.ws.once('message', onMessage)
-      this.ws.once('error', onError)
-      this.ws.once('close', onClose)
-    })
-  }
-
-  private handlePusherMessage(msg: any): void {
-    if (!msg.event || msg.event.startsWith('pusher:')) return
-
-    let data: any
-    try {
-      data = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data
-    } catch {
-      return
-    }
-
-    switch (msg.event) {
-      case 'App\\Events\\ChatMessageEvent':
-        this.emitEvent(this.mapChat(data))
-        break
-      case 'App\\Events\\SubscriptionEvent':
-        this.emitEvent(this.mapSubscription(data, false))
-        break
-      case 'App\\Events\\GiftedSubscriptionsEvent':
-        this.emitEvent(this.mapSubscription(data, true))
-        break
-      case 'App\\Events\\FollowEvent':
-        this.emitEvent(this.mapFollow(data))
-        break
-    }
-  }
-
   private async cleanup(): Promise<void> {
-    if (this.client) {
-      try {
-        this.client.removeAllListeners?.()
-        await this.client.disconnect?.()
-      } catch {}
-      this.client = null
-    }
+    // Invalidate any in-flight socket handlers so a stale close/error from the
+    // previous connection can't fire reconnects against the new one.
+    this.connectionToken++
+    this.clearActivityTimers()
+    this.stopViewerCountPolling()
     if (this.ws) {
       try {
         this.ws.removeAllListeners()
@@ -481,23 +636,162 @@ export class KickConnector extends BaseConnector {
       this.webhookRoute = null
       await route.close()
     }
-    this.channelId = null
+    this.channelInfo = null
   }
 
-  private handleLegacyDisconnect(reason: string): void {
-    if (this.webhookRoute) {
-      console.warn(`[kick] ${reason}; webhook receiver remains active`)
-      return
+  private async emitEnriched(event: AnyStreamEvent): Promise<void> {
+    try {
+      const enriched = await withTimeout(
+        this.enrichEventWithKickProfile(event),
+        PROFILE_ENRICHMENT_TIMEOUT_MS,
+        `Kick profile enrichment timed out after ${PROFILE_ENRICHMENT_TIMEOUT_MS}ms`
+      )
+      this.emitDedupedEvent(enriched)
+    } catch (error) {
+      console.warn(`[kick] Profile enrichment skipped for ${event.type}: ${formatError(error)}`)
+      this.emitDedupedEvent(event)
     }
-    this.onUnexpectedDisconnect(reason)
   }
 
-  private handleLegacyError(error: unknown, context: string): void {
-    if (this.webhookRoute) {
-      console.warn(`[kick] ${context}: ${formatError(error)}; webhook receiver remains active`)
+  private async enrichEventWithKickProfile(event: AnyStreamEvent): Promise<AnyStreamEvent> {
+    if ('user' in event && event.user) {
+      await this.enrichUser(event.user)
+    }
+    if (event.type === 'subscription' && event.gifterUser) {
+      await this.enrichUser(event.gifterUser)
+    }
+    return event
+  }
+
+  private async enrichUser(user: UserInfo): Promise<void> {
+    const numericId = normalizeNumericUserId(user.id)
+    const cached = this.userCache.get('kick', numericId || undefined, user.username)
+      ?? this.userCache.get('kick', undefined, user.username)
+    if (cached) this.mergeCachedUser(user, cached)
+
+    if (this.db && user.username) {
+      const stats: any = this.db.getUserStat('kick', user.username)
+      if (stats) {
+        const storedId = normalizeNumericUserId(stats.platform_user_id)
+        if (!normalizeNumericUserId(user.id) && storedId) user.id = storedId
+        this.preferDisplayName(user, firstNonEmptyString(stats.display_name))
+        user.profilePictureUrl ||= firstNonEmptyString(stats.profile_picture_url) || undefined
+        user.isFollower = Boolean(user.isFollower || Number(stats.total_follows || 0) > 0)
+        user.isModerator = Boolean(user.isModerator || stats.is_moderator)
+      }
+    }
+
+    const resolvedId = normalizeNumericUserId(user.id)
+    if (!user.profilePictureUrl && resolvedId) {
+      const profile = await this.profileResolver.resolve(resolvedId)
+      if (profile) this.mergeKickProfile(user, profile)
+    }
+
+    this.userCache.set('kick', user)
+  }
+
+  private mergeCachedUser(user: UserInfo, cached: UserInfo): void {
+    if (!normalizeNumericUserId(user.id) && normalizeNumericUserId(cached.id)) user.id = cached.id
+    user.username ||= cached.username
+    this.preferDisplayName(user, cached.displayName)
+    user.profilePictureUrl ||= cached.profilePictureUrl
+    user.isModerator = Boolean(user.isModerator || cached.isModerator)
+    user.isSubscriber = Boolean(user.isSubscriber || cached.isSubscriber)
+    user.isVip = Boolean(user.isVip || cached.isVip)
+    user.isFollower = Boolean(user.isFollower || cached.isFollower)
+    user.isFanClubMember = Boolean(user.isFanClubMember || cached.isFanClubMember)
+    user.isTeamMember = Boolean(user.isTeamMember || cached.isTeamMember)
+    if (user.badges.length === 0 && cached.badges.length > 0) user.badges = cached.badges
+  }
+
+  private mergeKickProfile(user: UserInfo, profile: KickProfile): void {
+    if (!normalizeNumericUserId(user.id)) user.id = profile.id
+    user.username ||= profile.username || ''
+    if (profile.displayName) user.displayName = profile.displayName
+    user.profilePictureUrl ||= profile.profilePictureUrl
+  }
+
+  private preferDisplayName(user: UserInfo, candidate: string | undefined): void {
+    const current = firstNonEmptyString(user.displayName)
+    const normalizedCurrent = current.toLowerCase()
+    const normalizedUsername = firstNonEmptyString(user.username).toLowerCase()
+    if (candidate && (!current || normalizedCurrent === normalizedUsername || normalizedCurrent === 'unknown')) {
+      user.displayName = candidate
+    }
+  }
+
+  /** De-dupes the site socket and official webhook before downstream side effects. */
+  private emitDedupedEvent(event: AnyStreamEvent): void {
+    if (event.type === 'chat') {
+      const id = event.id
+      if (id) {
+        if (this.processedChatIds.has(id)) return
+        this.processedChatIds.add(id)
+        if (this.processedChatIds.size > 1000) {
+          const oldest = this.processedChatIds.values().next().value
+          if (oldest) this.processedChatIds.delete(oldest)
+        }
+      }
+      this.emitEvent(event)
       return
     }
-    this.onRecoverableError(error, context)
+
+    const now = Date.now()
+    for (const [key, expiresAt] of this.processedSemanticEvents) {
+      if (expiresAt <= now) this.processedSemanticEvents.delete(key)
+    }
+    const fingerprint = semanticEventFingerprint(event)
+    if (fingerprint) {
+      if ((this.processedSemanticEvents.get(fingerprint) || 0) > now) return
+      this.processedSemanticEvents.set(fingerprint, now + SEMANTIC_EVENT_DEDUPE_TTL_MS)
+    }
+    this.emitEvent(event)
+  }
+
+  private handleRefreshedUserTokens(tokens: KickUserTokens): void {
+    const config = this.currentConfig as KickConfig | null
+    if (config) {
+      config.userAccessToken = tokens.accessToken
+      config.userRefreshToken = tokens.refreshToken || config.userRefreshToken
+      config.userTokenExpiresAt = tokens.expiresAt
+      config.userScopes = tokens.scopes || config.userScopes
+    }
+    this.emit('token-refresh', {
+      platform: 'kick',
+      userAccessToken: tokens.accessToken,
+      userRefreshToken: tokens.refreshToken,
+      userTokenExpiresAt: tokens.expiresAt,
+      userScopes: tokens.scopes
+    })
+  }
+
+  private emitFollowerUpdate(data: any): void {
+    const count = firstFiniteNumber(data.followersCount, data.followers_count, data.count)
+    if (count !== null) {
+      this.emitEvent({
+        id: randomUUID(),
+        platform: 'kick',
+        timestamp: new Date(data.created_at || Date.now()),
+        type: 'follower-count',
+        raw: data,
+        count
+      } as FollowerCountEvent)
+    }
+
+    // FollowersUpdated is usually a count-only broadcast; only surface an
+    // individual follow when Kick actually names the follower.
+    const username = firstNonEmptyString(data.username, data.user?.username, data.follower?.username)
+    if (username && data.followed !== false) {
+      const payload = data.follower || data.user || data
+      void this.emitEnriched({
+        id: randomUUID(),
+        platform: 'kick',
+        timestamp: new Date(data.created_at || Date.now()),
+        type: 'follow',
+        raw: data,
+        user: typeof payload === 'object' ? this.mapUser(payload) : this.mapUsernameUser(username)
+      } as FollowEvent)
+    }
   }
 
   private mapUser(data: any): UserInfo {
@@ -517,10 +811,10 @@ export class KickConnector extends BaseConnector {
     const isSubscriber = Boolean(sender.is_subscriber || badgeText.includes('subscriber'))
 
     return {
-      id: String(sender.user_id || sender.id || username || ''),
+      id: String(sender.user_id || sender.id || ''),
       username,
       displayName: sender.displayName || sender.display_name || sender.username || sender.name || sender.slug || 'Unknown',
-      profilePictureUrl: sender.profile_picture || sender.profile_pic || sender.profilePicture || sender.profilePictureUrl || undefined,
+      profilePictureUrl: sender.profile_picture || sender.profile_pic || sender.profilePicture || sender.profilePictureUrl || sender.avatar_url || sender.avatar || undefined,
       isModerator: Boolean(sender.is_moderator || badgeText.includes('moderator')),
       isSubscriber,
       isVip: Boolean(sender.is_broadcaster || sender.is_verified || badgeText.includes('broadcaster')),
@@ -528,6 +822,26 @@ export class KickConnector extends BaseConnector {
       isFanClubMember: isSubscriber,
       isTeamMember: Boolean(sender.is_staff || badgeText.includes('staff') || badgeText.includes('team')),
       badges
+    }
+  }
+
+  /** Minimal user for real-time events that only carry a username string. */
+  private mapUsernameUser(username: unknown, opts: { isSubscriber?: boolean } = {}): UserInfo {
+    const name = firstNonEmptyString(username) || 'Anonymous'
+    return {
+      // Username-only Pusher events do not carry a stable platform ID. Leaving
+      // this empty lets cache/DB lookup fall back to the username instead of
+      // persisting a username-shaped value as if it were a permanent Kick ID.
+      id: '',
+      username: name,
+      displayName: name,
+      isModerator: false,
+      isSubscriber: Boolean(opts.isSubscriber),
+      isVip: false,
+      isFollower: false,
+      isFanClubMember: Boolean(opts.isSubscriber),
+      isTeamMember: false,
+      badges: []
     }
   }
 
@@ -548,8 +862,74 @@ export class KickConnector extends BaseConnector {
     }
   }
 
+  private mapRealtimeSubscription(data: any): SubscriptionEvent {
+    const user = this.mapUser(data.subscriber || data.user || data)
+    user.isSubscriber = true
+    user.isFanClubMember = true
+    return {
+      id: randomUUID(),
+      platform: 'kick',
+      timestamp: new Date(data.created_at || data.timestamp || Date.now()),
+      type: 'subscription',
+      raw: data,
+      user,
+      tier: 'Kick Sub',
+      months: Number(data.months || data.duration || 1) || 1,
+      isGift: false,
+      monetaryValue: 499
+    }
+  }
+
+  private mapRealtimeGiftSubscription(giftee: unknown, gifter: unknown, data: any): SubscriptionEvent {
+    const user = typeof giftee === 'string'
+      ? this.mapUsernameUser(giftee, { isSubscriber: true })
+      : this.mapUser(giftee)
+    user.isSubscriber = true
+    user.isFanClubMember = true
+    const gifterUser = typeof gifter === 'string'
+      ? this.mapUsernameUser(gifter)
+      : gifter && typeof gifter === 'object'
+        ? this.mapUser(gifter)
+        : undefined
+    return {
+      id: randomUUID(),
+      platform: 'kick',
+      timestamp: new Date(data.created_at || data.timestamp || Date.now()),
+      type: 'subscription',
+      raw: data,
+      user,
+      tier: 'Kick Sub',
+      months: 1,
+      isGift: true,
+      gifterUser,
+      monetaryValue: 499
+    }
+  }
+
+  private mapRealtimeStreamInfo(data: any, isLive: boolean): StreamInfoEvent {
+    const livestream = data.livestream || data
+    const category = Array.isArray(livestream.categories) ? livestream.categories[0] : livestream.category
+    return {
+      id: randomUUID(),
+      platform: 'kick',
+      timestamp: new Date(livestream.created_at || data.created_at || Date.now()),
+      type: 'stream-info',
+      raw: data,
+      isLive,
+      title: firstNonEmptyString(livestream.session_title, livestream.title, data.title) || undefined,
+      gameName: category?.name || undefined,
+      gameId: category?.id ? String(category.id) : undefined,
+      startedAt: livestream.created_at || livestream.start_time || undefined,
+      thumbnailUrl: category?.thumbnail || livestream.thumbnail?.url || undefined
+    }
+  }
+
   private mapWebhookSubscription(data: any, isGift: boolean): SubscriptionEvent {
     const userPayload = isGift ? (data.giftee || data.gifted_to || data.subscriber || data) : (data.subscriber || data)
+    const user = this.mapUser(userPayload)
+    user.isSubscriber = true
+    user.isFanClubMember = true
+    const gifterPayload = data.gifter || data.sender
     const createdAt = data.created_at || data.timestamp || Date.now()
     return {
       id: randomUUID(),
@@ -557,11 +937,11 @@ export class KickConnector extends BaseConnector {
       timestamp: new Date(createdAt),
       type: 'subscription',
       raw: data,
-      user: this.mapUser(userPayload),
+      user,
       tier: 'Kick Sub',
       months: Number(data.duration || data.months || 1),
       isGift,
-      gifterUser: isGift ? this.mapUser(data.gifter || data.sender || data) : undefined,
+      gifterUser: isGift && gifterPayload ? this.mapUser(gifterPayload) : undefined,
       monetaryValue: 499
     }
   }
@@ -592,47 +972,6 @@ export class KickConnector extends BaseConnector {
       gameId: category?.id ? String(category.id) : undefined,
       startedAt: data.started_at || data.stream?.start_time || undefined,
       thumbnailUrl: category?.thumbnail || undefined
-    }
-  }
-
-  private mapChat(data: any): ChatEvent {
-    const message = data.content || data.message || ''
-    return {
-      id: String(data.id || data.message_id || randomUUID()),
-      platform: 'kick',
-      timestamp: new Date(data.created_at || Date.now()),
-      type: 'chat',
-      raw: data,
-      user: this.mapUser(data),
-      message,
-      emotes: extractKickEmotes(message, data)
-    }
-  }
-
-  private mapSubscription(data: any, isGift: boolean): SubscriptionEvent {
-    return {
-      id: randomUUID(),
-      platform: 'kick',
-      timestamp: new Date(),
-      type: 'subscription',
-      raw: data,
-      user: this.mapUser(isGift ? (data.gifted_to || data) : data),
-      tier: 'kick_sub',
-      months: data.months || 1,
-      isGift,
-      gifterUser: isGift ? this.mapUser(data.gifter || data) : undefined,
-      monetaryValue: 499
-    }
-  }
-
-  private mapFollow(data: any): FollowEvent {
-    return {
-      id: randomUUID(),
-      platform: 'kick',
-      timestamp: new Date(),
-      type: 'follow',
-      raw: data,
-      user: this.mapUser(data)
     }
   }
 }
@@ -701,11 +1040,7 @@ export function buildKickEmoteImageUrl(id: string): string {
 }
 
 export function sanitizeKickChannelName(value: string): string {
-  let channelName = (value || '').trim()
-  if (channelName.includes('kick.com/')) {
-    channelName = channelName.split('kick.com/').pop()?.split(/[?#/]/)[0] || channelName
-  }
-  return channelName.startsWith('@') ? channelName.slice(1) : channelName
+  return sanitizeKickSlug(value)
 }
 
 export function normalizeWebhookPath(value: unknown): string {
@@ -734,6 +1069,72 @@ export function verifyKickWebhookSignature(
       return false
     }
   })
+}
+
+/** Builds webhook-shaped headers so real-time chat reuses the same mapper. */
+function syntheticChatHeaders(data: any): KickWebhookHeaders {
+  return {
+    messageId: firstNonEmptyString(data?.id, data?.message_id),
+    signature: '',
+    timestamp: firstNonEmptyString(data?.created_at, data?.timestamp),
+    eventType: 'chat.message.sent',
+    eventVersion: '1'
+  }
+}
+
+/** Pulls the list of gifted usernames out of the various gift-sub payloads. */
+export function extractGifteeUsernames(data: any): string[] {
+  return extractGifteeUsers(data)
+    .map((entry) => firstNonEmptyString(
+      typeof entry === 'string' ? entry : (entry as any)?.username,
+      (entry as any)?.user?.username
+    ))
+    .filter((name): name is string => name.length > 0)
+}
+
+/** Keeps rich giftee objects intact when Kick includes IDs or avatars. */
+export function extractGifteeUsers(data: any): unknown[] {
+  const candidates = [
+    data?.gifted_users,
+    data?.gifted_usernames,
+    data?.usernames,
+    data?.giftees,
+    data?.gifted_to
+  ]
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate.filter((entry) => {
+        if (typeof entry === 'string') return entry.trim().length > 0
+        return Boolean(entry && typeof entry === 'object')
+      })
+    }
+  }
+  if (data?.giftee && typeof data.giftee === 'object') return [data.giftee]
+  const single = firstNonEmptyString(data?.username)
+  return single ? [single] : []
+}
+
+function safeParseFrame(raw: any): { event: string; data?: unknown } | null {
+  try {
+    const parsed = JSON.parse(raw.toString())
+    if (parsed && typeof parsed === 'object' && typeof parsed.event === 'string') {
+      return parsed as { event: string; data?: unknown }
+    }
+  } catch {}
+  return null
+}
+
+function safeParseData(data: unknown): unknown {
+  if (typeof data !== 'string') return data
+  try {
+    return JSON.parse(data)
+  } catch {
+    return {}
+  }
+}
+
+function coerceObject(value: unknown): any {
+  return value && typeof value === 'object' ? value : {}
 }
 
 function decodeSignature(signature: string): Buffer[] {
@@ -861,6 +1262,48 @@ function firstFiniteNumber(...values: unknown[]): number | null {
     if (Number.isFinite(number)) return Math.floor(number)
   }
   return null
+}
+
+function normalizeNumericUserId(value: unknown): string | null {
+  const text = String(value ?? '').trim()
+  if (!/^\d+$/.test(text)) return null
+  const id = Number(text)
+  return Number.isSafeInteger(id) && id > 0 ? String(id) : null
+}
+
+function semanticEventFingerprint(event: AnyStreamEvent): string | null {
+  if (event.type !== 'follow' && event.type !== 'subscription') return null
+  const user = normalizeEventUserKey(event.user)
+  if (!user) return null
+  if (event.type === 'follow') return `follow:${user}`
+
+  const gifter = event.gifterUser ? normalizeEventUserKey(event.gifterUser) : ''
+  return [
+    'subscription',
+    user,
+    event.isGift ? 'gift' : 'direct',
+    gifter,
+    Math.max(1, Number(event.months || 1))
+  ].join(':')
+}
+
+function normalizeEventUserKey(user: UserInfo): string {
+  return firstNonEmptyString(user.username, user.displayName).toLowerCase()
+    || normalizeNumericUserId(user.id)
+    || ''
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([
+    promise.finally(() => {
+      if (timeout) clearTimeout(timeout)
+    }),
+    timeoutPromise
+  ])
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

@@ -8,6 +8,7 @@ import type {
   FollowEvent,
   Emote
 } from '../types'
+import { formatSubscriptionTier } from '../../../shared/subscription-display'
 
 export class TwitchMapper {
   mapUserFromMsg(user: string, msg: any, isFollower: boolean): UserInfo {
@@ -74,6 +75,7 @@ export class TwitchMapper {
   }
 
   mapSubscription(user: string, subInfo: any, isGift: boolean): SubscriptionEvent {
+    const gifterUsername = subInfo?.gifter || subInfo?.gifterDisplayName
     return {
       id: randomUUID(),
       platform: 'twitch',
@@ -89,10 +91,21 @@ export class TwitchMapper {
         isVip: false,
         badges: []
       },
-      tier: subInfo?.plan || '1000',
+      tier: formatSubscriptionTier('twitch', subInfo?.plan || '1000'),
       months: subInfo?.months || 1,
       message: subInfo?.message,
       isGift,
+      gifterUser: isGift && gifterUsername
+        ? {
+            id: subInfo?.gifterUserId || gifterUsername,
+            username: subInfo?.gifter || gifterUsername,
+            displayName: subInfo?.gifterDisplayName || gifterUsername,
+            isModerator: false,
+            isSubscriber: false,
+            isVip: false,
+            badges: []
+          }
+        : undefined,
       monetaryValue: subInfo?.plan === '3000' ? 2499 : subInfo?.plan === '2000' ? 999 : 499
     }
   }

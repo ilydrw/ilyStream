@@ -65,7 +65,7 @@ export default function TTSPage() {
             onClick={() => setActiveTab('profiles')}
             className={`pb-4 border-b-2 font-semibold text-sm transition-all outline-none ${activeTab === 'profiles' ? 'border-accent text-white' : 'border-transparent text-white/40 hover:text-white/70'}`}
           >
-            Voice Profiles
+            Voice profiles
           </button>
           <button
             onClick={() => setActiveTab('rules')}

@@ -6,6 +6,7 @@ import type { StudioLayer } from '../../../../shared/studio'
 import { resolveLayerLayout } from '../../../../shared/studio'
 import { useStudioStore } from '../../../stores/studio-store'
 import { createMediaSourceStatus, type MediaSourceStatus } from '../utils/media-init'
+import { BROWSER_SOURCE_CAPTURE_DEFAULT_FPS, WIDGET_SOURCE_CAPTURE_DEFAULT_FPS } from './CanvasEditor.utils'
 
 interface Props {
   layer: StudioLayer
@@ -309,7 +310,13 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                 </label>
                 <select
                   value={layer.config.deviceId || ''}
-                  onChange={e => updateConfig({ deviceId: e.target.value })}
+                  onChange={e => {
+                    const device = devices.find(candidate => candidate.deviceId === e.target.value)
+                    updateConfig({
+                      deviceId: e.target.value,
+                      ...(layer.type === 'camera' ? { deviceLabel: device?.label || '' } : {})
+                    })
+                  }}
                   className="w-full bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:border-accent/40 focus:outline-none [&>option]:bg-[#121214]"
                 >
                   {layer.type === 'camera' ? (
@@ -419,7 +426,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                 </select>
               </div>
               <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <NumericField label="Refresh Rate (FPS)" value={layer.config.fps || 8} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} min={1} max={60} />
+                <NumericField label="Refresh Rate (FPS)" value={layer.config.fps || WIDGET_SOURCE_CAPTURE_DEFAULT_FPS} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} min={1} max={60} />
                 <button
                   onClick={() => window.api?.studio?.reloadBrowserSource?.(layer.id)}
                   className="h-[46px] px-4 rounded-xl border border-white/5 bg-white/[0.03] text-white/30 hover:text-white hover:bg-white/10 transition-all"
@@ -442,7 +449,7 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
                 />
               </div>
               <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <NumericField label="FPS" value={layer.config.fps || 8} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} />
+                <NumericField label="FPS" value={layer.config.fps || BROWSER_SOURCE_CAPTURE_DEFAULT_FPS} onChange={v => updateConfig({ fps: Math.max(1, Math.min(60, Math.round(v))) })} />
                 <button
                   onClick={() => window.api?.studio?.reloadBrowserSource?.(layer.id)}
                   className="h-[46px] px-4 rounded-xl border border-white/5 bg-white/[0.03] text-white/30 hover:text-white hover:bg-white/10 transition-all"

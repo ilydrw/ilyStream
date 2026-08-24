@@ -1,11 +1,15 @@
 /**
- * Shared browser-source runtime for avatars. Remote profile pictures are
- * routed through ilyStream's same-origin cache; missing or unavailable images
- * fall back to a deterministic inline SVG and never require the internet.
+ * Shared browser-source runtime for images. Remote profile pictures, alert
+ * artwork, and Spotify covers are routed through ilyStream's same-origin
+ * cache; missing avatars fall back to a deterministic inline SVG.
  */
 export const INLINE_AVATAR_RUNTIME_SCRIPT = `<script id="ilystream-avatar-runtime">
 (function(){
   if (window.__ilyAvatar) return;
+
+  var MEDIA_CACHE_VERSION = '3';
+  var MEDIA_REFRESH_BUCKET_MS = 5 * 60 * 1000;
+  var MEDIA_LOAD_TIMEOUT_MS = 8000;
 
   function escapeXml(value){
     return String(value).replace(/[&<>"']/g, function(char){
@@ -30,21 +34,38 @@ export const INLINE_AVATAR_RUNTIME_SCRIPT = `<script id="ilystream-avatar-runtim
     return btoa(unescape(encodeURIComponent(value))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
   }
 
-  function proxy(value){
+  function mediaRevision(revision){
+    if (revision !== undefined && revision !== null && String(revision).trim()) {
+      return String(revision).trim();
+    }
+    return String(Math.floor(Date.now() / MEDIA_REFRESH_BUCKET_MS));
+  }
+
+  function versionUrl(url, revision){
+    if (!url.searchParams.has('v')) url.searchParams.set('v', MEDIA_CACHE_VERSION);
+    url.searchParams.set('r', mediaRevision(revision));
+    return url.href;
+  }
+
+  function proxy(value, revision){
     if (typeof value !== 'string' || !value.trim()) return '';
     if (/^data:image\\//i.test(value)) return value;
     try {
       var parsed = new URL(value, window.location.href);
-      if (parsed.origin === window.location.origin) return parsed.href;
+      if (parsed.origin === window.location.origin) return versionUrl(parsed, revision);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-      return new URL('/avatar/' + encodeRemoteUrl(parsed.href), window.location.href).href;
+      var proxyUrl = new URL('/avatar/' + encodeRemoteUrl(parsed.href), window.location.href);
+      // The fixed version invalidates responses from older runtimes. The
+      // revision changes per media item (or every five minutes by default), so
+      // a long-lived OBS network process cannot pin a failed/stale response.
+      return versionUrl(proxyUrl, revision);
     } catch (err) {
       return '';
     }
   }
 
-  function resolve(value, name){
-    return proxy(value) || fallback(name);
+  function resolve(value, name, revision){
+    return proxy(value, revision) || fallback(name);
   }
 
   function fallbackImage(image, name){
@@ -53,13 +74,55 @@ export const INLINE_AVATAR_RUNTIME_SCRIPT = `<script id="ilystream-avatar-runtim
     image.src = fallback(name || image.dataset.initial || image.dataset.name || '?');
   }
 
-  function apply(image, name, value){
+  function apply(image, name, value, revision){
     if (!image) return;
     image.dataset.initial = String(name || '?').trim().charAt(0) || '?';
     image.onerror = function(){ fallbackImage(image, name); };
-    image.src = resolve(value, name);
+    image.src = resolve(value, name, revision);
   }
 
-  window.__ilyAvatar = { proxy: proxy, resolve: resolve, fallback: fallback, fallbackImage: fallbackImage, apply: apply };
+  function applyBackground(element, value, revision){
+    if (!element) return Promise.resolve(false);
+    var generation = Number(element.__ilyImageGeneration || 0) + 1;
+    element.__ilyImageGeneration = generation;
+    // Clear the old cover immediately. A late load from the previous track
+    // must never remain visible while the new image is in flight.
+    element.style.backgroundImage = '';
+    var resolved = proxy(value, revision);
+    if (!resolved || typeof window.Image !== 'function') return Promise.resolve(false);
+
+    return new Promise(function(resolvePromise){
+      var loader = new window.Image();
+      var settled = false;
+      var timer = setTimeout(function(){ finish(false); }, MEDIA_LOAD_TIMEOUT_MS);
+      function finish(success){
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        loader.onload = null;
+        loader.onerror = null;
+        if (success && element.__ilyImageGeneration === generation) {
+          element.style.backgroundImage = 'url("' + resolved.replace(/"/g, '%22') + '")';
+        }
+        resolvePromise(Boolean(success && element.__ilyImageGeneration === generation));
+      }
+      loader.decoding = 'async';
+      loader.onload = function(){ finish(true); };
+      loader.onerror = function(){ finish(false); };
+      loader.src = resolved;
+      if (loader.complete && loader.naturalWidth > 0) {
+        setTimeout(function(){ finish(true); }, 0);
+      }
+    });
+  }
+
+  window.__ilyAvatar = {
+    proxy: proxy,
+    resolve: resolve,
+    fallback: fallback,
+    fallbackImage: fallbackImage,
+    apply: apply,
+    applyBackground: applyBackground
+  };
 })();
 </script>`

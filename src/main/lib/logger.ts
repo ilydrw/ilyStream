@@ -220,6 +220,17 @@ function prepareForRenderer(args: any[]): any[] {
   });
 }
 
+const DISPOSED_WEB_FRAME_LOG_PREFIX = 'Error sending from webFrameMain:';
+const DISPOSED_WEB_FRAME_MESSAGE = 'Render frame was disposed before WebFrameMain could be accessed';
+
+export function shouldForwardErrorToRenderer(args: readonly unknown[]): boolean {
+  const [prefix, error] = args;
+  if (typeof prefix !== 'string' || prefix.trim() !== DISPOSED_WEB_FRAME_LOG_PREFIX) return true;
+
+  const detail = error instanceof Error ? error.message : String(error ?? '');
+  return !detail.includes(DISPOSED_WEB_FRAME_MESSAGE);
+}
+
 export function setupLogger() {
   if (process.platform === 'win32') {
     try {
@@ -312,7 +323,9 @@ export function setupLogger() {
     }
     originalError(...sanitizedArgs);
 
-    if (isLogging) return;
+    // Electron emits this when the target renderer no longer exists. Keep the
+    // local diagnostic above, but do not send it back through that dead frame.
+    if (isLogging || !shouldForwardErrorToRenderer(args)) return;
     isLogging = true;
     try {
       logEmitter.emit('log', { level: 'error', args: prepareForRenderer(redactedArgs) });

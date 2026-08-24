@@ -85,6 +85,16 @@ export function IconStats(props: NavIconProps) {
   )
 }
 
+export function IconEconomy(props: NavIconProps) {
+  return (
+    <Ic {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M15.5 8.75c-.8-.75-1.9-1.15-3.25-1.15-1.9 0-3.25.9-3.25 2.2 0 1.45 1.3 1.9 3.3 2.25 2.05.35 3.2.8 3.2 2.25 0 1.4-1.4 2.35-3.45 2.35-1.55 0-2.85-.5-3.75-1.4" />
+      <path d="M12 5.5v13" />
+    </Ic>
+  )
+}
+
 export function IconBroadcast(props: NavIconProps) {
   return (
     <Ic {...props}>
@@ -133,20 +143,12 @@ export function IconBolt(props: NavIconProps) {
 export function IconAutomation(props: NavIconProps) {
   return (
     <Ic {...props}>
-      {(gradientId) => (
-        <>
-          <path d="M12 3.25 19 7.3v8.1l-7 4.05-7-4.05V7.3l7-4.05Z" />
-          <path d="M4 12H2.5" />
-          <path d="M21.5 12H20" />
-          <path d="M12 2v1.25" />
-          <path d="M12 20.75V22" />
-          <path
-            d="M13.1 7.25 9.4 12.2h2.85l-1.05 4.55 3.95-5.75H12.3l.8-3.75Z"
-            fill={`url(#${gradientId})`}
-            stroke="none"
-          />
-        </>
-      )}
+      <path d="M12 3.25 19 7.3v8.1l-7 4.05-7-4.05V7.3l7-4.05Z" />
+      <path d="M4 12H2.5" />
+      <path d="M21.5 12H20" />
+      <path d="M12 2v1.25" />
+      <path d="M12 20.75V22" />
+      <path d="M13.1 7.25 9.4 12.2h2.85l-1.05 4.55 3.95-5.75H12.3l.8-3.75Z" />
     </Ic>
   )
 }

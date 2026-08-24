@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { SSE_EVENT_HISTORY_LIMIT, SSE_PING_INTERVAL_MS, type OverlayChannel, type SseClient } from './types'
+import { writeToSseClient } from './sse-backpressure'
 
 export interface SseEventHistoryEntry {
   id: number
@@ -14,11 +15,21 @@ export class SSEManager {
   private eventSequence = 0
   private pingTimer: NodeJS.Timeout | null = null
   private onCountsChanged?: () => void
-  private onBroadcast?: (channel: OverlayChannel, payload: unknown, clientCount: number) => void
+  private onBroadcast?: (
+    channel: OverlayChannel,
+    payload: unknown,
+    clientCount: number,
+    eventId: number
+  ) => void
 
   constructor(
     onCountsChanged?: () => void,
-    onBroadcast?: (channel: OverlayChannel, payload: unknown, clientCount: number) => void
+    onBroadcast?: (
+      channel: OverlayChannel,
+      payload: unknown,
+      clientCount: number,
+      eventId: number
+    ) => void
   ) {
     this.onCountsChanged = onCountsChanged
     this.onBroadcast = onBroadcast
@@ -63,7 +74,7 @@ export class SSEManager {
     })
 
     try {
-      this.onBroadcast?.(channel, serialized.payload, clientCount)
+      this.onBroadcast?.(channel, serialized.payload, clientCount, eventId)
     } catch (err) {
       console.warn('[SSEManager] overlay broadcast diagnostics failed:', err instanceof Error ? err.message : String(err))
     }
@@ -72,9 +83,7 @@ export class SSEManager {
 
     const data = `id: ${eventId}\ndata: ${serialized.json}\n\n`
     for (const client of [...clients]) {
-      try {
-        client.write(data)
-      } catch {
+      if (!writeToSseClient(client, data, `channel:${channel}`)) {
         clients.delete(client)
       }
     }
@@ -83,11 +92,9 @@ export class SSEManager {
 
   broadcastToAll(payload: unknown): void {
     const data = `data: ${serializeSsePayload(payload).json}\n\n`
-    for (const clients of this.channels.values()) {
+    for (const [channel, clients] of this.channels) {
       for (const client of [...clients]) {
-        try {
-          client.write(data)
-        } catch {
+        if (!writeToSseClient(client, data, `channel:${channel}`)) {
           clients.delete(client)
         }
       }
@@ -100,9 +107,7 @@ export class SSEManager {
     this.pingTimer = setInterval(() => {
       for (const [channel, clients] of this.channels) {
         for (const client of [...clients]) {
-          try {
-            client.write(': ping\n\n')
-          } catch {
+          if (!writeToSseClient(client, ': ping\n\n', `channel:${channel}`)) {
             clients.delete(client)
           }
         }
@@ -155,11 +160,19 @@ export class SSEManager {
     return history?.[history.length - 1]?.id ?? 0
   }
 
+  getFirstEventId(channel: OverlayChannel): number {
+    const history = this.histories.get(channel)
+    return history?.[0]?.id ?? 0
+  }
+
   getEventsSince(channel: OverlayChannel, afterId: number, limit = 50): SseEventHistoryEntry[] {
     const safeAfterId = Number.isFinite(afterId) ? Math.max(0, Math.floor(afterId)) : 0
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(120, Math.floor(limit))) : 50
     const history = this.histories.get(channel) || []
-    return history.filter((entry) => entry.id > safeAfterId).slice(-safeLimit)
+    // Return the oldest unseen page. Taking the newest page silently skipped
+    // events whenever more than `safeLimit` entries accumulated during an
+    // outage, because the caller advanced its cursor past the omitted tail.
+    return history.filter((entry) => entry.id > safeAfterId).slice(0, safeLimit)
   }
 
   private getOrCreateChannel(channel: OverlayChannel): Set<SseClient> {

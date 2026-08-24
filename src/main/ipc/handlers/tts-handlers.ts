@@ -3,10 +3,13 @@ import { TTSEngine } from '../../tts/tts-engine'
 import { Database } from '../../db/database'
 import { AppSettingKey, resolveAppSettings, resolveAppSetting, type TTSUserVoiceOverride } from '../../../shared/app-settings'
 import { sendToRenderer } from '../safe-send'
+import { KokoroWorkerService } from '../../services/kokoro-worker-service'
+import type { KokoroSynthesisRequest } from '../../../shared/kokoro-worker'
 
 export function registerTTSHandlers(
   window: BrowserWindow,
   ttsEngine: TTSEngine,
+  kokoroWorkerService: KokoroWorkerService,
   db: Database,
   updateSetting: <K extends AppSettingKey>(key: K, value: unknown) => Promise<unknown>
 ) {
@@ -49,6 +52,18 @@ export function registerTTSHandlers(
   ipcMain.handle('tts:resume', () => ttsEngine.resume())
   ipcMain.handle('tts:set-enabled', (_event, enabled) => updateSetting('ttsEnabled', enabled))
   ipcMain.handle('tts:get-queue', () => ttsEngine.getQueue())
+  ipcMain.handle('tts:kokoro:preload', () => {
+    const quality = resolveAppSettings(db.getAllSettings()).tts.kokoroQuality
+    return kokoroWorkerService.preload(quality)
+  })
+  ipcMain.handle(
+    'tts:kokoro:generate',
+    (_event, payload: KokoroSynthesisRequest) => {
+      const quality = resolveAppSettings(db.getAllSettings()).tts.kokoroQuality
+      return kokoroWorkerService.generate(payload, quality)
+    }
+  )
+  ipcMain.handle('tts:kokoro:get-status', () => kokoroWorkerService.getStatus())
   ipcMain.handle(
     'tts:test-speak',
     (_event, payload: { text: string; voiceProfileId?: string }) =>
@@ -84,8 +99,8 @@ export function registerTTSHandlers(
     return deleted
   })
 
-  ipcMain.on('tts:speech-complete', () => {
-    ttsEngine.onSpeechComplete()
+  ipcMain.on('tts:speech-complete', (_event, id?: string) => {
+    ttsEngine.onSpeechComplete(id)
   })
 
   // The renderer's TTS hook (re)initialized — e.g. after a reload. Any speech

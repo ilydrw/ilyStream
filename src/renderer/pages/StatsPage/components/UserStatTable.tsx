@@ -205,7 +205,7 @@ function InlineUserDetail({
             {/* Linked accounts row — a horizontal bar of avatar chips, one per
                 connected account, each tagged with its platform glyph. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginRight: 2 }}>Accounts</span>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.25)', marginRight: 2 }}>Accounts</span>
               {identity.accounts.map(acc => {
                 const isPrimary = identity.accounts.length > 1 && isPrimaryAccount(identity, acc)
                 return (

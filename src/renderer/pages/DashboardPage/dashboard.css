@@ -1,0 +1,387 @@
+.dashboard-command-panel {
+  --dashboard-state-rgb: var(--accent-rgb);
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 14px;
+  border-color: rgba(var(--dashboard-state-rgb), 0.25);
+  background:
+    linear-gradient(115deg, rgba(var(--dashboard-state-rgb), 0.09), transparent 40%),
+    var(--theme-surface-raised);
+  box-shadow:
+    0 0 0 1px rgba(var(--dashboard-state-rgb), 0.035),
+    0 18px 44px rgba(0, 0, 0, 0.18);
+  isolation: isolate;
+}
+
+.dashboard-command-panel.is-good {
+  --dashboard-state-rgb: 52, 199, 89;
+}
+
+.dashboard-command-panel.is-warning {
+  --dashboard-state-rgb: 255, 159, 10;
+}
+
+.dashboard-command-panel.is-danger {
+  --dashboard-state-rgb: 255, 69, 58;
+}
+
+.dashboard-command-panel::before {
+  position: absolute;
+  top: -170px;
+  left: -110px;
+  z-index: -1;
+  width: 420px;
+  height: 360px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(var(--dashboard-state-rgb), 0.14), transparent 68%);
+  content: '';
+  pointer-events: none;
+}
+
+.dashboard-command-main {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.dashboard-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 15px 12px 10px;
+}
+
+.dashboard-command-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-4);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dashboard-command-eyebrow > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgb(var(--dashboard-state-rgb));
+  box-shadow: 0 0 12px rgba(var(--dashboard-state-rgb), 0.6);
+}
+
+.dashboard-command-icon {
+  display: grid;
+  width: 43px;
+  height: 43px;
+  margin-top: 25px;
+  place-items: center;
+  border: 1px solid rgba(var(--dashboard-state-rgb), 0.21);
+  border-radius: 13px;
+  color: rgb(var(--dashboard-state-rgb));
+  background: rgba(var(--dashboard-state-rgb), 0.09);
+  box-shadow: var(--inset-top);
+}
+
+.dashboard-command-copy h2 {
+  max-width: 310px;
+  margin: 15px 0 0;
+  color: var(--fg-1);
+  font-size: clamp(24px, 2.5vw, 32px);
+  font-weight: 770;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.dashboard-command-copy p {
+  max-width: 340px;
+  margin: 10px 0 0;
+  color: var(--fg-4);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.dashboard-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-command-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.dashboard-command-facts > div {
+  min-width: 0;
+}
+
+.dashboard-command-facts span,
+.dashboard-command-facts strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-command-facts span {
+  color: var(--fg-5);
+  font-size: 8px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dashboard-command-facts strong {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.dashboard-command-panel .dashboard-chart-panel {
+  min-height: 304px;
+  border-color: var(--line-soft);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.035), transparent 46%),
+    var(--theme-canvas);
+  box-shadow: var(--inset-top);
+}
+
+.dashboard-command-panel .dashboard-chart-grid {
+  opacity: 0.34;
+}
+
+.dashboard-command-panel .dashboard-chart-head {
+  top: 16px;
+  left: 18px;
+  right: 18px;
+}
+
+.dashboard-command-panel .dashboard-chart-head > div:first-child strong {
+  margin-top: 7px;
+  font-size: 29px;
+  letter-spacing: -0.04em;
+}
+
+.dashboard-operation-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.dashboard-operation-signal {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 15px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.dashboard-operation-signal:first-child {
+  border-left: 0;
+}
+
+.dashboard-operation-signal-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--fg-4);
+  background: var(--mat-thin);
+}
+
+.dashboard-operation-signal.is-good .dashboard-operation-signal-icon {
+  color: var(--success);
+  background: rgba(52, 199, 89, 0.09);
+}
+
+.dashboard-operation-signal.is-warning .dashboard-operation-signal-icon {
+  color: var(--warning);
+  background: rgba(255, 159, 10, 0.09);
+}
+
+.dashboard-operation-signal.is-danger .dashboard-operation-signal-icon {
+  color: var(--danger);
+  background: rgba(255, 69, 58, 0.09);
+}
+
+.dashboard-operation-signal-copy {
+  display: block;
+  min-width: 0;
+}
+
+.dashboard-operation-signal-copy em,
+.dashboard-operation-signal-copy strong,
+.dashboard-operation-signal-copy small {
+  display: block;
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-operation-signal-copy em {
+  color: var(--fg-5);
+  font-size: 8px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-operation-signal-copy strong {
+  margin-top: 4px;
+  color: var(--fg-1);
+  font-size: 16px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.dashboard-operation-signal-copy small {
+  margin-top: 4px;
+  color: var(--fg-5);
+  font-size: 9px;
+  font-weight: 580;
+}
+
+.dashboard-pro .dashboard-bento {
+  grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
+}
+
+.dashboard-main-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--gap-grid);
+}
+
+.dashboard-setup-grid.is-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-next-moves .dashboard-setup-card {
+  min-height: 62px;
+}
+
+.dashboard-health-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line-soft);
+}
+
+a.dashboard-warning-line {
+  color: var(--warning);
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+a.dashboard-warning-line:hover {
+  border-color: rgba(255, 159, 10, 0.42);
+  background: rgba(255, 159, 10, 0.12);
+}
+
+.dashboard-side-stack > .dashboard-metric-card {
+  min-height: 116px;
+  padding: 14px 16px;
+}
+
+@container (max-width: 1120px) {
+  .dashboard-pro .dashboard-bento {
+    grid-template-columns: minmax(0, 1fr) minmax(290px, 330px);
+  }
+
+  .dashboard-pro .dashboard-side-stack {
+    display: flex;
+  }
+
+  .dashboard-command-main {
+    grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  }
+
+  .dashboard-operation-signal {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-pro .dashboard-bento {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-pro .dashboard-side-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-command-main {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-command-copy {
+    padding: 12px 10px 4px;
+  }
+
+  .dashboard-command-copy h2,
+  .dashboard-command-copy p {
+    max-width: 620px;
+  }
+
+  .dashboard-command-panel .dashboard-chart-panel {
+    min-height: 270px;
+  }
+
+  .dashboard-operation-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+
+  .dashboard-operation-signal:nth-child(3) {
+    border-left: 0;
+  }
+
+  .dashboard-pro .dashboard-side-stack {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .dashboard-command-panel {
+    padding: 10px;
+  }
+
+  .dashboard-command-actions > a {
+    width: 100%;
+  }
+
+  .dashboard-command-facts,
+  .dashboard-operation-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-operation-signal {
+    padding-block: 9px;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .dashboard-operation-signal:first-child {
+    border-top: 0;
+  }
+}

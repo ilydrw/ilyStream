@@ -26,7 +26,7 @@ export function AutoRelaySidebar({
             <IconBolt size={32} />
           </div>
           <div>
-            <h2>Auto-Relay</h2>
+            <h2>Auto-relay</h2>
             <p>Mirror messaging.</p>
           </div>
         </div>
@@ -37,7 +37,7 @@ export function AutoRelaySidebar({
       </div>
       <div className="app-section-content">
         <div className="flex flex-col gap-2 mb-6">
-          <label className="text-xs font-semibold tracking-tight text-white/50">Relay Format</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Relay format</label>
           <select
             value={chatRelayTagMode}
             onChange={(e) => onUpdateRelaySetting('chatRelayTagMode', e.target.value as RelayTagMode)}
@@ -51,7 +51,7 @@ export function AutoRelaySidebar({
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className="text-xs font-semibold tracking-tight text-white/50">Mirror From</label>
+          <label className="text-xs font-semibold tracking-tight text-white/50">Mirror from</label>
           <div className="grid grid-cols-2 gap-2">
             {(STREAM_PLATFORMS as readonly Platform[]).map((p) => {
               const enabled = chatAutoRelayPlatforms[p]

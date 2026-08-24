@@ -38,7 +38,7 @@ async function createYouTubeClient(config: YouTubeConfig): Promise<any> {
     )
   }
 
-  const { google } = await import('googleapis')
+  const { google } = await import('./youtube-api')
   const oauthClient = new google.auth.OAuth2(
     config.clientId?.trim() || undefined,
     config.clientSecret?.trim() || undefined

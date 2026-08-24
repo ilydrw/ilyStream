@@ -56,6 +56,7 @@ export function NumberInput({
 }
 
 export function TypeWrapper({
+  itemLabel,
   typeLabel,
   typeValue,
   onTypeChange,
@@ -63,6 +64,7 @@ export function TypeWrapper({
   onRemove,
   children
 }: {
+  itemLabel?: string
   typeLabel: string
   typeValue: string
   onTypeChange: (value: string) => void
@@ -71,11 +73,24 @@ export function TypeWrapper({
   children: ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+    <div className="automation-editor-type rounded-lg border border-white/10 bg-black/20">
+      {itemLabel && (
+        <div className="automation-editor-type-head flex items-center justify-between gap-3 border-b border-white/5">
+          <p className="text-xs font-semibold text-white/55">{itemLabel}</p>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-muted transition-colors hover:text-danger"
+          >
+            Remove
+          </button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
         <div className="lg:w-64">
           <label className="text-xs text-muted mb-1 block">{typeLabel}</label>
           <select
+            aria-label={typeLabel}
             value={typeValue}
             onChange={(event) => onTypeChange(event.target.value)}
             className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
@@ -88,12 +103,15 @@ export function TypeWrapper({
           </select>
         </div>
         <div className="flex-1 grid gap-3">{children}</div>
-        <button
-          onClick={onRemove}
-          className="px-3 py-2 text-sm rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-        >
-          Remove
-        </button>
+        {!itemLabel && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="px-3 py-2 text-sm rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+          >
+            Remove
+          </button>
+        )}
       </div>
     </div>
   )

@@ -64,8 +64,10 @@ export class TTSFilter {
       result = result.substring(0, this.maxLength).trimEnd() + '...'
     }
 
-    // Duplicate detection should operate on the final spoken text.
-    if (this.enabled.duplicates && this.isDuplicate(result)) {
+    // Duplicate detection should operate on the final spoken text. It is scoped
+    // per user so that one viewer spamming the same line is muted, but two
+    // different viewers saying the same thing (e.g. "GG", "hi") both get read.
+    if (this.enabled.duplicates && this.isDuplicate(result, username)) {
       return null
     }
 
@@ -73,7 +75,7 @@ export class TTSFilter {
     if (result.trim().length === 0) return null
 
     // Track for duplicate detection
-    this.trackMessage(result)
+    this.trackMessage(result, username)
 
     return result
   }
@@ -154,8 +156,8 @@ export class TTSFilter {
     return result
   }
 
-  private isDuplicate(text: string): boolean {
-    const normalized = text.toLowerCase().trim()
+  private isDuplicate(text: string, username: string): boolean {
+    const key = this.duplicateKey(text, username)
     const now = Date.now()
 
     // MEMORY FIX: Only clean old entries periodically or if the map is too large
@@ -167,11 +169,20 @@ export class TTSFilter {
       }
     }
 
-    return this.recentMessages.has(normalized)
+    return this.recentMessages.has(key)
   }
 
-  private trackMessage(text: string): void {
-    this.recentMessages.set(text.toLowerCase().trim(), Date.now())
+  private trackMessage(text: string, username: string): void {
+    this.recentMessages.set(this.duplicateKey(text, username), Date.now())
+  }
+
+  /**
+   * Duplicate detection is per user: keying on username + text means a single
+   * viewer repeating themselves is caught, while different viewers echoing the
+   * same short phrase are not collapsed into one another.
+   */
+  private duplicateKey(text: string, username: string): string {
+    return `${String(username || '').toLowerCase().trim()}${text.toLowerCase().trim()}`
   }
 
   private applyUsernameOverrides(text: string, username: string): string {

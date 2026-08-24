@@ -23,6 +23,10 @@ import { registerGoveeHandlers } from './handlers/govee-handlers'
 import { registerVirtualCameraHandlers } from './handlers/virtual-camera-handlers'
 import { registerLightingHandlers } from './handlers/lighting-handlers'
 import { registerRazerHandlers } from './handlers/razer-handlers'
+import { registerEngineHandlers } from './handlers/engine-handlers'
+import { registerSegmentationHandlers } from './handlers/segmentation-handlers'
+import { registerEconomyHandlers } from './handlers/economy-handlers'
+import { registerOBSWorkspaceHandlers } from './handlers/obs-workspace-handlers'
 import { sendToRenderer } from './safe-send'
 
 export function registerIpcHandlers(
@@ -68,6 +72,7 @@ export function registerIpcHandlers(
     }
     
     if (!changedKeys || changedKeys.includes('overlayPort')) {
+      obsService.setOverlayPort(settings.overlay.port)
       await overlayServer.setPort(settings.overlay.port)
     }
     
@@ -95,6 +100,13 @@ export function registerIpcHandlers(
     if (!changedKeys || changedKeys.includes('platformAutoReconnect')) {
       platformManager.setAutoReconnect(settings.platform.autoReconnect)
     }
+
+    if (!changedKeys || changedKeys.includes('recordingsFolder')) {
+      services.streamingService.setRecordingsFolder(settings.recordingsFolder)
+      services.recordingsService.setRecordingsFolder(settings.recordingsFolder)
+    }
+
+    services.overlayServer.broadcastAppTheme(settings.ui)
   }
 
   const updateSetting = async <K extends AppSettingKey>(key: K, value: unknown) => {
@@ -107,7 +119,7 @@ export function registerIpcHandlers(
 
   // Register modular handlers
   registerPlatformHandlers(platformManager, chatRelayService, db, services.tiktokChatSender)
-  registerTTSHandlers(window, ttsEngine, db, updateSetting)
+  registerTTSHandlers(window, ttsEngine, services.kokoroWorkerService, db, updateSetting)
   registerSoundHandlers(window, soundboardService, db, applyRuntimeSettings, emitSettingsChanged, overlayServer)
   registerAssetHandlers(window, assetService, db, applyRuntimeSettings, emitSettingsChanged)
   registerWidgetHandlers(db, overlayServer)
@@ -129,11 +141,20 @@ export function registerIpcHandlers(
   registerRemoteAuthHandlers(remoteAuthService)
   registerStreamingHandlers(services.streamingService, services.virtualCameraService)
   registerStudioHandlers(db, overlayServer, services.browserSourceService)
-  registerStatsHandlers(services.statsService)
+  registerStatsHandlers(services.statsService, async () => {
+    await applyRuntimeSettings()
+    emitSettingsChanged()
+    services.platformManager.refreshDiscordCallProfiles()
+  })
   registerDeviceHandlers(services.deviceApi)
   registerGoveeHandlers(window, services.goveeService)
   registerVirtualCameraHandlers(services)
   registerLightingHandlers(window, services.lightingManager)
+  registerRazerHandlers(window, services.razerChromaService)
+  registerEngineHandlers(window, services.browserSourceService)
+  registerSegmentationHandlers(services.segmentationWorkerService)
+  registerEconomyHandlers(services.economyService)
+  registerOBSWorkspaceHandlers(window, services.obsWorkspaceService, services.obsIntegrationInstaller)
 
   // Trigger handlers
   ipcMain.handle('triggers:get-all', () => triggerEngine.getRules())

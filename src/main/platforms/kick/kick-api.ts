@@ -11,6 +11,7 @@ export const DEFAULT_KICK_EVENT_SUBSCRIPTIONS = [
 export interface KickSubscribeEventsInput {
   clientId: string
   clientSecret: string
+  accessToken?: string
   broadcasterUserId?: string | number
   channelName?: string
   events?: string[]
@@ -75,7 +76,7 @@ export async function subscribeKickEvents(
     throw new Error('Kick channel name or broadcaster user ID is required for event subscriptions')
   }
 
-  const accessToken = await createKickAppAccessToken(input, fetchImpl)
+  const accessToken = input.accessToken?.trim() || await createKickAppAccessToken(input, fetchImpl)
   const broadcasterUserId = explicitBroadcasterUserId
     ?? await resolveKickBroadcasterUserId(accessToken, channelName, fetchImpl)
   const eventNames = (input.events?.length ? input.events : [...DEFAULT_KICK_EVENT_SUBSCRIPTIONS])
@@ -169,7 +170,7 @@ export async function ensureKickEventSubscriptions(
   input: KickSubscribeEventsInput,
   fetchImpl: FetchLike = fetch
 ): Promise<KickEventSubscriptionResult> {
-  const accessToken = await createKickAppAccessToken(input, fetchImpl)
+  const accessToken = input.accessToken?.trim() || await createKickAppAccessToken(input, fetchImpl)
   const broadcasterUserId = normalizeBroadcasterUserId(input.broadcasterUserId)
     ?? await resolveKickBroadcasterUserId(accessToken, input.channelName, fetchImpl)
 
@@ -187,7 +188,7 @@ export async function ensureKickEventSubscriptions(
     }
   }
 
-  return subscribeKickEvents({ ...input, broadcasterUserId, events: missing }, fetchImpl)
+  return subscribeKickEvents({ ...input, accessToken, broadcasterUserId, events: missing }, fetchImpl)
 }
 
 export async function resolveKickBroadcasterUserId(

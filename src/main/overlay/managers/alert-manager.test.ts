@@ -37,7 +37,7 @@ describe('AlertManager', () => {
 
     expect(manager.getHistory()[0]).toEqual(
       expect.objectContaining({
-        audioUrl: '/sounds/alerts/alert.mp3',
+        audioUrl: expect.stringMatching(/^\/sounds\/alerts\/alert\.mp3\?v=.+$/),
         audioVolume: 0.75
       })
     )
@@ -46,7 +46,7 @@ describe('AlertManager', () => {
       expect.objectContaining({
         type: 'append',
         payload: expect.objectContaining({
-          audioUrl: '/sounds/alerts/alert.mp3'
+          audioUrl: expect.stringMatching(/^\/sounds\/alerts\/alert\.mp3\?v=.+$/)
         })
       })
     )
@@ -65,7 +65,23 @@ describe('AlertManager', () => {
 
     expect(manager.getHistory()[0]).toEqual(
       expect.objectContaining({
-        audioUrl: '/sounds/alerts/alert.wav'
+        audioUrl: expect.stringMatching(/^\/sounds\/alerts\/alert\.wav\?v=.+$/)
+      })
+    )
+  })
+
+  it('preserves the join sound category for audio-only queued alerts', () => {
+    const manager = new AlertManager({ broadcast: vi.fn() } as any)
+
+    manager.pushAlert({
+      id: 'join-alert',
+      audioUrl: 'join/hello.mp3',
+      durationMs: 1000
+    }, 'tiktok')
+
+    expect(manager.getHistory()[0]).toEqual(
+      expect.objectContaining({
+        audioUrl: expect.stringMatching(/^\/sounds\/join\/hello\.mp3\?v=.+$/)
       })
     )
   })
@@ -83,7 +99,7 @@ describe('AlertManager', () => {
 
     expect(manager.getHistory()[0]).toEqual(
       expect.objectContaining({
-        imageUrl: '/assets/gift-icon.png'
+        imageUrl: expect.stringMatching(/^\/assets\/gift-icon\.png\?v=.+$/)
       })
     )
   })
@@ -101,7 +117,7 @@ describe('AlertManager', () => {
 
     expect(manager.getHistory()[0]).toEqual(
       expect.objectContaining({
-        imageUrl: '/assets/gift%20icon.png'
+        imageUrl: expect.stringMatching(/^\/assets\/gift%20icon\.png\?v=.+$/)
       })
     )
   })
@@ -119,7 +135,7 @@ describe('AlertManager', () => {
 
     expect(manager.getHistory()[0]).toEqual(
       expect.objectContaining({
-        imageUrl: '/assets/gift-icon.png'
+        imageUrl: expect.stringMatching(/^\/assets\/gift-icon\.png\?v=.+$/)
       })
     )
   })

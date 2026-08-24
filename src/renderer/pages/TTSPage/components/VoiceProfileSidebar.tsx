@@ -22,7 +22,7 @@ export function VoiceProfileSidebar({
             <IconPlus size={32} />
           </div>
           <div>
-            <h2>Voice Profiles</h2>
+            <h2>Voice profiles</h2>
             <p>Active registry.</p>
           </div>
         </div>

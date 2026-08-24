@@ -38,21 +38,21 @@ const navigationGroups: NavigationGroup[] = [
   {
     id: 'live',
     label: 'Live',
-    drawerTitle: 'Go Live',
+    drawerTitle: 'Go live',
     icon: IconActivity,
     items: [itemByPath('/'), itemByPath('/health'), itemByPath('/broadcast'), itemByPath('/chat'), itemByPath('/stats'), itemByPath('/recordings')]
   },
   {
     id: 'create',
     label: 'Create',
-    drawerTitle: 'Overlays & Assets',
+    drawerTitle: 'Overlays & assets',
     icon: IconCreate,
     items: [itemByPath('/widgets'), itemByPath('/alerts'), itemByPath('/soundboard'), itemByPath('/voice-effects')]
   },
   {
     id: 'automation',
     label: 'Automate',
-    drawerTitle: 'Chat Automation',
+    drawerTitle: 'Chat automation',
     icon: IconAutomation,
     items: [itemByPath('/tts'), itemByPath('/ai-cohost'), itemByPath('/triggers'), itemByPath('/spotify'), itemByPath('/event-lab')]
   },
@@ -92,9 +92,9 @@ const navigationGroups: NavigationGroup[] = [
   {
     id: 'system',
     label: 'System',
-    drawerTitle: 'App Settings',
+    drawerTitle: 'App settings',
     icon: IconSettings,
-    items: [itemByPath('/settings'), itemByPath('/console')]
+    items: [itemByPath('/settings'), itemByPath('/console'), itemByPath('/engine-preview')]
   }
 ]
 

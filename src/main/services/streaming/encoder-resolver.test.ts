@@ -183,6 +183,25 @@ describe('getEncoderArgs', () => {
     expect(args[args.indexOf('-keyint_min') + 1]).toBe('60')
   })
 
+  it('uses Main 10 and P010 for HDR10 HEVC', () => {
+    const args = resolver.getEncoderArgs(
+      'hevc_nvenc',
+      { ...streamCfg, colorProfile: 'hdr10-pq' },
+      'stream'
+    )
+
+    expect(args[args.indexOf('-profile:v') + 1]).toBe('main10')
+    expect(args[args.indexOf('-pix_fmt') + 1]).toBe('p010le')
+  })
+
+  it('rejects HDR10 on 8-bit AVC encoders', () => {
+    expect(() => resolver.getEncoderArgs(
+      'h264_nvenc',
+      { ...streamCfg, colorProfile: 'hdr10-pq' },
+      'stream'
+    )).toThrow(/10-bit HDR10 HEVC/)
+  })
+
   it('derives GOP from fps (fps * 2)', () => {
     const args60 = resolver.getEncoderArgs('libx264', { fps: 60, bitrateKbps: 6000 } as any, 'stream')
     expect(args60[args60.indexOf('-g') + 1]).toBe('120')

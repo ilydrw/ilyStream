@@ -23,6 +23,7 @@ export class GoalManager {
   private seenFollowKeys = new Set<string>()
   private viewerCounts = new Map<string, number>()
   private platformLikes = new Map<string, number>()
+  private platformFollows = new Map<string, number>()
   private sse: SSEManager
   private deviceApi: DeviceApi | null = null
 
@@ -90,10 +91,17 @@ export class GoalManager {
           return
         }
         if (!followKey.endsWith(':')) this.seenFollowKeys.add(followKey)
-        this.state.totalFollows += 1
-
-        if (platform === 'twitch') this.state.twitchFollows += 1
-        if (platform === 'tiktok') this.state.tiktokFollows += 1
+        this.platformFollows.set(platform, (this.platformFollows.get(platform) || 0) + 1)
+        this.syncFollowerTotals()
+        break
+      }
+      case 'follower-count': {
+        if (!Number.isFinite(event.count) || event.count < 0) return
+        // Periodic platform totals are authoritative. Live follow events still
+        // advance the bar immediately between polls, then the next snapshot
+        // reconciles gains, missed events, and unfollows back to the real count.
+        this.platformFollows.set(platform, Math.floor(event.count))
+        this.syncFollowerTotals()
         break
       }
       case 'share':
@@ -139,5 +147,17 @@ export class GoalManager {
     this.seenFollowKeys.clear()
     this.viewerCounts.clear()
     this.platformLikes.clear()
+    this.platformFollows.clear()
+  }
+
+  private syncFollowerTotals(): void {
+    let totalFollows = 0
+    for (const count of this.platformFollows.values()) {
+      totalFollows += count
+    }
+
+    this.state.totalFollows = totalFollows
+    this.state.twitchFollows = this.platformFollows.get('twitch') || 0
+    this.state.tiktokFollows = this.platformFollows.get('tiktok') || 0
   }
 }

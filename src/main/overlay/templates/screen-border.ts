@@ -8,9 +8,9 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
   // active variant is picked by a `data-style` attribute on <body>, which the
   // live-config hook can flip instantly without rebuilding the document.
   const borderStyleCss = `
-    body[data-style="chroma"] .border-inner {
+    body[data-style="chroma"] .border-inner::before {
       background: conic-gradient(
-        from var(--angle),
+        from 0deg,
         #ff3b30,
         #ffd60a 16%,
         #34d399 33%,
@@ -19,24 +19,28 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
         #d946ef 84%,
         #ff3b30 100%
       );
+    }
+    body[data-style="chroma"] .border-inner {
       filter: drop-shadow(0 0 calc(5px * var(--glow)) #ffd60a)
               drop-shadow(0 0 calc(2px * var(--glow)) #00e5ff);
     }
-    body[data-style="cyber"] .border-inner {
+    body[data-style="cyber"] .border-inner::before {
       background: conic-gradient(
-        from var(--angle),
+        from 0deg,
         #19c8ff,
         #d035f1 25%,
         #00ffff 50%,
         #d035f1 75%,
         #19c8ff 100%
       );
+    }
+    body[data-style="cyber"] .border-inner {
       filter: drop-shadow(0 0 calc(5px * var(--glow)) #19c8ff)
               drop-shadow(0 0 calc(2px * var(--glow)) #d035f1);
     }
-    body[data-style="gob-the-stopper"] .border-inner {
+    body[data-style="gob-the-stopper"] .border-inner::before {
       background: conic-gradient(
-        from var(--angle),
+        from 0deg,
         #b6ff00,
         #f7ffe8 22%,
         #050505 42%,
@@ -44,30 +48,36 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
         #050505 82%,
         #b6ff00 100%
       );
+    }
+    body[data-style="gob-the-stopper"] .border-inner {
       filter: drop-shadow(0 0 calc(6px * var(--glow)) #b6ff00)
               drop-shadow(0 0 calc(2px * var(--glow)) #8fd400);
     }
     /* Custom style + any unknown style falls back to a two-color gradient
        driven by --color1 / --color2 so users can pick their own palette. */
-    body[data-style="custom"] .border-inner,
-    body:not([data-style="chroma"]):not([data-style="cyber"]):not([data-style="gob-the-stopper"]) .border-inner {
+    body[data-style="custom"] .border-inner::before,
+    body:not([data-style="chroma"]):not([data-style="cyber"]):not([data-style="gob-the-stopper"]) .border-inner::before {
       background: conic-gradient(
-        from var(--angle),
+        from 0deg,
         var(--color1),
         var(--color2) 25%,
         var(--color1) 50%,
         var(--color2) 75%,
         var(--color1) 100%
       );
+    }
+    body[data-style="custom"] .border-inner,
+    body:not([data-style="chroma"]):not([data-style="cyber"]):not([data-style="gob-the-stopper"]) .border-inner {
       filter: drop-shadow(0 0 calc(5px * var(--glow)) var(--color1))
               drop-shadow(0 0 calc(2px * var(--glow)) var(--color2));
     }
   `
 
-  // Live-config hook. Only emitted in preview mode — production OBS browser
-  // sources don't need it (the renderer ships the right HTML once and SSE
-  // tells the iframe to reload on widget save).
-  const liveConfigScript = isPreview ? `
+  // Shared live-config contract. Browser sources and the editor both use this
+  // path; fields baked into one-shot animation CSS return false so the shared
+  // runtime performs one targeted document refresh.
+  const initialLiveConfig = JSON.stringify(cfg).replace(/</g, '\\u003c')
+  const liveConfigScript = `
   <script>
     // Updates CSS variables and data attributes in-place so the editor
     // previewer can apply config tweaks without restarting the conic-gradient
@@ -79,8 +89,9 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       glowIntensity: 1, opacity: 1, style: 1, forceTikTokDimensions: 1,
       aspectRatio: 1, showPreviewBackground: 1
     };
+    window.__ilystreamLastConfig = ${initialLiveConfig};
     window.__ilystreamApplyConfig = function(cfg) {
-      if (!cfg) return;
+      if (!cfg) return true;
       var root = document.documentElement;
       var body = document.body;
       var prev = window.__ilystreamLastConfig || null;
@@ -89,12 +100,7 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
           if (!cfg.hasOwnProperty(k)) continue;
           if (SB_LIVE_FIELDS[k]) continue;
           if (prev[k] !== cfg[k]) {
-            try {
-              window.parent && window.parent.postMessage(
-                { type: 'ilystream:preview-needs-html' }, '*'
-              );
-            } catch (e) {}
-            return;
+            return false;
           }
         }
       }
@@ -114,19 +120,14 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
         body.setAttribute('data-preview-bg', cfg.showPreviewBackground ? '1' : '0');
       }
       window.__ilystreamLastConfig = cfg;
+      return true;
     };
-  </script>` : ''
+  </script>`
 
   return `<!DOCTYPE html>
 <html data-force-tiktok="${cfg.forceTikTokDimensions ? '1' : '0'}" data-aspect="${cfg.aspectRatio || 'auto'}">
 <head>
   <style>
-    @property --angle {
-      syntax: '<angle>';
-      initial-value: 0deg;
-      inherits: false;
-    }
-
     :root {
       --thickness: ${cfg.thickness}px;
       --radius: ${cfg.borderRadius}px;
@@ -182,10 +183,20 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
       mask-clip: content-box, border-box;
       mask-composite: exclude;
-      
-      animation: rotate-gradient var(--speed) linear infinite;
-      will-change: --angle;
+
+      overflow: hidden;
       transform: translateZ(0);
+      backface-visibility: hidden;
+    }
+
+    .border-inner::before {
+      content: '';
+      position: absolute;
+      inset: -60%;
+      animation: rotate-gradient var(--speed) linear infinite;
+      will-change: transform;
+      transform: translateZ(0) rotate(0deg);
+      transform-origin: center;
       backface-visibility: hidden;
     }
 
@@ -203,6 +214,7 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       position: absolute;
       background-size: 200% 200%;
       animation: edge-flow var(--speed) linear infinite;
+      will-change: background-position;
     }
     .border-edge.top,
     .border-edge.bottom {
@@ -229,10 +241,13 @@ export function buildScreenBorderHtml(widget?: any, isPreview = false): string {
       .border-inner {
         display: block;
       }
+      .border-fallback {
+        display: none;
+      }
     }
 
     @keyframes rotate-gradient {
-      to { --angle: 360deg; }
+      to { transform: translateZ(0) rotate(360deg); }
     }
 
     @keyframes edge-flow {

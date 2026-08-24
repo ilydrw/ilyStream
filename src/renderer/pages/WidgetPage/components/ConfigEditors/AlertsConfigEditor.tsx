@@ -5,15 +5,17 @@ import {
   type Widget
 } from '../../../../../shared/widgets'
 import { EditorNote } from './Shared'
+import { Section, Slider } from './Shared'
 import { DesignSystemSection } from './DesignSystemSection'
 
 /**
- * The alerts widget is a frame: WHAT each alert says, its colors, sound, and
- * entrance animation are configured per event type (follow, sub, gift, raid,
- * superfan…) in Settings → Alerts, because they are shared with the sound
- * engine and TTS. This editor only owns the shell the alerts render inside —
- * the previous version showed accent/text/duration controls the overlay
- * template never read.
+ * The alerts widget is only the FRAME alerts render inside. Everything about
+ * how an individual alert looks — card background and opacity, border, text,
+ * image, layout, position — lives on the Alert Routes page, per route, where
+ * it always wins over widget-level values. Duplicating those controls here
+ * made the two pages fight (route styles silently override), so this editor
+ * deliberately owns just the pieces routes can't set: font, corner rounding
+ * default, and the frosted-glass blur strength.
  */
 export function AlertsConfigEditor({
   draft,
@@ -34,17 +36,28 @@ export function AlertsConfigEditor({
   return (
     <div className="flex flex-col gap-8">
       <EditorNote>
-        Per-event alert content — messages, colors, sounds, durations, and animations for
-        follows, subs, gifts, and raids — lives in{' '}
-        <span className="text-white/80 font-semibold">Settings → Alerts</span>, where it is
-        shared with alert sounds and TTS. This page styles the card those alerts render
-        inside.
+        Each alert&apos;s look — card color and opacity, border, text, image, layout,
+        and position — is styled per route in{' '}
+        <span className="text-white/80 font-semibold">Create → Alert Routes</span> (Style tab),
+        and those settings always win. This page only sets the shared frame below.
       </EditorNote>
+
+      <Section label="Frame">
+        <Slider
+          label="Frosted-glass blur"
+          hint="Blur of whatever is behind the card. Fades away automatically as a route's background opacity approaches 0."
+          value={config.blur}
+          min={0}
+          max={120}
+          unit="px"
+          onChange={(v) => update('blur', v)}
+        />
+      </Section>
 
       <DesignSystemSection
         config={config}
         onUpdate={update}
-        features={{ font: true, radius: true, glass: true, animation: false }}
+        features={{ font: true, radius: true, glass: false, animation: false }}
       />
     </div>
   )

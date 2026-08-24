@@ -38,6 +38,10 @@ export function setupEventForwarding(
     sendToRenderer(window, 'platform:reconnecting', data)
   })
 
+  platformManager.on('profile-health', (data: { platform: Platform; state: 'idle' | 'healthy' | 'degraded'; lastSuccessAt?: number; lastFailureAt?: number; retryAt?: number; error?: string }) => {
+    sendToRenderer(window, 'platform:profile-health', data)
+  })
+
   // Forward TTS events to renderer
   ttsEngine.on('tts:speak', (data) => {
     sendToRenderer(window, 'tts:speak', data)
@@ -92,6 +96,10 @@ export function setupEventForwarding(
     sendToRenderer(window, 'event:overlay-broadcast', payload)
   })
 
+  services.overlayServer.on('overlay-performance', (payload) => {
+    sendToRenderer(window, 'event:overlay-performance', payload)
+  })
+
   services.overlayServer.on('device-broadcast', (payload) => {
     sendToRenderer(window, 'event:device-broadcast', payload)
   })
@@ -109,6 +117,14 @@ export function setupEventForwarding(
 
   streamingService.on('native-clock', (payload) => {
     sendToRenderer(window, 'streaming:native-audio-clock', payload)
+  })
+
+  streamingService.on('program-audio', (payload) => {
+    services.obsWorkspaceService.publishProgramAudio(payload)
+  })
+
+  services.obsWorkspaceService.on('programConsumersChanged', (count: number) => {
+    sendToRenderer(window, 'obs:program-consumers-changed', { count })
   })
 
   // Panic-stop fan-out: anywhere in main can call soundboardService.stopAll()

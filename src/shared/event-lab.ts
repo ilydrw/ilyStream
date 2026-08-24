@@ -36,6 +36,24 @@ export interface EventLabOverlayBroadcast {
   at: string
 }
 
+export interface EventLabOverlayPerformance {
+  kind: 'paint'
+  channel: OverlayChannel
+  eventId: number
+  subscriptionId: string
+  transport: string
+  widgetId?: string
+  widgetType?: string
+  sourceKind?: string
+  broadcastAt: string
+  receivedAt: string
+  paintedAt: string
+  acknowledgedAt: string
+  deliveryMs: number
+  paintMs: number
+  roundTripMs: number
+}
+
 export interface EventLabDeviceBroadcast {
   type: string
   payload: unknown

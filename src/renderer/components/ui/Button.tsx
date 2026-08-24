@@ -13,7 +13,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const variants = {
-    primary: 'bg-accent text-[#04111a] hover:bg-accent-hover transition-colors',
+    primary: 'bg-accent text-[var(--theme-on-accent)] hover:bg-accent-hover transition-colors',
     secondary: 'bg-white/[0.03] border border-white/[0.05] text-white hover:bg-white/[0.06] hover:border-white/[0.12]',
     outline: 'border border-white/[0.05] bg-transparent hover:bg-white/[0.03] hover:border-white/[0.12] text-foreground',
     ghost: 'bg-transparent hover:bg-white/[0.03] text-muted hover:text-foreground',

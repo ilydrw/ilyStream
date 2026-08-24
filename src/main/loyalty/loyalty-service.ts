@@ -6,8 +6,16 @@ import {
   getLoyaltyProgressForXp,
   type LoyaltyLevelUpEvent,
   type LoyaltyProgress,
+  type LoyaltyXpAwardedEvent,
   type LoyaltyXpAward
 } from '../../shared/loyalty'
+import {
+  economyScopeWhere,
+  loadEconomyOwnerAggregates,
+  resolveEconomyIdentity,
+  type EconomyIdentity,
+  type EconomyIdentityHint
+} from '../economy/economy-identity'
 
 const CHAT_XP_COOLDOWN_MS = 30_000
 const CHAT_PLATFORMS = new Set<Platform>(['tiktok', 'twitch', 'youtube', 'kick'])
@@ -18,12 +26,11 @@ const CHAT_PLATFORMS = new Set<Platform>(['tiktok', 'twitch', 'youtube', 'kick']
  * than a beat.
  */
 const LIKE_XP_FLUSH_INTERVAL_MS = 1000
+const LIKE_XP_RETRY_INTERVAL_MS = 5000
 
 interface PendingLikeXp {
   award: LoyaltyXpAward
   totalAmount: number
-  previousXp: number
-  previousLevel: number
 }
 
 export class LoyaltyService extends EventEmitter {
@@ -31,6 +38,7 @@ export class LoyaltyService extends EventEmitter {
   /** Aggregated pending XP per `${platform}:${username}` for like events. */
   private pendingLikeXp = new Map<string, PendingLikeXp>()
   private likeXpFlushTimer: NodeJS.Timeout | null = null
+  private recentEventIds = new Map<string, number>()
 
   constructor(private readonly db: Database) {
     super()
@@ -40,9 +48,9 @@ export class LoyaltyService extends EventEmitter {
     if ((event.raw as any)?.simulated || !('user' in event)) {
       return null
     }
-
     const award = this.getAwardForEvent(event)
     if (!award) return null
+    if (this.isDuplicateEvent(event)) return null
 
     // Likes are bursty — coalesce per-user XP into one DB read+write per
     // window. Level-up emits still happen for users that cross a threshold,
@@ -75,26 +83,51 @@ export class LoyaltyService extends EventEmitter {
   }
 
   addXp(award: LoyaltyXpAward): LoyaltyLevelUpEvent | null {
-    const username = award.username.trim()
-    if (!username || award.amount <= 0 || !isChatPlatform(award.platform)) {
+    const suppliedUsername = award.username.trim()
+    if (!suppliedUsername || award.amount <= 0 || !isChatPlatform(award.platform)) {
       return null
     }
 
-    const displayName = award.displayName.trim() || username
-    const previous = this.getUserProgress(award.platform, username)
-    const previousXp = previous?.xp ?? 0
-    const previousLevel = previous?.level ?? getLoyaltyLevelForXp(previousXp)
-    const nextXp = previousXp + Math.max(0, Math.floor(award.amount))
-    const nextProgress = getLoyaltyProgressForXp(nextXp)
+    const displayName = award.displayName.trim() || suppliedUsername
+    const amount = Math.max(0, Math.floor(award.amount))
+    const identity = resolveEconomyIdentity(this.db, suppliedUsername, award.platform, {
+      platformUserId: award.platformUserId,
+      displayName
+    })
+    const username = identity.username
+    const raw = this.db.getRawDb()
+    const writeXp = raw.transaction(() => {
+      const previousXp = this.getOwnerXp(raw, identity).xp
+      const previousLevel = getLoyaltyLevelForXp(previousXp)
+      const nextXp = previousXp + amount
+      const nextProgress = getLoyaltyProgressForXp(nextXp)
 
-    this.db.getRawDb().prepare(`
-      INSERT INTO economy_users (username, platform, points, xp, level, updated_at)
-      VALUES (?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(username, platform) DO UPDATE SET
-        xp = excluded.xp,
-        level = excluded.level,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(username, award.platform, nextXp, nextProgress.level)
+      raw.prepare(`
+        INSERT INTO economy_users (username, platform, points, xp, level, updated_at)
+        VALUES (?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(username, platform) DO UPDATE SET
+          xp = COALESCE(economy_users.xp, 0) + excluded.xp,
+          level = excluded.level,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(username, award.platform, amount, nextProgress.level)
+      this.syncOwnerLevel(raw, identity, nextProgress.level)
+      return { previousLevel, nextXp, nextProgress }
+    })
+    const { previousLevel, nextXp, nextProgress } = writeXp()
+
+    const xpAwarded: LoyaltyXpAwardedEvent = {
+      username,
+      platform: award.platform,
+      displayName,
+      xp: nextXp,
+      previousLevel,
+      awardedXp: award.amount,
+      reason: award.reason,
+      leveledUp: nextProgress.level > previousLevel,
+      ...(award.platformUserId ? { platformUserId: award.platformUserId } : {}),
+      ...nextProgress
+    }
+    this.emit('xp-awarded', xpAwarded)
 
     if (nextProgress.level <= previousLevel) {
       return null
@@ -108,36 +141,46 @@ export class LoyaltyService extends EventEmitter {
       previousLevel,
       awardedXp: award.amount,
       reason: award.reason,
+      ...(award.platformUserId ? { platformUserId: award.platformUserId } : {}),
       ...nextProgress
     }
     this.emit('level-up', levelUp)
     return levelUp
   }
 
-  getUserProgress(platform: Platform, username: string): LoyaltyProgress | null {
-    const row = this.db.getRawDb().prepare(`
-      SELECT username, platform, COALESCE(points, 0) AS points, COALESCE(xp, 0) AS xp, COALESCE(level, 1) AS level
-      FROM economy_users
-      WHERE platform = ? AND username = ?
-    `).get(platform, username) as { username: string; platform: Platform; xp: number; level: number } | undefined
-
-    if (!row) return null
-    return toProgress(row.username, row.platform, row.username, row.xp)
+  getUserProgress(
+    platform: Platform,
+    username: string,
+    identityHint: EconomyIdentityHint = {}
+  ): LoyaltyProgress | null {
+    const identity = resolveEconomyIdentity(this.db, username, platform, identityHint)
+    const owner = this.getOwnerXp(this.db.getRawDb(), identity)
+    if (owner.rowCount === 0) return null
+    return toProgress(username, platform, username, owner.xp)
   }
 
   getTopUsers(limit = 25): LoyaltyProgress[] {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)))
-    const rows = this.db.getRawDb().prepare(`
-      SELECT username, platform, COALESCE(xp, 0) AS xp
-      FROM economy_users
-      WHERE COALESCE(xp, 0) > 0
-      ORDER BY xp DESC
-      LIMIT ?
-    `).all(safeLimit) as Array<{ username: string; platform: Platform; xp: number }>
+    return loadEconomyOwnerAggregates(this.db.getRawDb())
+      .filter((owner) => owner.xp > 0 && isChatPlatform(owner.platform))
+      .sort((first, second) => second.xp - first.xp || second.points - first.points)
+      .slice(0, safeLimit)
+      .map((owner) => toProgress(owner.username, owner.platform, owner.displayName, owner.xp))
+  }
 
-    return rows
-      .filter((row) => isChatPlatform(row.platform))
-      .map((row) => toProgress(row.username, row.platform, row.username, row.xp))
+  getUserRank(
+    platform: Platform,
+    username: string,
+    limit = 100,
+    identityHint: EconomyIdentityHint = {}
+  ): number | null {
+    const identity = resolveEconomyIdentity(this.db, username, platform, identityHint)
+    const owners = loadEconomyOwnerAggregates(this.db.getRawDb())
+      .filter((owner) => owner.xp > 0)
+      .sort((first, second) => second.xp - first.xp || second.points - first.points)
+      .slice(0, Math.max(1, Math.min(1000, Math.floor(limit))))
+    const index = owners.findIndex((owner) => owner.ownerKey === identity.ownerKey)
+    return index >= 0 ? index + 1 : null
   }
 
   private getAwardForEvent(event: AnyStreamEvent): LoyaltyXpAward | null {
@@ -147,10 +190,19 @@ export class LoyaltyService extends EventEmitter {
 
     const username = event.user.username
     const displayName = event.user.displayName || username
+    const identity = {
+      username,
+      displayName,
+      platform: event.platform,
+      platformUserId: event.user.id
+    }
 
     switch (event.type) {
       case 'chat': {
-        const key = `${event.platform}:${username}`
+        const key = resolveEconomyIdentity(this.db, username, event.platform, {
+          platformUserId: event.user.id,
+          displayName
+        }, { loadProfileMembers: false }).ownerKey
         const now = Date.now()
         const lastAwardedAt = this.chatXpCooldowns.get(key) || 0
         if (now - lastAwardedAt < CHAT_XP_COOLDOWN_MS) {
@@ -158,26 +210,56 @@ export class LoyaltyService extends EventEmitter {
         }
         this.chatXpCooldowns.set(key, now)
         this.cleanupChatCooldowns(now)
-        return { username, displayName, platform: event.platform, amount: 4, reason: 'chat' }
+        return { ...identity, amount: 4, reason: 'chat' }
       }
       case 'like':
-        return { username, displayName, platform: event.platform, amount: Math.max(1, Math.min(25, event.likeCount || 1)), reason: 'like' }
+        return { ...identity, amount: Math.max(1, Math.min(25, event.likeCount || 1)), reason: 'like' }
       case 'gift':
         if (event.isCombo) return null
-        return { username, displayName, platform: event.platform, amount: 50 + Math.min(250, Math.max(0, event.monetaryValue || 0)), reason: 'gift' }
+        return { ...identity, amount: 50 + Math.min(250, Math.max(0, event.monetaryValue || 0)), reason: 'gift' }
       case 'subscription':
-        return { username, displayName, platform: event.platform, amount: 250, reason: 'subscription' }
+        return { ...identity, amount: 250, reason: 'subscription' }
       case 'follow':
-        return { username, displayName, platform: event.platform, amount: 35, reason: 'follow' }
+        return { ...identity, amount: 35, reason: 'follow' }
       case 'share':
-        return { username, displayName, platform: event.platform, amount: 20, reason: 'share' }
+        return { ...identity, amount: 20, reason: 'share' }
       case 'raid':
-        return { username, displayName, platform: event.platform, amount: 100 + Math.min(300, event.viewerCount || 0), reason: 'raid' }
+        return { ...identity, amount: 100 + Math.min(300, event.viewerCount || 0), reason: 'raid' }
       case 'join':
-        return { username, displayName, platform: event.platform, amount: 5, reason: 'join' }
+        return { ...identity, amount: 5, reason: 'join' }
       default:
         return null
     }
+  }
+
+  private getOwnerXp(
+    raw: ReturnType<Database['getRawDb']>,
+    identity: EconomyIdentity
+  ): { xp: number; rowCount: number } {
+    const scope = economyScopeWhere(identity, 'economy_users')
+    const row = raw.prepare(`
+      SELECT COUNT(*) AS row_count,
+             COALESCE(SUM(CASE WHEN economy_users.xp > 0 THEN economy_users.xp ELSE 0 END), 0) AS xp
+      FROM economy_users
+      WHERE ${scope.sql}
+    `).get(...scope.params) as { row_count?: number; xp?: number } | undefined
+    return {
+      xp: Math.max(0, Math.floor(Number(row?.xp) || 0)),
+      rowCount: Math.max(0, Math.floor(Number(row?.row_count ?? (row ? 1 : 0)) || 0))
+    }
+  }
+
+  private syncOwnerLevel(
+    raw: ReturnType<Database['getRawDb']>,
+    identity: EconomyIdentity,
+    level: number
+  ): void {
+    const scope = economyScopeWhere(identity, 'economy_users')
+    raw.prepare(`
+      UPDATE economy_users
+      SET level = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE ${scope.sql}
+    `).run(level, ...scope.params)
   }
 
   private cleanupChatCooldowns(now: number): void {
@@ -190,7 +272,7 @@ export class LoyaltyService extends EventEmitter {
   }
 
   private queueLikeXp(award: LoyaltyXpAward): void {
-    const username = award.username.trim()
+    const username = award.username.trim().replace(/^@+/, '').toLowerCase()
     if (!username || award.amount <= 0 || !isChatPlatform(award.platform)) return
 
     const key = `${award.platform}:${username}`
@@ -202,25 +284,21 @@ export class LoyaltyService extends EventEmitter {
       // Keep the latest displayName/award metadata in case it changed.
       existing.award = { ...award, amount: existing.totalAmount }
     } else {
-      // Snapshot the current XP/level once per window. Subsequent likes in
-      // the same window add to `totalAmount` without re-reading the DB.
-      const previous = this.getUserProgress(award.platform, username)
-      const previousXp = previous?.xp ?? 0
-      const previousLevel = previous?.level ?? getLoyaltyLevelForXp(previousXp)
       this.pendingLikeXp.set(key, {
         award: { ...award, amount },
-        totalAmount: amount,
-        previousXp,
-        previousLevel
+        totalAmount: amount
       })
     }
 
-    if (!this.likeXpFlushTimer) {
-      this.likeXpFlushTimer = setTimeout(() => {
-        this.likeXpFlushTimer = null
-        this.flushLikeXpNow()
-      }, LIKE_XP_FLUSH_INTERVAL_MS)
-    }
+    this.scheduleLikeXpFlush()
+  }
+
+  private scheduleLikeXpFlush(delayMs = LIKE_XP_FLUSH_INTERVAL_MS): void {
+    if (this.likeXpFlushTimer) return
+    this.likeXpFlushTimer = setTimeout(() => {
+      this.likeXpFlushTimer = null
+      this.flushLikeXpNow()
+    }, delayMs)
   }
 
   /** Drain `pendingLikeXp` into one transactional batch of UPSERTs. */
@@ -233,61 +311,124 @@ export class LoyaltyService extends EventEmitter {
       pending: PendingLikeXp
       username: string
       displayName: string
+      previousLevel: number
       nextXp: number
       nextProgress: ReturnType<typeof getLoyaltyProgressForXp>
     }
-    const rows: ComputedRow[] = []
-    for (const pending of entries) {
-      const username = pending.award.username.trim()
-      if (!username) continue
-      const displayName = pending.award.displayName.trim() || username
-      const nextXp = pending.previousXp + pending.totalAmount
-      const nextProgress = getLoyaltyProgressForXp(nextXp)
-      rows.push({ pending, username, displayName, nextXp, nextProgress })
-    }
-    if (rows.length === 0) return
-
+    let rows: ComputedRow[] = []
     try {
       const raw = this.db.getRawDb()
       const stmt = raw.prepare(`
         INSERT INTO economy_users (username, platform, points, xp, level, updated_at)
         VALUES (?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(username, platform) DO UPDATE SET
-          xp = excluded.xp,
+          xp = COALESCE(economy_users.xp, 0) + excluded.xp,
           level = excluded.level,
           updated_at = CURRENT_TIMESTAMP
       `)
-      const tx = raw.transaction((items: ComputedRow[]) => {
-        for (const r of items) {
-          stmt.run(r.username, r.pending.award.platform, r.nextXp, r.nextProgress.level)
+      const tx = raw.transaction((items: PendingLikeXp[]): ComputedRow[] => {
+        const computed: ComputedRow[] = []
+        for (const pending of items) {
+          const suppliedUsername = pending.award.username.trim()
+          if (!suppliedUsername) continue
+          const displayName = pending.award.displayName.trim() || suppliedUsername
+          const identity = resolveEconomyIdentity(this.db, suppliedUsername, pending.award.platform, {
+            platformUserId: pending.award.platformUserId,
+            displayName
+          })
+          const username = identity.username
+          // Resolve and read inside the transaction, in order. If two linked
+          // accounts have likes in the same batch, the second sees the first's
+          // write and cannot miss or duplicate their shared level transition.
+          const previousXp = this.getOwnerXp(raw, identity).xp
+          const previousLevel = getLoyaltyLevelForXp(previousXp)
+          const nextXp = previousXp + pending.totalAmount
+          const nextProgress = getLoyaltyProgressForXp(nextXp)
+          stmt.run(username, identity.platform, pending.totalAmount, nextProgress.level)
+          this.syncOwnerLevel(raw, identity, nextProgress.level)
+          computed.push({ pending, username, displayName, previousLevel, nextXp, nextProgress })
         }
+        return computed
       })
-      tx(rows)
+      rows = tx(entries)
     } catch (err) {
       console.error('[loyalty] like-xp flush failed; re-queueing:', err)
       // Re-queue so the next window retries.
-      for (const r of rows) {
-        const key = `${r.pending.award.platform}:${r.username}`
-        this.pendingLikeXp.set(key, r.pending)
+      for (const pending of entries) {
+        const username = pending.award.username.trim()
+        if (!username) continue
+        const key = `${pending.award.platform}:${username}`
+        const queued = this.pendingLikeXp.get(key)
+        if (queued) {
+          queued.totalAmount += pending.totalAmount
+          queued.award = { ...pending.award, amount: queued.totalAmount }
+        } else {
+          this.pendingLikeXp.set(key, pending)
+        }
       }
+      this.scheduleLikeXpFlush(LIKE_XP_RETRY_INTERVAL_MS)
       return
     }
+    if (rows.length === 0) return
 
     // Emit one level-up per user that crossed a threshold.
     for (const r of rows) {
-      if (r.nextProgress.level <= r.pending.previousLevel) continue
+      if (r.nextProgress.level <= r.previousLevel) continue
       const levelUp: LoyaltyLevelUpEvent = {
         username: r.username,
         platform: r.pending.award.platform,
         displayName: r.displayName,
         xp: r.nextXp,
-        previousLevel: r.pending.previousLevel,
+        previousLevel: r.previousLevel,
         awardedXp: r.pending.totalAmount,
         reason: r.pending.award.reason,
+        ...(r.pending.award.platformUserId ? { platformUserId: r.pending.award.platformUserId } : {}),
         ...r.nextProgress
       }
+      const xpAwarded: LoyaltyXpAwardedEvent = {
+        ...levelUp,
+        leveledUp: true
+      }
+      this.emit('xp-awarded', xpAwarded)
       this.emit('level-up', levelUp)
     }
+
+    // Users whose batched likes did not cross a threshold still earn points
+    // from the same XP activity. Emit after the write so level-scaled rewards
+    // always use the newly persisted level.
+    for (const r of rows) {
+      if (r.nextProgress.level > r.previousLevel) continue
+      const xpAwarded: LoyaltyXpAwardedEvent = {
+        username: r.username,
+        platform: r.pending.award.platform,
+        displayName: r.displayName,
+        xp: r.nextXp,
+        previousLevel: r.previousLevel,
+        awardedXp: r.pending.totalAmount,
+        reason: r.pending.award.reason,
+        leveledUp: false,
+        ...(r.pending.award.platformUserId ? { platformUserId: r.pending.award.platformUserId } : {}),
+        ...r.nextProgress
+      }
+      this.emit('xp-awarded', xpAwarded)
+    }
+  }
+
+  private isDuplicateEvent(event: AnyStreamEvent): boolean {
+    const eventId = String(event.id || '').trim()
+    if (!eventId) return false
+    const key = `${event.platform}:${event.type}:${eventId}`
+    const now = Date.now()
+    const previous = this.recentEventIds.get(key)
+    this.recentEventIds.set(key, now)
+
+    if (this.recentEventIds.size > 5000) {
+      const cutoff = now - (10 * 60_000)
+      for (const [candidate, timestamp] of this.recentEventIds) {
+        if (timestamp < cutoff) this.recentEventIds.delete(candidate)
+      }
+    }
+    return previous !== undefined && now - previous < 10 * 60_000
   }
 }
 

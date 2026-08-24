@@ -13,7 +13,6 @@ declare const HTMLTextAreaElement: any
 declare const InputEvent: any
 declare const KeyboardEvent: any
 
-const TIKTOK_CHAT_URL = 'https://livecenter.tiktok.com/producer'
 const TIKTOK_WEB_FALLBACK_URL = 'https://livecenter.tiktok.com/'
 const TIKTOK_OWNED_WEB_HOSTS = new Set([
   'tiktok.com',
@@ -32,6 +31,8 @@ const TIKTOK_BLOCKED_APP_PROTOCOLS = new Set([
   'tiktoklive:'
 ])
 const DETECTION_INTERVAL_MS = 2000
+const TIKTOK_SENDER_SCRIPT_TIMEOUT_MS = 5000
+const TIKTOK_SENDER_RECOVERY_COOLDOWN_MS = 15_000
 const TIKTOK_AUTH_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'uid_tt'])
 
 export const TIKTOK_SENDER_MAX_MESSAGE_LENGTH = 150
@@ -70,10 +71,15 @@ export class TikTokChatSender {
   private isLoggedIn = false
   private isOnTikTok = false
   private isChatReady = false
+  private hasSendCredentials = false
   private currentUrl: string | undefined
+  private liveChatUrl: string | null = null
   private lastError: string | undefined
   private lastMessageSentAt = 0
+  private lastRecoveryAt = 0
   private sendQueue: Promise<void> = Promise.resolve()
+  private refreshPromise: Promise<void> | null = null
+  private recoveryPromise: Promise<void> | null = null
 
   getStatus(): TikTokSenderStatus {
     const now = Date.now()
@@ -85,6 +91,7 @@ export class TikTokChatSender {
       isWindowOpen: !!this.window,
       isLoggedIn: this.isLoggedIn,
       isChatReady: this.isChatReady,
+      hasSendCredentials: this.hasSendCredentials,
       isOnTikTok: this.isOnTikTok,
       currentUrl: this.currentUrl,
       lastMessageSentAt: this.lastMessageSentAt || undefined,
@@ -94,16 +101,23 @@ export class TikTokChatSender {
         isWindowOpen: !!this.window,
         isOnTikTok: this.isOnTikTok,
         isLoggedIn: this.isLoggedIn,
-        isChatReady: this.isChatReady
+        isChatReady: this.isChatReady,
+        hasSendCredentials: this.hasSendCredentials
       }),
       maxMessageLength: TIKTOK_SENDER_MAX_MESSAGE_LENGTH,
       sendCooldownMs: TIKTOK_SENDER_SEND_COOLDOWN_MS
     }
   }
 
-  async openWindow(): Promise<void> {
+  async openWindow(username?: string): Promise<void> {
+    const liveChatUrl = buildTikTokLiveChatUrl(username)
+    if (liveChatUrl) this.liveChatUrl = liveChatUrl
+
     if (this.window) {
       this.window.focus()
+      if (liveChatUrl && !isTikTokLiveChatUrl(this.currentUrl, username)) {
+        await this.window.loadURL(liveChatUrl)
+      }
       return
     }
 
@@ -116,7 +130,10 @@ export class TikTokChatSender {
         partition: 'persist:tiktok-chat-sender',
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: true
+        sandbox: true,
+        // The sender is commonly minimized beside the Studio during a stream.
+        // TikTok's chat page needs its timers/socket kept alive in that state.
+        backgroundThrottling: false
       }
     })
 
@@ -167,17 +184,41 @@ export class TikTokChatSender {
       this.lastError = `TikTok sender failed to load: ${errorDescription}`
     })
 
+    this.window.webContents.on('did-start-navigation', (_event, _url, _isInPlace, isMainFrame) => {
+      if (isMainFrame) this.isChatReady = false
+    })
+
+    this.window.webContents.on('did-finish-load', () => {
+      void this.requestSenderRefresh()
+    })
+
+    this.window.webContents.on('render-process-gone', (_event, details) => {
+      this.isChatReady = false
+      this.lastError = `TikTok sender page stopped: ${details.reason}`
+      void this.recoverSenderPage(this.lastError)
+    })
+
+    this.window.on('unresponsive', () => {
+      this.isChatReady = false
+      this.lastError = 'TikTok sender page became unresponsive'
+      void this.recoverSenderPage(this.lastError)
+    })
+
     this.window.on('closed', () => {
       this.window = null
       this.stopDetectionLoop()
       this.isLoggedIn = false
       this.isOnTikTok = false
       this.isChatReady = false
+      this.hasSendCredentials = false
       this.currentUrl = undefined
+      this.liveChatUrl = null
+      this.refreshPromise = null
+      this.recoveryPromise = null
     })
 
     try {
-      await this.window.loadURL(TIKTOK_CHAT_URL)
+      await this.window.loadURL(liveChatUrl || TIKTOK_WEB_FALLBACK_URL)
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
       await this.window.loadURL(TIKTOK_WEB_FALLBACK_URL)
@@ -205,7 +246,7 @@ export class TikTokChatSender {
   }
 
   private async sendValidatedMessage(text: string): Promise<boolean> {
-    if (!this.window || !this.isChatReady) {
+    if (!this.window || this.window.isDestroyed() || !this.isChatReady) {
       this.lastError = this.getUnavailableReason()
       console.warn('[tiktok-sender] Attempted to send message but sender is not ready:', this.lastError)
       return false
@@ -217,31 +258,40 @@ export class TikTokChatSender {
         await delay(cooldownMs)
       }
 
-      const result = (await this.window.webContents.executeJavaScript(
-        `(${sendMessageInTikTokPage.toString()})(${JSON.stringify(text)})`
-      )) as TikTokSendScriptResult
+      const result = await withTimeout(
+        this.window.webContents.executeJavaScript(
+          `(${sendMessageInTikTokPage.toString()})(${JSON.stringify(text)})`
+        ) as Promise<TikTokSendScriptResult>,
+        TIKTOK_SENDER_SCRIPT_TIMEOUT_MS,
+        'TikTok sender page did not respond while sending'
+      )
 
       if (result?.ok) {
         this.lastMessageSentAt = Date.now()
         this.lastError = undefined
+        console.log(`[tiktok-sender] Chat send confirmed via ${result.method || 'unknown'}`)
         return true
       }
 
       this.lastError = result?.reason || 'TikTok did not accept the chat message'
+      this.isChatReady = false
       console.warn('[tiktok-sender] Message send failed:', this.lastError)
+      void this.recoverSenderPage(this.lastError)
       return false
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err)
+      this.isChatReady = false
       console.error('[tiktok-sender] Failed to inject message:', err)
+      void this.recoverSenderPage(this.lastError)
       return false
     }
   }
 
   private startDetectionLoop(): void {
     this.stopDetectionLoop()
-    void this.refreshSenderState()
+    void this.requestSenderRefresh()
     this.detectionTimer = setInterval(() => {
-      void this.refreshSenderState()
+      void this.requestSenderRefresh()
     }, DETECTION_INTERVAL_MS)
   }
 
@@ -252,49 +302,100 @@ export class TikTokChatSender {
     }
   }
 
+  private requestSenderRefresh(): Promise<void> {
+    if (this.refreshPromise) return this.refreshPromise
+
+    this.refreshPromise = this.refreshSenderState().finally(() => {
+      this.refreshPromise = null
+    })
+    return this.refreshPromise
+  }
+
   private async refreshSenderState(): Promise<void> {
     if (!this.window || this.window.isDestroyed()) {
       this.window = null
       this.isLoggedIn = false
       this.isOnTikTok = false
       this.isChatReady = false
+      this.hasSendCredentials = false
       this.currentUrl = undefined
       this.stopDetectionLoop()
       return
     }
 
     try {
+      // Electron defers executeJavaScript until the main frame stops loading by
+      // attaching a did-stop-loading listener. Do not start probes while a
+      // TikTok navigation is still in progress: a timed-out wrapper cannot
+      // cancel that underlying wait and repeated polls would retain listeners.
+      if (this.window.webContents.isLoadingMainFrame()) {
+        this.isChatReady = false
+        return
+      }
+
       const previousUnavailableReason = this.getUnavailableReason()
-      const [domState, hasSessionCookie] = await Promise.all([
+      const [domState, credentials] = await Promise.all([
         this.window.webContents.executeJavaScript(
           `(${detectTikTokSenderStateInPage.toString()})()`
         ) as Promise<TikTokSenderDomState>,
-        this.hasTikTokAuthCookie()
+        this.readTikTokAuthCredentials()
       ])
 
       this.currentUrl = domState.currentUrl
       this.isOnTikTok = domState.isOnTikTok
-      this.isLoggedIn = this.isOnTikTok && !domState.hasLoginPrompt && (domState.hasAccountUi || hasSessionCookie)
+      this.isLoggedIn = this.isOnTikTok && !domState.hasLoginPrompt && (domState.hasAccountUi || credentials.loggedIn)
       this.isChatReady = this.isLoggedIn && domState.isChatReady
+      this.hasSendCredentials = hasTikTokSendCredentials(credentials)
 
-      if (this.isChatReady && this.lastError === previousUnavailableReason) {
+      if ((this.isChatReady || this.hasSendCredentials) && this.lastError === previousUnavailableReason) {
         this.lastError = undefined
       }
     } catch (error) {
       this.isChatReady = false
+      this.hasSendCredentials = false
       this.lastError = error instanceof Error ? error.message : String(error)
     }
   }
 
-  private async hasTikTokAuthCookie(): Promise<boolean> {
-    if (!this.window || this.window.isDestroyed()) return false
+  private async recoverSenderPage(reason: string): Promise<void> {
+    if (this.recoveryPromise) return this.recoveryPromise
+    if (!this.window || this.window.isDestroyed() || !this.liveChatUrl) return
+    if (Date.now() - this.lastRecoveryAt < TIKTOK_SENDER_RECOVERY_COOLDOWN_MS) return
 
-    try {
-      const cookies = await this.window.webContents.session.cookies.get({ url: 'https://www.tiktok.com' })
-      return cookies.some((cookie) => TIKTOK_AUTH_COOKIE_NAMES.has(cookie.name))
-    } catch {
-      return false
+    const senderWindow = this.window
+    const liveChatUrl = this.liveChatUrl
+    this.lastRecoveryAt = Date.now()
+    this.recoveryPromise = (async () => {
+      console.warn(`[tiktok-sender] Reloading the public LIVE chat after sender failure: ${reason}`)
+      try {
+        await senderWindow.loadURL(liveChatUrl)
+        if (this.window === senderWindow && !senderWindow.isDestroyed()) {
+          await this.requestSenderRefresh()
+        }
+      } catch (error) {
+        if (this.window === senderWindow) {
+          this.lastError = error instanceof Error ? error.message : String(error)
+        }
+      } finally {
+        this.recoveryPromise = null
+      }
+    })()
+
+    return this.recoveryPromise
+  }
+
+  private async readTikTokAuthCredentials(): Promise<TikTokCapturedCredentials> {
+    if (!this.window || this.window.isDestroyed()) {
+      return { sessionId: null, ttTargetIdc: null, loggedIn: false }
     }
+
+    // The sender uses an isolated partition, so reading the whole jar is both
+    // scoped and necessary: TikTok may host-only either cookie on
+    // livecenter.tiktok.com instead of www.tiktok.com.
+    const cookies = await this.window.webContents.session.cookies.get({})
+    return pickTikTokCredentialsFromCookies(
+      cookies.filter((cookie) => TIKTOK_AUTH_COOKIE_NAMES.has(cookie.name) || cookie.name === 'tt-target-idc')
+    )
   }
 
   /**
@@ -308,8 +409,10 @@ export class TikTokChatSender {
     }
 
     try {
-      const cookies = await this.window.webContents.session.cookies.get({ url: 'https://www.tiktok.com' })
-      return pickTikTokCredentialsFromCookies(cookies)
+      const credentials = await this.readTikTokAuthCredentials()
+      this.hasSendCredentials = hasTikTokSendCredentials(credentials)
+      if (credentials.loggedIn && this.isOnTikTok) this.isLoggedIn = true
+      return credentials
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
       return { sessionId: null, ttTargetIdc: null, loggedIn: false }
@@ -321,7 +424,8 @@ export class TikTokChatSender {
       isWindowOpen: !!this.window,
       isOnTikTok: this.isOnTikTok,
       isLoggedIn: this.isLoggedIn,
-      isChatReady: this.isChatReady
+      isChatReady: this.isChatReady,
+      hasSendCredentials: this.hasSendCredentials
     })
   }
 }
@@ -339,6 +443,29 @@ export function pickTikTokCredentialsFromCookies(
   const sessionId = read('sessionid')
   const ttTargetIdc = read('tt-target-idc')
   return { sessionId, ttTargetIdc, loggedIn: Boolean(sessionId) }
+}
+
+export function hasTikTokSendCredentials(credentials: TikTokCapturedCredentials): boolean {
+  return Boolean(credentials.sessionId && credentials.ttTargetIdc)
+}
+
+export function buildTikTokLiveChatUrl(username?: string | null): string | null {
+  const normalized = username?.trim().replace(/^@+/, '')
+  return normalized ? `https://www.tiktok.com/@${encodeURIComponent(normalized)}/live` : null
+}
+
+export function isTikTokLiveChatUrl(value?: string, username?: string | null): boolean {
+  const expected = buildTikTokLiveChatUrl(username)
+  if (!value || !expected) return false
+
+  try {
+    const currentUrl = new URL(value)
+    const expectedUrl = new URL(expected)
+    return currentUrl.hostname.toLowerCase() === expectedUrl.hostname.toLowerCase()
+      && currentUrl.pathname.replace(/\/$/, '') === expectedUrl.pathname.replace(/\/$/, '')
+  } catch {
+    return false
+  }
 }
 
 export function validateTikTokSenderMessage(
@@ -376,16 +503,34 @@ export function describeTikTokSenderStatus(status: {
   isOnTikTok: boolean
   isLoggedIn: boolean
   isChatReady: boolean
+  hasSendCredentials?: boolean
 }): string {
-  if (!status.isWindowOpen) return 'Open the TikTok host chat sender'
+  if (!status.isWindowOpen) return 'Open the TikTok host session'
   if (!status.isOnTikTok) return 'Sender window is not on TikTok'
   if (!status.isLoggedIn) return 'Log in to TikTok in the sender window'
-  if (!status.isChatReady) return 'Open your LIVE dashboard or chat pop-out'
-  return 'Ready to send as host'
+  if (status.isChatReady) return 'Public LIVE chat ready for relays'
+  if (status.hasSendCredentials) return 'Signed in; open your public LIVE page to send relays'
+  return 'TikTok is signed in; opening your public LIVE chat'
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
 }
 
 function detectTikTokSenderStateInPage(): TikTokSenderDomState {
@@ -421,18 +566,38 @@ function detectTikTokSenderStateInPage(): TikTokSenderDomState {
     return false
   }
 
+  const findFirstEditable = (selectors: string[]): any | null => {
+    for (const selector of selectors) {
+      try {
+        const match = Array.from(document.querySelectorAll(selector)).find((element: any) => (
+          element instanceof HTMLElement && isVisible(element) && isEditable(element)
+        ))
+        if (match instanceof HTMLElement) return match
+      } catch {}
+    }
+
+    return null
+  }
+
   const currentUrl = window.location.href
   const isOnTikTok = window.location.hostname.endsWith('tiktok.com')
-  const chatInput = findFirstVisible([
-    'div[data-e2e="chat-input"]',
+  const chatInput = findFirstEditable([
+    'div[data-e2e="chat-input"] [contenteditable]',
+    '[data-e2e="comment-input"] [contenteditable]',
+    '[data-e2e="comment-input"] textarea',
+    '[data-e2e="comment-input"] input',
+    'textarea[placeholder="Type..."]',
+    'input[placeholder="Type..."]',
     'textarea[placeholder*="chat"]',
     'textarea[placeholder*="comment"]',
     'textarea[aria-label*="chat"]',
     'textarea[aria-label*="comment"]',
     '.chat-input-container textarea',
-    '[contenteditable="true"][role="textbox"]',
-    'div[contenteditable="true"]'
+    '[contenteditable][role="textbox"]',
+    '[contenteditable]:not([contenteditable="false"])'
   ])
+
+  chatInput?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 
   const loginPrompt = findFirstVisible([
     'button[data-e2e="top-login-button"]',
@@ -456,11 +621,11 @@ function detectTikTokSenderStateInPage(): TikTokSenderDomState {
     isOnTikTok,
     hasLoginPrompt: Boolean(loginPrompt),
     hasAccountUi: Boolean(accountUi),
-    isChatReady: Boolean(chatInput && isEditable(chatInput))
+    isChatReady: Boolean(chatInput)
   }
 }
 
-async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScriptResult> {
+export async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScriptResult> {
   const isVisible = (element: any): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const style = window.getComputedStyle(element)
@@ -491,6 +656,19 @@ async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScrip
     }
 
     return false
+  }
+
+  const findFirstEditable = (selectors: string[]): any | null => {
+    for (const selector of selectors) {
+      try {
+        const match = Array.from(document.querySelectorAll(selector)).find((element: any) => (
+          element instanceof HTMLElement && isVisible(element) && isEditable(element)
+        ))
+        if (match instanceof HTMLElement) return match
+      } catch {}
+    }
+
+    return null
   }
 
   const isEnabledButton = (element: any): boolean => {
@@ -537,16 +715,17 @@ async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScrip
   }
 
   const dispatchEnter = (element: any): void => {
-    for (const type of ['keydown', 'keypress', 'keyup']) {
-      element.dispatchEvent(new KeyboardEvent(type, {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true
-      }))
-    }
+    // TikTok submits on keydown. Dispatching the legacy keypress and keyup
+    // phases as separate synthetic events can make the public LIVE page render
+    // several optimistic copies even though TikTok accepts only one message.
+    element.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    }))
   }
 
   const findSendButton = (): any | null => {
@@ -576,18 +755,23 @@ async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScrip
     }) ?? null
   }
 
-  const input = findFirstVisible([
-    'div[data-e2e="chat-input"]',
+  const input = findFirstEditable([
+    'div[data-e2e="chat-input"] [contenteditable]',
+    '[data-e2e="comment-input"] [contenteditable]',
+    '[data-e2e="comment-input"] textarea',
+    '[data-e2e="comment-input"] input',
+    'textarea[placeholder="Type..."]',
+    'input[placeholder="Type..."]',
     'textarea[placeholder*="chat"]',
     'textarea[placeholder*="comment"]',
     'textarea[aria-label*="chat"]',
     'textarea[aria-label*="comment"]',
     '.chat-input-container textarea',
-    '[contenteditable="true"][role="textbox"]',
-    'div[contenteditable="true"]'
+    '[contenteditable][role="textbox"]',
+    '[contenteditable]:not([contenteditable="false"])'
   ])
 
-  if (!input || !isEditable(input)) {
+  if (!input) {
     return { ok: false, reason: 'TikTok chat input was not found' }
   }
 
@@ -605,14 +789,32 @@ async function sendMessageInTikTokPage(message: string): Promise<TikTokSendScrip
   }
 
   const sendButton = findSendButton()
+  let method: string
 
   if (sendButton) {
     sendButton.click()
-    return { ok: true, method: 'button' }
+    method = 'button'
+  } else {
+    dispatchEnter(input)
+    method = 'enter'
   }
 
-  dispatchEnter(input)
-  return { ok: true, method: 'enter' }
+  // A click/Enter dispatch only proves that we attempted a send. A stale
+  // TikTok page can ignore it while leaving the composer untouched, which the
+  // old sender incorrectly reported as success forever. TikTok clears the
+  // composer after accepting a chat message, so wait for that acknowledgement.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    const remainingText = getEditableText(input).trim()
+    if (!remainingText || remainingText !== currentText) {
+      return { ok: true, method }
+    }
+  }
+
+  return {
+    ok: false,
+    reason: 'TikTok chat did not confirm the message; reloading the sender page'
+  }
 }
 
 export function isSafeNavigationUrl(value: string): boolean {

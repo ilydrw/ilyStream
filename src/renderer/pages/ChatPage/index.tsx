@@ -1,7 +1,7 @@
 import { IconChat } from '../../components/ui/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Platform } from '../../../main/platforms/types'
-import { useChatStore } from '../../stores/chat-store'
+import { isChatKind, useChatStore } from '../../stores/chat-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useLiveInsightsStore } from '../../stores/live-insights-store'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
@@ -13,6 +13,7 @@ import { OutboundSidebar } from './components/OutboundSidebar'
 import { LiveInsightsPanel } from './components/LiveInsightsPanel'
 import { LiveViewersPanel } from './components/LiveViewersPanel'
 import { useChatLogic } from './hooks/useChatLogic'
+import './chat-page.css'
 
 const CONN_PLATFORMS: Platform[] = ['tiktok', 'twitch', 'youtube', 'kick']
 const PLATFORM_LABELS: Record<string, string> = {
@@ -28,7 +29,7 @@ function HeaderKpi({ label, value, accent }: { label: string; value: number; acc
       <div className={`text-[19px] font-extrabold leading-none tabular-nums ${accent ? 'text-accent' : 'text-white'}`}>
         {value.toLocaleString()}
       </div>
-      <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em] leading-none text-white/35">{label}</div>
+      <div className="mt-1 text-[9px] font-semibold leading-none text-white/35">{label}</div>
     </div>
   )
 }
@@ -54,8 +55,10 @@ function ConnectionChip({ platform, status, count }: { platform: Platform; statu
 export default function ChatPage() {
   const messages = useChatStore((s) => s.messages)
   const platformFilter = useChatStore((s) => s.platformFilter)
+  const kindFilter = useChatStore((s) => s.kindFilter)
   const searchQuery = useChatStore((s) => s.searchQuery)
   const setPlatformFilter = useChatStore((s) => s.setPlatformFilter)
+  const setKindFilter = useChatStore((s) => s.setKindFilter)
   const setSearchQuery = useChatStore((s) => s.setSearchQuery)
 
   const {
@@ -90,9 +93,19 @@ export default function ChatPage() {
     return () => clearInterval(timer)
   }, [])
 
-  const totalMessages = messages.length
+  // Header KPIs and connection chips track chat traffic only; events live in the feed.
+  const chatMessages = useMemo(() => messages.filter(isChatKind), [messages])
+  const chatPlatformCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const m of chatMessages) {
+      counts[m.platform] = (counts[m.platform] ?? 0) + 1
+    }
+    return counts
+  }, [chatMessages])
+
+  const totalMessages = chatMessages.length
   const messageRateCutoff = now - 60_000
-  const perMinute = messages.reduce((count, m) => (m.timestamp.getTime() >= messageRateCutoff ? count + 1 : count), 0)
+  const perMinute = chatMessages.reduce((count, m) => (m.timestamp.getTime() >= messageRateCutoff ? count + 1 : count), 0)
   const watching = useMemo(
     () => Object.values(viewerCounts).reduce((sum, c) => sum + (c || 0), 0),
     [viewerCounts]
@@ -102,9 +115,9 @@ export default function ChatPage() {
   }, [recordViewerTotal, watching])
 
   return (
-    <div className="app-page">
+    <div className="app-page chat-hub-page">
       <PageHeader
-        title="Unified Chat"
+        title="Chat Hub"
         description="Every platform's chat, viewers, and replies in one place."
         icon={IconChat}
         actions={
@@ -117,21 +130,23 @@ export default function ChatPage() {
           <span className="h-9 w-px bg-white/10" />
           <div className="flex items-center gap-1.5">
             {CONN_PLATFORMS.map((p) => (
-              <ConnectionChip key={p} platform={p} status={statuses[p]} count={platformCounts[p] ?? 0} />
+              <ConnectionChip key={p} platform={p} status={statuses[p]} count={chatPlatformCounts[p] ?? 0} />
             ))}
           </div>
           </>
         }
       />
 
-      <div className="grid min-h-0 grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_380px_340px]" style={{ height: 'calc(100vh - 188px)' }}>
+      <div className="grid min-h-[calc(100vh-188px)] grid-cols-1 gap-5 2xl:h-[calc(100vh-188px)] 2xl:min-h-0 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <ChatFeed
-          messages={messages}
+          bufferedCount={messages.length}
           filteredMessages={filteredMessages}
           platformFilter={platformFilter}
+          kindFilter={kindFilter}
           searchQuery={searchQuery}
           platformCounts={platformCounts}
           onSetPlatformFilter={setPlatformFilter}
+          onSetKindFilter={setKindFilter}
           onSetSearchQuery={setSearchQuery}
           onRelay={(msg) => {
             handleRelay(msg)
@@ -140,14 +155,11 @@ export default function ChatPage() {
           onFeature={handleFeatureMessage}
         />
 
-        <div className="flex min-h-0 flex-col gap-5 overflow-hidden">
+        <aside className="chat-hub-rail flex flex-col gap-5 pr-1 2xl:min-h-0 2xl:overflow-y-auto 2xl:custom-scrollbar">
           <LiveInsightsPanel now={now} />
-          <div className="min-h-0 flex-1">
+          <div className="min-h-[360px] shrink-0">
             <LiveViewersPanel />
           </div>
-        </div>
-
-        <div className="flex min-h-0 flex-col gap-5 overflow-y-auto custom-scrollbar pr-1">
           <AutoRelaySidebar
             chatAutoRelayEnabled={relaySettings.chatAutoRelayEnabled}
             chatRelayTagMode={relaySettings.chatRelayTagMode}
@@ -169,7 +181,7 @@ export default function ChatPage() {
               onClearRelaySource={() => setRelaySource(null)}
             />
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   )

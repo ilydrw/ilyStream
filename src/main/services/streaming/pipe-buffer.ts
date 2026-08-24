@@ -76,6 +76,19 @@ export class PipeBuffer {
     }
   }
 
+  /** Account for a producer-side discard while preserving one drop metric. */
+  discard(data: Uint8Array | Buffer): void {
+    this.droppedChunks++
+    this.droppedBytes += data.byteLength
+  }
+
+  /** Drop queued-but-not-written chunks before resuming at a codec boundary. */
+  discardQueued(): void {
+    for (const chunk of this.queue) this.discard(chunk)
+    this.queue.length = 0
+    this.queuedBytes = 0
+  }
+
   private enqueue(buf: Buffer): boolean {
     if (
       this.overflow === 'drop-newest' &&

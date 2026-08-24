@@ -206,7 +206,7 @@ export function FollowersBreakdown({ global, onChanged }: FollowersBreakdownProp
     // micro-label pattern: a left-side noun phrase + a right-side total.
     <section className="flex flex-col gap-[10px]">
       <div className="flex items-baseline justify-between">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+        <span className="font-mono text-[10px] font-semibold text-white/40">
           Followers across platforms
         </span>
         {anyCount && (

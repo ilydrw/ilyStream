@@ -41,6 +41,10 @@ export class ConnectorOfflineError extends Error {
   }
 }
 
+// Offline is an expected pre-live state, so retry at a calm fixed cadence
+// without consuming the finite failure budget used for actual connector errors.
+const OFFLINE_RETRY_DELAY_MS = 15_000
+
 export abstract class BaseConnector extends EventEmitter {
   public status: ConnectionStatus = 'disconnected'
   public abstract readonly platform: Platform
@@ -170,9 +174,10 @@ export abstract class BaseConnector extends EventEmitter {
     console.log(`[${this.platform}] Waiting: ${message}`)
     this.waitingReason = message
     this.lastError = null
+    this.reconnectAttempts = 0
     // Presented as "connecting" so the UI shows a calm retry state, not an error.
     this.setStatus('connecting')
-    this.scheduleReconnect(message)
+    this.scheduleReconnect(message, true)
   }
 
   protected emitEvent(event: AnyStreamEvent): void {
@@ -187,46 +192,77 @@ export abstract class BaseConnector extends EventEmitter {
     this.emit('status', this.platform, status)
   }
 
-  private scheduleReconnect(reason?: string): void {
+  async retryWaitingNow(): Promise<boolean> {
+    if (
+      !this.waitingReason
+      || !this.currentConfig
+      || !this.autoReconnect
+      || this.isIntentionalDisconnect
+      || this.connecting
+      || this.status === 'connected'
+    ) {
+      return false
+    }
+
+    console.log(`[${this.platform}] Live output detected; checking the waiting channel now.`)
+    this.clearReconnectTimer()
+    await this.runReconnectAttempt()
+    return true
+  }
+
+  private scheduleReconnect(reason?: string, waitIndefinitely = false): void {
     if (!this.autoReconnect || this.isIntentionalDisconnect) return
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+    if (!waitIndefinitely && this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(`[${this.platform}] Max reconnect attempts reached`)
       this.emit('reconnect-failed', this.platform)
       return
     }
     this.clearReconnectTimer()
-    this.reconnectAttempts++
-    const delay = Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1) + Math.random() * 1000, this.maxReconnectDelayMs)
+    if (!waitIndefinitely) this.reconnectAttempts++
+    const attempt = waitIndefinitely ? 1 : this.reconnectAttempts
+    const delay = waitIndefinitely
+      ? OFFLINE_RETRY_DELAY_MS
+      : Math.min(this.baseReconnectDelayMs * Math.pow(2, attempt - 1) + Math.random() * 1000, this.maxReconnectDelayMs)
     const resolvedReason = reason ?? this.waitingReason ?? undefined
-    console.log(`[${this.platform}] Reconnecting in ${Math.round(delay / 1000)}s${resolvedReason ? ` (${resolvedReason})` : ''}`)
+    console.log(`[${this.platform}] ${waitIndefinitely ? 'Checking again' : 'Reconnecting'} in ${Math.round(delay / 1000)}s${resolvedReason ? ` (${resolvedReason})` : ''}`)
     // Surface retry progress (and the waiting reason) to the renderer. Previously
     // this event was never emitted, so reconnect progress was invisible.
     this.emit('reconnecting', {
       platform: this.platform,
-      attempt: this.reconnectAttempts,
+      attempt,
       maxAttempts: this.maxReconnectAttempts,
       delayMs: Math.round(delay),
       reason: resolvedReason
     })
-    this.reconnectTimer = setTimeout(async () => {
-      if (this.isIntentionalDisconnect || !this.currentConfig) return
-      this.setStatus('connecting')
-      this.connecting = true
-      try {
-        await this.doConnect(this.currentConfig)
-        this.connecting = false
-        this.reconnectAttempts = 0
-        this.waitingReason = null
-        this.setStatus('connected')
-      } catch (error) {
-        this.connecting = false
-        if (error instanceof ConnectorOfflineError) {
-          this.handleWaiting(error)
-          return
-        }
-        this.handleError(error, 'reconnect', isRecoverableConnectorError(error))
-      }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      void this.runReconnectAttempt()
     }, delay)
+  }
+
+  private async runReconnectAttempt(): Promise<void> {
+    if (this.isIntentionalDisconnect || !this.currentConfig || this.connecting) return
+    this.setStatus('connecting')
+    this.connecting = true
+    try {
+      await this.doConnect(this.currentConfig)
+      if (this.isIntentionalDisconnect) {
+        this.connecting = false
+        return
+      }
+      this.connecting = false
+      this.reconnectAttempts = 0
+      this.waitingReason = null
+      this.setStatus('connected')
+    } catch (error) {
+      this.connecting = false
+      if (this.isIntentionalDisconnect) return
+      if (error instanceof ConnectorOfflineError) {
+        this.handleWaiting(error)
+        return
+      }
+      this.handleError(error, 'reconnect', isRecoverableConnectorError(error))
+    }
   }
 
   private clearReconnectTimer(): void {
@@ -236,7 +272,14 @@ export abstract class BaseConnector extends EventEmitter {
     }
   }
 
-  setAutoReconnect(enabled: boolean): void { this.autoReconnect = enabled }
+  setAutoReconnect(enabled: boolean): void {
+    this.autoReconnect = enabled
+    if (!enabled) {
+      this.clearReconnectTimer()
+    } else if (this.waitingReason && !this.reconnectTimer && !this.connecting) {
+      this.scheduleReconnect(this.waitingReason, true)
+    }
+  }
   setMaxReconnectAttempts(max: number): void { this.maxReconnectAttempts = max }
 }
 

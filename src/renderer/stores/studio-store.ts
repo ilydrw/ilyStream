@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AudioSource, StudioState, StudioScene, StudioLayer } from '../../shared/studio'
-import { DEFAULT_STUDIO_STATE } from '../../shared/studio'
+import { DEFAULT_STUDIO_STATE, normalizeAudioMonitoringMode } from '../../shared/studio'
+import { resolveTransitionTiming } from '../../shared/studio-transition'
 
 interface StudioStore extends StudioState {
   selectedLayerId: string | null
@@ -96,14 +97,18 @@ function normalizeTrackColor(value: unknown): string | undefined {
   return /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed : undefined
 }
 
-function normalizeAudioSource(source: AudioSource): AudioSource {
+export function normalizeAudioSource(source: AudioSource): AudioSource {
   const fallbackMode: AudioSource['channelMode'] = source.type === 'mic' ? 'mono' : 'stereo'
+  const monitoringMode = normalizeAudioMonitoringMode(source.monitoringMode, source.monitoring)
   return {
     ...source,
     color: normalizeTrackColor((source as any).color),
     volume: clamp(Number(source.volume ?? 0.8), 0, 2),
     muted: Boolean(source.muted),
-    monitoring: Boolean(source.monitoring),
+    monitoringMode,
+    // Keep the legacy field synchronized for older pages and persisted state.
+    monitoring: monitoringMode !== 'off',
+    solo: Boolean(source.solo),
     locked: source.id === 'mic-audio' ? false : source.locked,
     channelMode: normalizeChannelMode((source as any).channelMode, fallbackMode),
     pan: clamp(Number(source.pan ?? 0), -1, 1),
@@ -179,7 +184,9 @@ export const useStudioStore = create<StudioStore>()(
         type: 'system',
         volume: 0.8,
         muted: false,
-        monitoring: true,
+        monitoringMode: 'off',
+        monitoring: false,
+        solo: false,
         channelMode: 'stereo',
         pan: 0,
         filters: []
@@ -332,7 +339,8 @@ export const useStudioStore = create<StudioStore>()(
       },
 
       setActiveScene: (id) => {
-        const { studioMode } = get()
+        const { studioMode, transitionState } = get()
+        if (transitionState.isActive) return
         if (studioMode) {
           set({ previewSceneId: id })
         } else {
@@ -340,29 +348,49 @@ export const useStudioStore = create<StudioStore>()(
         }
       },
 
-      setPreviewScene: (id) => set({ previewSceneId: id }),
+      setPreviewScene: (id) => {
+        if (get().transitionState.isActive) return
+        set({ previewSceneId: id })
+      },
 
-      toggleStudioMode: () => set(state => ({ studioMode: !state.studioMode })),
+      toggleStudioMode: () => set(state => {
+        if (state.transitionState.isActive) return state
+        const studioMode = !state.studioMode
+        return {
+          studioMode,
+          previewSceneId: studioMode ? (state.previewSceneId || state.activeSceneId) : state.previewSceneId
+        }
+      }),
 
       transition: (type = 'cut') => {
         const state = get()
+        if (state.transitionState.isActive) return
         if (!state.previewSceneId || state.previewSceneId === state.activeSceneId) return
 
-        if (type === 'cut') {
-          set({ activeSceneId: state.previewSceneId, previewSceneId: state.activeSceneId })
+        const effectiveType = type === 'stinger' && !state.stingerSettings.path ? 'cut' : type
+        const fromSceneId = state.activeSceneId
+        const toSceneId = state.previewSceneId
+
+        if (effectiveType === 'cut') {
+          set({ activeSceneId: toSceneId, previewSceneId: fromSceneId, selectedLayerId: null })
           get().saveHistory()
           return
         }
 
-        const duration = type === 'stinger' ? state.stingerSettings.duration : state.transitionDuration
+        const timing = resolveTransitionTiming(
+          effectiveType,
+          state.transitionDuration,
+          state.stingerSettings.duration,
+          state.stingerSettings.cutPoint
+        )
 
         set({
           transitionState: {
-            fromSceneId: state.activeSceneId,
-            toSceneId: state.previewSceneId,
+            fromSceneId,
+            toSceneId,
             progress: 0,
             isActive: true,
-            type: type as 'fade' | 'stinger'
+            type: effectiveType as 'fade' | 'stinger'
           }
         })
 
@@ -371,14 +399,15 @@ export const useStudioStore = create<StudioStore>()(
 
         const animate = (now: number) => {
           const elapsed = now - start
-          const progress = Math.min(1, elapsed / duration)
+          const progress = Math.min(1, elapsed / timing.durationMs)
 
           // For stinger, check cut point
-          if (type === 'stinger' && !cutDone && elapsed >= state.stingerSettings.cutPoint) {
+          if (effectiveType === 'stinger' && !cutDone && elapsed >= timing.cutAtMs) {
             cutDone = true
             set({
-              activeSceneId: state.previewSceneId,
-              previewSceneId: state.activeSceneId
+              activeSceneId: toSceneId,
+              previewSceneId: fromSceneId,
+              selectedLayerId: null
             })
           }
 
@@ -387,11 +416,12 @@ export const useStudioStore = create<StudioStore>()(
             requestAnimationFrame(animate)
           } else {
             // For fade, the swap happens at the end
-            if (type === 'fade') {
-              set(s => ({
-                activeSceneId: s.transitionState.toSceneId!,
-                previewSceneId: s.transitionState.fromSceneId!
-              }))
+            if (effectiveType === 'fade' || !cutDone) {
+              set({
+                activeSceneId: toSceneId,
+                previewSceneId: fromSceneId,
+                selectedLayerId: null
+              })
             }
 
             set({
@@ -408,10 +438,24 @@ export const useStudioStore = create<StudioStore>()(
         transitionState: { fromSceneId: null, toSceneId: null, progress: 0, isActive: false, type: 'fade' }
       })),
 
-      setTransitionDuration: (duration) => set({ transitionDuration: duration }),
+      setTransitionDuration: (duration) => set({ transitionDuration: Math.max(1, Math.round(Number(duration) || 300)) }),
       setStingerPath: (path) => set(s => ({ stingerSettings: { ...s.stingerSettings, path } })),
-      setStingerCutPoint: (cutPoint) => set(s => ({ stingerSettings: { ...s.stingerSettings, cutPoint } })),
-      setStingerDuration: (duration) => set(state => ({ stingerSettings: { ...state.stingerSettings, duration } })),
+      setStingerCutPoint: (cutPoint) => set(s => ({
+        stingerSettings: {
+          ...s.stingerSettings,
+          cutPoint: Math.min(s.stingerSettings.duration, Math.max(0, Math.round(Number(cutPoint) || 0)))
+        }
+      })),
+      setStingerDuration: (duration) => set(state => {
+        const nextDuration = Math.max(1, Math.round(Number(duration) || 1000))
+        return {
+          stingerSettings: {
+            ...state.stingerSettings,
+            duration: nextDuration,
+            cutPoint: Math.min(nextDuration, state.stingerSettings.cutPoint)
+          }
+        }
+      }),
 
       setRecordingSettings: (settings: Partial<StudioState['recordingSettings']>) => set(state => ({
         recordingSettings: { ...state.recordingSettings, ...settings }
@@ -552,23 +596,31 @@ export const useStudioStore = create<StudioStore>()(
       updateAudioSource: (id, updates) => {
         const { audioSources } = get()
         const exists = audioSources.find(s => s.id === id)
+        const normalizedUpdates = { ...updates }
+        // Calls from older UI surfaces still write the boolean. Translate it
+        // before merging so an existing explicit mode cannot mask the update.
+        if (normalizedUpdates.monitoringMode === undefined && typeof normalizedUpdates.monitoring === 'boolean') {
+          normalizedUpdates.monitoringMode = normalizedUpdates.monitoring ? 'monitorAndOutput' : 'off'
+        }
 
         if (exists) {
           set({
-            audioSources: audioSources.map(s => s.id === id ? normalizeAudioSource({ ...s, ...updates }) : s)
+            audioSources: audioSources.map(s => s.id === id ? normalizeAudioSource({ ...s, ...normalizedUpdates }) : s)
           })
         } else {
           // Upsert/Add new source if it doesn't exist
           const newSource = normalizeAudioSource({
             id,
-            name: updates.name || 'New Channel',
-            volume: updates.volume ?? 0.8,
-            muted: updates.muted ?? false,
-            monitoring: updates.monitoring ?? false,
-            channelMode: updates.channelMode ?? (updates.type === 'mic' ? 'mono' : 'stereo'),
-            pan: updates.pan ?? 0,
-            filters: updates.filters ?? (updates as any).fxChain ?? [],
-            type: updates.type || 'system'
+            name: normalizedUpdates.name || 'New Channel',
+            volume: normalizedUpdates.volume ?? 0.8,
+            muted: normalizedUpdates.muted ?? false,
+            monitoringMode: normalizedUpdates.monitoringMode ?? 'off',
+            monitoring: normalizedUpdates.monitoring ?? false,
+            solo: normalizedUpdates.solo ?? false,
+            channelMode: normalizedUpdates.channelMode ?? (normalizedUpdates.type === 'mic' ? 'mono' : 'stereo'),
+            pan: normalizedUpdates.pan ?? 0,
+            filters: normalizedUpdates.filters ?? (normalizedUpdates as any).fxChain ?? [],
+            type: normalizedUpdates.type || 'system'
           })
           set({ audioSources: [...audioSources, newSource] })
         }
@@ -612,6 +664,17 @@ export const useStudioStore = create<StudioStore>()(
                   }
                 }
               }
+              dbState.masterBus = normalizeAudioSource({
+                ...(dbState.masterBus || {}),
+                id: 'master',
+                name: 'Master',
+                volume: dbState.masterBus?.volume ?? 0.8,
+                muted: dbState.masterBus?.muted ?? false,
+                type: 'system',
+                channelMode: 'stereo',
+                pan: dbState.masterBus?.pan ?? 0,
+                filters: dbState.masterBus?.filters ?? []
+              })
               useStudioStore.setState(dbState)
             }
           })
@@ -682,7 +745,9 @@ export const useStudioStore = create<StudioStore>()(
         // Listen for remote scene changes from the main process (Deck / Automation)
         window.api?.on?.('studio:active-scene-changed', (sceneId: string) => {
           console.log('[StudioStore] Remote active scene change:', sceneId)
-          useStudioStore.getState().setActiveScene(sceneId)
+          const current = useStudioStore.getState()
+          if (current.transitionState.isActive || !current.scenes.some(scene => scene.id === sceneId)) return
+          useStudioStore.setState({ activeSceneId: sceneId, selectedLayerId: null })
         })
       },
       partialize: (state) => ({
@@ -698,7 +763,11 @@ export const useStudioStore = create<StudioStore>()(
         routing: state.routing,
         mixerSidebarWidth: state.mixerSidebarWidth,
         studioMode: state.studioMode,
-        previewSceneId: state.previewSceneId
+        previewSceneId: state.previewSceneId,
+        transitionDuration: state.transitionDuration,
+        stingerSettings: state.stingerSettings,
+        recordingSettings: state.recordingSettings,
+        audioReactivity: state.audioReactivity
       })
     }
   )

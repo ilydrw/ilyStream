@@ -1,13 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { URL } from 'url'
 import { existsSync } from 'fs'
-import { readFile, mkdir, stat, writeFile } from 'fs/promises'
+import { readFile } from 'fs/promises'
 import { join, extname } from 'path'
-import { randomBytes, createHash } from 'crypto'
+import { randomBytes } from 'crypto'
 import { createRequire } from 'module'
 import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
-import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from '../lib/ssrf-guard'
+import { AvatarFetchError, loadAvatar } from '../lib/avatar-cache'
 import { buildDeckHtml } from './templates/deck'
 import { buildCompanionHtml } from './templates/companion'
 import {
@@ -29,30 +29,8 @@ import type { GoalManager } from './managers/goal-manager'
 import type { NowPlayingManager } from './managers/now-playing-manager'
 import type { LikesTracker } from './managers/likes-tracker'
 import type { DeviceApi } from './device-api'
-import type { OverlayChannel } from './types'
-
-const ALLOWED_OVERLAY_CHANNELS = new Set<OverlayChannel>([
-  'chat',
-  'chat-unified',
-  'alerts',
-  'goals',
-  'now-playing',
-  'follower-goal',
-  'socials',
-  'screen-border',
-  'event-particles',
-  'falling-roses',
-  'gift-overlays',
-  'particles',
-  'discord-promo',
-  'node-network',
-  'latest-gifter',
-  'physics',
-  'deck',
-  'leaderboard',
-  'timer',
-  'likes'
-])
+import { isOverlayChannel, SSE_EVENT_HISTORY_LIMIT, type OverlayChannel } from './types'
+import { OVERLAY_SHARED_WORKER_SCRIPT } from './overlay-shared-worker'
 
 const TEST_ENDPOINTS_ENABLED = process.env.ILYSTREAM_ENABLE_TEST_ENDPOINTS === '1'
 const MAX_DECK_ACTION_BODY_BYTES = 64 * 1024
@@ -60,6 +38,8 @@ const PREVIEW_SESSION_TTL_MS = 30 * 60_000
 const MAX_PREVIEW_SESSIONS = 64
 const require = createRequire(import.meta.url)
 const MATTER_JS_PATH = require.resolve('matter-js/build/matter.min.js')
+const COMPANION_EMOJI_PATH_PREFIX = '/overlay/companion/emoji/'
+const COMPANION_EMOJI_FILE_RE = /^emoji_u[0-9a-f]+(?:_[0-9a-f]+)*\.svg$/
 
 const DUAL_VERTICAL_VIEWER_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -81,6 +61,7 @@ export class OverlayRouter {
   private dualVerticalClients = new Set<ServerResponse>()
   private dualVerticalLastFrame: Buffer | null = null
   private deckCsrfToken = randomBytes(32).toString('base64url')
+  private runtimeGeneration = randomBytes(16).toString('base64url')
   private previewSessions = new Map<string, { widgetId: string; expiresAt: number }>()
   private avatarCacheDir = join(app.getPath('userData'), 'avatar_cache')
 
@@ -102,7 +83,8 @@ export class OverlayRouter {
     private handleStreamEvent: (event: any) => void,
     private emitDeckAction: (action: { type: string; payload?: unknown }) => void,
     private getStatsService: () => any = () => null,
-    private getLeaderboard: () => Array<{ username: string; score: number }> = () => []
+    private getLeaderboard: () => Array<{ username: string; score: number }> = () => [],
+    private getDiscordCallState: () => any = () => null
   ) {}
 
   createWidgetPreviewSession(widgetId: string): string {
@@ -235,6 +217,20 @@ export class OverlayRouter {
       return
     }
 
+    if (pathname === '/overlay/runtime/shared-worker.js') {
+      this.writeCorsHeaders(response, 200, 'text/javascript; charset=utf-8', request, {
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff'
+      })
+      response.end(OVERLAY_SHARED_WORKER_SCRIPT)
+      return
+    }
+
+    if (pathname.startsWith(COMPANION_EMOJI_PATH_PREFIX)) {
+      await this.handleCompanionEmojiRequest(pathname, request, response)
+      return
+    }
+
     if (pathname === '/test/like') {
       if (!this.authorizeRemoteControl(request, url) && !TEST_ENDPOINTS_ENABLED) {
         this.writeJson(response, { error: 'Unauthorized' }, 401, request)
@@ -262,9 +258,10 @@ export class OverlayRouter {
         running: status.running,
         uptime: status.startedAt ? Math.floor((Date.now() - Date.parse(status.startedAt)) / 1000) : 0,
         clients: {
-          chat: this.sse.getClientCount('chat'),
-          alerts: this.sse.getClientCount('alerts'),
-          goals: this.sse.getClientCount('goals')
+          chat: status.chatClientCount,
+          alerts: status.alertClientCount,
+          goals: status.goalClientCount,
+          webSockets: status.webSocketClientCount || 0
         }
       }, 200, request)
       return
@@ -284,21 +281,25 @@ export class OverlayRouter {
       this.writeJson(response, filtered, 200, request)
       return
     }
-    const stateMap: Record<string, any> = {
-      '/overlay/chat/state': this.chat.getHistory(),
-      '/overlay/goals/state': this.goals.getState(),
-      '/overlay/now-playing/state': this.nowPlaying.getState(),
-      '/overlay/state/latest-gifter': this.getLatestGifter(),
-      '/overlay/likes/state': this.likes.getSnapshot(),
-      '/overlay/likes/lifetime': this.getLikesLifetimeState(url),
-      '/overlay/leaderboard/state': this.getLeaderboardState()
+    // Thunks, not values: every overlay request passes through here, and
+    // building the map eagerly ran all of these — including the lifetime
+    // leaderboard's table scan and join — for requests that wanted none of them.
+    const stateMap: Record<string, () => any> = {
+      '/overlay/chat/state': () => this.chat.getHistory(),
+      '/overlay/goals/state': () => this.goals.getState(),
+      '/overlay/now-playing/state': () => this.nowPlaying.getState(),
+      '/overlay/state/latest-gifter': () => this.getLatestGifter(),
+      '/overlay/likes/state': () => this.likes.getSnapshot(),
+      '/overlay/likes/lifetime': () => this.getLikesLifetimeState(url),
+      '/overlay/leaderboard/state': () => this.getLeaderboardState(),
+      '/overlay/discord-call/state': () => this.getDiscordCallState()
     }
 
     // Use `in`, not truthiness: a legitimately falsy state value (e.g. a null
     // latest-gifter) must still return JSON, not fall through to the widget
     // HTML catch-all below.
     if (pathname in stateMap) {
-      this.writeJson(response, stateMap[pathname], 200, request)
+      this.writeJson(response, stateMap[pathname](), 200, request)
       return
     }
 
@@ -313,28 +314,11 @@ export class OverlayRouter {
         return
       }
 
-      const afterRaw = Number(url.searchParams.get('after') || 0)
-      const after = Number.isFinite(afterRaw) ? Math.max(0, Math.floor(afterRaw)) : 0
-      const limitRaw = Number(url.searchParams.get('limit') || 80)
-      const limit = Number.isFinite(limitRaw) ? limitRaw : 80
-
-      const snapshot = this.computeChannelSnapshot(channel)
-      if (after <= 0 && snapshot !== null && snapshot !== undefined) {
-        // Full snapshot represents current state; skip incremental history so
-        // the initial render isn't duplicated by already-reflected events.
-        this.writeJson(
-          response,
-          { events: [{ id: 0, data: { type: 'snapshot', payload: snapshot } }], cursor: this.sse.getLastEventId(channel) },
-          200,
-          request
-        )
-        return
-      }
-
-      const since = this.sse.getEventsSince(channel, after, limit)
-      const events = since.map((entry) => ({ id: entry.id, data: entry.payload }))
-      const cursor = events.length ? events[events.length - 1].id : after
-      this.writeJson(response, { events, cursor }, 200, request)
+      this.writeJson(response, this.getEventReplay(channel, {
+        after: Number(url.searchParams.get('after') || 0),
+        sinceAt: Number(url.searchParams.get('since') || 0),
+        limit: Number(url.searchParams.get('limit') || 80)
+      }), 200, request)
       return
     }
 
@@ -348,7 +332,10 @@ export class OverlayRouter {
 
       const snapshot = this.computeChannelSnapshot(channel)
       const snapshotPayload = { type: 'snapshot', payload: snapshot }
-      response.write(`data: ${JSON.stringify(snapshotPayload)}\n\n`)
+      // Seed the browser's cursor even when the channel has no state payload.
+      // Reconciliation polling can then request only events that occurred
+      // after this stream was attached instead of replaying retained history.
+      response.write(`id: ${this.sse.getLastEventId(channel)}\ndata: ${JSON.stringify(snapshotPayload)}\n\n`)
       return
     }
 
@@ -369,7 +356,7 @@ export class OverlayRouter {
       const html = buildCompanionHtml({
         obsStatus: this.getObsStatus(),
         viewerCounts: this.getViewerCounts(),
-        latestAlerts: this.alerts.getHistory().slice(0, 5),
+        latestAlerts: this.alerts.getHistory().slice(-4).reverse(),
         nowPlaying: this.nowPlaying.getState(),
         ui: settings?.ui || null
       })
@@ -412,6 +399,101 @@ export class OverlayRouter {
     return this.dualVerticalClients.size
   }
 
+  getRuntimeGeneration(): string {
+    return this.runtimeGeneration
+  }
+
+  /**
+   * Canonical snapshot/history reconciliation used by polling and WebSocket
+   * subscriptions. Keeping this logic transport-neutral prevents recovery
+   * behavior from drifting as faster transports are added.
+   */
+  getEventReplay(
+    channel: OverlayChannel,
+    options: { after?: number; sinceAt?: number; limit?: number } = {}
+  ): {
+    events: Array<{ id: number; data: unknown }>
+    cursor: number
+    generation: string
+    reset: boolean
+  } {
+    const after = Number.isFinite(options.after)
+      ? Math.max(0, Math.floor(options.after || 0))
+      : 0
+    const sinceAt = Number.isFinite(options.sinceAt)
+      ? Math.max(0, Math.floor(options.sinceAt || 0))
+      : 0
+    const limit = Number.isFinite(options.limit)
+      ? Math.max(1, Math.min(120, Math.floor(options.limit || 80)))
+      : 80
+    const snapshot = this.computeChannelSnapshot(channel)
+    const currentCursor = this.sse.getLastEventId(channel)
+    const firstCursor = this.sse.getFirstEventId(channel)
+
+    // Browser documents can outlive the ilyStream process. A relaunched server
+    // starts event IDs from zero, so reset old cursors and reconcile state.
+    if (after > currentCursor) {
+      return this.buildResetReplay('overlay-server-restarted', snapshot, currentCursor)
+    }
+
+    // Bounded history cannot safely provide a partial event tail.
+    if (after > 0 && firstCursor > 0 && after < firstCursor - 1) {
+      return this.buildResetReplay('overlay-history-gap', snapshot, currentCursor)
+    }
+
+    if (after <= 0 && snapshot !== null && snapshot !== undefined) {
+      return {
+        events: [{ id: 0, data: { type: 'snapshot', payload: snapshot } }],
+        cursor: currentCursor,
+        generation: this.runtimeGeneration,
+        reset: false
+      }
+    }
+
+    if (after <= 0 && sinceAt > 0) {
+      const events = this.sse.getEventsSince(channel, 0, SSE_EVENT_HISTORY_LIMIT)
+        .filter((entry) => entry.at >= sinceAt)
+        .slice(0, limit)
+        .map((entry) => ({ id: entry.id, data: entry.payload }))
+      return {
+        events,
+        // Only advance past data actually delivered. If the filtered tail is
+        // larger than one polling page, the next request can continue it.
+        cursor: events.length ? events[events.length - 1].id : currentCursor,
+        generation: this.runtimeGeneration,
+        reset: false
+      }
+    }
+
+    const events = this.sse.getEventsSince(channel, after, limit)
+      .map((entry) => ({ id: entry.id, data: entry.payload }))
+    return {
+      events,
+      cursor: events.length ? events[events.length - 1].id : after,
+      generation: this.runtimeGeneration,
+      reset: false
+    }
+  }
+
+  private buildResetReplay(
+    reason: string,
+    snapshot: unknown,
+    cursor: number
+  ): {
+    events: Array<{ id: number; data: unknown }>
+    cursor: number
+    generation: string
+    reset: boolean
+  } {
+    const events: Array<{ id: number; data: unknown }> = [
+      { id: 0, data: { type: 'reload', reason } }
+    ]
+    if (snapshot !== null && snapshot !== undefined) {
+      events.push({ id: 0, data: { type: 'snapshot', payload: snapshot } })
+    }
+    return { events, cursor, generation: this.runtimeGeneration, reset: true }
+  }
+
   /**
    * Current state payload for a channel's initial snapshot, shared by the SSE
    * stream and the /overlay/events/poll fallback. Returns null for channels
@@ -423,6 +505,7 @@ export class OverlayRouter {
       channel === 'goals' ? this.goals.getState() :
       channel === 'likes' ? this.likes.getSnapshot() :
       channel === 'leaderboard' ? this.getLeaderboardState() :
+      channel === 'discord-call' ? this.getDiscordCallState() :
       channel === 'latest-gifter' ? this.getLatestGifter() :
       channel === 'now-playing' ? this.nowPlaying.getState() :
       null
@@ -446,6 +529,12 @@ export class OverlayRouter {
     const statsService = this.getStatsService?.()
 
     if (!statsService?.getTopIdentities || !statsService?.getGlobalStats) {
+      // Loud on purpose: an unwired stats service turns the all-time leaderboard
+      // into a permanently empty list, which looks like a widget bug rather than
+      // a missing dependency.
+      console.warn(
+        '[OverlayRouter] likes lifetime requested without a stats service — serving an empty leaderboard'
+      )
       return { totalLikes: 0, users: [] }
     }
 
@@ -519,7 +608,9 @@ export class OverlayRouter {
 
     let filePath: string | null = null
     if (isSound) {
-      const soundId = subDir && (subDir === 'alerts' || subDir === 'board') ? `${subDir}/${fileName}` : fileName
+      const soundId = subDir && (subDir === 'alerts' || subDir === 'board' || subDir === 'join')
+        ? `${subDir}/${fileName}`
+        : fileName
       filePath = this.getSoundboardService()?.getSoundPath(soundId)
     } else {
       filePath = this.getAssetService()?.getAssetPath(fileName) ?? null
@@ -538,7 +629,11 @@ export class OverlayRouter {
           'Content-Type': mimeTypes[ext] || 'application/octet-stream',
           'Content-Length': data.length,
           ...this.corsHeaders(request),
-          'Cache-Control': 'public, max-age=3600'
+          // User-managed alert media can be replaced without changing its
+          // filename. Embedded browser sources must not retain stale bytes.
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
         })
         response.end(data)
         return
@@ -559,6 +654,7 @@ export class OverlayRouter {
     if (!widgetId || widgetId === 'overlay' || widgetId === 'widget') return false
 
     const configRaw = url.searchParams.get('config')
+    const dockModeRequested = url.searchParams.get('dock') === '1'
     let configOverride: any = null
     if (configRaw) {
       // Accept both base64url and legacy raw base64. Legacy URLs put '+' and
@@ -570,10 +666,14 @@ export class OverlayRouter {
     }
 
     const applyOverride = (widget: Widget | undefined): Widget | undefined => {
-      if (!widget || !configOverride) return widget
+      if (!widget) return widget
+      const dockOverride = dockModeRequested && widget.type === 'chat-unified'
+        ? { dockMode: true }
+        : null
+      if (!configOverride && !dockOverride) return widget
       return {
         ...widget,
-        config: { ...(widget.config as any), ...(configOverride as any) }
+        config: { ...(widget.config as any), ...(configOverride || {}), ...(dockOverride || {}) }
       } as Widget
     }
 
@@ -605,14 +705,18 @@ export class OverlayRouter {
         deckActions: db?.getAllDeckActions() || []
       })
       if (html) {
+        const runtimeHtml = injectOverlayRuntimeBootstrap(html, {
+          widget,
+          sourceKind: isPreview ? 'preview' : typeFromAlias ? 'alias' : 'id'
+        })
         // Browser sources and static card previews get the SSE-with-polling-
         // fallback runtime. Only a main-process-issued capability enables the
         // editor's executable postMessage bootstrap.
         this.writeHtml(
           response,
           isPreview && hasPreviewCapability
-            ? injectPreviewBootstrap(injectOverlayRuntimeBootstrap(html), previewToken!)
-            : injectOverlayRuntimeBootstrap(html),
+            ? injectPreviewBootstrap(runtimeHtml, previewToken!)
+            : runtimeHtml,
           200,
           request,
           isPreview ? { 'Referrer-Policy': 'no-referrer' } : undefined
@@ -703,8 +807,8 @@ export class OverlayRouter {
   }
 
   private parseOverlayChannel(value: string): OverlayChannel | null {
-    const channel = value.split(',')[0]?.trim() as OverlayChannel
-    return ALLOWED_OVERLAY_CHANNELS.has(channel) ? channel : null
+    const channel = value.split(',')[0]?.trim()
+    return isOverlayChannel(channel) ? channel : null
   }
 
   private writeCorsHeaders(
@@ -736,7 +840,11 @@ export class OverlayRouter {
 
   private writeJson(response: ServerResponse, data: any, statusCode = 200, request?: IncomingMessage): void {
     const json = JSON.stringify(data)
-    this.writeCorsHeaders(response, statusCode, 'application/json', request)
+    this.writeCorsHeaders(response, statusCode, 'application/json', request, {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0'
+    })
     response.end(json)
   }
 
@@ -807,10 +915,25 @@ export class OverlayRouter {
     })
   }
 
+  private writeAvatarError(
+    response: ServerResponse,
+    message: string,
+    statusCode: number,
+    request: IncomingMessage
+  ): void {
+    this.writeCorsHeaders(response, statusCode, 'application/json', request, {
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'X-Content-Type-Options': 'nosniff'
+    })
+    response.end(JSON.stringify({ error: message }))
+  }
+
   private async handleAvatarRequest(pathname: string, request: IncomingMessage, response: ServerResponse) {
     const base64Url = pathname.replace('/avatar/', '')
     if (!base64Url) {
-      this.writeJson(response, { error: 'Missing avatar hash' }, 400, request)
+      this.writeAvatarError(response, 'Missing avatar hash', 400, request)
       return
     }
 
@@ -821,73 +944,73 @@ export class OverlayRouter {
       }
       const decodedUrl = Buffer.from(b64, 'base64').toString('utf-8')
       if (!decodedUrl.startsWith('http')) {
-        this.writeJson(response, { error: 'Invalid URL' }, 400, request)
+        this.writeAvatarError(response, 'Invalid URL', 400, request)
         return
       }
 
-      // Block SSRF: this route is reachable from the LAN, so reject any target
-      // that is (or resolves to) a private/loopback/link-local address.
-      try {
-        await assertSafePublicHttpUrl(decodedUrl)
-      } catch (err) {
-        console.warn('[OverlayRouter] Blocked avatar URL:', err instanceof Error ? err.message : err)
-        this.writeJson(response, { error: 'Blocked URL' }, 400, request)
+      // Cache-first by stable image identity, with SSRF guarding and an
+      // expired-signature retry inside loadAvatar. See lib/avatar-cache.ts.
+      const avatar = await loadAvatar(this.avatarCacheDir, decodedUrl)
+      const cacheHeaders = {
+        'Cache-Control': 'no-cache, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+        ETag: avatar.etag,
+        'X-Content-Type-Options': 'nosniff'
+      }
+      const ifNoneMatch = request.headers['if-none-match']
+      if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').some((value) => {
+        const candidate = value.trim()
+        return candidate === '*' || candidate === avatar.etag
+      })) {
+        this.writeCorsHeaders(response, 304, avatar.contentType, request, cacheHeaders)
+        response.end()
         return
       }
 
-      const hash = createHash('sha256').update(decodedUrl).digest('hex')
-      const cachePath = join(this.avatarCacheDir, hash)
-
-      try {
-        await mkdir(this.avatarCacheDir, { recursive: true })
-      } catch (e) {
-        // Ignore
-      }
-
-      try {
-        const fileStats = await stat(cachePath)
-        if (fileStats.isFile()) {
-          const data = await readFile(cachePath)
-          this.writeCorsHeaders(response, 200, 'image/jpeg', request)
-          response.end(data)
-          return
-        }
-      } catch {
-        // Does not exist
-      }
-
-      const res = await fetch(decodedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://www.tiktok.com/'
-        }
-      })
-
-      if (!res.ok) {
-        this.writeJson(response, { error: 'Failed to fetch avatar' }, res.status, request)
-        return
-      }
-
-      const contentType = res.headers.get('Content-Type') || 'image/jpeg'
-      if (!contentType.toLowerCase().startsWith('image/')) {
-        this.writeJson(response, { error: 'Not an image' }, 415, request)
-        return
-      }
-      const arrayBuffer = await res.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
-      if (buffer.byteLength > MAX_AVATAR_BYTES) {
-        this.writeJson(response, { error: 'Avatar too large' }, 413, request)
-        return
-      }
-
-      writeFile(cachePath, buffer).catch(err => console.error('[OverlayRouter] Failed to cache avatar', err))
-
-      this.writeCorsHeaders(response, 200, contentType, request)
-      response.setHeader('Cache-Control', 'public, max-age=31536000')
-      response.end(buffer)
+      this.writeCorsHeaders(response, 200, avatar.contentType, request, cacheHeaders)
+      response.end(avatar.data)
     } catch (err) {
+      if (err instanceof AvatarFetchError) {
+        if (err.status === 400) {
+          console.warn('[OverlayRouter]', err.message)
+        }
+        this.writeAvatarError(response, err.message, err.status, request)
+        return
+      }
       console.error('[OverlayRouter] Avatar proxy error:', err)
-      this.writeJson(response, { error: 'Internal server error' }, 500, request)
+      this.writeAvatarError(response, 'Internal server error', 500, request)
     }
+  }
+
+  private async handleCompanionEmojiRequest(
+    pathname: string,
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
+    const fileName = pathname.slice(COMPANION_EMOJI_PATH_PREFIX.length)
+    if (!COMPANION_EMOJI_FILE_RE.test(fileName)) {
+      this.writeJson(response, { error: 'Invalid companion emoji asset' }, 400, request)
+      return
+    }
+
+    const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : ''
+    const candidates = [
+      join(appPath, 'resources', 'companion-emojis', fileName),
+      join(process.resourcesPath || '', 'companion-emojis', fileName),
+      join(process.resourcesPath || '', 'resources', 'companion-emojis', fileName)
+    ]
+    const assetPath = candidates.find((candidate) => candidate && existsSync(candidate))
+    if (!assetPath) {
+      this.writeJson(response, { error: 'Companion emoji asset not found' }, 404, request)
+      return
+    }
+
+    const source = await readFile(assetPath)
+    this.writeCorsHeaders(response, 200, 'image/svg+xml; charset=utf-8', request, {
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff'
+    })
+    response.end(source)
   }
 }

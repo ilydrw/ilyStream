@@ -19,7 +19,7 @@ export function isKickUserConnected(config: KickConfig | null | undefined): bool
   return Boolean(config?.userAccessToken?.trim() || config?.userRefreshToken?.trim())
 }
 
-async function ensureKickUserToken(
+export async function ensureKickUserToken(
   config: KickConfig | null | undefined,
   persistTokens?: PersistKickTokens
 ): Promise<string> {

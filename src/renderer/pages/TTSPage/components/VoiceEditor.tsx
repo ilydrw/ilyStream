@@ -106,7 +106,7 @@ export function VoiceEditor({
           </div>
           <div>
             <h2>{draft.name}</h2>
-            <p>Persona Configuration</p>
+            <p>Persona configuration</p>
           </div>
         </div>
         <div className="tts-voice-editor-actions flex items-center gap-3">
@@ -116,7 +116,7 @@ export function VoiceEditor({
             className="app-button !h-10 !px-4 text-xs font-semibold tracking-tight"
           >
             <IconDeviceFloppy size={15} className="mr-2 opacity-50" />
-            {isSaving ? 'Syncing...' : 'Save Profile'}
+            {isSaving ? 'Syncing...' : 'Save profile'}
           </button>
           {draft.id !== 'default' && (
             <button
@@ -146,7 +146,7 @@ export function VoiceEditor({
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-semibold tracking-tight text-white/40">Voice Provider</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Voice provider</label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {providerCatalog.map((item) => (
                   <button
@@ -163,7 +163,7 @@ export function VoiceEditor({
 
             <div className="space-y-3">
               <div className="flex items-end justify-between gap-3">
-                <label className="text-xs font-semibold tracking-tight text-white/40">Voice Catalog</label>
+                <label className="text-xs font-semibold tracking-tight text-white/40">Voice catalog</label>
                 <span className="text-[10px] font-semibold text-white/25">
                   {selectedProvider.label} · {voiceSelectOptions.length} voices
                 </span>
@@ -253,7 +253,7 @@ export function VoiceEditor({
           {/* Performance & Tuning */}
           <div className="tts-voice-editor-stack">
             <div className="tts-tuning-panel space-y-6">
-              <label className="text-xs font-semibold tracking-tight text-white/40">Acoustic Tuning</label>
+              <label className="text-xs font-semibold tracking-tight text-white/40">Acoustic tuning</label>
               <div className="space-y-8">
                 <div className="space-y-3">
                   <div className="flex justify-between text-xs font-semibold tracking-tight text-white/60">
@@ -269,7 +269,7 @@ export function VoiceEditor({
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between text-xs font-semibold tracking-tight text-white/60">
-                    <span>Playback Rate</span>
+                    <span>Playback rate</span>
                     <span className="text-accent">{draft.rate}x</span>
                   </div>
                   <input 
@@ -281,7 +281,7 @@ export function VoiceEditor({
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between text-xs font-semibold tracking-tight text-white/60">
-                    <span>Output Volume</span>
+                    <span>Output volume</span>
                     <span className="text-accent">{Math.round(draft.volume * 100)}%</span>
                   </div>
                   <input 
@@ -318,7 +318,7 @@ export function VoiceEditor({
             </div>
 
             <div className="tts-preview-inline p-5 rounded-md bg-white/[0.02] border border-white/5 space-y-3 group hover:border-white/10 transition-all">
-              <label className="text-[10px] font-medium tracking-normal text-white/20">Synthesis Test</label>
+              <label className="text-[10px] font-medium tracking-normal text-white/20">Synthesis test</label>
               <div className="flex gap-2">
                 <input
                   type="text"

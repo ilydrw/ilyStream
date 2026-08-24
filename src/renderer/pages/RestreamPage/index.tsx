@@ -58,7 +58,7 @@ export default function RestreamPage() {
             <IconBolt size={32} className="text-accent mb-4" />
             <h3 className="text-lg font-semibold mb-2">Unified Analytics</h3>
             <p className="text-xs text-white/40 leading-relaxed">
-              Once linked, IlyStream will pull combined viewer counts and chat metrics from all your ReStream destinations automatically.
+              Once linked, ilyStream will pull combined viewer counts and chat metrics from all your ReStream destinations automatically.
             </p>
           </section>
         </div>

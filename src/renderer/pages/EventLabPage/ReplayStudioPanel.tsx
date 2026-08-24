@@ -68,7 +68,7 @@ export function ReplayStudioPanel({
         <div className="flex items-center gap-3 min-w-0">
           <IconBook2 size={22} className="text-[#d035f1] shrink-0" />
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">Event Replay Studio</h2>
+            <h2 className="text-sm font-semibold text-white">Event replay studio</h2>
             <p>Capture real bursts, save them, then replay the exact timing against the local pipeline.</p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export function ReplayStudioPanel({
             {!recording ? (
               <button onClick={onStartCapture} className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal">
                 <IconPlayerPlay size={14} className="mr-2" />
-                Start Capture
+                Start capture
               </button>
             ) : (
               <button onClick={onStopCapture} className="app-button-primary !h-10 text-[10px] font-semibold tracking-normal">

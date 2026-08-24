@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createServer as createNetServer } from 'node:net'
+import { once } from 'node:events'
+import { WebSocket } from 'ws'
 import { OverlayServer } from './overlay-server'
 import { DeviceApi } from './device-api'
 import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
+import { DEFAULT_APP_SETTINGS } from '../../shared/settings/defaults'
 
 vi.mock('electron', () => ({
   app: {
@@ -20,6 +23,204 @@ afterEach(async () => {
 })
 
 describe('OverlayServer', () => {
+  it('multiplexes replay and live overlay events over WebSocket', async () => {
+    overlayServer = new OverlayServer()
+    const receipts: any[] = []
+    const broadcasts: any[] = []
+    overlayServer.on('overlay-performance', (receipt) => receipts.push(receipt))
+    overlayServer.on('overlay-broadcast', (broadcast) => broadcasts.push(broadcast))
+    const status = await overlayServer.start(0)
+    const socket = new WebSocket(`ws://127.0.0.1:${status.port}/overlay/ws`)
+    const messages: any[] = []
+    socket.on('message', (data) => messages.push(JSON.parse(data.toString())))
+
+    await once(socket, 'open')
+    socket.send(JSON.stringify({
+      type: 'subscribe',
+      subscriptionId: 'chat-test',
+      channel: 'chat',
+      after: 0,
+      sinceAt: Date.now()
+    }))
+    socket.send(JSON.stringify({
+      type: 'subscribe',
+      subscriptionId: 'alerts-test',
+      channel: 'alerts',
+      after: 0,
+      sinceAt: Date.now()
+    }))
+
+    await vi.waitFor(() => {
+      expect(messages).toContainEqual(expect.objectContaining({
+        type: 'subscribed',
+        subscriptionId: 'chat-test',
+        channel: 'chat'
+      }))
+      expect(messages).toContainEqual(expect.objectContaining({
+        type: 'event',
+        subscriptionId: 'chat-test',
+        channel: 'chat',
+        data: { type: 'snapshot', payload: [] }
+      }))
+      expect(messages).toContainEqual(expect.objectContaining({
+        type: 'subscribed',
+        subscriptionId: 'alerts-test',
+        channel: 'alerts'
+      }))
+      expect(overlayServer?.getStatus()).toMatchObject({
+        chatClientCount: 1,
+        alertClientCount: 1,
+        webSocketClientCount: 1
+      })
+    })
+
+    overlayServer.broadcast('chat', { type: 'append', payload: { id: 'live-chat' } })
+    await vi.waitFor(() => {
+      expect(messages).toContainEqual(expect.objectContaining({
+        type: 'event',
+        channel: 'chat',
+        data: { type: 'append', payload: { id: 'live-chat' } }
+      }))
+    })
+    expect(broadcasts.at(-1)).toMatchObject({ channel: 'chat', clientCount: 1 })
+
+    const liveMessage = messages.find((message) =>
+      message.type === 'event' && message.data?.payload?.id === 'live-chat'
+    )
+    expect(liveMessage.measure).toBe(true)
+    const receivedAt = Date.now()
+    socket.send(JSON.stringify({
+      type: 'receipt',
+      subscriptionId: 'chat-test',
+      channel: 'chat',
+      eventId: liveMessage.id,
+      transport: 'websocket-test',
+      receivedAt,
+      paintedAt: receivedAt + 1
+    }))
+    await vi.waitFor(() => {
+      expect(receipts).toContainEqual(expect.objectContaining({
+        kind: 'paint',
+        channel: 'chat',
+        eventId: liveMessage.id,
+        transport: 'websocket-test'
+      }))
+    })
+
+    socket.send(JSON.stringify({ type: 'unsubscribe', subscriptionId: 'alerts-test' }))
+    await vi.waitFor(() => {
+      expect(overlayServer?.getStatus()).toMatchObject({
+        chatClientCount: 1,
+        alertClientCount: 0,
+        webSocketClientCount: 1
+      })
+    })
+
+    socket.close()
+    await once(socket, 'close')
+  })
+
+  it('broadcasts revisioned config and dispose messages on the registry channel', () => {
+    overlayServer = new OverlayServer()
+    const broadcast = vi.fn()
+    ;(overlayServer as any).sse.broadcast = broadcast
+    const widget = {
+      id: 'followers-1',
+      name: 'Followers',
+      type: 'follower-goal' as const,
+      config: { goal: 250 }
+    }
+
+    overlayServer.broadcastWidgetUpdate(widget)
+    overlayServer.broadcastWidgetDispose(widget)
+
+    expect(broadcast).toHaveBeenNthCalledWith(1, 'goals', {
+      type: 'widget-config',
+      widgetId: 'followers-1',
+      widgetType: 'follower-goal',
+      generation: expect.any(String),
+      revision: 1,
+      config: { goal: 250 }
+    })
+    expect(broadcast).toHaveBeenNthCalledWith(2, 'goals', {
+      type: 'widget-dispose',
+      widgetId: 'followers-1',
+      widgetType: 'follower-goal',
+      generation: expect.any(String),
+      revision: 2
+    })
+  })
+
+  it('serves the camera mask aliases as a transparent live overlay and an opaque editor preview', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    for (const alias of ['camera-frame', 'camera-mask', 'camera']) {
+      const response = await fetch(`${base}/overlay/${alias}`)
+      const html = await response.text()
+
+      expect(response.status, alias).toBe(200)
+      expect(html).toContain('<title>Camera Mask Outline</title>')
+      expect(html).toContain('data-preview-bg="0"')
+      expect(html).toContain('ilystream-overlay-runtime')
+    }
+
+    const preview = await (await fetch(`${base}/overlay/camera-mask?preview=1`)).text()
+    expect(preview).toContain('data-preview-bg="1"')
+  })
+
+  it('serves the customizable text widget and its friendly alias', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    for (const alias of ['text', 'custom-text']) {
+      const response = await fetch(`${base}/overlay/${alias}`)
+      const html = await response.text()
+
+      expect(response.status, alias).toBe(200)
+      expect(html).toContain('<title>ilyStream Text</title>')
+      expect(html).toContain('YOUR TEXT HERE')
+      expect(html).toContain('ilystream-overlay-runtime')
+    }
+  })
+
+  it('serves Discord call snapshots through state, SSE polling, and the widget route', async () => {
+    const callState = {
+      connectionPhase: 'connected',
+      connectionMessage: 'Discord voice is connected.',
+      channelId: 'voice-1',
+      channelName: 'Stream Room',
+      guildId: 'guild-1',
+      isConnected: true,
+      participants: [{
+        id: 'discord-user',
+        username: 'Discord Friend',
+        avatarUrl: null,
+        isSpeaking: true,
+        isMuted: false,
+        isDeafened: false,
+        isCurrentUser: false
+      }],
+      updatedAt: new Date(0).toISOString()
+    }
+    overlayServer = new OverlayServer()
+    overlayServer.setPlatformManager({ getDiscordCallState: () => callState })
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    const state = await (await fetch(`${base}/overlay/discord-call/state`)).json()
+    expect(state).toEqual(callState)
+
+    const poll = await (await fetch(`${base}/overlay/events/poll?channel=discord-call&after=0`)).json() as any
+    expect(poll.events).toEqual([{ id: 0, data: { type: 'snapshot', payload: callState } }])
+
+    const widget = await (await fetch(`${base}/overlay/discord-call`)).text()
+    expect(widget).toContain('channel=discord-call')
+    expect(widget).toContain('ilystream-overlay-runtime')
+  })
+
   it('requires a scoped preview session before serving the executable preview protocol', async () => {
     overlayServer = new OverlayServer()
     const status = await overlayServer.start(0)
@@ -63,6 +264,21 @@ describe('OverlayServer', () => {
       `${base}/overlay/chat-unified?preview=1&previewToken=${encodeURIComponent(previewToken)}`
     )
     expect(releasedSession.status).toBe(403)
+  })
+
+  it('serves a dock-specific Unified Chat shell without changing the transparent overlay', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const base = `http://127.0.0.1:${status.port}`
+
+    const overlay = await (await fetch(`${base}/overlay/chat-unified`)).text()
+    const dock = await (await fetch(`${base}/overlay/chat-unified?dock=1`)).text()
+
+    expect(overlay).toContain('data-dock-mode="0"')
+    expect(overlay).not.toContain('<header class="dock-header">')
+    expect(dock).toContain('data-dock-mode="1"')
+    expect(dock).toContain('<header class="dock-header">')
+    expect(dock).toContain('Chat is quiet')
   })
 
   it('keeps overlays on loopback when starting the isolated LAN device listener', async () => {
@@ -436,6 +652,11 @@ describe('OverlayServer', () => {
     expect(pairResponse.headers.get('access-control-allow-origin')).toBe('*')
     expect(pairBody.token).toBe('desk-token')
 
+    overlayServer.broadcastAppTheme({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'ember'
+    })
+
     const eventsController = new AbortController()
     const eventsResponse = await fetch(`${deviceBase}/api/v1/events?token=${pairBody.token}`, {
       headers: { Origin: origin },
@@ -466,6 +687,8 @@ describe('OverlayServer', () => {
     })
 
     const eventsStream = await readStreamUntil(eventsResponse, '"chatBacklog"', eventsController)
+    expect(eventsStream).toContain('"type":"appTheme"')
+    expect(eventsStream).toContain('"theme":"ember"')
     expect(eventsStream).toContain('"message":"deskthing hello"')
   })
 
@@ -515,6 +738,31 @@ describe('OverlayServer', () => {
       })
     ])
     expect(chatPoll.cursor).toBeGreaterThan(0)
+    expect(chatPoll.generation).toEqual(expect.any(String))
+    expect(chatPoll.reset).toBe(false)
+
+    const staleCursorResponse = await fetch(
+      `${base}/overlay/events/poll?channel=chat&after=999999`
+    )
+    const staleCursorPoll = await staleCursorResponse.json() as any
+    expect(staleCursorPoll.reset).toBe(true)
+    expect(staleCursorPoll.generation).toBe(chatPoll.generation)
+    expect(staleCursorPoll.events).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'reload',
+          reason: 'overlay-server-restarted'
+        })
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'snapshot',
+          payload: expect.arrayContaining([
+            expect.objectContaining({ message: 'poll me' })
+          ])
+        })
+      })
+    ])
 
     overlayServer.broadcast('screen-border', { type: 'reload', id: 'border-widget' })
 

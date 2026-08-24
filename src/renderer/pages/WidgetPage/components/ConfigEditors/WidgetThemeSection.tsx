@@ -39,12 +39,11 @@ export function WidgetThemeSection({
                   <div className="truncate text-[12px] font-semibold">{theme.name}</div>
                   <div className="mt-0.5 truncate text-[11px] text-white/35">{theme.description}</div>
                 </div>
-                <div className="flex shrink-0 overflow-hidden rounded-full border border-white/10">
-                  <span className="h-5 w-4" style={{ background: theme.colors.primary }} />
-                  <span className="h-5 w-4" style={{ background: theme.colors.secondary }} />
-                  <span className="h-5 w-4" style={{ background: theme.colors.text }} />
-                  <span className="h-5 w-4" style={{ background: theme.colors.accent }} />
-                </div>
+                <div
+                  className="h-5 w-16 shrink-0 rounded-full border border-white/15 shadow-inner"
+                  style={{ background: `linear-gradient(90deg, ${theme.previewColors.join(', ')})` }}
+                  title={`${theme.name} color palette`}
+                />
               </div>
             </button>
           )

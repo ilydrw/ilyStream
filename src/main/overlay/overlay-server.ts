@@ -9,15 +9,24 @@ import { RemoteAuthService } from '../services/remote-auth-service'
 import type { NowPlayingPayload } from '../../shared/widgets'
 import { SSEManager } from './sse-manager'
 import { OverlayRouter } from './overlay-router'
+import { OverlayWebSocketManager } from './overlay-websocket-manager'
 import { ChatManager } from './managers/chat-manager'
 import { AlertManager } from './managers/alert-manager'
 import { GoalManager } from './managers/goal-manager'
 import { NowPlayingManager } from './managers/now-playing-manager'
-import { LikesTracker } from './managers/likes-tracker'
+import { LikesTracker, type AcceptedLikeProgress } from './managers/likes-tracker'
 import { DEFAULT_PORT, type OverlayChannel } from './types'
 import { shouldBroadcastParticleEvent } from './overlay-payloads'
-import { renderWidgetPreviewHtml } from './widget-renderers'
-import type { Widget } from '../../shared/widgets'
+import { renderWidgetPreviewContent } from './widget-renderers'
+import {
+  getWidgetEventChannel,
+  WIDGET_RUNTIME_REGISTRY,
+  type Widget,
+  type WidgetType
+} from '../../shared/widgets'
+import type { UISettings } from '../../shared/app-settings'
+import { resolveAppThemePalette } from '../../shared/app-themes'
+import type { DeviceThemeState } from '../../shared/device-api'
 
 // Browser-source routes stay on their local listener. Companion pairing starts a
 // separate deny-by-default listener that admits only the device API namespace.
@@ -101,6 +110,7 @@ export class OverlayServer extends EventEmitter {
   private economyService: any | null = null
   private server: Server | null = null
   private deviceServer: Server | null = null
+  private webSockets: OverlayWebSocketManager | null = null
   private devicePort: number | null = null
   private listenHost = DEFAULT_LISTEN_HOST
   private deviceLanEnabled = false
@@ -137,16 +147,19 @@ export class OverlayServer extends EventEmitter {
   }
 
   private operationQueue: Promise<unknown> = Promise.resolve()
+  private widgetConfigRevision = 0
 
   constructor() {
     super()
     this.sse = new SSEManager(
       () => this.updateClientCounts(),
-      (channel, payload, clientCount) => {
+      (channel, payload, clientCount, eventId) => {
+        this.webSockets?.broadcast(channel, payload, eventId)
+        const totalClientCount = clientCount + (this.webSockets?.getSubscriptionCount(channel) || 0)
         this.emit('overlay-broadcast', {
           channel,
           payload,
-          clientCount,
+          clientCount: totalClientCount,
           at: new Date().toISOString()
         })
       }
@@ -177,7 +190,8 @@ export class OverlayServer extends EventEmitter {
       (event) => this.handleStreamEvent(event),
       (action) => this.emit('deck-action', action),
       () => this.statsService,
-      () => this.economyService?.getLeaderboardSnapshot?.() || []
+      () => this.economyService?.getLeaderboardSnapshot?.() || [],
+      () => this.platformManager?.getDiscordCallState?.() || null
     )
   }
 
@@ -238,16 +252,19 @@ export class OverlayServer extends EventEmitter {
   getStatus(): OverlayRuntimeStatus {
     return {
       ...this.status,
-      chatClientCount: this.sse.getClientCount('chat'),
-      alertClientCount: this.sse.getClientCount('alerts'),
-      goalClientCount: this.sse.getClientCount('goals'),
-      followerGoalClientCount: this.sse.getClientCount('follower-goal'),
-      socialsClientCount: this.sse.getClientCount('socials'),
-      borderClientCount: this.sse.getClientCount('screen-border'),
-      particleClientCount: this.sse.getClientCount('event-particles'),
-      roseClientCount: this.sse.getClientCount('falling-roses'),
-      likesClientCount: this.sse.getClientCount('likes'),
-      leaderboardClientCount: this.sse.getClientCount('leaderboard'),
+      chatClientCount: this.getOverlayClientCount('chat'),
+      alertClientCount: this.getOverlayClientCount('alerts'),
+      goalClientCount: this.getOverlayClientCount('goals'),
+      followerGoalClientCount: this.getOverlayClientCount('follower-goal'),
+      textWidgetClientCount: this.getOverlayClientCount('text'),
+      socialsClientCount: this.getOverlayClientCount('socials'),
+      borderClientCount: this.getOverlayClientCount('screen-border'),
+      particleClientCount: this.getOverlayClientCount('event-particles'),
+      roseClientCount: this.getOverlayClientCount('falling-roses'),
+      likesClientCount: this.getOverlayClientCount('likes'),
+      discordCallClientCount: this.getOverlayClientCount('discord-call'),
+      leaderboardClientCount: this.getOverlayClientCount('leaderboard'),
+      webSocketClientCount: this.webSockets?.getClientCount() || 0,
       dualVerticalClientCount: this.router.getDualVerticalClientCount()
     }
   }
@@ -270,7 +287,7 @@ export class OverlayServer extends EventEmitter {
   renderWidgetPreview(widget: Widget, previewToken: string): string | null {
     if (!this.router.validateWidgetPreviewSession(previewToken, widget.id)) return null
 
-    return renderWidgetPreviewHtml(widget, {
+    return renderWidgetPreviewContent(widget, {
       settings: this.db?.getAllSettings() || {},
       boardSounds: this.soundboardService?.getAllSounds('board') || [],
       deckActions: this.db?.getAllDeckActions() || []
@@ -317,6 +334,14 @@ export class OverlayServer extends EventEmitter {
     this.deviceApi?.broadcast('recordingState', { isRecording, path })
   }
 
+  broadcastAppTheme(settings: UISettings): void {
+    const payload: DeviceThemeState = {
+      theme: settings.theme,
+      ...resolveAppThemePalette(settings)
+    }
+    this.deviceApi?.broadcast('appTheme', payload)
+  }
+
   broadcast(channel: any, payload: any): void {
     // Skip the per-broadcast log for leaderboard/deck — those are emitted in
     // tight bursts by the like pipeline and JSON.stringify on the full
@@ -347,7 +372,9 @@ export class OverlayServer extends EventEmitter {
     this.chat.broadcastFeature(payload)
   }
 
-  handleStreamEvent(event: AnyStreamEvent): void {
+  handleStreamEvent(event: AnyStreamEvent): { likeProgress?: AcceptedLikeProgress } {
+    const result: { likeProgress?: AcceptedLikeProgress } = {}
+
     this.runStreamEventStage('chat', () => {
       this.chat.handleEvent(event)
     })
@@ -392,6 +419,10 @@ export class OverlayServer extends EventEmitter {
         }
         const updatedState = this.likes.updateState(like, feedItem)
         if (updatedState) {
+          result.likeProgress = {
+            acceptedAmount: updatedState.acceptedAmount,
+            viewerTotal: updatedState.viewerTotal
+          }
           this.deviceApi?.broadcast('likes', { total: updatedState.totalLikes, recent: updatedState })
         }
       })
@@ -407,28 +438,51 @@ export class OverlayServer extends EventEmitter {
         this.deviceApi?.broadcast('viewerCount', { total, breakdown: viewerCounts })
       })
     }
+
+    return result
   }
 
   pushAlert(payload: any, platform: string): void {
     this.alerts.pushAlert(payload, platform)
   }
 
-  broadcastWidgetUpdate(type: string, id: string): void {
-    const channelMap: Record<string, any> = {
-      'chat': 'chat', 'chat-unified': 'chat-unified', 'likes-tracker': 'likes',
-      'alerts': 'alerts', 'now-playing': 'now-playing', 'spotify': 'now-playing',
-      'follower-goal': 'follower-goal', 'socials': 'socials', 'screen-border': 'screen-border',
-      'event-particles': 'event-particles', 'gift-overlays': 'event-particles',
-      'falling-roses': 'falling-roses', 'particles': 'particles', 'discord-promo': 'discord-promo',
-      'node-network': 'node-network', 'latest-gifter': 'latest-gifter', 'physics': 'physics',
-      'leaderboard': 'leaderboard', 'deck': 'deck'
+  broadcastWidgetUpdate(widget: Widget): void
+  broadcastWidgetUpdate(type: string, id: string): void
+  broadcastWidgetUpdate(widgetOrType: Widget | string, id?: string): void {
+    if (typeof widgetOrType !== 'string') {
+      const widget = widgetOrType
+      const definition = WIDGET_RUNTIME_REGISTRY[widget.type]
+      if (!definition) return
+      this.sse.broadcast(getWidgetEventChannel(widget.type) as OverlayChannel, {
+        type: 'widget-config',
+        widgetId: widget.id,
+        widgetType: widget.type,
+        generation: this.router.getRuntimeGeneration(),
+        revision: ++this.widgetConfigRevision,
+        config: widget.config
+      })
+      return
     }
-    const channel = channelMap[type]
-    if (channel) this.sse.broadcast(channel, { type: 'reload', id })
+
+    // Non-widget surfaces such as Deck still use their existing reload signal.
+    const definition = WIDGET_RUNTIME_REGISTRY[widgetOrType as WidgetType]
+    const channel = definition?.eventChannel || (widgetOrType === 'deck' ? 'deck' : null)
+    if (channel) this.sse.broadcast(channel as OverlayChannel, { type: 'reload', id })
+  }
+
+  broadcastWidgetDispose(widget: Widget): void {
+    if (!WIDGET_RUNTIME_REGISTRY[widget.type]) return
+    this.sse.broadcast(getWidgetEventChannel(widget.type) as OverlayChannel, {
+      type: 'widget-dispose',
+      widgetId: widget.id,
+      widgetType: widget.type,
+      generation: this.router.getRuntimeGeneration(),
+      revision: ++this.widgetConfigRevision
+    })
   }
 
   resetWidgetRuntimeState(): void {
-    const resetChannels: OverlayChannel[] = ['chat', 'chat-unified', 'alerts', 'goals', 'likes', 'leaderboard']
+    const resetChannels: OverlayChannel[] = ['chat', 'chat-unified', 'alerts', 'goals', 'likes', 'leaderboard', 'discord-call']
 
     this.chat.clearHistory()
     this.alerts.clearHistory()
@@ -443,6 +497,10 @@ export class OverlayServer extends EventEmitter {
     this.sse.broadcast('goals', { type: 'snapshot', payload: this.goals.getState() })
     this.sse.broadcast('likes', { type: 'snapshot', payload: this.likes.getSnapshot() })
     this.sse.broadcast('leaderboard', { type: 'update', data: [] })
+    this.sse.broadcast('discord-call', {
+      type: 'snapshot',
+      payload: this.platformManager?.getDiscordCallState?.() || null
+    })
   }
 
   setDualVerticalFrame(frame: Buffer): void {
@@ -468,6 +526,12 @@ export class OverlayServer extends EventEmitter {
     try {
       this.listenHost = resolveListenHost()
       this.server = createServer((req, res) => this.router.handleRequest(req, res))
+      this.webSockets = new OverlayWebSocketManager(
+        this.server,
+        (channel, options) => this.router.getEventReplay(channel, options),
+        (receipt) => this.emit('overlay-performance', receipt),
+        () => this.updateClientCounts()
+      )
       await new Promise<void>((resolve, reject) => {
         this.server?.listen(port, this.listenHost, () => resolve())
         this.server?.once('error', reject)
@@ -488,6 +552,8 @@ export class OverlayServer extends EventEmitter {
       this.markRunning(actualPort)
       this.sse.startPingLoop()
     } catch (error: any) {
+      this.webSockets?.close()
+      this.webSockets = null
       if (!this.server?.listening) {
         this.status.running = false
         this.status.listenHost = null
@@ -500,6 +566,8 @@ export class OverlayServer extends EventEmitter {
 
   private async stopInternal(): Promise<void> {
     this.sse.closeAll()
+    this.webSockets?.close()
+    this.webSockets = null
     this.router.closeAllClients()
     this.deviceApi?.closeAllClients?.()
     if (this.deviceServer) {
@@ -630,6 +698,36 @@ export class OverlayServer extends EventEmitter {
   private updateClientCounts(): void {
     this.emit('status', this.getStatus())
   }
+
+  private getOverlayClientCount(channel: OverlayChannel): number {
+    return this.sse.getClientCount(channel) + (this.webSockets?.getSubscriptionCount(channel) || 0)
+  }
+}
+
+function listen(server: Server, port: number, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => reject(error)
+    server.once('error', onError)
+    server.listen(port, host, () => {
+      server.off('error', onError)
+      resolve()
+    })
+  })
+}
+
+function writeBoundaryJson(
+  response: ServerResponse<IncomingMessage>,
+  statusCode: number,
+  payload: Record<string, unknown>
+): void {
+  if (response.writableEnded) return
+  const json = JSON.stringify(payload)
+  response.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(json),
+    'Cache-Control': 'no-store'
+  })
+  response.end(json)
 }
 
 function listen(server: Server, port: number, host: string): Promise<void> {

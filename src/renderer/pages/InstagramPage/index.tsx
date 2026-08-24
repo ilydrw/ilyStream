@@ -41,7 +41,7 @@ export default function InstagramPage() {
             <h2 className="text-2xl font-semibold mb-4">Ready to go Live?</h2>
             <p className="text-white/40 max-w-md mb-10">
               Instagram Live requires a Professional or Creator account. 
-              Once linked, you can stream directly from IlyStream using your dedicated Stream Key.
+              Once linked, you can stream directly from ilyStream using your dedicated Stream Key.
             </p>
             <button className="px-12 py-4 rounded-md bg-gradient-to-r from-pink-600 to-orange-600 text-white font-semibold text-xs tracking-tight hover:scale-[1.05] transition-transform">
               Connect Instagram Account

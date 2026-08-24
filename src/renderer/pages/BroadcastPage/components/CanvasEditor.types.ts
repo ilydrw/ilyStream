@@ -41,6 +41,7 @@ export interface CanvasEditorProps {
   outputFps: number
   outputBitrateKbps: number
   videoRefs: MutableRefObject<Record<string, HTMLVideoElement>>
+  devices: MediaDeviceInfo[]
   streamReady: number
   outputCodec?: string
   streamOutputs?: CanvasStreamOutput[]
@@ -49,11 +50,22 @@ export interface CanvasEditorProps {
   dualVerticalOverlayEnabled?: boolean
   isVisible?: boolean
   isPreview?: boolean
+  /** Studio Program stays observable but cannot be edited before a TAKE. */
+  readOnly?: boolean
   // Force the per-aspect output canvases to render even when no stream or
   // overlay needs them. Used by the projector mirror feature so it can grab
   // a 9:16 (or 16:9) render on demand.
   forceVerticalCanvas?: boolean
   forceHorizontalCanvas?: boolean
+  /** Keep browser-source frames active while this editor is rendering. */
+  browserFramesNeeded?: boolean
+  /** Shared cache lets Program and Preview consume one browser-source frame. */
+  browserFrameCacheRef?: MutableRefObject<Record<string, BrowserFrameSurface>>
+  /** Program owns the union of Program + selected Preview browser sources. */
+  browserSourceLayers?: StudioLayer[]
+  manageBrowserSources?: boolean
+  /** Sources needed by an imminent transition; kept warm in Program caches. */
+  prewarmScene?: StudioScene
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
   /** Double-click on a source — used to jump straight into widget editing. */
@@ -130,4 +142,8 @@ export interface CanvasEditorHandle {
   // null if that aspect isn't currently being rendered (e.g. vertical canvas
   // is only created when dual mode / vertical stream output is active).
   getOutputCanvas: (aspect: '16:9' | '9:16') => HTMLCanvasElement | null
+  // The broadcast session compositing this aspect on the engine right now, or
+  // null when that aspect is still drawn on canvas. A projector uses this to
+  // mirror the engine's output instead of forcing a canvas composite.
+  getNativeSessionId: (aspect: '16:9' | '9:16') => string | null
 }

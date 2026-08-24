@@ -15,6 +15,10 @@ const CHAT_RELAY_SUPPRESSED_ECHO = Symbol('chatRelaySuppressedEcho')
 const DEFAULT_AUTO_RELAY_FAILURE_COOLDOWN_MS = 30 * 60 * 1000
 const MAX_SUPPRESSIONS_PER_PLATFORM = 64
 const MAX_RECENT_ORIGINALS = 300
+const CHAT_EVENT_DEDUP_WINDOW_MS = 10 * 60 * 1000
+const MAX_RECENT_CHAT_EVENT_IDS = 2_000
+const DEFAULT_MAX_PENDING_AUTO_RELAYS_PER_TARGET = 2
+const DEFAULT_AUTO_RELAY_MAX_AGE_MS = 15_000
 /** Undecorated duplicates must be at least this long to count as relays —
  * "lol" showing up on two platforms within a minute is coincidence. */
 const MIN_UNDECORATED_DUPLICATE_LENGTH = 12
@@ -31,9 +35,21 @@ interface RecentOriginal {
   expiresAt: number
 }
 
+interface PendingAutoRelay {
+  text: string
+  enqueuedAt: number
+}
+
+interface AutoRelayTargetQueue {
+  draining: boolean
+  pending: PendingAutoRelay[]
+}
+
 export class ChatRelayService {
   private readonly suppressionWindowMs: number
   private readonly autoRelayFailureCooldownMs: number
+  private readonly maxPendingAutoRelaysPerTarget: number
+  private readonly autoRelayMaxAgeMs: number
 
   // Tracks recently sent messages per target platform so echoed bot messages do not bounce back.
   private readonly suppressedInbound = new Map<Platform, SuppressionEntry[]>()
@@ -41,10 +57,21 @@ export class ChatRelayService {
   // copies we did not send ourselves (StreamElements, Restream, ...) and tag
   // modes whose output carries no "[Platform]" marker.
   private readonly recentOriginals: RecentOriginal[] = []
+  // Connector reconnects can replay the same platform message. Keep its stable
+  // ID long enough to stop a replay from becoming another outbound relay.
+  private readonly recentChatEventIds = new Map<string, number>()
+  // Auto relays are real-time conversation, not a durable delivery queue. A
+  // slow target gets a small, fresh backlog instead of minutes of old chat.
+  private readonly autoRelayTargetQueues = new Map<Platform, AutoRelayTargetQueue>()
   private readonly pausedAutoRelayTargets = new Map<Platform, { until: number; reason: string }>()
+  private disposed = false
 
   private readonly handlePlatformEvent = (event: AnyStreamEvent) => {
     if (event.type !== 'chat') {
+      return
+    }
+
+    if (this.isDuplicateChatEvent(event)) {
       return
     }
 
@@ -70,23 +97,36 @@ export class ChatRelayService {
     }
 
     this.rememberOriginal(event, normalizedText)
-    void this.handleChatEvent(event)
+    this.handleChatEvent(event)
   }
 
   constructor(
     private readonly platformManager: PlatformManager,
     private readonly getSettings: () => AppSettings,
-    options: { suppressionWindowMs?: number; autoRelayFailureCooldownMs?: number } = {}
+    options: {
+      suppressionWindowMs?: number
+      autoRelayFailureCooldownMs?: number
+      maxPendingAutoRelaysPerTarget?: number
+      autoRelayMaxAgeMs?: number
+    } = {}
   ) {
     this.suppressionWindowMs = options.suppressionWindowMs ?? 90_000
     this.autoRelayFailureCooldownMs = options.autoRelayFailureCooldownMs ?? DEFAULT_AUTO_RELAY_FAILURE_COOLDOWN_MS
+    this.maxPendingAutoRelaysPerTarget = Math.max(
+      1,
+      options.maxPendingAutoRelaysPerTarget ?? DEFAULT_MAX_PENDING_AUTO_RELAYS_PER_TARGET
+    )
+    this.autoRelayMaxAgeMs = Math.max(0, options.autoRelayMaxAgeMs ?? DEFAULT_AUTO_RELAY_MAX_AGE_MS)
     this.platformManager.on('event', this.handlePlatformEvent)
   }
 
   dispose(): void {
+    this.disposed = true
     this.platformManager.off('event', this.handlePlatformEvent)
     this.suppressedInbound.clear()
     this.recentOriginals.length = 0
+    this.recentChatEventIds.clear()
+    this.autoRelayTargetQueues.clear()
     this.pausedAutoRelayTargets.clear()
   }
 
@@ -97,7 +137,7 @@ export class ChatRelayService {
     return this.sendToPlatforms(platforms, htmlToSingleLinePlainText(text))
   }
 
-  private async handleChatEvent(event: ChatEvent): Promise<void> {
+  private handleChatEvent(event: ChatEvent): void {
     const incomingText = normalizeRelayText(event.message)
     if (incomingText.length === 0) {
       return
@@ -126,7 +166,8 @@ export class ChatRelayService {
       {
         platform: event.platform,
         displayName: event.user.displayName,
-        message: event.message
+        message: event.message,
+        emotes: event.emotes
       },
       settings.chatRelayTagMode
     )
@@ -135,18 +176,75 @@ export class ChatRelayService {
       return
     }
 
-    const results = await this.sendToPlatforms(targets, relayText)
-    const failures = results.filter((result) => !result.ok)
+    for (const target of targets) {
+      this.enqueueAutoRelay(target, relayText)
+    }
+  }
 
-    if (failures.length > 0) {
-      for (const failure of failures) {
-        this.pauseAutoRelayTargetOnQuotaFailure(failure.platform, failure.error)
+  private enqueueAutoRelay(platform: Platform, text: string): void {
+    if (this.disposed) return
+
+    let queue = this.autoRelayTargetQueues.get(platform)
+    if (!queue) {
+      queue = { draining: false, pending: [] }
+      this.autoRelayTargetQueues.set(platform, queue)
+    }
+
+    if (queue.pending.length >= this.maxPendingAutoRelaysPerTarget) {
+      queue.pending.splice(0, queue.pending.length - this.maxPendingAutoRelaysPerTarget + 1)
+    }
+    queue.pending.push({ text, enqueuedAt: Date.now() })
+
+    if (!queue.draining) {
+      void this.drainAutoRelayQueue(platform, queue)
+    }
+  }
+
+  private async drainAutoRelayQueue(platform: Platform, queue: AutoRelayTargetQueue): Promise<void> {
+    queue.draining = true
+
+    try {
+      while (!this.disposed && queue.pending.length > 0) {
+        const delivery = queue.pending.shift()
+        if (!delivery) continue
+        if (Date.now() - delivery.enqueuedAt > this.autoRelayMaxAgeMs) continue
+        if (this.isAutoRelayTargetPaused(platform)) {
+          queue.pending.length = 0
+          return
+        }
+
+        let result: PlatformChatSendResult | undefined
+        try {
+          const results = await this.sendToPlatforms([platform], delivery.text)
+          result = results[0]
+        } catch (error) {
+          result = {
+            platform,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        }
+
+        if (!result?.ok) {
+          const error = result?.error || 'Unknown error'
+          this.pauseAutoRelayTargetOnQuotaFailure(platform, error)
+          // A failed real-time delivery invalidates the backlog. Future source
+          // messages can try again after the target recovers, but old ones
+          // must not burst out after a page reload or reconnect.
+          queue.pending.length = 0
+          console.warn(`[chat-relay] Auto relay failure: ${platform}: ${error}`)
+          return
+        }
       }
-
-      console.warn(
-        '[chat-relay] Auto relay failures:',
-        failures.map((failure) => `${failure.platform}: ${failure.error || 'Unknown error'}`).join(' | ')
-      )
+    } finally {
+      queue.draining = false
+      if (this.disposed) {
+        queue.pending.length = 0
+      } else if (queue.pending.length > 0) {
+        void this.drainAutoRelayQueue(platform, queue)
+      } else if (this.autoRelayTargetQueues.get(platform) === queue) {
+        this.autoRelayTargetQueues.delete(platform)
+      }
     }
   }
 
@@ -250,6 +348,38 @@ export class ChatRelayService {
         this.suppressedInbound.set(platform, remaining)
       }
     }
+  }
+
+  private isDuplicateChatEvent(event: ChatEvent): boolean {
+    const id = String(event.id || '').trim()
+    if (!id) return false
+
+    const now = Date.now()
+    const key = `${event.platform}:${id}`
+    const existingExpiry = this.recentChatEventIds.get(key)
+    if (existingExpiry && existingExpiry > now) {
+      return true
+    }
+    if (existingExpiry) {
+      this.recentChatEventIds.delete(key)
+    }
+
+    if (this.recentChatEventIds.size >= MAX_RECENT_CHAT_EVENT_IDS) {
+      for (const [candidate, expiresAt] of this.recentChatEventIds) {
+        if (expiresAt <= now) {
+          this.recentChatEventIds.delete(candidate)
+        }
+      }
+    }
+
+    while (this.recentChatEventIds.size >= MAX_RECENT_CHAT_EVENT_IDS) {
+      const oldest = this.recentChatEventIds.keys().next().value as string | undefined
+      if (!oldest) break
+      this.recentChatEventIds.delete(oldest)
+    }
+
+    this.recentChatEventIds.set(key, now + CHAT_EVENT_DEDUP_WINDOW_MS)
+    return false
   }
 
   private rememberOriginal(event: ChatEvent, normalizedText: string): void {

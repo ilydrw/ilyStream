@@ -27,22 +27,28 @@ class BroadcastProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) {
-    const input = inputs[0];
-    if (input && input.length > 0) {
-      const channelCount = input.length;
-      const sampleCount = input[0].length;
-      
-      for (let i = 0; i < sampleCount; i++) {
-        const offset = this.pendingFrames * 2
-        this.pending[offset] = input[0][i]
-        this.pending[offset + 1] = channelCount > 1 ? input[1][i] : input[0][i]
-        this.pendingFrames++
+    const input = inputs[0]
+    const output = outputs[0]
+    const channelCount = input?.length || 0
+    // AudioWorklet render quanta are normally 128 frames. When the mixer has
+    // no connected/live source yet, Chromium supplies no input channels, but
+    // FFmpeg still needs PCM data before it can open the RTMP output. Use the
+    // output quantum length (or the spec-default 128) to emit silence until
+    // real audio arrives.
+    const sampleCount = input?.[0]?.length || output?.[0]?.length || 128
 
-        if (this.pendingFrames >= CHUNK_FRAMES) {
-          this.port.postMessage(this.pending.buffer, [this.pending.buffer])
-          this.pending = new Float32Array(CHUNK_FRAMES * CHANNELS)
-          this.pendingFrames = 0
-        }
+    for (let i = 0; i < sampleCount; i++) {
+      const left = channelCount > 0 ? (input[0][i] || 0) : 0
+      const right = channelCount > 1 ? (input[1][i] || 0) : left
+      const offset = this.pendingFrames * CHANNELS
+      this.pending[offset] = left
+      this.pending[offset + 1] = right
+      this.pendingFrames++
+
+      if (this.pendingFrames >= CHUNK_FRAMES) {
+        this.port.postMessage(this.pending.buffer, [this.pending.buffer])
+        this.pending = new Float32Array(CHUNK_FRAMES * CHANNELS)
+        this.pendingFrames = 0
       }
     }
     
@@ -52,3 +58,5 @@ class BroadcastProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('broadcast-processor', BroadcastProcessor);
+
+export {}

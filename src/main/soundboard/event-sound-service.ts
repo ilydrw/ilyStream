@@ -1,14 +1,42 @@
-import type { AppSettings } from '../../shared/app-settings'
-import type { AnyStreamEvent, GiftEvent, JoinEvent } from '../platforms/types'
+import type { AppSettings, ViewerJoinSound } from '../../shared/app-settings'
+import {
+  isStreamPlatform,
+  type AnyStreamEvent,
+  type GiftEvent,
+  type JoinEvent,
+  type LikeEvent,
+  type SubscriptionEvent
+} from '../platforms/types'
 import type { SoundboardService } from './soundboard-service'
 import type { OverlayServer } from '../overlay/overlay-server'
 import type { AlertRule } from '../../shared/alert-rules'
 import { LowValueGiftCooldown } from '../../shared/gift-alert-protection'
+import {
+  formatGiftSubscriptionAlert,
+  formatSubscriptionTier,
+  resolveSubscriptionGifter
+} from '../../shared/subscription-display'
+import type { AcceptedLikeProgress } from '../overlay/managers/likes-tracker'
 
 type AlertKind = 'Gift' | 'Follow' | 'Superfan'
 
 const GIFT_ALERT_AGGREGATION_MS = 150
+const EVENT_SOUND_DEDUPE_MS = 5 * 60 * 1000
+const TWITCH_GIFT_SUB_SOUND_DEDUPE_MS = 10_000
 const SUPERFAN_JOIN_DEDUPE_MS = 10 * 60 * 1000
+// A platform must stay disconnected at least this long before the next
+// successful connect counts as a NEW stream session (re-arming intro sounds).
+// TikTok drops and auto-reconnects constantly mid-stream — and its connector
+// will even auto-reconnect into the next live after a streamEnd — so a long
+// offline gap is the stream-boundary signal, not the connect itself.
+const STREAM_SESSION_GAP_MS = 10 * 60 * 1000
+// How often (per viewer) we're willing to run the DB-touching intro-sound match.
+// TikTok's join/member event is unreliable, so intros trigger on a viewer's
+// first activity of ANY kind; this throttle stops high like/chat volume from
+// resolving the same viewer on every event. Actual re-fire timing is still
+// governed by each rule's own cooldown.
+const INTRO_LOOKUP_THROTTLE_MS = 60 * 1000
+const LIKE_MILESTONE_INTERVAL = 10_000
 
 export type ViewerProfileResolver = (
   platform: string,
@@ -20,8 +48,16 @@ export class EventSoundService {
   private settings: AppSettings | null = null
   private recentSuperfanJoinUsers = new Map<string, number>()
   private recentRuleHits = new Map<string, number>()
-  private recentJoinSoundHits = new Map<string, number>()
+  private introLookupAt = new Map<string, number>()
+  // Viewers whose intro already played during the current stream session.
+  // This is intentionally shared by every streaming platform: linked TikTok,
+  // Twitch, YouTube, and Kick accounts represent one viewer, not four intros.
+  private introPlayed = new Set<string>()
+  private platformConnected = new Map<string, boolean>()
+  private streamSessionInactiveAt: number | null = null
   private giftAggregationTimers = new Map<string, { count: number, timer: NodeJS.Timeout, lastEvent: GiftEvent }>()
+  private recentEventSoundIds = new Map<string, number>()
+  private recentTwitchGiftSubSounds = new Map<string, number>()
   private lowValueGiftAlertCooldown = new LowValueGiftCooldown()
 
   constructor(
@@ -34,6 +70,39 @@ export class EventSoundService {
     this.settings = this.withLegacyAlertRouteValues(settings)
   }
 
+  /**
+   * Feed platform connection status changes in so intro sounds re-arm on
+   * stream boundaries. "New stream" = reconnecting after every stream platform
+   * has been disconnected for at least {@link STREAM_SESSION_GAP_MS}. Quick
+   * reconnect blips and one-platform drops during a multistream keep the same
+   * session, so neither can replay an intro.
+   */
+  handleConnectionStatus(platform: string, status: string): void {
+    if (!isStreamPlatform(platform)) return
+
+    const wasConnected = this.platformConnected.get(platform) ?? false
+    const isConnected = status === 'connected'
+    if (isConnected === wasConnected) return
+    this.platformConnected.set(platform, isConnected)
+
+    if (!isConnected) {
+      if (!this.hasConnectedStreamPlatform()) {
+        this.streamSessionInactiveAt = Date.now()
+      }
+      return
+    }
+
+    const inactiveAt = this.streamSessionInactiveAt
+    this.streamSessionInactiveAt = null
+    if (inactiveAt !== null && Date.now() - inactiveAt >= STREAM_SESSION_GAP_MS) {
+      this.introPlayed.clear()
+    }
+  }
+
+  private hasConnectedStreamPlatform(): boolean {
+    return [...this.platformConnected.values()].some(Boolean)
+  }
+
   playSound(soundId: string, volume: number): void {
     this.soundboardService.playSound(soundId, volume)
   }
@@ -43,11 +112,28 @@ export class EventSoundService {
     this.soundboardService.stopAll()
   }
 
-  processEvent(event: AnyStreamEvent): void {
+  processEvent(event: AnyStreamEvent, likeProgress?: AcceptedLikeProgress): void {
     if (!this.settings) return
+
+    // Personal intro ("join") sounds fire on a viewer's FIRST activity of the
+    // session, from ANY event type — TikTok's member/join event is unreliable
+    // and frequently never fires for regulars (they chat/gift/like without ever
+    // producing a `join`), so gating intros on it alone means they never play.
+    // A milestone that uses the same intro sound counts as that first playback,
+    // preventing the single like packet from playing it twice back-to-back.
+    const firedLikeMilestone = event.type === 'like'
+      ? this.handleLikeMilestone(event, likeProgress)
+      : false
+    if (!firedLikeMilestone) {
+      this.handleViewerIntroSound(event)
+    }
 
     switch (event.type) {
       case 'gift':
+        if (event.platform === 'tiktok' && event.isSuperFanBox) {
+          this.handleAlert('Superfan', this.toSuperFanBoxAlertEvent(event))
+          return
+        }
         this.aggregateGift(event)
         return
 
@@ -60,9 +146,6 @@ export class EventSoundService {
         return
 
       case 'join':
-        // Personal join sounds fire independently of the superfan alert — a
-        // viewer can have both.
-        this.handleViewerJoinSound(event)
         if (this.shouldTreatJoinAsSuperfan(event)) {
           this.handleAlert('Superfan', event)
           return
@@ -123,6 +206,65 @@ export class EventSoundService {
     }
   }
 
+  private shouldSuppressRepeatedTwitchGiftSubSound(event: AnyStreamEvent): boolean {
+    if (event.type !== 'subscription' || event.platform !== 'twitch' || !event.isGift) return false
+
+    const gifter = resolveSubscriptionGifter(event)
+    const gifterKey = (gifter?.id || gifter?.username || 'anonymous').trim().toLowerCase()
+    const tier = formatSubscriptionTier(event.platform, event.tier).toLowerCase()
+    const key = `${gifterKey}:${tier}`
+    const now = Date.now()
+    const previous = this.recentTwitchGiftSubSounds.get(key)
+    this.recentTwitchGiftSubSounds.set(key, now)
+
+    if (this.recentTwitchGiftSubSounds.size > 500) {
+      const cutoff = now - TWITCH_GIFT_SUB_SOUND_DEDUPE_MS
+      for (const [candidate, timestamp] of this.recentTwitchGiftSubSounds) {
+        if (timestamp < cutoff) this.recentTwitchGiftSubSounds.delete(candidate)
+      }
+    }
+
+    if (previous === undefined || now - previous >= TWITCH_GIFT_SUB_SOUND_DEDUPE_MS) {
+      return false
+    }
+    return true
+  }
+
+  private shouldSuppressDuplicateEventSound(event: AnyStreamEvent): boolean {
+    const eventId = String(event.id || '').trim()
+    if (!eventId) return false
+
+    const key = `${event.platform}:${event.type}:${eventId}`
+    const now = Date.now()
+    const previous = this.recentEventSoundIds.get(key)
+    this.recentEventSoundIds.set(key, now)
+
+    if (this.recentEventSoundIds.size > 2000) {
+      const cutoff = now - EVENT_SOUND_DEDUPE_MS
+      for (const [candidate, timestamp] of this.recentEventSoundIds) {
+        if (timestamp < cutoff) this.recentEventSoundIds.delete(candidate)
+      }
+    }
+
+    return previous !== undefined && now - previous < EVENT_SOUND_DEDUPE_MS
+  }
+
+  private toSuperFanBoxAlertEvent(event: GiftEvent): SubscriptionEvent {
+    return {
+      ...event,
+      type: 'subscription',
+      user: {
+        ...event.user,
+        isSubscriber: true,
+        isFanClubMember: true,
+        isSuperFan: true
+      },
+      tier: 'Super Fan Box',
+      months: 1,
+      isGift: false
+    }
+  }
+
   private handleAlert(kind: AlertKind, event: AnyStreamEvent): void {
     if (!this.settings) return
 
@@ -137,7 +279,16 @@ export class EventSoundService {
     const soundId = this.settings[`eventSound${kind}SoundId`]
     const soundVolume = this.settings[`eventSound${kind}Volume`]
     const suppressSound = Boolean((event.raw as any)?.suppressEventSound)
-    const hasSound = !suppressSound && soundEnabled && soundId
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    const shouldDeduplicateSound = !suppressSound && !isSimulated && Boolean(soundEnabled && soundId)
+    const suppressDuplicateEventSound = shouldDeduplicateSound && this.shouldSuppressDuplicateEventSound(event)
+    const suppressRepeatedGiftSubSound = shouldDeduplicateSound && !suppressDuplicateEventSound
+      && this.shouldSuppressRepeatedTwitchGiftSubSound(event)
+    const hasSound = !suppressSound
+      && !suppressDuplicateEventSound
+      && !suppressRepeatedGiftSubSound
+      && soundEnabled
+      && soundId
 
     if (hasSound) {
       this.soundboardService.playSound(soundId, soundVolume)
@@ -157,7 +308,11 @@ export class EventSoundService {
     // Previously we also baked styles into the HTML here, which double-styled
     // the alert (nested borders, doubled padding, two backgrounds).
     const text = hasText
-      ? formatAlertText(this.replaceVariables(this.settings[`eventText${kind}Template`], event))
+      ? formatAlertText(
+          kind === 'Superfan' && event.type === 'subscription' && event.isGift
+            ? formatGiftSubscriptionAlert(event)
+            : this.replaceVariables(this.settings[`eventText${kind}Template`], event)
+        )
       : ''
 
     // Audio is played by the renderer above. We deliberately omit `audioUrl`
@@ -271,7 +426,16 @@ export class EventSoundService {
     if (!this.settings) return
 
     const suppressSound = Boolean((event.raw as any)?.suppressEventSound)
-    const hasSound = !suppressSound && rule.soundEnabled && Boolean(rule.soundId)
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    const shouldDeduplicateSound = !suppressSound && !isSimulated && rule.soundEnabled && Boolean(rule.soundId)
+    const suppressDuplicateEventSound = shouldDeduplicateSound && this.shouldSuppressDuplicateEventSound(event)
+    const suppressRepeatedGiftSubSound = shouldDeduplicateSound && !suppressDuplicateEventSound
+      && this.shouldSuppressRepeatedTwitchGiftSubSound(event)
+    const hasSound = !suppressSound
+      && !suppressDuplicateEventSound
+      && !suppressRepeatedGiftSubSound
+      && rule.soundEnabled
+      && Boolean(rule.soundId)
 
     // The alert overlay's <audio> plays the sound via the `audioUrl` on the
     // pushAlert payload below. We only ALSO play via the renderer (the
@@ -279,11 +443,13 @@ export class EventSoundService {
     // streamer would hear every alert twice (once from the renderer, once
     // from the overlay browser source).
     //
-    // Exception: if the streamer turned on "local monitoring", always play in
-    // the app too. That's for people who DON'T monitor their OBS browser-source
-    // audio and were otherwise hearing nothing once the overlay connected.
-    const localMonitoring = Boolean(this.settings.alertSoundLocalMonitoring)
-    if (hasSound && (localMonitoring || !this.hasOverlayAudioSink())) {
+    // Test-button events always play locally because the UI promises a
+    // soundboard test and an SSE connection does not prove that OBS is routing
+    // browser-source audio. Their overlay payload omits audio below, keeping the
+    // test at exactly one playback.
+    const localMonitoring = Boolean(this.settings?.alertSoundLocalMonitoring)
+    const overlayAudioSink = this.hasOverlayAudioSink()
+    if (hasSound && (isSimulated || localMonitoring || !overlayAudioSink)) {
       this.soundboardService.playSound(rule.soundId, rule.soundVolume)
     }
 
@@ -302,7 +468,11 @@ export class EventSoundService {
     )
 
     const text = hasText
-      ? formatAlertText(this.replaceVariables(rule.textTemplate, event))
+      ? formatAlertText(
+          rule.id === 'default-subs' && event.type === 'subscription' && event.isGift
+            ? formatGiftSubscriptionAlert(event)
+            : this.replaceVariables(rule.textTemplate, event)
+        )
       : ''
 
     this.overlayServer.pushAlert(
@@ -321,17 +491,29 @@ export class EventSoundService {
         animationOut: rule.animationOut,
         textColor: rule.textColor,
         backgroundColor: rule.backgroundColor,
+        backgroundOpacity: rule.backgroundOpacity,
         borderColor: rule.borderColor,
+        borderWidth: rule.borderWidth,
+        borderRadius: rule.borderRadius,
         fontSize: rule.fontSize,
-        audioUrl: hasSound ? rule.soundId : undefined,
+        // If local monitoring owns playback (or no overlay was connected), the
+        // sound already went through the local queue. Do not also leave audio
+        // in alert history for a browser source to duplicate or replay later.
+        audioUrl: hasSound && !isSimulated && !localMonitoring && overlayAudioSink ? rule.soundId : undefined,
         audioVolume: rule.soundVolume,
         fontWeight: rule.fontWeight,
         textShadow: rule.textShadow,
+        textAlign: rule.textAlign,
         layout: rule.layout,
         imageTop: rule.imageTop,
         imageLeft: rule.imageLeft,
-        alertTop: this.settings.alertTop,
-        alertLeft: this.settings.alertLeft
+        imageSize: rule.imageSize,
+        imagePlacement: rule.imagePlacement,
+        paddingX: rule.paddingX,
+        paddingY: rule.paddingY,
+        // Per-rule screen position wins over the global alert position when set.
+        alertTop: resolveAlertPositionValue(rule.alertTop, this.settings.alertTop),
+        alertLeft: resolveAlertPositionValue(rule.alertLeft, this.settings.alertLeft)
       },
       event.platform
     )
@@ -345,6 +527,76 @@ export class EventSoundService {
     } catch {
       return false
     }
+  }
+
+  private handleLikeMilestone(event: LikeEvent, progress?: AcceptedLikeProgress): boolean {
+    if (!this.settings?.eventLikeMilestoneEnabled || event.platform !== 'tiktok') return false
+
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    const acceptedAmount = isSimulated
+      ? LIKE_MILESTONE_INTERVAL
+      : Math.max(0, Math.floor(progress?.acceptedAmount || 0))
+    const viewerTotal = isSimulated
+      ? LIKE_MILESTONE_INTERVAL
+      : Math.max(0, Math.floor(progress?.viewerTotal || 0))
+    if (acceptedAmount <= 0 || viewerTotal < LIKE_MILESTONE_INTERVAL) return false
+
+    const previousViewerTotal = Math.max(0, viewerTotal - acceptedAmount)
+    const firstCrossedMilestone = Math.floor(previousViewerTotal / LIKE_MILESTONE_INTERVAL) + 1
+    const lastCrossedMilestone = Math.floor(viewerTotal / LIKE_MILESTONE_INTERVAL)
+
+    let fired = false
+    for (let milestoneIndex = firstCrossedMilestone; milestoneIndex <= lastCrossedMilestone; milestoneIndex++) {
+      if (!this.settings.eventLikeMilestoneRepeatEnabled && milestoneIndex !== 1) continue
+      this.fireLikeMilestoneAlert(event, milestoneIndex * LIKE_MILESTONE_INTERVAL, isSimulated)
+      fired = true
+    }
+    return fired
+  }
+
+  private fireLikeMilestoneAlert(event: LikeEvent, milestoneLikes: number, isSimulated: boolean): void {
+    if (!this.settings) return
+
+    const introSound = this.findViewerIntroSound(event)
+    const soundId = introSound?.soundId || this.settings.eventLikeMilestoneFallbackSoundId
+    const soundVolume = introSound?.volume ?? this.settings.eventLikeMilestoneFallbackVolume
+    const hasSound = Boolean(soundId)
+    const overlayAudioSink = this.hasOverlayAudioSink()
+    const localMonitoring = Boolean(this.settings.alertSoundLocalMonitoring)
+
+    if (hasSound && (isSimulated || localMonitoring || !overlayAudioSink)) {
+      this.soundboardService.playSound(soundId, soundVolume)
+    }
+
+    if (introSound && !isSimulated) {
+      this.introPlayed.add(this.getIntroPlayedKey(introSound))
+    }
+
+    const displayName = event.user.displayName || event.user.username || 'TikTok viewer'
+    const formattedLikes = milestoneLikes.toLocaleString('en-US')
+    const message = this.replaceVariables(this.settings.eventLikeMilestoneTemplate, event)
+      .replace(/{milestoneLikes}/g, formattedLikes)
+      .replace(/{likes}/g, formattedLikes)
+
+    this.overlayServer.pushAlert({
+      id: `${event.id}:like-milestone:${milestoneLikes}`,
+      eventType: 'like-milestone',
+      variant: 'clean-like-milestone',
+      eyebrow: 'Like milestone',
+      headline: displayName,
+      subtitle: message,
+      meta: `${formattedLikes} likes`,
+      accentColor: '#fe2c55',
+      template: message,
+      imageUrl: event.user.profilePictureUrl || '',
+      durationMs: this.settings.eventLikeMilestoneDurationMs,
+      animationIn: 'zoom',
+      animationOut: 'fade',
+      audioUrl: hasSound && !isSimulated && !localMonitoring && overlayAudioSink ? soundId : undefined,
+      audioVolume: soundVolume,
+      alertTop: this.settings.alertTop,
+      alertLeft: this.settings.alertLeft
+    }, event.platform)
   }
 
   private shouldSuppressLowValueGiftAlert(event: AnyStreamEvent): boolean {
@@ -405,15 +657,21 @@ export class EventSoundService {
     text = text.replace(/{totalLikes}/g, 'totalLikes' in event ? String(event.totalLikes) : '')
 
     if (event.type === 'subscription') {
-      text = text.replace(/{tier}/g, event.tier || 'Superfan')
+      const gifter = resolveSubscriptionGifter(event)
+      text = text.replace(/{tier}/g, formatSubscriptionTier(event.platform, event.tier) || 'Superfan')
       text = text.replace(/{months}/g, String(event.months || 1))
       text = text.replace(
+        /{recipientName}/g,
+        event.user.displayName || event.user.username || ''
+      )
+      text = text.replace(
         /{gifterName}/g,
-        event.gifterUser?.displayName || event.gifterUser?.username || ''
+        gifter?.displayName || gifter?.username || 'Anonymous'
       )
     } else {
       text = text.replace(/{tier}/g, 'Superfan')
       text = text.replace(/{months}/g, '1')
+      text = text.replace(/{recipientName}/g, '')
       text = text.replace(/{gifterName}/g, '')
     }
 
@@ -421,23 +679,91 @@ export class EventSoundService {
   }
 
   /**
-   * Plays a viewer's personal join sound, if one is configured on their viewer
-   * profile (or as a raw platform+username rule). Cooldown is per rule+viewer
-   * so a rejoin during the same stream doesn't spam the sound.
+   * Entry point for personal intro sounds. Gates the (DB-touching) match to at
+   * most once per viewer per {@link INTRO_LOOKUP_THROTTLE_MS} so a viewer's
+   * high-volume likes/chat don't resolve them on every event. The actual play
+   * decision (and its per-rule cooldown) lives in {@link playViewerIntroSound}.
    */
-  private handleViewerJoinSound(event: JoinEvent): void {
+  private handleViewerIntroSound(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
     const rules = this.settings?.viewerJoinSounds
     if (!rules?.length) return
 
+    const identity = event.user.id || event.user.username
+    if (!identity) return
+
+    const key = `${event.platform}:${identity}`
+    const now = Date.now()
+    const lastLookup = this.introLookupAt.get(key)
+    if (lastLookup !== undefined && now - lastLookup < INTRO_LOOKUP_THROTTLE_MS) return
+
+    this.introLookupAt.set(key, now)
+    if (this.introLookupAt.size > 20000) {
+      const cutoff = now - INTRO_LOOKUP_THROTTLE_MS
+      for (const [k, ts] of this.introLookupAt) {
+        if (ts < cutoff) this.introLookupAt.delete(k)
+      }
+    }
+
+    this.playViewerIntroSound(event)
+  }
+
+  /**
+   * Plays a viewer's personal intro sound, if one is configured on their viewer
+   * profile (or as a raw platform+username rule). An intro announces arrival,
+   * so it plays at most ONCE per stream session — repeat activity stays
+   * silent, and the played set only re-arms on a stream boundary (see
+   * handleConnectionStatus). Previously this was a cooldown-based rate limit,
+   * which replayed the intro mid-stream for anyone who simply stayed active
+   * past the cooldown window.
+   */
+  private playViewerIntroSound(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
+    const rule = this.findViewerIntroSound(event)
+    if (!rule) return
+
+    const isSimulated = Boolean((event.raw as any)?.simulated)
+    // Profile-backed rules use the linked profile as the cross-platform person
+    // identity. Raw username rules use their stable rule id, avoiding a key
+    // flip if profile resolution starts succeeding later in the same stream.
+    const playedKey = this.getIntroPlayedKey(rule)
+    if (!isSimulated && this.introPlayed.has(playedKey)) return
+
+    console.log(`[event-sound] Playing join sound for ${event.user.username} (rule ${rule.id})`)
+    const localMonitoring = Boolean(this.settings?.alertSoundLocalMonitoring)
+    if (!isSimulated && !localMonitoring && this.hasOverlayAudioSink()) {
+      // Alert audio already uses the overlay's FIFO when OBS/browser-source is
+      // the active audio sink. Route joins there too so the two kinds cannot
+      // overlap in separate renderer contexts.
+      this.overlayServer.pushAlert({
+        id: `${event.id}:join:${rule.id}`,
+        durationMs: 1000,
+        audioUrl: rule.soundId,
+        audioVolume: rule.volume
+      }, event.platform)
+    } else {
+      this.soundboardService.playSound(rule.soundId, rule.volume)
+    }
+
+    if (!isSimulated) {
+      this.introPlayed.add(playedKey)
+    }
+  }
+
+  private findViewerIntroSound(event: AnyStreamEvent): ViewerJoinSound | undefined {
+    if (!('user' in event) || !event.user) return undefined
+    const rules = this.settings?.viewerJoinSounds
+    if (!rules?.length) return undefined
+
     const username = normalizeJoinUsername(event.user.username)
-    if (!username) return
+    if (!username) return undefined
 
     const viewerProfileId = this.resolveViewerProfileId(event.platform, event.user.username, {
       platformUserId: event.user.id,
       displayName: event.user.displayName
     })
 
-    const rule = rules.find((candidate) => {
+    return rules.find((candidate) => {
       if (!candidate.enabled || !candidate.soundId) return false
       if (candidate.viewerProfileId) {
         return Boolean(viewerProfileId) && candidate.viewerProfileId === viewerProfileId
@@ -445,28 +771,12 @@ export class EventSoundService {
       if (candidate.platform !== 'all' && candidate.platform !== event.platform) return false
       return normalizeJoinUsername(candidate.username) === username
     })
-    if (!rule) return
+  }
 
-    const isSimulated = Boolean((event.raw as any)?.simulated)
-    const cooldownMs = rule.cooldownMinutes * 60_000
-    const hitKey = `${rule.id}:${viewerProfileId || `${event.platform}:${username}`}`
-    if (cooldownMs > 0 && !isSimulated) {
-      const previous = this.recentJoinSoundHits.get(hitKey)
-      if (previous && Date.now() - previous < cooldownMs) return
-    }
-
-    console.log(`[event-sound] Playing join sound for ${event.user.username} (rule ${rule.id})`)
-    this.soundboardService.playSound(rule.soundId, rule.volume)
-
-    if (!isSimulated) {
-      this.recentJoinSoundHits.set(hitKey, Date.now())
-      if (this.recentJoinSoundHits.size > 1000) {
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000
-        for (const [key, ts] of this.recentJoinSoundHits) {
-          if (ts < cutoff) this.recentJoinSoundHits.delete(key)
-        }
-      }
-    }
+  private getIntroPlayedKey(rule: ViewerJoinSound): string {
+    return rule.viewerProfileId
+      ? `profile:${rule.viewerProfileId}`
+      : `rule:${rule.id}`
   }
 
   private shouldTreatJoinAsSuperfan(event: JoinEvent): boolean {
@@ -587,6 +897,16 @@ export class EventSoundService {
 
     return {}
   }
+}
+
+/**
+ * A rule-level screen position of -1 (or anything non-finite — rules saved
+ * before the field existed) defers to the global alert position setting.
+ */
+function resolveAlertPositionValue(ruleValue: unknown, globalValue: unknown): unknown {
+  const numeric = Number(ruleValue)
+  if (Number.isFinite(numeric) && numeric >= 0) return Math.min(100, numeric)
+  return globalValue
 }
 
 function normalizeJoinUsername(value: string): string {

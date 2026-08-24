@@ -17,48 +17,48 @@ export function CanvasStatusBar(props: CanvasStatusBarProps) {
   const { fps, outputFps, format, zoom, canvasWidth, canvasHeight, aspectRatio, onZoomIn, onZoomOut, onResetZoom } = props
   
   return (
-    <div className="shrink-0 h-10 px-4 bg-black/40 border-t border-white/5 flex items-center justify-between">
+    <div className="broadcast-canvas-statusbar">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+        <div className="broadcast-canvas-status-chip">
           <div className={`w-1.5 h-1.5 rounded-full ${fps >= (outputFps - 2) ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          <span className="text-[10px] font-semibold tabular-nums text-white/60">{fps} FPS</span>
+          <span>{fps} FPS</span>
         </div>
-        <span className="text-[9px] font-semibold text-white/20 tracking-tight">{format.toUpperCase()}</span>
+        <span className="broadcast-canvas-format">{format.toUpperCase()}</span>
       </div>
 
-      <div className="flex items-center gap-1 bg-white/5 rounded-lg p-0.5 border border-white/10">
+      <div className="broadcast-canvas-zoom">
         <button 
           onClick={onZoomOut}
-          className="p-1.5 hover:bg-white/10 rounded-md text-white/40 hover:text-white transition-all"
+          className="broadcast-canvas-icon-button is-compact"
         >
           <IconMinimize size={14} />
         </button>
         
         <div className="px-2 min-w-[60px] text-center">
-          <span className="text-[11px] font-semibold tabular-nums text-white/80">
+          <span className="broadcast-canvas-zoom-value">
             {Math.round(zoom * 100)}%
           </span>
         </div>
 
         <button 
           onClick={onZoomIn}
-          className="p-1.5 hover:bg-white/10 rounded-md text-white/40 hover:text-white transition-all"
+          className="broadcast-canvas-icon-button is-compact"
         >
           <IconMaximize size={14} />
         </button>
 
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="broadcast-canvas-divider" />
 
         <button 
           onClick={onResetZoom}
-          className="p-1.5 hover:bg-white/10 rounded-md text-white/40 hover:text-white transition-all flex items-center gap-1.5"
+          className="broadcast-canvas-icon-button is-fit"
         >
           <IconRotate2 size={14} />
           <span className="text-[9px] font-semibold">Fit</span>
         </button>
       </div>
 
-      <div className="flex items-center gap-2 text-[10px] font-semibold text-white/20">
+      <div className="broadcast-canvas-dimensions">
         <span>{canvasWidth}x{canvasHeight}</span>
         <span className="opacity-50">|</span>
         <span className="">{aspectRatio}</span>

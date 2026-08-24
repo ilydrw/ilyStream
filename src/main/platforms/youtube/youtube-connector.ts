@@ -89,7 +89,7 @@ export class YouTubeConnector extends BaseConnector {
       this.sessionConnectTime = Date.now()
     }
 
-    const { google } = await import('googleapis')
+    const { google } = await import('./youtube-api')
 
     const accessToken = normalizeOptionalText(ytConfig.accessToken)
     const refreshToken = normalizeOptionalText(ytConfig.refreshToken)

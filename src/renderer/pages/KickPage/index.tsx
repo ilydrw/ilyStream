@@ -21,8 +21,11 @@ const STREAM_FIELDS = [
   { key: 'streamKey', label: 'Stream key', type: 'password', placeholder: 'Kick stream key' }
 ]
 
+// Advanced, optional: the official signed-webhook path for users who run a
+// public tunnel. Chat + events already flow automatically over the real-time
+// socket, so these can stay blank.
 const EVENT_FIELDS = [
-  { key: 'webhookPublicUrl', label: 'Public webhook URL', type: 'text', placeholder: 'https://your-tunnel.example/kick/webhook' },
+  { key: 'webhookPublicUrl', label: 'Public webhook URL (optional)', type: 'text', placeholder: 'https://your-tunnel.example/kick/webhook' },
   { key: 'webhookPort', label: 'Local receiver port', type: 'number', placeholder: DEFAULT_WEBHOOK_PORT }
 ]
 
@@ -37,6 +40,7 @@ export default function KickPage() {
   const errors = useConnectionStore((s) => s.errors)
   const viewerCounts = useConnectionStore((s) => s.viewerCounts)
   const reconnectInfo = useConnectionStore((s) => s.reconnectInfo)
+  const profileHealth = useConnectionStore((s) => s.profileHealth.kick)
   const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, ConfigValue>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
@@ -49,7 +53,7 @@ export default function KickPage() {
   const viewers = viewerCounts[PLATFORM_ID] || 0
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
-  const receiverLocked = isConnected || isConnecting
+  const profilesDegraded = profileHealth?.state === 'degraded'
   const webhookPort = String(config.webhookPort || DEFAULT_WEBHOOK_PORT).trim() || DEFAULT_WEBHOOK_PORT
   const webhookPath = normalizeWebhookPath(String(config.webhookPath || DEFAULT_WEBHOOK_PATH))
   const localWebhookUrl = `http://127.0.0.1:${webhookPort}${webhookPath}`
@@ -163,10 +167,10 @@ export default function KickPage() {
 
   return (
     <div className="app-page">
-      <PlatformPageHeader 
+      <PlatformPageHeader
         platformId={PLATFORM_ID}
         title="Kick Integration"
-        description="Connect your Kick.com channel. IlyStream handles sub alerts, chat interaction, and streamer telemetry on the Kick platform."
+        description="Enter your Kick channel name and ilyStream connects automatically over Kick's real-time socket — chat, subs, gifts, follows, and live status, with no webhook tunnel required."
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20">
@@ -175,16 +179,16 @@ export default function KickPage() {
           label="Kick Audience" 
           value={(viewers || 0).toLocaleString()} 
         />
-        <Metric 
-          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />} 
-          label="Receiver Status" 
-          value={isConnected ? 'Healthy' : isConnecting ? 'Linking' : 'Offline'} 
+        <Metric
+          icon={<IconRadio size={20} className={isConnected ? 'text-success' : 'text-white/20'} />}
+          label="Connection"
+          value={isConnected ? 'Live' : isConnecting ? 'Linking' : 'Offline'}
         />
         <Metric 
-          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : profilesDegraded ? 'text-warning' : 'text-white/20'} />}
           label="Service Health" 
-          value={error ? 'Critical' : isConnected ? 'Optimal' : 'Standby'} 
-          tone={error ? 'danger' : 'neutral'}
+          value={error ? 'Critical' : profilesDegraded ? 'Profiles Degraded' : isConnected ? 'Optimal' : 'Standby'}
+          tone={error ? 'danger' : profilesDegraded ? 'warning' : 'neutral'}
         />
       </div>
 
@@ -217,13 +221,16 @@ export default function KickPage() {
 
             <div className="grid gap-10 px-12 pb-12 md:grid-cols-2 bg-white/[0.01]">
               <div className="flex flex-col gap-2 md:col-span-2">
-                <label className="text-xs font-semibold tracking-tight text-white/30">Local webhook endpoint</label>
+                <label className="text-xs font-semibold tracking-tight text-white/30">Local webhook endpoint (advanced)</label>
                 <input
                   type="text"
                   value={localWebhookUrl}
                   readOnly
                   className="app-input text-white/55"
                 />
+                <p className="text-[11px] leading-relaxed text-white/25">
+                  Optional. Chat and events already arrive automatically over the real-time socket. Only fill in the webhook fields if you run a public tunnel and want Kick's official signed webhooks as well.
+                </p>
               </div>
 
               {EVENT_FIELDS.map((field) => (
@@ -253,17 +260,6 @@ export default function KickPage() {
                   />
                 </div>
               ))}
-
-              <label className="flex items-center gap-3 text-xs font-semibold text-white/45 md:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={config.legacySocket === true}
-                  onChange={(e) => updateField('legacySocket', e.target.checked)}
-                  disabled={receiverLocked}
-                  className="h-4 w-4 accent-kick disabled:opacity-30"
-                />
-                Try legacy socket fallback
-              </label>
 
               <div className="md:col-span-2 rounded-xl border border-white/[0.05] bg-white/[0.02] p-6 flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -358,7 +354,7 @@ export default function KickPage() {
                   onClick={handleConnect}
                   className="app-button-primary !h-12 !px-10 text-sm font-semibold"
                 >
-                  Start Receiver
+                  Connect Kick
                 </button>
               )}
             </div>
@@ -368,14 +364,14 @@ export default function KickPage() {
             <div className="app-section-head">
               <div>
                 <h2>Real-time Stream</h2>
-                <p>Status of the Kick event receiver.</p>
+                <p>Status of the Kick real-time event socket.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-12">
               <DiagnosticLine
                 icon={<IconRadio size={16} />}
-                label="Webhook Receiver"
-                value={isConnected ? 'Listening / Ready' : status.toUpperCase()}
+                label="Real-time Socket"
+                value={isConnected ? 'Connected / Live' : status.toUpperCase()}
                 tone={isConnected ? 'good' : status === 'error' ? 'bad' : 'muted'}
               />
               <DiagnosticLine

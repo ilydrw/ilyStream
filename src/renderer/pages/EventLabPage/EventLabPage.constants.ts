@@ -39,6 +39,7 @@ export const KIND_LABELS: Record<EventLabEntryKind | 'all', string> = {
   all: 'All',
   stream: 'Stream',
   overlay: 'Overlay',
+  performance: 'Performance',
   device: 'DeskThing',
   automation: 'Automation',
   alert: 'Alerts',
@@ -49,4 +50,4 @@ export const KIND_LABELS: Record<EventLabEntryKind | 'all', string> = {
   system: 'System'
 }
 
-export const REPLAY_SPEEDS = [0.5, 1, 2, 4]
+export const REPLAY_SPEEDS = [0.5, 1, 2, 4, 8, 16]

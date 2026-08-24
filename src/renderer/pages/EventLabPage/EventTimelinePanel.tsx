@@ -44,7 +44,7 @@ export function EventTimelinePanel({
       <section className="app-section-card glass !p-0 overflow-hidden min-h-[680px]">
         <div className="app-section-head">
           <div>
-            <h2 className="text-sm font-semibold text-white">Live Timeline</h2>
+            <h2 className="text-sm font-semibold text-white">Live timeline</h2>
             <p>Follow every event and downstream action in one place.</p>
           </div>
           <div className="flex items-center gap-2">

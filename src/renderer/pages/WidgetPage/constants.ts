@@ -1,14 +1,18 @@
-import {IconMessageCircle, IconBell, IconUsers, IconChartBar, IconMusic, IconShare, IconLayout, IconSparkles, IconBolt, IconTrophy, IconMessage, IconHeart} from '@tabler/icons-react'
+import {IconMessageCircle, IconBell, IconUsers, IconChartBar, IconMusic, IconShare, IconLayout, IconSparkles, IconBolt, IconTrophy, IconMessage, IconHeart, IconCoffee, IconCamera, IconMicrophone, IconTypography} from '@tabler/icons-react'
 import type { Icon } from '@tabler/icons-react'
 import {
   DEFAULT_NOW_PLAYING_CONFIG,
   DEFAULT_CHAT_CONFIG,
   DEFAULT_ALERTS_CONFIG,
   DEFAULT_FOLLOWER_GOAL_CONFIG,
+  DEFAULT_TEXT_WIDGET_CONFIG,
   DEFAULT_SOCIALS_CONFIG,
   DEFAULT_BORDER_CONFIG,
+  DEFAULT_CAMERA_FRAME_CONFIG,
+  DEFAULT_BRB_SCREEN_CONFIG,
   DEFAULT_PARTICLES_CONFIG,
   DEFAULT_DISCORD_PROMO_CONFIG,
+  DEFAULT_DISCORD_CALL_CONFIG,
   DEFAULT_NODE_NETWORK_CONFIG,
   DEFAULT_LATEST_GIFTER_CONFIG,
   DEFAULT_PHYSICS_CONFIG,
@@ -27,6 +31,13 @@ export interface WidgetTemplate {
 }
 
 export const WIDGET_TEMPLATES: WidgetTemplate[] = [
+  {
+    type: 'brb-screen',
+    label: 'Be Right Back',
+    icon: IconCoffee,
+    description: 'A polished full-screen break scene with optional clock, countdown, artwork, and background media.',
+    defaultConfig: DEFAULT_BRB_SCREEN_CONFIG as unknown as Record<string, unknown>
+  },
   {
     type: 'chat-unified',
     label: 'Unified Chat',
@@ -54,6 +65,13 @@ export const WIDGET_TEMPLATES: WidgetTemplate[] = [
     icon: IconUsers,
     description: 'Real-time follower count progress bar with custom target.',
     defaultConfig: DEFAULT_FOLLOWER_GOAL_CONFIG as unknown as Record<string, unknown>
+  },
+  {
+    type: 'text',
+    label: 'Custom Text',
+    icon: IconTypography,
+    description: 'Multiline scene text with full typography, outline, shadow, background, and placement controls.',
+    defaultConfig: DEFAULT_TEXT_WIDGET_CONFIG as unknown as Record<string, unknown>
   },
   {
     type: 'goal',
@@ -84,6 +102,13 @@ export const WIDGET_TEMPLATES: WidgetTemplate[] = [
     defaultConfig: DEFAULT_BORDER_CONFIG as unknown as Record<string, unknown>
   },
   {
+    type: 'camera-frame',
+    label: 'Camera Mask Outline',
+    icon: IconCamera,
+    description: 'A shape-aware camera outline with an optional outside matte, labels, accents, glow, and motion.',
+    defaultConfig: DEFAULT_CAMERA_FRAME_CONFIG as unknown as Record<string, unknown>
+  },
+  {
     type: 'particles',
     label: 'Particles',
     icon: IconSparkles,
@@ -96,6 +121,13 @@ export const WIDGET_TEMPLATES: WidgetTemplate[] = [
     icon: IconMessageCircle,
     description: 'Showcase your Discord server with a call to action for the bio link.',
     defaultConfig: DEFAULT_DISCORD_PROMO_CONFIG as unknown as Record<string, unknown>
+  },
+  {
+    type: 'discord-call',
+    label: 'Discord Call',
+    icon: IconMicrophone,
+    description: 'Live Discord voice roster with speaking highlights, profile pictures, and linked ilyStream identities.',
+    defaultConfig: DEFAULT_DISCORD_CALL_CONFIG as unknown as Record<string, unknown>
   },
   {
     type: 'node-network',

@@ -142,19 +142,6 @@
   color: var(--theme-text-subtle) !important;
 }
 
-.app-button-primary {
-  border: 1px solid rgba(var(--accent-rgb), 0.38) !important;
-  border-radius: 8px !important;
-  background: var(--grad-brand) !important;
-  color: var(--theme-on-accent) !important;
-  box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.16), 0 8px 20px rgba(var(--theme-secondary-rgb), 0.1) !important;
-  letter-spacing: 0 !important;
-}
-
-.app-button-primary:hover {
-  filter: brightness(1.05) saturate(1.04) !important;
-}
-
 .text-accent,
 .app-page-title-icon {
   color: var(--color-accent) !important;
@@ -272,7 +259,7 @@
 
 .dashboard-hero-panel::after,
 .dashboard-metric-card::before {
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.36), rgba(var(--theme-secondary-rgb), 0.32)) !important;
+  background: rgba(var(--accent-rgb), 0.34) !important;
 }
 
 .pro-meter-bar,
@@ -880,8 +867,7 @@
   background: var(--theme-surface-raised) !important;
   box-shadow:
     0 0 0 1px rgba(var(--accent-rgb), 0.08),
-    0 12px 30px rgba(var(--accent-rgb), 0.1),
-    0 12px 30px rgba(var(--theme-secondary-rgb), 0.08) !important;
+    0 12px 30px rgba(var(--accent-rgb), 0.1) !important;
 }
 
 .app-page.dashboard-pro .dashboard-hero-panel::before {
@@ -891,9 +877,8 @@
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(115deg, rgba(var(--accent-rgb), 0.42) 0%, rgba(var(--accent-rgb), 0.16) 44%, rgba(var(--theme-secondary-rgb), 0.4) 100%),
-    radial-gradient(circle at 8% 18%, rgba(var(--accent-rgb), 0.24), transparent 42%),
-    radial-gradient(circle at 94% 10%, rgba(var(--theme-secondary-rgb), 0.22), transparent 38%);
+    linear-gradient(115deg, rgba(var(--accent-rgb), 0.18) 0%, rgba(var(--accent-rgb), 0.06) 44%, transparent 100%),
+    radial-gradient(circle at 8% 18%, rgba(var(--accent-rgb), 0.14), transparent 42%);
   pointer-events: none;
 }
 

@@ -58,7 +58,7 @@ export default function TelegramPage() {
               <li>Open your Channel or Group on Telegram.</li>
               <li>Tap the three dots and select 'Stream With...'.</li>
               <li>Copy the Server URL and Stream Key into the fields on the left.</li>
-              <li>Press 'Start Streaming' in IlyStream.</li>
+              <li>Press 'Start Streaming' in ilyStream.</li>
             </ol>
           </section>
         </div>

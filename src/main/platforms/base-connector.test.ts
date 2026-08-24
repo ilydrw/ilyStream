@@ -65,6 +65,51 @@ describe('BaseConnector reconnect policy', () => {
       expect.objectContaining({ platform: 'tiktok', reason: 'not live yet' })
     )
   })
+
+  it('keeps checking an offline channel after the normal retry budget is exhausted', async () => {
+    vi.useFakeTimers()
+    const connector = new EventuallyLiveConnector(4)
+    const reconnectFailures: Platform[] = []
+    connector.setMaxReconnectAttempts(2)
+    connector.on('reconnect-failed', (platform) => reconnectFailures.push(platform))
+
+    await connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.advanceTimersByTimeAsync(15_000)
+
+    expect(connector.connectAttempts).toBe(4)
+    expect(connector.status).toBe('connected')
+    expect(reconnectFailures).toHaveLength(0)
+  })
+
+  it('can immediately retry a waiting channel when live output starts', async () => {
+    vi.useFakeTimers()
+    const connector = new EventuallyLiveConnector(2)
+
+    await connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
+    await expect(connector.retryWaitingNow()).resolves.toBe(true)
+
+    expect(connector.connectAttempts).toBe(2)
+    expect(connector.status).toBe('connected')
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(connector.connectAttempts).toBe(2)
+  })
+
+  it('does not become connected when disconnected during an immediate retry', async () => {
+    vi.useFakeTimers()
+    const connector = new DeferredLiveConnector()
+
+    await connector.connect({ platform: 'tiktok', enabled: true, username: 'offline_creator' })
+    const retry = connector.retryWaitingNow()
+    await Promise.resolve()
+    await connector.disconnect()
+    connector.finishConnection()
+    await retry
+
+    expect(connector.status).toBe('disconnected')
+  })
 })
 
 class OfflineConnector extends BaseConnector {
@@ -95,4 +140,50 @@ class FatalConnectConnector extends BaseConnector {
   }
 
   protected async doDisconnect(): Promise<void> {}
+}
+
+class EventuallyLiveConnector extends BaseConnector {
+  readonly platform: Platform = 'tiktok'
+  connectAttempts = 0
+
+  constructor(private readonly liveOnAttempt: number) {
+    super()
+  }
+
+  validateConfig(_config: PlatformConfig): string | null {
+    return null
+  }
+
+  protected async doConnect(_config: PlatformConfig): Promise<void> {
+    this.connectAttempts += 1
+    if (this.connectAttempts < this.liveOnAttempt) {
+      throw new ConnectorOfflineError('not live yet')
+    }
+  }
+
+  protected async doDisconnect(): Promise<void> {}
+}
+
+class DeferredLiveConnector extends BaseConnector {
+  readonly platform: Platform = 'tiktok'
+  private connectAttempts = 0
+  private resolveConnection: (() => void) | null = null
+
+  validateConfig(_config: PlatformConfig): string | null {
+    return null
+  }
+
+  protected async doConnect(_config: PlatformConfig): Promise<void> {
+    this.connectAttempts += 1
+    if (this.connectAttempts === 1) throw new ConnectorOfflineError('not live yet')
+    await new Promise<void>((resolve) => {
+      this.resolveConnection = resolve
+    })
+  }
+
+  protected async doDisconnect(): Promise<void> {}
+
+  finishConnection(): void {
+    this.resolveConnection?.()
+  }
 }

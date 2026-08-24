@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_ECONOMY_CONFIG } from '../../shared/economy'
 import { EventOrchestrator } from './event-orchestrator'
 import { markSuppressedChatRelayEcho } from '../chat/chat-relay-service'
 import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
@@ -114,12 +115,15 @@ function makeOrchestrator(
     getPoints: vi.fn().mockResolvedValue(0),
     spendPoints: vi.fn().mockResolvedValue(false),
     addPoints: vi.fn(),
-    addTimeToSubathon: vi.fn()
+    addTimeToSubathon: vi.fn(),
+    awardLoyaltyPoints: vi.fn(),
+    getConfig: vi.fn(() => DEFAULT_ECONOMY_CONFIG)
   })
   const loyaltyService = Object.assign(new EventEmitter(), {
     recordEvent: vi.fn(),
     recordSongRequest: vi.fn()
   })
+  const economyCommandService = { handleChat: vi.fn().mockResolvedValue(null) }
 
   const statsService = {
     recordEvent: overrides.recordEvent || vi.fn(),
@@ -140,6 +144,7 @@ function makeOrchestrator(
     {} as any,
     {} as any,
     economyService as any,
+    economyCommandService as any,
     loyaltyService as any,
     statsService as any,
     {} as any,
@@ -182,6 +187,33 @@ describe('EventOrchestrator Spotify handling', () => {
     await flushAsyncHandlers()
 
     expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+  })
+
+  it('stabilizes a viewer avatar URL across re-signed/host-rotated events', async () => {
+    const handleStreamEvent = vi.fn()
+    const { platformManager } = makeOrchestrator(false, { handleStreamEvent })
+
+    // Same image, different shard host + signature — the exact TikTok churn.
+    const first = {
+      ...makeLike(),
+      id: 'like-a',
+      user: { ...makeLike().user, profilePictureUrl: 'https://p16-common-sign.tiktokcdn-us.com/x/hash~tplv.webp?x-signature=one' }
+    }
+    const second = {
+      ...makeLike(),
+      id: 'like-b',
+      user: { ...makeLike().user, profilePictureUrl: 'https://p19-common-sign.tiktokcdn-us.com/x/hash~tplv.webp?x-signature=two' }
+    }
+
+    platformManager.emit('event', first)
+    await flushAsyncHandlers()
+    platformManager.emit('event', second)
+    await flushAsyncHandlers()
+
+    const firstUrl = handleStreamEvent.mock.calls[0][0].user.profilePictureUrl
+    const secondUrl = handleStreamEvent.mock.calls[1][0].user.profilePictureUrl
+    // The second event must carry the SAME stable URL so overlays don't reset <img src>.
+    expect(secondUrl).toBe(firstUrl)
   })
 
   it('does not route synthetic AI co-host chat back into TTS', async () => {
@@ -363,5 +395,64 @@ describe('EventOrchestrator Spotify handling', () => {
     await flushAsyncHandlers()
 
     expect(sendManualMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('EventOrchestrator loyalty economy bridge', () => {
+  it('turns every persisted XP award into a level-scaled point award', () => {
+    const { loyaltyService, economyService } = makeOrchestrator(false)
+
+    loyaltyService.emit('xp-awarded', {
+      username: 'viewer',
+      platform: 'twitch',
+      platformUserId: 'viewer-1',
+      displayName: 'Viewer',
+      xp: 125,
+      level: 2,
+      currentLevelXp: 100,
+      nextLevelXp: 400,
+      progressRatio: 25 / 300,
+      previousLevel: 1,
+      awardedXp: 35,
+      reason: 'follow',
+      leveledUp: true
+    })
+
+    expect(economyService.awardLoyaltyPoints).toHaveBeenCalledWith({
+      username: 'viewer',
+      platform: 'twitch',
+      level: 2,
+      awardedXp: 35,
+      reason: 'follow',
+      leveledUp: true,
+      platformUserId: 'viewer-1',
+      displayName: 'Viewer'
+    })
+  })
+})
+
+describe('EventOrchestrator economy command safety', () => {
+  it('does not let a simulated !get command claim a live points drop', async () => {
+    const { platformManager, economyService, ttsEngine } = makeOrchestrator(false)
+    const event = makeChat('!get')
+    event.raw = { simulated: true }
+
+    platformManager.emit('event', event)
+    await flushAsyncHandlers()
+
+    expect(economyService.claimPointsDrop).not.toHaveBeenCalled()
+    expect(ttsEngine.processEvent).not.toHaveBeenCalled()
+  })
+
+  it('passes the likes tracker accepted viewer progress to milestone handling', async () => {
+    const likeProgress = { acceptedAmount: 5, viewerTotal: 10_000 }
+    const handleStreamEvent = vi.fn(() => ({ likeProgress }))
+    const { platformManager, eventSoundService } = makeOrchestrator(false, { handleStreamEvent })
+    const like = makeLike()
+
+    platformManager.emit('event', like)
+    await flushAsyncHandlers()
+
+    expect(eventSoundService.processEvent).toHaveBeenCalledWith(like, likeProgress)
   })
 })

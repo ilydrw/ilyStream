@@ -11,6 +11,8 @@ import { TriggerEngine } from '../triggers/trigger-engine'
 import { OverlayServer } from '../overlay/overlay-server'
 import { EventSoundService } from '../soundboard/event-sound-service'
 import { OBSService } from '../obs/obs-service'
+import { OBSWorkspaceService } from '../obs/obs-workspace-service'
+import { OBSIntegrationInstaller } from '../obs/obs-integration-installer'
 import { ChatRelayService } from '../chat/chat-relay-service'
 import { CoHostService } from '../ai/co-host-service'
 import { resolveAppSettings } from '../../shared/app-settings'
@@ -23,6 +25,7 @@ import { VTubeService } from './vtube-service'
 import { MemoryService } from '../ai/memory-service'
 import { RemoteAuthService } from './remote-auth-service'
 import { EconomyService } from '../economy/economy-service'
+import { EconomyCommandService } from '../economy/economy-command-service'
 import { StreamingService } from './streaming-service'
 import { StatsService } from '../stats/stats-service'
 import { DeviceApi } from '../overlay/device-api'
@@ -36,6 +39,8 @@ import { RecordingsService } from './recordings-service'
 import { LoyaltyService } from '../loyalty/loyalty-service'
 import { StreamIntelligenceService } from '../ai/stream-intelligence-service'
 import { StreamerbotBridgeService } from './streamerbot-bridge-service'
+import { KokoroWorkerService } from './kokoro-worker-service'
+import { SegmentationWorkerService } from './segmentation-worker-service'
 
 // Ignore TikTok connect/reconnect flaps within this window so we announce a
 // go-live at most once per ~stream, not on every brief reconnect.
@@ -55,6 +60,8 @@ export class ServiceRegistry {
   public overlayServer: OverlayServer
   public eventSoundService: EventSoundService
   public obsService: OBSService
+  public obsWorkspaceService: OBSWorkspaceService
+  public obsIntegrationInstaller: OBSIntegrationInstaller
   public chatRelayService: ChatRelayService
   public coHostService: CoHostService
   public automationService: AutomationService
@@ -63,6 +70,7 @@ export class ServiceRegistry {
   public memoryService: MemoryService
   public remoteAuthService: RemoteAuthService
   public economyService: EconomyService
+  public economyCommandService: EconomyCommandService
   public loyaltyService: LoyaltyService
   public streamingService: StreamingService
   public browserSourceService: BrowserSourceService
@@ -77,6 +85,8 @@ export class ServiceRegistry {
   public lightingManager: LightingManagerService
   public tiktokChatSender: TikTokChatSender
   public recordingsService: RecordingsService
+  public kokoroWorkerService: KokoroWorkerService
+  public segmentationWorkerService: SegmentationWorkerService
 
   private initialized = false
   private initializationPromise: Promise<void> | null = null
@@ -94,7 +104,7 @@ export class ServiceRegistry {
     )
     this.soundboardService = new SoundboardService(this.db)
     this.assetService = new AssetService()
-    this.aiService = new AIService()
+    this.aiService = new AIService((model) => this.db.setSetting('aiModel', model))
     this.memoryService = new MemoryService(this.db)
     this.remoteAuthService = new RemoteAuthService(this.db)
     this.economyService = new EconomyService(this.db)
@@ -109,6 +119,15 @@ export class ServiceRegistry {
       (platform, username, identity) => this.db.getViewerProfileId(platform, username, identity)
     )
     this.obsService = new OBSService()
+    this.obsWorkspaceService = new OBSWorkspaceService({
+      db: this.db,
+      obsService: this.obsService,
+      overlayServer: this.overlayServer,
+      platformManager: this.platformManager,
+      soundboardService: this.soundboardService,
+      ttsEngine: this.ttsEngine
+    })
+    this.obsIntegrationInstaller = new OBSIntegrationInstaller()
     this.streamingService = new StreamingService()
     this.browserSourceService = new BrowserSourceService()
     this.statsService = new StatsService(this.db)
@@ -118,7 +137,15 @@ export class ServiceRegistry {
     this.razerChromaService = new RazerChromaService(this.db)
     this.virtualCameraService = new VirtualCameraService(this.streamingService)
     this.lightingManager = new LightingManagerService()
+    this.economyCommandService = new EconomyCommandService(
+      this.economyService,
+      this.loyaltyService,
+      this.soundboardService,
+      this.lightingManager
+    )
     this.recordingsService = new RecordingsService()
+    this.kokoroWorkerService = new KokoroWorkerService()
+    this.segmentationWorkerService = new SegmentationWorkerService()
 
 
     // Register lighting providers
@@ -154,6 +181,7 @@ export class ServiceRegistry {
       this.voicemodService,
       this.vtubeService,
       this.economyService,
+      this.economyCommandService,
       this.loyaltyService,
       this.statsService,
       this.goveeService,
@@ -167,6 +195,12 @@ export class ServiceRegistry {
     this.overlayServer.setSoundboardService(this.soundboardService)
     this.overlayServer.setObsService(this.obsService)
     this.overlayServer.setPlatformManager(this.platformManager)
+    // Without these the overlay's data-backed widgets have no source and
+    // silently serve empty lists: the likes leaderboard's all-time view (also
+    // the fallback shown before the current session has any likes) and the
+    // points leaderboard.
+    this.overlayServer.setStatsService(this.statsService)
+    this.overlayServer.setEconomyService(this.economyService)
 
     // Device API forwards deck actions back through the orchestrator's normal path.
     this.deviceApi = new DeviceApi(
@@ -182,15 +216,39 @@ export class ServiceRegistry {
       this.overlayServer.broadcastRecordingState(status.recording, this.streamingService.getRecordingOutputPath() || undefined)
     })
 
+    // Push OBS scene/stream/recording state to LAN companions over the deck
+    // channel — before this, companions only saw OBS state at page load.
+    let obsStreamWasActive = this.obsService.getStatus().streamActive === true
+    this.obsService.on('status', (status) => {
+      this.overlayServer.broadcast('deck', { type: 'obs-status', payload: status })
+
+      const obsStreamIsActive = status.streamActive === true
+      if (obsStreamIsActive && !obsStreamWasActive) {
+        void this.platformManager.retryWaitingConnections().then((platforms) => {
+          if (platforms.length > 0) {
+            console.log(`[services] OBS went live; immediately retried waiting platform${platforms.length === 1 ? '' : 's'}: ${platforms.join(', ')}`)
+          }
+        })
+      }
+      obsStreamWasActive = obsStreamIsActive
+    })
+
     this.platformManager.on('event', (event) => {
       this.streamIntelligenceService.recordEvent(event)
       this.streamerbotBridgeService.forwardEvent(event)
+    })
+
+    this.platformManager.on('discord-call-state', (state) => {
+      this.overlayServer.broadcast('discord-call', { type: 'snapshot', payload: state })
     })
 
     // TikTok go-live automations: when the connector reaches "connected" the host
     // has actually gone live. Fire the opt-in automations, with a cooldown so a
     // brief reconnect blip doesn't re-announce.
     this.platformManager.on('status', (platform, status) => {
+      // Intro sounds re-arm on stream boundaries (connected after a long gap).
+      this.eventSoundService.handleConnectionStatus(platform, status)
+
       if (platform !== 'tiktok' || status !== 'connected') return
       const now = Date.now()
       if (now - this.lastTikTokGoLiveAt < TIKTOK_GO_LIVE_COOLDOWN_MS) return
@@ -233,7 +291,11 @@ export class ServiceRegistry {
       ['voicemod settings', () => this.voicemodService.applySettings(settings)],
       ['vtube settings', () => this.vtubeService.applySettings(settings)],
       ['streamerbot settings', () => this.streamerbotBridgeService.applySettings(settings.integrations.streamerbot)],
-      ['recordings folder', () => this.streamingService.setRecordingsFolder(settings.recordingsFolder)],
+      ['recordings folder', () => {
+        this.streamingService.setRecordingsFolder(settings.recordingsFolder)
+        this.recordingsService.setRecordingsFolder(settings.recordingsFolder)
+      }],
+      ['companion theme', () => this.overlayServer.broadcastAppTheme(settings.ui)],
       ['voice profiles', () => this.ttsEngine.getVoiceProfiles().loadFromRecords(this.db.getAllVoiceProfiles())]
     ]
 
@@ -248,6 +310,7 @@ export class ServiceRegistry {
     // Start OverlayServer first (critical for renderer)
     try {
       const port = settings.overlay.port || 8899;
+      this.obsService.setOverlayPort(port)
       // Existing pairings start the isolated companion API listener. Browser-
       // source routes remain on the local overlay listener.
       const preferLan = this.deviceApi.listPairedDevices().length > 0
@@ -256,6 +319,17 @@ export class ServiceRegistry {
       console.log('[services] OverlayServer ready.')
     } catch (err) {
       console.error('[services] OverlayServer failed:', err)
+    }
+
+    try {
+      const workspace = await this.obsWorkspaceService.start()
+      if (workspace.running) {
+        console.log(`[services] OBS Control Center ready on port ${workspace.port}.`)
+      } else {
+        console.warn('[services] OBS Control Center unavailable:', workspace.lastError)
+      }
+    } catch (err) {
+      console.warn('[services] OBS Control Center failed to start:', err)
     }
 
     // Start other background services
@@ -297,7 +371,8 @@ export class ServiceRegistry {
     const autoPostGoLiveX = this.db.getSetting('tiktokAutoPostGoLiveX') === true
 
     if (autoOpenSender && !this.tiktokChatSender.getStatus().isWindowOpen) {
-      this.tiktokChatSender.openWindow().catch((err) => {
+      const config = this.db.getPlatformConfig('tiktok') as { username?: string } | null
+      this.tiktokChatSender.openWindow(config?.username).catch((err) => {
         console.warn('[services] TikTok go-live: failed to open sender:', err)
       })
     }
@@ -314,6 +389,8 @@ export class ServiceRegistry {
   }
 
   async dispose(): Promise<void> {
+    this.kokoroWorkerService.dispose()
+    this.segmentationWorkerService.dispose()
     this.chatRelayService.dispose()
     this.economyService.dispose()
     this.streamerbotBridgeService.dispose()
@@ -324,6 +401,7 @@ export class ServiceRegistry {
       // Stop streaming/recording FIRST and let ffmpeg finalize — otherwise a
       // recording in progress is left corrupt and ffmpeg children are orphaned.
       this.streamingService.dispose(),
+      this.obsWorkspaceService.stop(),
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),
       this.obsService.disconnect(),

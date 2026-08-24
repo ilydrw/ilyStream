@@ -182,8 +182,8 @@ export class StatsService {
       }
       case 'follow': {
         // A genuinely new follower (one we hadn't recorded before) nudges the
-        // manually-tracked follower count up by one. This is how we keep
-        // TikTok's number live, since TikTok exposes no follower API.
+        // manually-tracked follower count up by one. This is only a fallback
+        // while a platform is not providing authoritative count telemetry.
         const handle = (event.user?.username || '').replace(/^@+/, '')
         const existing = handle ? this.db.stats.getUserStat(platform, handle) : null
         const wasAlreadyFollower = existing ? existing.total_follows > 0 : false
@@ -342,9 +342,9 @@ export class StatsService {
 
   /**
    * Streamer-entered follower baseline for a platform with no follower API
-   * (primarily TikTok). Flags the platform as manually tracked so subsequent
-   * live follow events keep the number current, and lets the streamer correct
-   * it anytime (covering unfollows, which TikTok never reports).
+   * or before its live telemetry is available. Flags the platform as manually
+   * tracked so subsequent follow events keep the number current, while a later
+   * authoritative follower-count event automatically supersedes the fallback.
    */
   setManualFollowerCount(platform: Platform, count: number): void {
     if (!Number.isFinite(count) || count < 0) return

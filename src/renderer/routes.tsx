@@ -11,6 +11,7 @@ import {
   IconFx,
   IconSettings,
   IconStats,
+  IconEconomy,
   IconWidgets,
   IconHealthCenter
 } from './components/ui/icons/nav'
@@ -115,6 +116,14 @@ export const routes: AppRoute[] = [
     component: lazy(() => import('./pages/StatsPage'))
   },
   {
+    path: '/economy',
+    label: 'Points & Rewards',
+    description: 'Manage viewer points, level bonuses, games, redemptions, sounds, and lighting rewards.',
+    section: 'operate',
+    icon: IconEconomy,
+    component: lazy(() => import('./pages/EconomyPage'))
+  },
+  {
     path: '/broadcast',
     label: 'Broadcast Studio',
     description: 'Build scenes, manage sources, mix audio, and start the live or recording output.',
@@ -156,7 +165,7 @@ export const routes: AppRoute[] = [
   },
   {
     path: '/event-lab',
-    label: 'Event Testing',
+    label: 'Event Lab',
     description: 'Test realistic events and inspect what they send to alerts, widgets, automations, and devices.',
     section: 'operate',
     icon: IconTerminal,
@@ -385,6 +394,14 @@ export const routes: AppRoute[] = [
     section: 'configure',
     icon: IconTerminal,
     component: lazy(() => import('./pages/ConsolePage'))
+  },
+  {
+    path: '/engine-preview',
+    label: 'Engine Preview',
+    description: 'Live preview of frames composited by the native bgfx engine.',
+    section: 'configure',
+    icon: IconVideo,
+    component: lazy(() => import('./pages/EnginePreviewPage'))
   },
   {
     path: '/settings',

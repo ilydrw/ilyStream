@@ -144,7 +144,7 @@ export function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.currentTarget.value))}
-        className="w-full accent-[#19c8ff]"
+        className="w-full accent-accent"
         aria-label={label}
       />
       {hint && <p className="text-[11px] text-white/35 leading-snug">{hint}</p>}
@@ -315,6 +315,37 @@ export function TextRow({
         placeholder={placeholder}
         onChange={(e) => onChange(e.currentTarget.value)}
         className="app-input !h-9 !text-[12px] !px-3 w-full"
+        aria-label={label}
+      />
+      {hint && <p className="text-[11px] text-white/35 leading-snug">{hint}</p>}
+    </div>
+  )
+}
+
+export function TextAreaRow({
+  label,
+  hint,
+  value,
+  placeholder,
+  rows = 4,
+  onChange
+}: {
+  label: string
+  hint?: string
+  value: string
+  placeholder?: string
+  rows?: number
+  onChange: (next: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-semibold text-white/85">{label}</span>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        className="app-input !h-auto !text-[12px] !px-3 !py-2.5 w-full resize-y leading-relaxed"
         aria-label={label}
       />
       {hint && <p className="text-[11px] text-white/35 leading-snug">{hint}</p>}

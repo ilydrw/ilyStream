@@ -1,11 +1,12 @@
 import {
   ParticlesWidgetConfig,
-  DEFAULT_PARTICLES_CONFIG,
+  resolveParticlesWidgetConfig,
   FollowerHeartsLayerConfig,
   FallingRosesLayerConfig,
   GalaxyLayerConfig,
   GGsLayerConfig,
-  HeartMeLayerConfig
+  HeartMeLayerConfig,
+  GiftParticleLayerConfig
 } from '../../../shared/widgets'
 import { getAnimationCss } from './animation-utils'
 
@@ -17,18 +18,12 @@ const PARTICLE_BUDGET = 180
 // Cap pending bursts so a spike of events can't queue thousands of particles.
 const MAX_BURST_QUEUE = 4
 
-function mergeConfig(widget: any): ParticlesWidgetConfig {
-  const raw = widget?.config || {}
-  return {
-    followerHearts: { ...DEFAULT_PARTICLES_CONFIG.followerHearts, ...(raw.followerHearts || {}) },
-    fallingRoses:   { ...DEFAULT_PARTICLES_CONFIG.fallingRoses,   ...(raw.fallingRoses   || {}) },
-    galaxy:         { ...DEFAULT_PARTICLES_CONFIG.galaxy,         ...(raw.galaxy         || {}) },
-    ggs:            { ...DEFAULT_PARTICLES_CONFIG.ggs,            ...(raw.ggs            || {}) },
-    heartMe:        { ...DEFAULT_PARTICLES_CONFIG.heartMe,        ...(raw.heartMe        || {}) },
-    animationStyle: raw.animationStyle || DEFAULT_PARTICLES_CONFIG.animationStyle,
-    animationDuration: raw.animationDuration || DEFAULT_PARTICLES_CONFIG.animationDuration,
-    audioThreshold: raw.audioThreshold ?? DEFAULT_PARTICLES_CONFIG.audioThreshold
-  }
+function jsString(value: string): string {
+  return JSON.stringify(String(value)).replace(/</g, '\\u003c')
+}
+
+function jsStringArray(values: string[]): string {
+  return JSON.stringify(values.map(value => String(value))).replace(/</g, '\\u003c')
 }
 
 // Static two-stop gradients only. The old defs animated stop-color and rotated
@@ -99,6 +94,11 @@ function buildContainers(cfg: ParticlesWidgetConfig): string {
   if (cfg.galaxy.enabled)         parts.push('<g id="galaxy-container"></g>')
   if (cfg.ggs.enabled)            parts.push('<g id="ggs-container"></g>')
   if (cfg.heartMe.enabled)        parts.push('<g id="hm-container"></g>')
+  if (cfg.bubbles.enabled)        parts.push('<g id="bubbles-container"></g>')
+  if (cfg.confetti.enabled)       parts.push('<g id="confetti-container"></g>')
+  if (cfg.fireworks.enabled)      parts.push('<g id="fireworks-container"></g>')
+  if (cfg.lightning.enabled)      parts.push('<g id="lightning-container"></g>')
+  if (cfg.moneyRain.enabled)      parts.push('<g id="money-container"></g>')
   return parts.join('\n    ')
 }
 
@@ -114,7 +114,7 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, _isPreview: boo
     wobbleAmp: 30, wobbleFreq: 0.015,
     scaleMin: ${h.scale * 0.7}, scaleMax: ${h.scale * 1.2},
     textColor: '${h.textColor}', text: '${safeText}',
-    audioReactive: ${h.audioReactive === true}
+    audioReactive: ${h.audioReactive === true}, maxLifetimeMs: 15000
   };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
@@ -136,7 +136,7 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, _isPreview: boo
     t.textContent = cfg.text || 'ily!';
     g.appendChild(t);
     container.appendChild(g);
-    return { dom: g, x: x + rnd(-5, 5), y: 110, spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, op: -1 };
+    return { dom: g, x: x + rnd(-5, 5), y: 110, spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1 };
   }
   function update() {
     for (var i = particles.length - 1; i >= 0; i--) {
@@ -148,7 +148,9 @@ function buildFollowerHeartsScript(h: FollowerHeartsLayerConfig, _isPreview: boo
       var volScale = audioScale(cfg.audioReactive);
       p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
-      if (p.y < -20 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); releaseParticle(); }
+      if (p.y < -20 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
     }
   }
   var burstQueue = 0;
@@ -180,7 +182,11 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, _isPreview: boolean
   var container = document.getElementById('rose-container');
   if (!container) return;
   var particles = [];
-  var cfg = { count: ${r.count}, baseSpeed: ${r.speed}, scale: ${r.scale}, wobbleAmp: 12, wobbleFreq: 0.015, audioReactive: ${r.audioReactive === true} };
+  var cfg = {
+    count: ${r.count}, baseSpeed: ${r.speed}, scale: ${r.scale}, wobbleAmp: 12, wobbleFreq: 0.015,
+    giftIds: ${jsStringArray(r.giftIds)}, giftNames: ${jsStringArray(r.giftNames)},
+    audioReactive: ${r.audioReactive === true}, maxLifetimeMs: 15000
+  };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
   function mkParticle(x, startY) {
@@ -199,7 +205,7 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, _isPreview: boolean
     return {
       dom: g, x: x + rnd(-3, 3), y: startY !== undefined ? startY : rnd(-20, -5),
       spd: cfg.baseSpeed * rnd(0.8, 1.4), sc: sc, rot: rnd(-180, 180), rotSpd: rnd(-0.8, 0.8),
-      wo: rnd(0, 6.28), age: 0, op: -1
+      wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1
     };
   }
   function update() {
@@ -213,7 +219,9 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, _isPreview: boolean
       var volScale = audioScale(cfg.audioReactive);
       p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ') rotate(' + p.rot + ') translate(-50,-50)');
       if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
-      if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); releaseParticle(); }
+      if (p.y > 115 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
     }
   }
   var burstQueue = 0;
@@ -234,8 +242,8 @@ function buildFallingRosesScript(r: FallingRosesLayerConfig, _isPreview: boolean
   layers.push({
     update: update,
     onEvent: function(ev) {
-      if (ev.type !== 'gift') return;
-      if (!(ev.giftName || '').toLowerCase().includes('rose')) return;
+      if (!isTikTokGift(ev)) return;
+      if (!giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
       queueBurst();
     },
     trigger: queueBurst
@@ -249,7 +257,11 @@ function buildGalaxyScript(g: GalaxyLayerConfig, _isPreview: boolean): string {
   var container = document.getElementById('galaxy-container');
   if (!container) return;
   var particles = [];
-  var cfg = { count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale}, wobbleAmp: 20, wobbleFreq: 0.01, audioReactive: ${g.audioReactive === true} };
+  var cfg = {
+    count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale}, wobbleAmp: 20, wobbleFreq: 0.01,
+    giftIds: ${jsStringArray(g.giftIds)}, giftNames: ${jsStringArray(g.giftNames)},
+    audioReactive: ${g.audioReactive === true}, maxLifetimeMs: 15000
+  };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
   function mkParticle(x, startY) {
@@ -261,7 +273,7 @@ function buildGalaxyScript(g: GalaxyLayerConfig, _isPreview: boolean): string {
     u.setAttribute('x', '-10'); u.setAttribute('y', '-10');
     g.appendChild(u);
     container.appendChild(g);
-    return { dom: g, x: x + rnd(-10, 10), y: startY !== undefined ? startY : rnd(-30, -5), spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, op: -1 };
+    return { dom: g, x: x + rnd(-10, 10), y: startY !== undefined ? startY : rnd(-30, -5), spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1 };
   }
   function update() {
     for (var i = particles.length - 1; i >= 0; i--) {
@@ -273,7 +285,9 @@ function buildGalaxyScript(g: GalaxyLayerConfig, _isPreview: boolean): string {
       var volScale = audioScale(cfg.audioReactive);
       p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
-      if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); releaseParticle(); }
+      if (p.y > 115 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
     }
   }
   var burstQueue = 0;
@@ -294,8 +308,8 @@ function buildGalaxyScript(g: GalaxyLayerConfig, _isPreview: boolean): string {
   layers.push({
     update: update,
     onEvent: function(ev) {
-      if (ev.type !== 'gift') return;
-      if (!(ev.giftName || '').toLowerCase().includes('galaxy')) return;
+      if (!isTikTokGift(ev)) return;
+      if (!giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
       queueBurst();
     },
     trigger: queueBurst
@@ -313,8 +327,9 @@ function buildGGsScript(g: GGsLayerConfig, _isPreview: boolean): string {
   var cfg = {
     count: ${g.count}, baseSpeed: ${g.speed}, scale: ${g.scale},
     color: '${g.color}', text: '${safeText}',
+    giftIds: ${jsStringArray(g.giftIds)}, giftNames: ${jsStringArray(g.giftNames)},
     wobbleAmp: 18, wobbleFreq: 0.014,
-    audioReactive: ${g.audioReactive === true}
+    audioReactive: ${g.audioReactive === true}, maxLifetimeMs: 15000
   };
   var NS = 'http://www.w3.org/2000/svg';
   var sizes = ['48px','56px','64px','40px','52px'];
@@ -335,7 +350,7 @@ function buildGGsScript(g: GGsLayerConfig, _isPreview: boolean): string {
     g.setAttribute('dominant-baseline', 'middle');
     g.textContent = cfg.text;
     container.appendChild(g);
-    return { dom: g, x: x + rnd(-8, 8), y: rnd(-30, -5), spd: cfg.baseSpeed * sc * 0.6, sc: sc, wo: rnd(0, 6.28), age: 0, op: -1 };
+    return { dom: g, x: x + rnd(-8, 8), y: rnd(-30, -5), spd: cfg.baseSpeed * sc * 0.6, sc: sc, wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1 };
   }
   function update() {
     for (var i = particles.length - 1; i >= 0; i--) {
@@ -347,7 +362,9 @@ function buildGGsScript(g: GGsLayerConfig, _isPreview: boolean): string {
       var volScale = audioScale(cfg.audioReactive);
       p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
-      if (p.y > 115 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); releaseParticle(); }
+      if (p.y > 115 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
     }
   }
   var burstQueue = 0;
@@ -368,11 +385,337 @@ function buildGGsScript(g: GGsLayerConfig, _isPreview: boolean): string {
   layers.push({
     update: update,
     onEvent: function(ev) {
-      if (ev.type !== 'gift') return;
-      if (!(ev.giftName || '').toLowerCase().includes('gg')) return;
+      if (!isTikTokGift(ev)) return;
+      if (!giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
       queueBurst();
     },
     trigger: queueBurst
+  });
+})();`
+}
+
+type GiftRainKind = 'confetti' | 'lightning' | 'money'
+
+interface GiftRainOptions {
+  containerId: string
+  kind: GiftRainKind
+  maxCount: number
+  spawnDelayMs: number
+  speedMultiplier: number
+  wobbleAmp: number
+}
+
+function buildGiftRainScript(layer: GiftParticleLayerConfig, options: GiftRainOptions): string {
+  const shapeScript = options.kind === 'confetti'
+    ? `
+    var shape = document.createElementNS(NS, 'rect');
+    shape.setAttribute('x', '-5'); shape.setAttribute('y', '-9');
+    shape.setAttribute('width', '10'); shape.setAttribute('height', '18');
+    shape.setAttribute('rx', '2');
+    shape.setAttribute('fill', Math.random() < 0.5 ? cfg.primary : cfg.secondary);
+    g.appendChild(shape);`
+    : options.kind === 'lightning'
+      ? `
+    var shape = document.createElementNS(NS, 'path');
+    shape.setAttribute('d', 'M-4,-16 L8,-16 L1,-3 L9,-3 L-8,18 L-2,4 L-10,4 Z');
+    shape.setAttribute('fill', Math.random() < 0.5 ? cfg.primary : cfg.secondary);
+    g.appendChild(shape);`
+      : `
+    var shape = document.createElementNS(NS, 'text');
+    shape.setAttribute('x', '0'); shape.setAttribute('y', '0');
+    shape.setAttribute('font-family', "'Inter',sans-serif");
+    shape.setAttribute('font-weight', '900');
+    shape.setAttribute('font-size', '34px');
+    shape.setAttribute('text-anchor', 'middle');
+    shape.setAttribute('dominant-baseline', 'middle');
+    shape.setAttribute('paint-order', 'stroke');
+    shape.setAttribute('stroke', 'rgba(0,0,0,0.45)');
+    shape.setAttribute('stroke-width', '2');
+    shape.setAttribute('fill', giftContains(ev, ['diamond', 'gem']) ? cfg.secondary : cfg.primary);
+    shape.textContent = giftContains(ev, ['diamond', 'gem']) ? '◆' : '$';
+    g.appendChild(shape);`
+
+  return `
+(function() {
+  var container = document.getElementById('${options.containerId}');
+  if (!container) return;
+  var particles = [];
+  var cfg = {
+    count: ${layer.count}, baseSpeed: ${layer.speed}, scale: ${layer.scale},
+    primary: ${jsString(layer.primaryColor)}, secondary: ${jsString(layer.secondaryColor)},
+    giftIds: ${jsStringArray(layer.giftIds)}, giftNames: ${jsStringArray(layer.giftNames)},
+    audioReactive: ${layer.audioReactive === true}, maxLifetimeMs: 15000
+  };
+  var NS = 'http://www.w3.org/2000/svg';
+  function mkParticle(x, startY, ev) {
+    var sc = rnd(0.7, 1.25) * cfg.scale;
+    var g = document.createElementNS(NS, 'g');${shapeScript}
+    container.appendChild(g);
+    return {
+      dom: g, x: x + rnd(-4, 4), y: startY !== undefined ? startY : rnd(-18, -4),
+      spd: Math.max(0, cfg.baseSpeed) * rnd(0.75, 1.3) * ${options.speedMultiplier},
+      drift: rnd(-0.08, 0.08), sc: sc, rot: rnd(-180, 180), rotSpd: rnd(-2.2, 2.2),
+      wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1
+    };
+  }
+  function update() {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.y += p.spd; p.x += p.drift; p.rot += p.rotSpd; p.age++;
+      var wx = Math.sin((p.age + p.wo) * 0.035) * ${options.wobbleAmp};
+      var op = p.y > 82 ? Math.max(0, 1 - ((p.y - 82) / 20)) : 1;
+      var volScale = audioScale(cfg.audioReactive);
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') rotate(' + p.rot + ') scale(' + (p.sc * volScale) + ')');
+      if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
+      if (p.y > 115 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
+    }
+  }
+  var burstQueue = [];
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue.length === 0) { isBursting = false; return; }
+    isBursting = true;
+    var ev = burstQueue.shift();
+    var count = giftBurstCount(cfg.count, ev, ${options.maxCount});
+    for (var i = 0; i < count; i++) {
+      (function(idx) {
+        setTimeout(function() { spawn(particles, mkParticle, rnd(3, 97), undefined, ev); }, idx * ${options.spawnDelayMs});
+      })(i);
+    }
+    setTimeout(processQueue, Math.max(1400, (count * ${options.spawnDelayMs}) + 700));
+  }
+  function queueBurst(ev) {
+    if (burstQueue.length < ${MAX_BURST_QUEUE}) burstQueue.push(ev || null);
+    if (!isBursting) processQueue();
+  }
+  layers.push({
+    update: update,
+    onEvent: function(ev) {
+      if (!isTikTokGift(ev) || !giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
+      queueBurst(ev);
+    },
+    trigger: function() { queueBurst(null); }
+  });
+})();`
+}
+
+function buildBubblesScript(layer: GiftParticleLayerConfig): string {
+  return `
+(function() {
+  var container = document.getElementById('bubbles-container');
+  if (!container) return;
+  var particles = [];
+  var cfg = {
+    count: ${layer.count}, baseSpeed: ${layer.speed}, scale: ${layer.scale},
+    primary: ${jsString(layer.primaryColor)}, secondary: ${jsString(layer.secondaryColor)},
+    giftIds: ${jsStringArray(layer.giftIds)}, giftNames: ${jsStringArray(layer.giftNames)},
+    audioReactive: ${layer.audioReactive === true}, maxLifetimeMs: 15000
+  };
+  var NS = 'http://www.w3.org/2000/svg';
+  function mkParticle(x, startY) {
+    var g = document.createElementNS(NS, 'g');
+    var radius = rnd(11, 25);
+    var bubble = document.createElementNS(NS, 'circle');
+    bubble.setAttribute('cx', '0'); bubble.setAttribute('cy', '0');
+    bubble.setAttribute('r', String(radius));
+    bubble.setAttribute('fill', cfg.secondary);
+    bubble.setAttribute('fill-opacity', '0.09');
+    bubble.setAttribute('stroke', Math.random() < 0.5 ? cfg.primary : cfg.secondary);
+    bubble.setAttribute('stroke-width', String(rnd(1.5, 3)));
+    g.appendChild(bubble);
+    var highlight = document.createElementNS(NS, 'circle');
+    highlight.setAttribute('cx', String(-radius * 0.34));
+    highlight.setAttribute('cy', String(-radius * 0.34));
+    highlight.setAttribute('r', String(Math.max(2, radius * 0.16)));
+    highlight.setAttribute('fill', cfg.primary);
+    highlight.setAttribute('fill-opacity', '0.72');
+    g.appendChild(highlight);
+    container.appendChild(g);
+    return {
+      dom: g, x: x + rnd(-4, 4), y: startY !== undefined ? startY : rnd(102, 112),
+      spd: Math.max(0.18, cfg.baseSpeed) * rnd(0.55, 1.15), drift: rnd(-0.035, 0.035),
+      sc: cfg.scale * rnd(0.72, 1.28), wo: rnd(0, Math.PI * 2), age: 0,
+      bornAt: Date.now(), op: -1
+    };
+  }
+  function update() {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.y -= p.spd; p.x += p.drift; p.age++;
+      var wobble = Math.sin((p.age * 0.035) + p.wo) * 2.2;
+      var pulse = 1 + (Math.sin((p.age * 0.08) + p.wo) * 0.05);
+      var op = p.y < 18 ? Math.max(0, (p.y + 8) / 26) : Math.min(1, p.age / 12);
+      var volScale = audioScale(cfg.audioReactive);
+      p.dom.setAttribute('transform', 'translate(' + ((p.x + wobble) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * pulse * volScale) + ')');
+      if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
+      if (p.y < -10 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
+    }
+  }
+  var burstQueue = [];
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue.length === 0) { isBursting = false; return; }
+    isBursting = true;
+    var ev = burstQueue.shift();
+    var count = giftBurstCount(cfg.count, ev, 90);
+    for (var i = 0; i < count; i++) {
+      (function(idx) {
+        setTimeout(function() { spawn(particles, mkParticle, rnd(5, 95), undefined, ev); }, idx * 36);
+      })(i);
+    }
+    setTimeout(processQueue, Math.max(1600, (count * 36) + 650));
+  }
+  function queueBurst(ev) {
+    if (burstQueue.length < ${MAX_BURST_QUEUE}) burstQueue.push(ev || null);
+    if (!isBursting) processQueue();
+  }
+  layers.push({
+    update: update,
+    onEvent: function(ev) {
+      if (!isTikTokGift(ev) || !giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
+      queueBurst(ev);
+    },
+    trigger: function() { queueBurst(null); }
+  });
+})();`
+}
+
+function buildFireworksScript(layer: GiftParticleLayerConfig): string {
+  return `
+(function() {
+  var container = document.getElementById('fireworks-container');
+  if (!container) return;
+  var particles = [];
+  var cfg = {
+    count: ${layer.count}, baseSpeed: ${layer.speed}, scale: ${layer.scale},
+    primary: ${jsString(layer.primaryColor)}, secondary: ${jsString(layer.secondaryColor)},
+    giftIds: ${jsStringArray(layer.giftIds)}, giftNames: ${jsStringArray(layer.giftNames)},
+    audioReactive: ${layer.audioReactive === true}, maxLifetimeMs: 12000
+  };
+  var NS = 'http://www.w3.org/2000/svg';
+  function colorAt(index) {
+    if (index % 5 === 0) return '#FFFFFF';
+    return index % 2 === 0 ? cfg.primary : cfg.secondary;
+  }
+  function mkRocket(x, targetY, context) {
+    var g = document.createElementNS(NS, 'g');
+    var trail = document.createElementNS(NS, 'line');
+    trail.setAttribute('x1', '0'); trail.setAttribute('y1', '4');
+    trail.setAttribute('x2', '0'); trail.setAttribute('y2', String(22 * cfg.scale));
+    trail.setAttribute('stroke', cfg.secondary);
+    trail.setAttribute('stroke-width', String(2.2 * cfg.scale));
+    trail.setAttribute('stroke-linecap', 'round');
+    trail.setAttribute('stroke-opacity', '0.7');
+    g.appendChild(trail);
+    var head = document.createElementNS(NS, 'circle');
+    head.setAttribute('cx', '0'); head.setAttribute('cy', '0');
+    head.setAttribute('r', String(3.4 * cfg.scale));
+    head.setAttribute('fill', cfg.primary);
+    head.setAttribute('stroke', '#FFFFFF');
+    head.setAttribute('stroke-width', String(1.2 * cfg.scale));
+    g.appendChild(head);
+    container.appendChild(g);
+    return {
+      kind: 'rocket', dom: g, x: x, y: 105, targetY: targetY,
+      vx: rnd(-0.055, 0.055), vy: -Math.max(0.55, cfg.baseSpeed * 0.72) * rnd(0.88, 1.12),
+      sparkCount: context.sparkCount, age: 0, bornAt: Date.now(), op: -1
+    };
+  }
+  function mkSpark(x, y, context) {
+    var angle = context.angle;
+    var velocity = Math.max(0.42, cfg.baseSpeed * 0.76) * rnd(0.72, 1.32);
+    var color = colorAt(context.index);
+    var g = document.createElementNS(NS, 'g');
+    var tail = document.createElementNS(NS, 'line');
+    tail.setAttribute('x1', '0'); tail.setAttribute('y1', '0');
+    tail.setAttribute('x2', String(-Math.cos(angle) * 13 * cfg.scale));
+    tail.setAttribute('y2', String(-Math.sin(angle) * 13 * cfg.scale));
+    tail.setAttribute('stroke', color);
+    tail.setAttribute('stroke-width', String(rnd(1.2, 2.5) * cfg.scale));
+    tail.setAttribute('stroke-linecap', 'round');
+    g.appendChild(tail);
+    var head = document.createElementNS(NS, 'circle');
+    head.setAttribute('cx', '0'); head.setAttribute('cy', '0');
+    head.setAttribute('r', String(rnd(1.8, 3.4) * cfg.scale));
+    head.setAttribute('fill', color);
+    g.appendChild(head);
+    container.appendChild(g);
+    return {
+      kind: 'spark', dom: g, x: x, y: y,
+      vx: Math.cos(angle) * velocity, vy: Math.sin(angle) * velocity,
+      age: 0, life: rnd(68, 108), bornAt: Date.now(), op: -1
+    };
+  }
+  function explode(rocket) {
+    var count = Math.max(12, rocket.sparkCount);
+    for (var index = 0; index < count; index++) {
+      var ringAngle = (Math.PI * 2 * index / count) + rnd(-0.055, 0.055);
+      spawn(particles, mkSpark, rocket.x, rocket.y, { angle: ringAngle, index: index });
+    }
+  }
+  function update() {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.age++;
+      if (p.kind === 'rocket') {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.006;
+        var rocketScale = audioScale(cfg.audioReactive);
+        p.dom.setAttribute('transform', 'translate(' + (p.x * 10) + ',' + (p.y * 10) + ') scale(' + rocketScale + ')');
+        p.dom.style.opacity = Math.min(1, p.age / 5);
+        if (Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+          container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+          continue;
+        }
+        if (p.y <= p.targetY || p.age >= 120) {
+          container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+          explode(p);
+        }
+        continue;
+      }
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.986; p.vy = (p.vy * 0.986) + 0.014;
+      var op = Math.max(0, 1 - (p.age / p.life));
+      if (p.age < 8) op = Math.min(1, p.age / 3);
+      var volScale = audioScale(cfg.audioReactive);
+      p.dom.setAttribute('transform', 'translate(' + (p.x * 10) + ',' + (p.y * 10) + ') scale(' + volScale + ')');
+      if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
+      if (p.age >= p.life || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
+    }
+  }
+  var burstQueue = [];
+  var isBursting = false;
+  function processQueue() {
+    if (burstQueue.length === 0) { isBursting = false; return; }
+    isBursting = true;
+    var ev = burstQueue.shift();
+    var sparkCount = giftBurstCount(cfg.count, ev, 72);
+    var rocketCount = Math.min(3, Math.max(1, Math.round(giftIntensity(ev))));
+    for (var i = 0; i < rocketCount; i++) {
+      (function(idx) {
+        setTimeout(function() {
+          spawn(particles, mkRocket, rnd(16, 84), rnd(20, 56), { sparkCount: sparkCount });
+        }, idx * 420);
+      })(i);
+    }
+    setTimeout(processQueue, 2800 + (rocketCount * 420));
+  }
+  function queueBurst(ev) {
+    if (burstQueue.length < ${MAX_BURST_QUEUE}) burstQueue.push(ev || null);
+    if (!isBursting) processQueue();
+  }
+  layers.push({
+    update: update,
+    onEvent: function(ev) {
+      if (!isTikTokGift(ev) || !giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) return;
+      queueBurst(ev);
+    },
+    trigger: function() { queueBurst(null); }
   });
 })();`
 }
@@ -384,14 +727,14 @@ function buildHeartMeScript(h: HeartMeLayerConfig, _isPreview: boolean): string 
   if (!container) return;
   var particles = [];
   var cfg = {
-    burstSize: ${Math.min(h.count, 8)}, baseSpeed: ${h.speed},
+    burstSize: ${Math.min(h.count, 20)}, baseSpeed: ${h.speed},
     scaleMin: ${h.scale * 0.5}, scaleMax: ${h.scale * 0.9},
+    giftIds: ${jsStringArray(h.giftIds)}, giftNames: ${jsStringArray(h.giftNames)},
     wobbleAmp: 22, wobbleFreq: 0.018,
-    audioReactive: ${h.audioReactive === true}
+    audioReactive: ${h.audioReactive === true}, maxLifetimeMs: 15000
   };
   var NS = 'http://www.w3.org/2000/svg';
   var XL = 'http://www.w3.org/1999/xlink';
-  var lastLike = 0;
   function mkParticle(x) {
     var sc = rnd(cfg.scaleMin, cfg.scaleMax);
     var g = document.createElementNS(NS, 'g');
@@ -401,7 +744,7 @@ function buildHeartMeScript(h: HeartMeLayerConfig, _isPreview: boolean): string 
     u.setAttribute('x', '-15'); u.setAttribute('y', '-15');
     g.appendChild(u);
     container.appendChild(g);
-    return { dom: g, x: x + rnd(-8, 8), y: 108, spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, op: -1 };
+    return { dom: g, x: x + rnd(-8, 8), y: 108, spd: cfg.baseSpeed * sc, sc: sc, wo: rnd(0, 6.28), age: 0, bornAt: Date.now(), op: -1 };
   }
   function update() {
     for (var i = particles.length - 1; i >= 0; i--) {
@@ -413,30 +756,35 @@ function buildHeartMeScript(h: HeartMeLayerConfig, _isPreview: boolean): string 
       var volScale = audioScale(cfg.audioReactive);
       p.dom.setAttribute('transform', 'translate(' + ((p.x + wx) * 10) + ',' + (p.y * 10) + ') scale(' + (p.sc * volScale) + ')');
       if (op !== p.op) { p.dom.style.opacity = op; p.op = op; }
-      if (p.y < -20 || op <= 0.001) { container.removeChild(p.dom); particles.splice(i, 1); releaseParticle(); }
+      if (p.y < -20 || op <= 0.001 || Date.now() - p.bornAt >= cfg.maxLifetimeMs) {
+        container.removeChild(p.dom); particles.splice(i, 1); releaseParticle();
+      }
     }
   }
-  function burst() {
-    var now = Date.now();
-    if (now - lastLike < 800) return;
-    lastLike = now;
-    for (var i = 0; i < cfg.burstSize; i++) {
+  function burst(ev) {
+    var count = giftBurstCount(cfg.burstSize, ev, 60);
+    for (var i = 0; i < count; i++) {
       (function(idx) { setTimeout(function() { spawn(particles, mkParticle, rnd(15, 85)); }, idx * 60); })(i);
     }
   }
   layers.push({
     update: update,
-    onEvent: function(ev) { if (ev.type === 'like') burst(); },
-    trigger: burst
+    onEvent: function(ev) {
+      if (!isTikTokGift(ev)) return;
+      if (giftSelectionMatches(ev, cfg.giftIds, cfg.giftNames)) burst(ev);
+    },
+    trigger: function() { burst(null); }
   });
 })();`
 }
 
 export function buildParticlesOverlayHtml(widget?: any, isPreview = false): string {
-  const cfg = mergeConfig(widget)
+  const cfg = resolveParticlesWidgetConfig(widget?.config)
 
   const hasAny = cfg.followerHearts.enabled || cfg.fallingRoses.enabled ||
-    cfg.galaxy.enabled || cfg.ggs.enabled || cfg.heartMe.enabled
+    cfg.galaxy.enabled || cfg.ggs.enabled || cfg.heartMe.enabled ||
+    cfg.bubbles.enabled || cfg.confetti.enabled || cfg.fireworks.enabled ||
+    cfg.lightning.enabled || cfg.moneyRain.enabled
 
   const defs = buildDefs(cfg)
   const containers = buildContainers(cfg)
@@ -447,6 +795,32 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
     cfg.galaxy.enabled         ? buildGalaxyScript(cfg.galaxy, isPreview)                 : '',
     cfg.ggs.enabled            ? buildGGsScript(cfg.ggs, isPreview)                       : '',
     cfg.heartMe.enabled        ? buildHeartMeScript(cfg.heartMe, isPreview)               : '',
+    cfg.bubbles.enabled        ? buildBubblesScript(cfg.bubbles)                          : '',
+    cfg.confetti.enabled       ? buildGiftRainScript(cfg.confetti, {
+      containerId: 'confetti-container',
+      kind: 'confetti',
+      maxCount: 108,
+      spawnDelayMs: 18,
+      speedMultiplier: 1,
+      wobbleAmp: 0.8
+    }) : '',
+    cfg.fireworks.enabled      ? buildFireworksScript(cfg.fireworks)                      : '',
+    cfg.lightning.enabled      ? buildGiftRainScript(cfg.lightning, {
+      containerId: 'lightning-container',
+      kind: 'lightning',
+      maxCount: 54,
+      spawnDelayMs: 34,
+      speedMultiplier: 1.45,
+      wobbleAmp: 0.35
+    }) : '',
+    cfg.moneyRain.enabled      ? buildGiftRainScript(cfg.moneyRain, {
+      containerId: 'money-container',
+      kind: 'money',
+      maxCount: 84,
+      spawnDelayMs: 30,
+      speedMultiplier: 1,
+      wobbleAmp: 0.9
+    }) : '',
   ].filter(Boolean).join('\n')
 
   return `<!DOCTYPE html>
@@ -482,9 +856,9 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
     // exceed the budget no matter how many events land at once.
     var PARTICLE_BUDGET = ${PARTICLE_BUDGET};
     var liveParticles = 0;
-    function spawn(list, make, x, startY) {
+    function spawn(list, make, x, startY, context) {
       if (liveParticles >= PARTICLE_BUDGET) return null;
-      var p = make(x, startY);
+      var p = make(x, startY, context);
       if (!p) return null;
       list.push(p);
       liveParticles++;
@@ -498,6 +872,38 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
       var vol = (window.parent && window.parent.__masterVolume) || window.__masterVolume || 0;
       if (vol < AUDIO_THRESHOLD) vol = 0;
       return 1 + (vol * 1.5);
+    }
+    function normalizedGiftName(ev) {
+      return String(ev && ev.giftName || '').trim().toLowerCase();
+    }
+    function isTikTokGift(ev) {
+      return Boolean(ev && ev.type === 'gift' && (!ev.platform || ev.platform === 'tiktok'));
+    }
+    function giftMatches(ev, names) {
+      var name = normalizedGiftName(ev);
+      return names.indexOf(name) >= 0;
+    }
+    function giftSelectionMatches(ev, giftIds, giftNames) {
+      var giftId = String(ev && ev.giftId || '').trim();
+      if (giftId && giftIds.indexOf(giftId) >= 0) return true;
+      return giftMatches(ev, giftNames.map(function(name) { return String(name).trim().toLowerCase(); }));
+    }
+    function giftContains(ev, fragments) {
+      var name = normalizedGiftName(ev);
+      for (var i = 0; i < fragments.length; i++) {
+        if (name.indexOf(fragments[i]) >= 0) return true;
+      }
+      return false;
+    }
+    function giftIntensity(ev) {
+      var valueCents = Math.max(0, Number(ev && ev.monetaryValue) || 0);
+      var repeatCount = Math.max(1, Number(ev && ev.giftCount) || 1);
+      var valueTier = valueCents >= 5000 ? 3 : valueCents >= 500 ? 2 : valueCents >= 50 ? 1.5 : 1;
+      var repeatTier = repeatCount >= 100 ? 3 : repeatCount >= 25 ? 2 : repeatCount >= 5 ? 1.5 : 1;
+      return Math.max(valueTier, repeatTier);
+    }
+    function giftBurstCount(baseCount, ev, maxCount) {
+      return Math.min(maxCount, Math.max(1, Math.round(baseCount * giftIntensity(ev))));
     }
 
     ${layerScripts}
@@ -543,7 +949,10 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
 
       if (isPreview && layers.length > 0) {
         function rotatePreview() {
-          var containers = ['fh-container', 'rose-container', 'galaxy-container', 'ggs-container', 'hm-container'];
+          var containers = [
+            'fh-container', 'rose-container', 'galaxy-container', 'ggs-container', 'hm-container',
+            'bubbles-container', 'confetti-container', 'fireworks-container', 'lightning-container', 'money-container'
+          ];
           containers.forEach(function(id) {
             var el = document.getElementById(id);
             if (el) el.style.display = 'none';
@@ -555,6 +964,11 @@ export function buildParticlesOverlayHtml(widget?: any, isPreview = false): stri
           if (${cfg.galaxy.enabled})         layerIds.push('galaxy-container');
           if (${cfg.ggs.enabled})            layerIds.push('ggs-container');
           if (${cfg.heartMe.enabled})        layerIds.push('hm-container');
+          if (${cfg.bubbles.enabled})        layerIds.push('bubbles-container');
+          if (${cfg.confetti.enabled})       layerIds.push('confetti-container');
+          if (${cfg.fireworks.enabled})      layerIds.push('fireworks-container');
+          if (${cfg.lightning.enabled})      layerIds.push('lightning-container');
+          if (${cfg.moneyRain.enabled})      layerIds.push('money-container');
 
           var activeId = layerIds[activeIndex];
           if (activeId) {

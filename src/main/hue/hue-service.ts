@@ -41,6 +41,19 @@ const CYBER_BLUE: HueRgb = { r: 25, g: 200, b: 255 }
 const CYBER_PURPLE: HueRgb = { r: 208, g: 53, b: 241 }
 const CYBER_STROBE_INTERVAL_MS = 350
 const SUPERFAN_CYBER_STROBE_INTERVAL_MS = 90
+// The bridge sustains roughly 10 light commands/sec. Pushing frames faster
+// backs up its internal Zigbee queue, and those stale frames keep playing out
+// AFTER our restore lands — which is how lights got stuck white/dim.
+const MIN_FRAME_MS_PER_LIGHT = 100
+const COMMAND_TIMEOUT_MS = 3000
+const CAPTURE_TIMEOUT_MS = 2000
+const CAPTURE_ATTEMPTS = 3
+// Grace period between the last effect frame and the restore commands so the
+// bridge's queue drains first.
+const BRIDGE_SETTLE_MS = 250
+const RESTORE_VERIFY_DELAY_MS = 600
+const RESTORE_VERIFY_ATTEMPTS = 3
+const EFFECT_COOLDOWN_MS = 5000
 
 export class HueService extends EventEmitter implements LightProvider {
   public platform: LightPlatform = 'hue'
@@ -53,6 +66,8 @@ export class HueService extends EventEmitter implements LightProvider {
   private restoreTimeout: NodeJS.Timeout | null = null
   private cooldownTimeout: NodeJS.Timeout | null = null
   private isTriggerActive = false
+  private inFlightSends = new Set<Promise<unknown>>()
+  private pendingRestore: { states: Record<string, HueLightSnapshot>; lightIds: string[] } | null = null
   private db: Database
 
   private rgbToHex(r: number, g: number, b: number): string {
@@ -128,22 +143,38 @@ export class HueService extends EventEmitter implements LightProvider {
   }
 
   private getSelectedLightIdsSnapshot(): string[] {
-    return [...this.selectedLightIds]
+    return [...new Set(this.selectedLightIds)]
+  }
+
+  private async fetchLightSnapshot(id: string): Promise<HueLightSnapshot | null> {
+    try {
+      const response = await fetch(`http://${this.bridgeIp}/api/${this.username}/lights/${id}`, {
+        signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS)
+      })
+      if (!response.ok) return null
+      const data = await response.json() as any
+      if (!data?.state) return null
+      const { on, bri, hue, sat, xy, ct, colormode } = data.state
+      return { on, bri, hue, sat, xy, ct, colormode }
+    } catch {
+      return null
+    }
   }
 
   private async captureSelectedLightStates(lightIds = this.getSelectedLightIdsSnapshot()): Promise<Record<string, HueLightSnapshot>> {
     const statesToRestore: Record<string, HueLightSnapshot> = {}
 
     for (const id of lightIds) {
-      try {
-        const response = await fetch(`http://${this.bridgeIp}/api/${this.username}/lights/${id}`)
-        const data = await response.json() as any
-        if (data && data.state) {
-          const { on, bri, hue, sat, xy, ct, colormode } = data.state
-          statesToRestore[id] = { on, bri, hue, sat, xy, ct, colormode }
-        }
-      } catch (err) {
-        log.error(`[Hue] Failed to capture state for light ${id}:`, err)
+      let snapshot: HueLightSnapshot | null = null
+      for (let attempt = 0; attempt < CAPTURE_ATTEMPTS && !snapshot; attempt++) {
+        snapshot = await this.fetchLightSnapshot(id)
+      }
+      if (snapshot) {
+        statesToRestore[id] = snapshot
+      } else {
+        // A light we can't snapshot is a light we can't put back afterwards —
+        // leave it out of the effect entirely rather than corrupt it.
+        log.warn(`[Hue] Could not capture state for light ${id}; excluding it from the effect.`)
       }
     }
 
@@ -180,17 +211,132 @@ export class HueService extends EventEmitter implements LightProvider {
     try {
       await fetch(`http://${this.bridgeIp}/api/${this.username}/lights/${id}/state`, {
         method: 'PUT',
-        body: JSON.stringify(state)
+        body: JSON.stringify(state),
+        signal: AbortSignal.timeout(COMMAND_TIMEOUT_MS)
       })
     } catch {
       // Best-effort hardware control. Callers keep the alert pipeline moving.
     }
   }
 
-  private async restoreSelectedLightStates(statesToRestore: Record<string, HueLightSnapshot>, lightIds: string[]): Promise<void> {
-    await Promise.allSettled(
-      lightIds.map(id => this.setLightState(id, this.buildRestoreState(statesToRestore[id])))
+  /** Fire-and-forget effect send that finishEffect() can still await before restoring. */
+  private sendEffectFrameCommand(id: string, state: Record<string, any>): Promise<void> {
+    const send = this.setLightState(id, state)
+    this.inFlightSends.add(send)
+    void send.finally(() => this.inFlightSends.delete(send))
+    return send
+  }
+
+  private async restoreSingleLight(id: string, snapshot: HueLightSnapshot | undefined): Promise<void> {
+    const restoreState = this.buildRestoreState(snapshot)
+    const memory = Object.fromEntries(
+      Object.entries(restoreState).filter(([key]) => key !== 'on' && key !== 'alert')
     )
+
+    if (snapshot?.on === false && Object.keys(memory).length > 0) {
+      // The bridge rejects color/brightness commands while a light is off, so
+      // re-teach the pre-effect values while it's still on (it is, mid-effect),
+      // THEN switch it off. Otherwise the light keeps the last effect frame in
+      // memory and comes back cold-white/dim when it's next turned on.
+      await this.setLightState(id, { ...memory, on: true, transitiontime: 0 })
+      await this.setLightState(id, { on: false, alert: 'none', transitiontime: 0 })
+      return
+    }
+
+    // Restore immediately. Hue's default 400ms transition can otherwise leave
+    // verification racing an in-progress color change.
+    await this.setLightState(id, { ...restoreState, transitiontime: 0 })
+  }
+
+  /** True when the light's live state matches its pre-effect snapshot (within bridge rounding). */
+  private snapshotRestored(expected: HueLightSnapshot, current: HueLightSnapshot): boolean {
+    const expectedState = this.buildRestoreState(expected)
+
+    if (typeof expectedState.on === 'boolean' && current.on !== expectedState.on) return false
+    // An off light is fully restored once it's off — its color memory was
+    // re-taught by restoreSingleLight and isn't reliably readable while off.
+    if (expectedState.on === false) return true
+
+    if (typeof expectedState.bri === 'number' &&
+        (typeof current.bri !== 'number' || Math.abs(current.bri - expectedState.bri) > 3)) return false
+
+    if (isHueXy(expectedState.xy)) {
+      if (current.colormode !== 'xy' || !isHueXy(current.xy)) return false
+      if (Math.abs(current.xy[0] - expectedState.xy[0]) > 0.02) return false
+      if (Math.abs(current.xy[1] - expectedState.xy[1]) > 0.02) return false
+    } else if (typeof expectedState.ct === 'number') {
+      if (current.colormode !== 'ct' || typeof current.ct !== 'number') return false
+      if (Math.abs(current.ct - expectedState.ct) > 5) return false
+    } else if (typeof expectedState.hue === 'number' && typeof expectedState.sat === 'number') {
+      if (current.colormode !== 'hs' || typeof current.hue !== 'number' || typeof current.sat !== 'number') return false
+      const hueDifference = Math.abs(current.hue - expectedState.hue)
+      if (Math.min(hueDifference, 65536 - hueDifference) > 600) return false
+      if (Math.abs(current.sat - expectedState.sat) > 5) return false
+    }
+
+    return true
+  }
+
+  /**
+   * Restores every light, then reads each one back and re-sends until the
+   * bridge actually took the values. A single fire-and-forget restore PUT was
+   * the old behavior, and any dropped/overwritten command left the light stuck
+   * on its last effect frame.
+   */
+  private async restoreAndVerify(states: Record<string, HueLightSnapshot>, lightIds: string[]): Promise<void> {
+    let remaining = lightIds.filter(id => states[id])
+
+    for (let attempt = 1; attempt <= RESTORE_VERIFY_ATTEMPTS; attempt++) {
+      await Promise.allSettled(remaining.map(id => this.restoreSingleLight(id, states[id])))
+      await delay(RESTORE_VERIFY_DELAY_MS)
+      if (!this.isConnected) return
+
+      const stillWrong: string[] = []
+      for (const id of remaining) {
+        const current = await this.fetchLightSnapshot(id)
+        if (!current || !this.snapshotRestored(states[id], current)) stillWrong.push(id)
+      }
+
+      if (stillWrong.length === 0) {
+        log.info(`[Hue] Restore verified for ${lightIds.length} light(s).`)
+        return
+      }
+      remaining = stillWrong
+      log.warn(`[Hue] ${remaining.length} light(s) did not take the restore (attempt ${attempt}/${RESTORE_VERIFY_ATTEMPTS}); retrying...`)
+    }
+
+    log.error(`[Hue] Gave up restoring light(s) after ${RESTORE_VERIFY_ATTEMPTS} attempts: ${remaining.join(', ')}`)
+  }
+
+  /**
+   * Shared end-of-effect path: stop the frame loop, wait for frames still on
+   * the wire plus a settle window (so stale bridge-queued frames can't land
+   * after the restore), then run the verified restore and start the cooldown.
+   */
+  private async finishEffect(label: string): Promise<void> {
+    const pending = this.pendingRestore
+    this.pendingRestore = null
+    this.clearActiveEffect()
+
+    try {
+      if (pending) {
+        await Promise.allSettled([...this.inFlightSends])
+        await delay(BRIDGE_SETTLE_MS)
+        await this.restoreAndVerify(pending.states, pending.lightIds)
+        log.info(`[Hue] ${label} finished; restore pass complete for ${pending.lightIds.length} light(s).`)
+      }
+    } catch (error) {
+      log.error(`[Hue] ${label} restore failed:`, error)
+    } finally {
+      this.startCooldown()
+    }
+  }
+
+  private startCooldown(): void {
+    this.cooldownTimeout = setTimeout(() => {
+      this.isTriggerActive = false
+      this.cooldownTimeout = null
+    }, EFFECT_COOLDOWN_MS)
   }
 
   private clearActiveEffect(): void {
@@ -209,8 +355,20 @@ export class HueService extends EventEmitter implements LightProvider {
   }
 
   async dispose(): Promise<void> {
-    this.isConnected = false
     this.clearActiveEffect()
+    const pending = this.pendingRestore
+    this.pendingRestore = null
+
+    if (pending) {
+      // Shutting down mid-effect — put the lights back before we go. Best
+      // effort, no verification loop: the app is closing.
+      await Promise.allSettled([...this.inFlightSends])
+      await Promise.allSettled(
+        pending.lightIds.map(id => this.restoreSingleLight(id, pending.states[id]))
+      )
+    }
+
+    this.isConnected = false
     this.removeAllListeners()
   }
 
@@ -378,40 +536,42 @@ export class HueService extends EventEmitter implements LightProvider {
     if (!this.canTriggerEffect()) return
     this.isTriggerActive = true
     this.clearActiveEffect()
-    const lightIds = this.getSelectedLightIdsSnapshot()
-    
+
     try {
-      const statesToRestore = await this.captureSelectedLightStates(lightIds)
+      const statesToRestore = await this.captureSelectedLightStates()
+      const lightIds = Object.keys(statesToRestore)
+      if (lightIds.length === 0) {
+        log.warn('[Hue] Strobe aborted: could not capture any light states.')
+        this.isTriggerActive = false
+        return
+      }
+      this.pendingRestore = { states: statesToRestore, lightIds }
 
-      // High-intensity strobe loop
+      // High-intensity strobe loop, paced to the bridge's command budget.
+      const frameIntervalMs = Math.max(200, lightIds.length * MIN_FRAME_MS_PER_LIGHT)
       let isHigh = true
+      let frameInFlight = false
       this.strobeInterval = setInterval(() => {
-        for (const id of lightIds) {
-          void this.setLightState(id, {
-            on: true,
-            bri: isHigh ? 254 : 1,
-            ct: 153, // Cold white
-            transitiontime: 0
-          })
-        }
+        if (frameInFlight) return // never stack frames the bridge hasn't accepted yet
+        frameInFlight = true
+        const sends = lightIds.map(id => this.sendEffectFrameCommand(id, {
+          on: true,
+          bri: isHigh ? 254 : 1,
+          ct: 153, // Cold white
+          transitiontime: 0
+        }))
+        void Promise.allSettled(sends).then(() => { frameInFlight = false })
         isHigh = !isHigh
-      }, 200) // 200ms for a fast strobe effect
+      }, frameIntervalMs)
 
-      // End strobe and restore states after duration
       this.restoreTimeout = setTimeout(() => {
-        this.clearActiveEffect()
-        void this.restoreSelectedLightStates(statesToRestore, lightIds)
-        log.info(`[Hue] Strobe finished, states restored for ${lightIds.length} lights.`)
-        
-        // Cooldown period after restore to prevent rapid re-triggering
-        this.cooldownTimeout = setTimeout(() => {
-          this.isTriggerActive = false
-          this.cooldownTimeout = null
-        }, 5000)
+        this.restoreTimeout = null
+        void this.finishEffect('Strobe')
       }, durationMs)
 
     } catch (error: any) {
       log.error('[Hue] Strobe trigger failed:', error)
+      this.pendingRestore = null
       this.isTriggerActive = false
     }
   }
@@ -423,30 +583,42 @@ export class HueService extends EventEmitter implements LightProvider {
     if (!this.canTriggerEffect()) return
     this.isTriggerActive = true
     this.clearActiveEffect()
-    const lightIds = this.getSelectedLightIdsSnapshot()
-    const frameIntervalMs = clampStrobeInterval(
-      options.frameIntervalMs ?? CYBER_STROBE_INTERVAL_MS
-    )
-    log.info(`[Hue] Triggering cyber gradient strobe at ${frameIntervalMs}ms...`)
 
     try {
-      const statesToRestore = await this.captureSelectedLightStates(lightIds)
+      const statesToRestore = await this.captureSelectedLightStates()
+      const lightIds = Object.keys(statesToRestore)
+      if (lightIds.length === 0) {
+        log.warn('[Hue] Cyber gradient strobe aborted: could not capture any light states.')
+        this.isTriggerActive = false
+        return
+      }
+      this.pendingRestore = { states: statesToRestore, lightIds }
+
+      const frameIntervalMs = Math.max(
+        clampStrobeInterval(options.frameIntervalMs ?? CYBER_STROBE_INTERVAL_MS),
+        lightIds.length * MIN_FRAME_MS_PER_LIGHT
+      )
+      log.info(`[Hue] Triggering cyber gradient strobe at ${frameIntervalMs}ms...`)
       let swap = false
+      let frameInFlight = false
 
       const applyFrame = () => {
-        lightIds.forEach((id, index) => {
+        if (frameInFlight) return
+        frameInFlight = true
+        const sends = lightIds.map((id, index) => {
           const useBlue = lightIds.length === 1
             ? !swap
             : (index % 2 === 0) !== swap
           const color = useBlue ? CYBER_BLUE : CYBER_PURPLE
 
-          void this.setLightState(id, {
+          return this.sendEffectFrameCommand(id, {
             on: true,
             bri: 254,
             xy: this.rgbToXy(color),
             transitiontime: 0
           })
         })
+        void Promise.allSettled(sends).then(() => { frameInFlight = false })
         swap = !swap
       }
 
@@ -454,17 +626,12 @@ export class HueService extends EventEmitter implements LightProvider {
       this.strobeInterval = setInterval(applyFrame, frameIntervalMs)
 
       this.restoreTimeout = setTimeout(() => {
-        this.clearActiveEffect()
-        void this.restoreSelectedLightStates(statesToRestore, lightIds)
-        log.info(`[Hue] Cyber gradient strobe finished, states restored for ${lightIds.length} lights.`)
-
-        this.cooldownTimeout = setTimeout(() => {
-          this.isTriggerActive = false
-          this.cooldownTimeout = null
-        }, 5000)
+        this.restoreTimeout = null
+        void this.finishEffect('Cyber gradient strobe')
       }, durationMs)
     } catch (error) {
       log.error('[Hue] Cyber gradient strobe failed:', error)
+      this.pendingRestore = null
       this.isTriggerActive = false
     }
   }
@@ -480,39 +647,44 @@ export class HueService extends EventEmitter implements LightProvider {
 
     this.isTriggerActive = true
     this.clearActiveEffect()
-    const lightIds = this.getSelectedLightIdsSnapshot()
     log.info('[Hue] Triggering single flash...')
 
     try {
-      const statesToRestore = color
-        ? await this.captureSelectedLightStates(lightIds)
-        : null
+      if (!color) {
+        // 'select' is a bridge-native one-shot blink that reverts on its own —
+        // no capture or restore needed.
+        for (const id of this.getSelectedLightIdsSnapshot()) {
+          void this.sendEffectFrameCommand(id, { alert: 'select' })
+        }
+        this.startCooldown()
+        return
+      }
+
+      const statesToRestore = await this.captureSelectedLightStates()
+      const lightIds = Object.keys(statesToRestore)
+      if (lightIds.length === 0) {
+        log.warn('[Hue] Flash aborted: could not capture any light states.')
+        this.isTriggerActive = false
+        return
+      }
+      this.pendingRestore = { states: statesToRestore, lightIds }
 
       for (const id of lightIds) {
-        const body: any = { alert: 'select' }
-        if (color) {
-          body.xy = this.rgbToXy(color)
-          body.bri = 254
-        }
-        
-        void this.setLightState(id, body)
+        void this.sendEffectFrameCommand(id, {
+          alert: 'select',
+          xy: this.rgbToXy(color),
+          bri: 254
+        })
       }
 
-      if (statesToRestore) {
-        this.restoreTimeout = setTimeout(() => {
-          void this.restoreSelectedLightStates(statesToRestore, lightIds)
-          this.restoreTimeout = null
-        }, Math.max(1000, durationMs))
-      }
-
-      // Single flash 'select' lasts ~1 second. Reset busy state after a short cooldown.
-      this.cooldownTimeout = setTimeout(() => {
-        this.isTriggerActive = false
-        this.cooldownTimeout = null
-      }, Math.max(3000, durationMs))
+      this.restoreTimeout = setTimeout(() => {
+        this.restoreTimeout = null
+        void this.finishEffect('Flash')
+      }, Math.max(1000, durationMs))
 
     } catch (error) {
       log.error('[Hue] Flash trigger failed:', error)
+      this.pendingRestore = null
       this.isTriggerActive = false
     }
   }
@@ -602,6 +774,10 @@ export class HueService extends EventEmitter implements LightProvider {
       await this.triggerStrobe(duration || 5000)
     }
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function clampStrobeInterval(value: number): number {

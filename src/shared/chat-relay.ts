@@ -18,6 +18,11 @@ export interface RelayMessageSource {
   platform: Platform
   displayName: string
   message: string
+  emotes?: Array<{
+    name: string
+    startIndex: number
+    endIndex: number
+  }>
 }
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
@@ -95,7 +100,7 @@ export function buildRelayText(
   tagMode: RelayTagMode = 'platform-and-user'
 ): string {
   const displayName = htmlToSingleLinePlainText(source.displayName)
-  const message = htmlToSingleLinePlainText(source.message)
+  const message = formatRelayMessage(source)
   const platformLabel = PLATFORM_LABELS[source.platform]
 
   if (message.length === 0) {
@@ -116,6 +121,74 @@ export function buildRelayText(
     default:
       return displayName.length > 0 ? `[${platformLabel}] ${displayName}: ${message}` : `[${platformLabel}] ${message}`
   }
+}
+
+/**
+ * Replaces platform-native emote tokens with readable plain text before a
+ * message is sent to another platform. TikTok only exposes numeric IDs for its
+ * Fan Club emotes, while Twitch supplies a useful emote name.
+ */
+export function formatRelayMessage(source: RelayMessageSource): string {
+  const rawMessage = String(source.message || '')
+  const emotes = Array.isArray(source.emotes)
+    ? [...source.emotes].sort((a, b) => a.startIndex - b.startIndex)
+    : []
+  if (emotes.length === 0) return htmlToSingleLinePlainText(rawMessage)
+
+  const parts: string[] = []
+  let cursor = 0
+
+  for (const emote of emotes) {
+    const startIndex = clampMessageIndex(emote.startIndex, rawMessage.length)
+    if (startIndex < cursor) continue
+
+    parts.push(rawMessage.slice(cursor, startIndex))
+    parts.push(` ${relayEmoteFallback(source.platform, emote.name)} `)
+    cursor = resolveEmoteEndIndex(rawMessage, emote, startIndex)
+  }
+
+  parts.push(rawMessage.slice(cursor))
+  return htmlToSingleLinePlainText(parts.join(''))
+}
+
+function relayEmoteFallback(platform: Platform, value: string): string {
+  const label = String(value || '').trim().replace(/^:+|:+$/g, '').trim()
+  if (platform === 'tiktok' && (!label || /^\d+$/.test(label) || label === 'emote')) {
+    return '[TikTok Fan Club emote]'
+  }
+  if (label && !/^\d+$/.test(label) && label !== 'emote') {
+    return `[${label}]`
+  }
+  return `[${PLATFORM_LABELS[platform] || 'Platform'} emote]`
+}
+
+function resolveEmoteEndIndex(
+  message: string,
+  emote: { name: string; endIndex: number },
+  startIndex: number
+): number {
+  const rawName = String(emote.name || '').trim()
+  const bareName = rawName.replace(/^:+|:+$/g, '')
+  const candidates = Array.from(new Set([rawName, bareName, bareName ? `:${bareName}:` : '']))
+    .filter(Boolean)
+
+  for (const candidate of candidates) {
+    if (message.startsWith(candidate, startIndex)) {
+      return Math.min(message.length, startIndex + candidate.length)
+    }
+  }
+
+  // TikTok often reports an insertion position without putting any token in
+  // the comment text. In that case the emote is zero-width and must not eat the
+  // surrounding words. Trust the declared range only when it contains a name.
+  const declaredEnd = clampMessageIndex(Number(emote.endIndex) + 1, message.length)
+  const declaredText = message.slice(startIndex, declaredEnd)
+  return candidates.includes(declaredText) ? declaredEnd : startIndex
+}
+
+function clampMessageIndex(value: number, length: number): number {
+  const index = Number.isFinite(value) ? Math.floor(value) : 0
+  return Math.max(0, Math.min(length, index))
 }
 
 export function normalizeRelayText(text: string): string {

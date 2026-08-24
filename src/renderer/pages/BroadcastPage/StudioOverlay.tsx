@@ -58,10 +58,22 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
   const browserWorkerBusy = useRef<Record<string, boolean>>({})
   const latestBrowserBitmaps = useRef<Record<string, any>>({})
   // Most recently received ImageBitmap mirroring the broadcast window's
-  // composed canvas. When set, the render loop blits this instead of
-  // running its own layer composition (which would draw camera placeholders
-  // because the projector renderer can't open the cameras itself).
+  // composed canvas (legacy mirror transport). When set, the render loop
+  // blits this instead of running its own layer composition (which would
+  // draw camera placeholders because the projector renderer can't open the
+  // cameras itself).
   const latestMirrorBitmapRef = useRef<ImageBitmap | null>(null)
+  // Primary mirror transport: the broadcast window sends its composed canvas
+  // as a WebRTC video track. While connected, the fullscreen <video> element
+  // shows it directly (media-pipeline paced — no JS per frame) and the canvas
+  // render loop idles.
+  const mirrorVideoRef = useRef<HTMLVideoElement>(null)
+  const mirrorLiveRef = useRef(false)
+  const [mirrorLive, setMirrorLiveState] = useState(false)
+  const setMirrorLive = (value: boolean) => {
+    mirrorLiveRef.current = value
+    setMirrorLiveState(value)
+  }
 
   const activeScene = useMemo(() => {
     const scene = scenes.find(s => s.id === sceneId) || scenes[0]
@@ -225,22 +237,27 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
   useEffect(() => {
     const unsub = window.api?.on?.('browser-source:frame', async (frame: any) => {
       const { id } = frame
-      if (browserWorkerBusy.current[id]) {
-        latestBrowserBitmaps.current[id] = frame
-      } else {
-        const worker = browserFrameWorkerRef.current
-        if (!worker) return
-        const { id, bitmap, width, height } = frame
-        const layer = activeSceneRef.current?.layers.find(l => l.id === id)
-        browserWorkerBusy.current[id] = true
-        postWorkerFrame(worker, {
-          id,
-          source: bitmap,
-          width,
-          height,
-          transparentBackground: layer?.config?.transparentBackground !== false,
-          transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
-        }, bitmap)
+      try {
+        if (!capturedBrowserSourceIds.current.has(id)) return
+        if (browserWorkerBusy.current[id]) {
+          latestBrowserBitmaps.current[id] = frame
+        } else {
+          const worker = browserFrameWorkerRef.current
+          if (!worker) return
+          const { id, bitmap, width, height } = frame
+          const layer = activeSceneRef.current?.layers.find(l => l.id === id)
+          browserWorkerBusy.current[id] = true
+          postWorkerFrame(worker, {
+            id,
+            source: bitmap,
+            width,
+            height,
+            transparentBackground: layer?.config?.transparentBackground !== false,
+            transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
+          }, bitmap)
+        }
+      } finally {
+        window.api.studio.browserSourceFrameConsumed(id)
       }
     })
     return () => unsub?.()
@@ -317,12 +334,65 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
     }
   }, [activeScene, canvasWidth, canvasHeight, devices])
 
-  // Mirror-mode: the broadcast window streams its composed canvas to us as
-  // ImageBitmap frames (USB cameras are exclusive to that process, so we
-  // can't open them ourselves). The render loop checks `latestMirrorBitmapRef`
-  // and draws it instead of compositing layers when a frame is available.
+  // Mirror-mode: the broadcast window streams its composed canvas to us (USB
+  // cameras are exclusive to that process, so we can't open them ourselves).
+  // Preferred transport is a WebRTC video track negotiated over the brokered
+  // MessagePort; the legacy transport is ImageBitmap frames on that same port,
+  // which the render loop blits via `latestMirrorBitmapRef`.
   useEffect(() => {
     let receivedPort: MessagePort | null = null
+    let pc: RTCPeerConnection | null = null
+    let remoteDescribed = false
+    const pendingIce: RTCIceCandidateInit[] = []
+
+    const teardownPeer = () => {
+      try { pc?.close() } catch {}
+      pc = null
+      remoteDescribed = false
+      pendingIce.length = 0
+      setMirrorLive(false)
+      const video = mirrorVideoRef.current
+      if (video) video.srcObject = null
+    }
+
+    const handleOffer = async (port: MessagePort, sdp: string) => {
+      teardownPeer()
+      const peer = new RTCPeerConnection()
+      pc = peer
+      peer.ontrack = (event) => {
+        const video = mirrorVideoRef.current
+        if (!video) return
+        video.srcObject = event.streams[0] || new MediaStream([event.track])
+        void video.play().catch(() => {})
+        // This is a program monitor — render frames as soon as they arrive.
+        try { (event.receiver as any).jitterBufferTarget = 0 } catch {}
+        try { (event.receiver as any).playoutDelayHint = 0 } catch {}
+      }
+      peer.onconnectionstatechange = () => {
+        if (pc !== peer) return
+        if (peer.connectionState === 'connected') setMirrorLive(true)
+        else if (peer.connectionState === 'failed' || peer.connectionState === 'closed' || peer.connectionState === 'disconnected') {
+          setMirrorLive(false)
+        }
+      }
+      peer.onicecandidate = (event) => {
+        if (event.candidate) port.postMessage({ type: 'mirror-webrtc-ice', candidate: event.candidate.toJSON() })
+      }
+      try {
+        await peer.setRemoteDescription({ type: 'offer', sdp })
+        remoteDescribed = true
+        for (const candidate of pendingIce.splice(0)) {
+          try { await peer.addIceCandidate(candidate) } catch {}
+        }
+        const answer = await peer.createAnswer()
+        await peer.setLocalDescription(answer)
+        port.postMessage({ type: 'mirror-webrtc-answer', sdp: answer.sdp })
+      } catch (err) {
+        // The sender times out and falls back to ImageBitmap frames.
+        console.error('[Projector] WebRTC mirror negotiation failed:', err)
+        teardownPeer()
+      }
+    }
 
     const handler = (event: MessageEvent) => {
       if (event.source !== window) return
@@ -331,12 +401,20 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
       if (!port) return
       receivedPort = port
       port.onmessage = (msg) => {
-        const bitmap = (msg.data as any)?.bitmap
-        if (!bitmap) return
-        const previous = latestMirrorBitmapRef.current
-        latestMirrorBitmapRef.current = bitmap
-        if (previous) {
-          try { previous.close() } catch {}
+        const data = msg.data as any
+        if (data?.bitmap) {
+          const previous = latestMirrorBitmapRef.current
+          latestMirrorBitmapRef.current = data.bitmap
+          if (previous) {
+            try { previous.close() } catch {}
+          }
+          return
+        }
+        if (data?.type === 'mirror-webrtc-offer') {
+          void handleOffer(port, data.sdp)
+        } else if (data?.type === 'mirror-webrtc-ice' && data.candidate) {
+          if (pc && remoteDescribed) void pc.addIceCandidate(data.candidate).catch(() => {})
+          else pendingIce.push(data.candidate)
         }
       }
       port.start()
@@ -352,6 +430,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
 
     return () => {
       window.removeEventListener('message', handler)
+      teardownPeer()
       try { receivedPort?.postMessage('__close') } catch {}
       try { receivedPort?.close() } catch {}
       const last = latestMirrorBitmapRef.current
@@ -377,6 +456,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
     let targetRenderFps = maxRenderFps
     let targetFrameMs = 1000 / targetRenderFps
     let lastRenderAt = 0
+    let lastBlittedMirrorBitmap: ImageBitmap | null = null
     let renderFrameCount = 0
     let perfWindowStart = performance.now()
     let perfFrameCount = 0
@@ -391,13 +471,28 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
       lastRenderAt = lastRenderAt === 0 ? now : now - ((now - lastRenderAt) % targetFrameMs)
       renderFrameCount++
 
-      ctx.fillStyle = '#000000'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      // While the WebRTC mirror is live the fullscreen <video> element is
+      // showing the program — skip all canvas work but keep the loop alive
+      // so we resume instantly if the connection drops.
+      if (mirrorLiveRef.current) {
+        frameId = requestAnimationFrame(render); return
+      }
 
       // Short-circuit: if the broadcast window is mirroring its composed
       // canvas to us, just draw that and skip our local layer composition.
+      // Bitmaps arrive at the mirror transport's ~30fps while this loop runs
+      // at up to 60 — re-blitting an identical frame doubles raster work, so
+      // skip (before clearing!) until a new bitmap lands.
       const mirror = latestMirrorBitmapRef.current
+      if (mirror && mirror === lastBlittedMirrorBitmap) {
+        frameId = requestAnimationFrame(render); return
+      }
+
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
       if (mirror) {
+        lastBlittedMirrorBitmap = mirror
         const canvasRatio = canvas.width / canvas.height
         const bitmapRatio = mirror.width / mirror.height
         let dw = canvas.width, dh = canvas.height, dx = 0, dy = 0
@@ -411,6 +506,7 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
         ctx.drawImage(mirror, dx, dy, dw, dh)
         frameId = requestAnimationFrame(render); return
       }
+      lastBlittedMirrorBitmap = null
 
       const currentScene = activeSceneRef.current
       if (!currentScene) { frameId = requestAnimationFrame(render); return }
@@ -592,7 +688,19 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black text-white" style={{ colorScheme: 'dark' }}>
-      <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="w-full h-full object-contain bg-black" />
+      <canvas
+        ref={canvasRef}
+        width={canvasWidth}
+        height={canvasHeight}
+        className={`w-full h-full object-contain bg-black ${mirrorLive ? 'hidden' : ''}`}
+      />
+      <video
+        ref={mirrorVideoRef}
+        muted
+        autoPlay
+        playsInline
+        className={`absolute inset-0 h-full w-full object-contain bg-black ${mirrorLive ? '' : 'hidden'}`}
+      />
     </div>
   )
 }

@@ -12,12 +12,11 @@ import { registerAssetProtocol } from './lib/asset-protocol'
 import { registerAvatarProtocol } from './lib/avatar-protocol'
 import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/crash-reporter'
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
-import { startNativeCameraServer, stopAllNativeCameras } from './native-camera'
+import { startMemoryTelemetry, stopMemoryTelemetry } from './system/memory-telemetry'
+import { disposeEnginePreview } from './ipc/handlers/engine-handlers'
 
 // Global logger setup
 setupLogger()
-
-startNativeCameraServer()
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock()
@@ -139,8 +138,8 @@ function createWindow(): void {
     backgroundColor: '#0f1115',
     icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false
@@ -202,7 +201,10 @@ function createWindow(): void {
     console.error(`[main] Main renderer exited: ${details.reason} (${details.exitCode})`)
   })
 
-  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // Preview updates intentionally replace srcdoc subframes. Chromium reports
+    // superseded subframe navigations as ERR_ABORTED (-3), which is expected.
+    if (errorCode === -3 && !isMainFrame) return
     console.error(`[main] Window failed to load: ${errorCode} ${errorDescription} at ${validatedURL}`)
   })
 
@@ -309,6 +311,7 @@ app.whenReady().then(async () => {
   })
 
   startHistoryPrune()
+  startMemoryTelemetry()
 })
 
 function startHistoryPrune(): void {
@@ -327,6 +330,7 @@ function startHealthWatchdog(): void {
 }
 
 function stopBackgroundTimers(): void {
+  stopMemoryTelemetry()
   if (historyPruneTimer) {
     clearInterval(historyPruneTimer)
     historyPruneTimer = null
@@ -343,12 +347,12 @@ app.on('window-all-closed', () => {
 app.on('before-quit', (event) => {
   if (isQuitting) return
   isQuitting = true
-  stopAllNativeCameras()
   event.preventDefault()
   stopBackgroundTimers()
   disposeAutoUpdates()
   void (async () => {
     try {
+      await disposeEnginePreview()
       if (services) await services.dispose()
     } finally {
       app.exit(0)

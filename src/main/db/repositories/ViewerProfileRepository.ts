@@ -8,16 +8,34 @@ import type {
   ViewerProfileInput
 } from '../../../shared/stats'
 import type { UserStatRow } from '../types'
-import type { Platform } from '../../platforms/types'
+import { isStreamPlatform, type Platform } from '../../platforms/types'
 import {
   calculateSimilarity,
   normalizeOptionalText,
   normalizeUsername,
   safeDisplayName,
-  uniqueNonEmpty,
   type ViewerAccountRow,
   type ViewerProfileRow
 } from './StatsRepository.helpers'
+
+/**
+ * Settings lists whose entries are scoped by `viewerProfileId`. They live in the
+ * settings table, so a profile merge has to carry them across by hand.
+ * `singlePerProfile` marks lists the UI reads with a single lookup — a merge
+ * cannot keep two entries for the surviving profile, so the survivor's own entry
+ * wins and the source's is dropped.
+ */
+const VIEWER_SCOPED_SETTING_KEYS: Array<{ key: string; singlePerProfile: boolean }> = [
+  { key: 'ttsUserVoiceOverrides', singlePerProfile: false },
+  { key: 'viewerJoinSounds', singlePerProfile: true }
+]
+
+/** The profile an entry is scoped to, or '' when it's a legacy username rule. */
+function viewerScopeOf(entry: unknown): string {
+  if (!entry || typeof entry !== 'object') return ''
+  const scope = (entry as { viewerProfileId?: unknown }).viewerProfileId
+  return typeof scope === 'string' ? scope : ''
+}
 
 export class ViewerProfileRepository extends BaseRepository {
   constructor(
@@ -109,9 +127,8 @@ export class ViewerProfileRepository extends BaseRepository {
     identity: { platformUserId?: string | null; displayName?: string | null } = {}
   ): string | null {
     const normalizedUsername = normalizeUsername(username)
-    const normalizedDisplayName = normalizeUsername(identity.displayName || undefined)
     const normalizedPlatformUserId = normalizeOptionalText(identity.platformUserId)
-    if (!normalizedUsername && !normalizedDisplayName && !normalizedPlatformUserId) return null
+    if (!normalizedUsername && !normalizedPlatformUserId) return null
 
     if (platform && platform !== 'all') {
       if (normalizedPlatformUserId) {
@@ -126,15 +143,15 @@ export class ViewerProfileRepository extends BaseRepository {
         if (statById?.profile_id) return statById.profile_id
       }
 
-      for (const candidate of uniqueNonEmpty([normalizedUsername, normalizedDisplayName])) {
+      if (normalizedUsername) {
         const account = this.db.prepare(
-          'SELECT profile_id FROM viewer_accounts WHERE platform = ? AND (username = ? OR LOWER(display_name) = ?) ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, candidate, candidate) as { profile_id: string } | undefined
+          'SELECT profile_id FROM viewer_accounts WHERE platform = ? AND username = ? ORDER BY last_seen_at DESC LIMIT 1'
+        ).get(platform, normalizedUsername) as { profile_id: string } | undefined
         if (account?.profile_id) return account.profile_id
 
         const stat = this.db.prepare(
-          'SELECT profile_id FROM user_stats WHERE platform = ? AND (LOWER(username) = ? OR LOWER(display_name) = ?) AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-        ).get(platform, candidate, candidate) as { profile_id: string | null } | undefined
+          'SELECT profile_id FROM user_stats WHERE platform = ? AND LOWER(username) = ? AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
+        ).get(platform, normalizedUsername) as { profile_id: string | null } | undefined
         if (stat?.profile_id) return stat.profile_id
       }
 
@@ -153,15 +170,15 @@ export class ViewerProfileRepository extends BaseRepository {
       if (statById?.profile_id) return statById.profile_id
     }
 
-    for (const candidate of uniqueNonEmpty([normalizedUsername, normalizedDisplayName])) {
+    if (normalizedUsername) {
       const account = this.db.prepare(
-        'SELECT profile_id FROM viewer_accounts WHERE username = ? OR LOWER(display_name) = ? ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(candidate, candidate) as { profile_id: string } | undefined
+        'SELECT profile_id FROM viewer_accounts WHERE username = ? ORDER BY last_seen_at DESC LIMIT 1'
+      ).get(normalizedUsername) as { profile_id: string } | undefined
       if (account?.profile_id) return account.profile_id
 
       const stat = this.db.prepare(
-        'SELECT profile_id FROM user_stats WHERE (LOWER(username) = ? OR LOWER(display_name) = ?) AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
-      ).get(candidate, candidate) as { profile_id: string | null } | undefined
+        'SELECT profile_id FROM user_stats WHERE LOWER(username) = ? AND profile_id IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1'
+      ).get(normalizedUsername) as { profile_id: string | null } | undefined
       if (stat?.profile_id) return stat.profile_id
     }
 
@@ -225,10 +242,12 @@ export class ViewerProfileRepository extends BaseRepository {
     const primaryPlatform = input.primaryPlatform || firstAccount?.platform || null
     const profilePictureUrl = input.profilePictureUrl || firstAccount?.profilePictureUrl || null
 
+    const primaryUsername = input.primaryUsername || firstAccount?.username || null
+
     this.db.prepare(`
-      INSERT INTO viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).run(id, displayName, profilePictureUrl, input.notes || '', primaryPlatform)
+      INSERT INTO viewer_profiles (id, display_name, profile_picture_url, notes, primary_platform, primary_username, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(id, displayName, profilePictureUrl, input.notes || '', primaryPlatform, primaryUsername)
 
     for (const account of input.accounts || []) {
       this.addAccountToProfile(id, account)
@@ -243,13 +262,14 @@ export class ViewerProfileRepository extends BaseRepository {
 
     this.db.prepare(`
       UPDATE viewer_profiles
-      SET display_name = ?, profile_picture_url = ?, notes = ?, primary_platform = ?, updated_at = CURRENT_TIMESTAMP
+      SET display_name = ?, profile_picture_url = ?, notes = ?, primary_platform = ?, primary_username = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       safeDisplayName(patch.displayName ?? existing.displayName),
       patch.profilePictureUrl !== undefined ? patch.profilePictureUrl : existing.profilePictureUrl,
       patch.notes ?? existing.notes,
       patch.primaryPlatform === undefined ? existing.primaryPlatform : patch.primaryPlatform,
+      patch.primaryUsername !== undefined ? patch.primaryUsername : existing.primaryUsername,
       profileId
     )
 
@@ -314,6 +334,7 @@ export class ViewerProfileRepository extends BaseRepository {
       }
       this.db.prepare('UPDATE user_stats SET profile_id = ? WHERE profile_id = ?')
         .run(targetProfileId, sourceProfileId)
+      this.repointViewerScopedSettings(targetProfileId, sourceProfileId)
       this.db.prepare('DELETE FROM viewer_accounts WHERE profile_id = ?').run(sourceProfileId)
       this.db.prepare('DELETE FROM viewer_profiles WHERE id = ?').run(sourceProfileId)
     })
@@ -411,6 +432,83 @@ export class ViewerProfileRepository extends BaseRepository {
     }
   }
 
+  /**
+   * Merging deletes the source profile row, but the viewer's TTS voice rules and
+   * join sound are stored in settings keyed by that id — left alone they would
+   * point at a profile that no longer exists and silently stop applying, which
+   * reads to the user as "linking an alt wiped my settings".
+   */
+  private repointViewerScopedSettings(targetProfileId: string, sourceProfileId: string): void {
+    for (const { key, singlePerProfile } of VIEWER_SCOPED_SETTING_KEYS) {
+      const entries = this.readViewerScopedSetting(key)
+      if (!entries) continue
+
+      let survivorHasEntry = singlePerProfile &&
+        entries.some((entry) => viewerScopeOf(entry) === targetProfileId)
+      let changed = false
+      const next: unknown[] = []
+
+      for (const entry of entries) {
+        if (viewerScopeOf(entry) !== sourceProfileId) {
+          next.push(entry)
+          continue
+        }
+        changed = true
+        if (survivorHasEntry) continue
+        next.push({ ...(entry as object), viewerProfileId: targetProfileId })
+        if (singlePerProfile) survivorHasEntry = true
+      }
+
+      if (changed) this.writeViewerScopedSetting(key, next)
+    }
+  }
+
+  /**
+   * Drops viewer-scoped settings entries whose profile no longer exists. Merges
+   * used to delete the profile row without touching these lists (see
+   * `repointViewerScopedSettings`), leaving rules that can never match again.
+   * Runs at startup so those leftovers don't linger in the TTS and join sound
+   * lists forever. Username-scoped entries carry no profile id and are untouched.
+   */
+  pruneOrphanedViewerScopedSettings(): number {
+    const profileIds = new Set(
+      (this.db.prepare('SELECT id FROM viewer_profiles').all() as Array<{ id: string }>).map((row) => row.id)
+    )
+
+    let removed = 0
+    for (const { key } of VIEWER_SCOPED_SETTING_KEYS) {
+      const entries = this.readViewerScopedSetting(key)
+      if (!entries) continue
+
+      const next = entries.filter((entry) => {
+        const scope = viewerScopeOf(entry)
+        return !scope || profileIds.has(scope)
+      })
+
+      if (next.length === entries.length) continue
+      removed += entries.length - next.length
+      this.writeViewerScopedSetting(key, next)
+    }
+    return removed
+  }
+
+  private readViewerScopedSetting(key: string): unknown[] | null {
+    const row = this.db.prepare('SELECT value_json FROM settings WHERE key = ?')
+      .get(key) as { value_json: string } | undefined
+    if (!row) return null
+    try {
+      const parsed = JSON.parse(row.value_json)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  private writeViewerScopedSetting(key: string, entries: unknown[]): void {
+    this.db.prepare('INSERT OR REPLACE INTO settings (key, value_json) VALUES (?, ?)')
+      .run(key, JSON.stringify(entries))
+  }
+
   private getViewerAccounts(profileId: string): ViewerAccount[] {
     const rows = this.db.prepare(`
       SELECT * FROM viewer_accounts
@@ -491,17 +589,34 @@ export class ViewerProfileRepository extends BaseRepository {
 
   private refreshViewerProfile(profileId: string): void {
     const accounts = this.getViewerAccounts(profileId)
-    const latest = accounts[0]
-    if (!latest) {
+    const streamingAccounts = accounts.filter((account) => isStreamPlatform(account.platform))
+    if (streamingAccounts.length === 0) {
+      this.db.prepare(`
+        UPDATE viewer_profiles
+        SET primary_platform = NULL, primary_username = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(profileId)
+      return
+    }
+
+    const profile = this.db.prepare(
+      'SELECT primary_platform, primary_username FROM viewer_profiles WHERE id = ?'
+    ).get(profileId) as Pick<ViewerProfileRow, 'primary_platform' | 'primary_username'> | undefined
+    if (!profile) {
       this.db.prepare('UPDATE viewer_profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(profileId)
       return
     }
 
+    const primary = streamingAccounts.find((account) => (
+      account.platform === profile.primary_platform &&
+      (!profile.primary_username || account.username === profile.primary_username)
+    )) || streamingAccounts[0]
+
     this.db.prepare(`
       UPDATE viewer_profiles
-      SET primary_platform = ?, updated_at = CURRENT_TIMESTAMP
+      SET primary_platform = ?, primary_username = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(latest.platform, profileId)
+    `).run(primary.platform, primary.username, profileId)
     this.syncStatsProfileIdForProfile(profileId)
   }
 }

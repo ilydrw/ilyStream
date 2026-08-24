@@ -4,7 +4,8 @@ import {
   Platform,
   TikTokConfig,
   PlatformConfig,
-  PlatformChatCapability
+  PlatformChatCapability,
+  FollowerCountEvent
 } from '../types'
 import { Database } from '../../db/database'
 import { TikTokChatSender } from './tiktok-chat-sender'
@@ -12,12 +13,16 @@ import { TikTokMapper } from '../mappers/tiktok-mapper'
 import { isTikTokLikeSystemPayload } from '../../../shared/chat-event-filter'
 import { validateTikTokSenderMessage, type TikTokCapturedCredentials } from './tiktok-chat-sender'
 
+const TIKTOK_FOLLOWER_POLL_INTERVAL_MS = 30_000
+const TIKTOK_CHAT_SEND_TIMEOUT_MS = 15_000
+
 export class TikTokConnector extends BaseConnector {
   readonly platform: Platform = 'tiktok'
   private connection: any = null
   private connectionToken = 0
   private mapper = new TikTokMapper()
   private activeConfig: TikTokConfig | null = null
+  private followerPollTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private db: Database, private chatSender: TikTokChatSender) {
     super()
@@ -72,6 +77,7 @@ export class TikTokConnector extends BaseConnector {
 
         console.log(`[TikTokConnector] Successfully connected via: ${candidate.name}`)
         this.setStatus('connected')
+        this.startFollowerPolling(connection, token)
         return // SUCCESS
       } catch (err: any) {
         lastError = err
@@ -103,35 +109,47 @@ export class TikTokConnector extends BaseConnector {
 
   override getChatCapability(): PlatformChatCapability {
     const senderStatus = this.chatSender?.getStatus()
-    if (this.connection && this.getConfiguredSendCredentials()) {
+    const canUseSignedApi = Boolean(
+      this.connection
+      && this.activeConfig?.signApiKey?.trim()
+      && (this.getConfiguredSendCredentials() || senderStatus?.hasSendCredentials)
+    )
+    if (senderStatus?.isChatReady || canUseSignedApi) {
       return { platform: 'tiktok', canSend: true }
     }
 
-    return senderStatus?.isChatReady
-      ? { platform: 'tiktok', canSend: true }
-      : {
-          platform: 'tiktok',
-          canSend: false,
-          reason: this.connection
-            ? 'Add TikTok host session cookies or open the host chat sender'
-            : senderStatus?.statusMessage || 'Open the TikTok host chat sender'
-        }
+    return {
+      platform: 'tiktok',
+      canSend: false,
+      reason: this.connection
+        ? senderStatus?.statusMessage || 'Open the TikTok host session and sign in'
+        : senderStatus?.statusMessage || 'Open the TikTok host session'
+    }
   }
 
   override async sendChatMessage(text: string): Promise<void> {
     const validation = validateTikTokSenderMessage(text)
     if (!validation.ok) throw new Error(validation.error || 'TikTok chat message is invalid')
 
+    if (this.chatSender.getStatus().isChatReady) {
+      if (await this.chatSender.sendMessage(validation.text)) return
+
+      const senderError = this.chatSender.getStatus().lastError
+      throw new Error(senderError || 'TikTok did not accept the browser chat message')
+    }
+
     const apiError = await this.trySendViaWebcast(validation.text)
     if (!apiError) return
 
-    if (await this.chatSender.sendMessage(text)) return
-
-    const senderError = this.chatSender.getStatus().lastError
-    throw new Error(senderError || apiError || 'TikTok chat sending failed')
+    const senderStatus = this.chatSender.getStatus()
+    throw new Error(senderStatus.statusMessage || apiError || 'TikTok chat sending failed')
   }
 
   private async trySendViaWebcast(text: string): Promise<string | null> {
+    if (!this.activeConfig?.signApiKey?.trim()) {
+      return 'TikTok signed chat API access is not configured'
+    }
+
     if (!this.connection?.sendMessage) {
       return 'TikTok live connector is not connected'
     }
@@ -142,10 +160,16 @@ export class TikTokConnector extends BaseConnector {
     }
 
     try {
-      await this.connection.sendMessage(text, {
-        sessionId: credentials.sessionId,
-        ttTargetIdc: credentials.ttTargetIdc
-      })
+      const response = await withTimeout(
+        this.connection.sendMessage(text, {
+          sessionId: credentials.sessionId,
+          ttTargetIdc: credentials.ttTargetIdc
+        }),
+        TIKTOK_CHAT_SEND_TIMEOUT_MS,
+        'TikTok chat send timed out'
+      )
+      const responseError = getTikTokWebcastSendResponseError(response)
+      if (responseError) return responseError
       return null
     } catch (error) {
       return error instanceof Error ? error.message : String(error)
@@ -179,65 +203,178 @@ export class TikTokConnector extends BaseConnector {
   }
 
   private setupEventListeners(connection: any): void {
-    connection.on('chat', (data: any) => {
-      if (isTikTokLikeSocialPayload(data)) {
-        this.emitEvent(this.mapper.mapLike(data))
-        return
-      }
-      this.emitEvent(this.mapper.mapChat(data))
-    })
+    // Bound handlers (class fields below) rather than inline arrows so
+    // `cleanupConnection` can removeAllListeners on the previous connection
+    // before a reconnect installs a new one. Inline arrows meant every failed
+    // candidate / reconnect left its listeners (and their closures) attached
+    // to a WebcastPushConnection we no longer control — and a connect() that
+    // resolved AFTER our 15s timeout race kept emitting duplicate events into
+    // the pipeline. Multi-hour streams with flaky TikTok reconnects hit this
+    // hard.
+    connection.on('chat', this.onConnectionChat)
+    connection.on('emote', this.onConnectionEmote)
+    connection.on('gift', this.onConnectionGift)
+    connection.on('envelope', this.onConnectionEnvelope)
+    connection.on('like', this.onConnectionLike)
+    connection.on('follow', this.onConnectionFollow)
+    connection.on('share', this.onConnectionShare)
+    connection.on('roomUser', this.onConnectionRoomUser)
+    connection.on('member', this.onConnectionMember)
+    connection.on('disconnected', this.onConnectionDisconnected)
+    connection.on('streamEnd', this.onConnectionStreamEnd)
+    connection.on('error', this.onConnectionError)
+  }
 
-    connection.on('emote', (data: any) => {
-      this.emitEvent(this.mapper.mapEmote(data))
-    })
+  // --- WebcastPushConnection event handlers ---
+  // Arrow-function class fields so `this` is the connector. Prefix
+  // `onConnection*` deliberately avoids shadowing inherited BaseConnector
+  // methods — a previous attempt named one of these `handleError` and
+  // silently broke the error-status transition.
 
-    connection.on('gift', (data: any) => {
-      const event = this.mapper.mapGift(data)
-      this.emitEvent(event)
-    })
-
-    connection.on('like', (data: any) => {
+  private onConnectionChat = (data: any) => {
+    if (isTikTokLikeSocialPayload(data)) {
       this.emitEvent(this.mapper.mapLike(data))
-    })
+      return
+    }
+    this.emitEvent(this.mapper.mapChat(data))
+  }
 
-    connection.on('follow', (data: any) => {
-      this.emitEvent(this.mapper.mapFollow(data))
-    })
+  private onConnectionEmote = (data: any) => {
+    this.emitEvent(this.mapper.mapEmote(data))
+  }
 
-    connection.on('share', (data: any) => {
-      this.emitEvent(this.mapper.mapShare(data))
-    })
+  private onConnectionGift = (data: any) => {
+    this.emitEvent(this.mapper.mapGift(data))
+  }
 
-    connection.on('roomUser', (data: any) => {
-      this.emitEvent(this.mapper.mapViewerCount(data))
-    })
+  private onConnectionEnvelope = (data: any) => {
+    if (isTikTokSuperFanBoxPayload(data)) {
+      this.emitEvent(this.mapper.mapSuperFanBox(data))
+    }
+  }
 
-    connection.on('member', (data: any) => {
-      this.emitEvent(this.mapper.mapMember(data))
-    })
+  private onConnectionLike = (data: any) => {
+    this.emitEvent(this.mapper.mapLike(data))
+  }
 
-    connection.on('disconnected', () => {
-      this.onUnexpectedDisconnect('TikTok disconnected')
-    })
+  private onConnectionFollow = (data: any) => {
+    this.emitEvent(this.mapper.mapFollow(data))
+  }
 
-    connection.on('streamEnd', () => {
-      this.onUnexpectedDisconnect('TikTok stream ended')
-    })
+  private onConnectionShare = (data: any) => {
+    this.emitEvent(this.mapper.mapShare(data))
+  }
 
-    connection.on('error', (err: any) => {
-      if (this.status === 'connecting') {
-        return
-      }
-      this.onRecoverableError(err, 'connection')
-    })
+  private onConnectionRoomUser = (data: any) => {
+    this.emitEvent(this.mapper.mapViewerCount(data))
+  }
+
+  private onConnectionMember = (data: any) => {
+    this.emitEvent(this.mapper.mapMember(data))
+  }
+
+  private onConnectionDisconnected = () => {
+    this.onUnexpectedDisconnect('TikTok disconnected')
+  }
+
+  private onConnectionStreamEnd = () => {
+    this.onUnexpectedDisconnect('TikTok stream ended')
+  }
+
+  private onConnectionError = (err: any) => {
+    if (this.status === 'connecting') {
+      return
+    }
+    this.onRecoverableError(err, 'connection')
   }
 
   private cleanupConnection(options: { invalidateToken?: boolean } = {}): void {
     if (options.invalidateToken !== false) {
       this.connectionToken++
     }
-    if (this.connection) try { this.connection.disconnect() } catch {}
+    if (this.followerPollTimer) {
+      clearInterval(this.followerPollTimer)
+      this.followerPollTimer = null
+    }
+    if (this.connection) {
+      // Detach our listeners BEFORE disconnecting: a connection whose
+      // connect() is still in flight can complete after this point, and
+      // without this a zombie connection keeps feeding (duplicate) events
+      // into the pipeline while holding its buffers alive.
+      try { this.connection.removeAllListeners() } catch {}
+      try { this.connection.disconnect() } catch {}
+    }
     this.connection = null
+  }
+
+  /**
+   * TikTok has no follower API, so poll room info while connected and surface
+   * the count as an authoritative FollowerCountEvent (the stats service
+   * persists it and snapshots growth). Guarded by the connection token so a
+   * tick queued before a reconnect can never report for a dead connection.
+   */
+  private startFollowerPolling(connection: any, token: number): void {
+    if (this.followerPollTimer) clearInterval(this.followerPollTimer)
+
+    const tick = async () => {
+      if (token !== this.connectionToken || connection !== this.connection) return
+      try {
+        // fetchRoomInfo() refreshes the cached snapshot; connection.roomInfo
+        // alone would be the connect-time value forever.
+        const roomInfo = typeof connection.fetchRoomInfo === 'function'
+          ? await connection.fetchRoomInfo()
+          : connection.roomInfo
+        if (token !== this.connectionToken || connection !== this.connection) return
+
+        const count = extractTikTokFollowerCount(roomInfo)
+        if (typeof count !== 'number') return
+
+        this.emitEvent({
+          id: randomUUID(),
+          platform: 'tiktok',
+          timestamp: new Date(),
+          type: 'follower-count',
+          count,
+          // Deliberately NOT the full roomInfo: this event flows through the
+          // orchestrator into event_history every 30s, and the raw payload is
+          // hundreds of KB of stream metadata we never read back.
+          raw: { source: 'tiktok-room-info' }
+        } as FollowerCountEvent)
+      } catch (err) {
+        console.warn('[TikTokConnector] Follower count poll failed:', formatConnectorErrorMessage(err))
+      }
+    }
+
+    this.followerPollTimer = setInterval(() => void tick(), TIKTOK_FOLLOWER_POLL_INTERVAL_MS)
+    void tick()
+  }
+}
+
+export function getTikTokWebcastSendResponseError(response: unknown): string | null {
+  if (!response || typeof response !== 'object') {
+    return 'TikTok chat API returned an invalid response'
+  }
+
+  const code = Number((response as { code?: unknown }).code)
+  if (code === 0 || (code >= 200 && code < 300)) return null
+
+  const message = (response as { message?: unknown }).message
+  return typeof message === 'string' && message.trim()
+    ? message.trim()
+    : `TikTok rejected the chat message${Number.isFinite(code) ? ` (code ${code})` : ''}`
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+      })
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
   }
 }
 
@@ -297,6 +434,25 @@ export function isTikTokLikeSocialPayload(payload: any): boolean {
   return isTikTokLikeSystemPayload(payload)
 }
 
+export function isTikTokSuperFanBoxPayload(payload: any): boolean {
+  if (Number(payload?.envelopeInfo?.businessType ?? payload?.envelope_info?.business_type) === 19) {
+    return true
+  }
+
+  const displayTypes = [
+    payload?.displayType,
+    payload?.common?.displayText?.displayType,
+    payload?.common?.display_text?.display_type
+  ]
+
+  return displayTypes.some((value) => {
+    const normalized = typeof value === 'string'
+      ? value.toLowerCase().replace(/[_-]/g, '')
+      : ''
+    return normalized.includes('superfanbox')
+  })
+}
+
 export function mapTikTokUserInfo(data: any) {
   const isFollower = !!(data.followInfo?.followStatus === 1 || data.userIdentity?.isMutualFollowingWithAnchor)
   return {
@@ -306,4 +462,72 @@ export function mapTikTokUserInfo(data: any) {
     isFollower,
     badges: (data.userBadges || []).map((b: any) => ({ type: b.type, name: b.name }))
   }
+}
+
+/**
+ * Room-info payload shapes vary by connection mode and library version, so we
+ * try the known direct paths first and fall back to a bounded deep search for
+ * a follower-count-shaped key.
+ */
+export function extractTikTokFollowerCount(roomInfo: any): number | null {
+  const directCandidates = [
+    roomInfo?.data?.owner?.followInfo?.followerCount,
+    roomInfo?.data?.owner?.stats?.followerCount,
+    roomInfo?.data?.owner?.stats?.follower_count,
+    roomInfo?.data?.owner?.follow_info?.follower_count,
+    roomInfo?.data?.owner?.followerCount,
+    roomInfo?.data?.user?.followInfo?.followerCount,
+    roomInfo?.data?.user?.stats?.followerCount,
+    roomInfo?.data?.liveRoomUserInfo?.user?.stats?.followerCount,
+    roomInfo?.liveRoomUserInfo?.user?.stats?.followerCount,
+    roomInfo?.user?.followInfo?.followerCount,
+    roomInfo?.user?.stats?.followerCount,
+    roomInfo?.owner?.followInfo?.followerCount,
+    roomInfo?.owner?.stats?.followerCount
+  ]
+
+  for (const candidate of directCandidates) {
+    const count = normalizeFollowerCount(candidate)
+    if (count !== null) return count
+  }
+
+  return findFollowerCountDeep(roomInfo, 0)
+}
+
+function normalizeFollowerCount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value)
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/,/g, '').trim())
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed)
+  }
+  return null
+}
+
+function findFollowerCountDeep(value: unknown, depth: number): number | null {
+  if (!value || depth > 5) return null
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 25)) {
+      const found = findFollowerCountDeep(item, depth + 1)
+      if (found !== null) return found
+    }
+    return null
+  }
+  if (typeof value !== 'object') return null
+
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase().replace(/[_-]/g, '')
+    if (normalizedKey === 'followercount' || normalizedKey === 'fanscount' || normalizedKey === 'followercnt') {
+      const count = normalizeFollowerCount(nested)
+      if (count !== null) return count
+    }
+  }
+
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    const found = findFollowerCountDeep(nested, depth + 1)
+    if (found !== null) return found
+  }
+
+  return null
 }

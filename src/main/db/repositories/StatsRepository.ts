@@ -8,8 +8,9 @@ import {
   type ViewerProfileInput
 } from '../../../shared/stats'
 import type { UserStatRow } from '../types'
-import { Platform } from '../../platforms/types'
+import { isStreamPlatform, Platform } from '../../platforms/types'
 import { estimateTikTokCreatorGiftCents } from '../../../shared/tiktok-revenue'
+import { getLoyaltyLevelForXp } from '../../../shared/loyalty'
 import { isCohostIdentity } from '../../ai/cohost-identity'
 import { FollowerStatsRepository } from './FollowerStatsRepository'
 import { attachOverallRanks, fillMissingAvatar } from './StatsIdentityRanking'
@@ -336,7 +337,9 @@ export class StatsRepository extends BaseRepository {
         if (identity) {
           identity.displayName = p.display_name || identity.displayName
           identity.profilePictureUrl = p.profile_picture_url || identity.profilePictureUrl
-          identity.primaryPlatform = (p.primary_platform as Platform) || identity.primaryPlatform
+          if (p.primary_platform && identity.accounts.some((account) => account.platform === p.primary_platform)) {
+            identity.primaryPlatform = p.primary_platform as Platform
+          }
         }
       }
     }
@@ -499,16 +502,22 @@ export class StatsRepository extends BaseRepository {
     }
 
     if (!profileId.includes(':') && identity) {
-      const profile = this.db.prepare(`
-        SELECT id, display_name, profile_picture_url, primary_platform, notes
-        FROM viewer_profiles
-        WHERE id = ?
-      `).get(profileId) as ViewerProfileRow | undefined
-      
+      const profile = this.viewerProfiles.getViewerProfile(profileId)
+
       if (profile) {
-        identity.displayName = profile.display_name || identity.displayName
-        identity.profilePictureUrl = profile.profile_picture_url || identity.profilePictureUrl
-        identity.primaryPlatform = (profile.primary_platform as Platform) || identity.primaryPlatform
+        identity.displayName = profile.displayName || identity.displayName
+        identity.profilePictureUrl = profile.profilePictureUrl || identity.profilePictureUrl
+        const primaryAccount = profile.primaryPlatform
+          ? identity.accounts.find((account) => (
+              account.platform === profile.primaryPlatform &&
+              (!profile.primaryUsername || account.username === profile.primaryUsername)
+            ))
+          : undefined
+        if (primaryAccount) {
+          identity.primaryPlatform = primaryAccount.platform
+          identity.primaryUsername = primaryAccount.username
+        }
+        identity.profileConnections = profile.accounts.filter((account) => !isStreamPlatform(account.platform))
       }
     }
 
@@ -657,6 +666,10 @@ export class StatsRepository extends BaseRepository {
 
   updateViewerProfile(profileId: string, patch: Partial<ViewerProfileInput>): ViewerProfile | null {
     return this.viewerProfiles.updateViewerProfile(profileId, patch)
+  }
+
+  pruneOrphanedViewerScopedSettings(): number {
+    return this.viewerProfiles.pruneOrphanedViewerScopedSettings()
   }
 
   addAccountToProfile(profileId: string, accountInput: ViewerAccountInput): ViewerProfile | null {
@@ -945,32 +958,85 @@ export class StatsRepository extends BaseRepository {
       this.db.prepare('UPDATE event_history SET user_name = ? WHERE platform = ? AND user_name = ?')
         .run(targetUsername, platform, sourceUsername)
 
-      // Merge economy_users
-      const sourceEco = this.db.prepare('SELECT * FROM economy_users WHERE platform = ? AND username = ?').get(platform, sourceUsername) as { points: number; xp: number; level: number; total_likes: number } | undefined
-      if (sourceEco) {
-        const targetEco = this.db.prepare('SELECT * FROM economy_users WHERE platform = ? AND username = ?').get(platform, targetUsername) as { points: number; xp: number; level: number; total_likes: number } | undefined
-        if (!targetEco) {
-          this.db.prepare('UPDATE economy_users SET username = ? WHERE platform = ? AND username = ?').run(targetUsername, platform, sourceUsername)
-        } else {
-          this.db.prepare(`
-            UPDATE economy_users
-            SET points = points + ?,
-                xp = xp + ?,
-                level = MAX(level, ?),
-                total_likes = total_likes + ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE platform = ? AND username = ?
-          `).run(
-            sourceEco.points,
-            sourceEco.xp,
-            sourceEco.level,
-            sourceEco.total_likes,
-            platform,
-            targetUsername
-          )
-          this.db.prepare('DELETE FROM economy_users WHERE platform = ? AND username = ?').run(platform, sourceUsername)
-        }
+      // Economy usernames were historically stored with connector-provided
+      // casing even though profile usernames are normalized. Consolidate every
+      // case variant of both names so a stable-ID rename cannot strand Sparks
+      // or XP outside the viewer's current profile.
+      const economy = this.db.prepare(`
+        SELECT COUNT(*) AS row_count,
+               COALESCE(SUM(points), 0) AS points,
+               COALESCE(SUM(xp), 0) AS xp,
+               COALESCE(SUM(total_likes), 0) AS total_likes
+        FROM economy_users
+        WHERE platform = ?
+          AND (username COLLATE NOCASE = ? OR username COLLATE NOCASE = ?)
+      `).get(platform, sourceUsername, targetUsername) as {
+        row_count: number
+        points: number
+        xp: number
+        total_likes: number
       }
+      if (economy.row_count > 0) {
+        this.db.prepare(`
+          DELETE FROM economy_users
+          WHERE platform = ?
+            AND (username COLLATE NOCASE = ? OR username COLLATE NOCASE = ?)
+        `).run(platform, sourceUsername, targetUsername)
+        this.db.prepare(`
+          INSERT INTO economy_users (username, platform, points, xp, level, total_likes, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).run(
+          targetUsername,
+          platform,
+          economy.points,
+          economy.xp,
+          getLoyaltyLevelForXp(economy.xp),
+          economy.total_likes
+        )
+      }
+
+      // Dailies and redemption cooldown/refund ownership are also account-keyed.
+      // Canonicalize every case variant and collapse same-day claim collisions.
+      const dailyClaims = this.db.prepare(`
+        SELECT claim_date,
+               MAX(streak) AS streak,
+               MAX(reward) AS reward,
+               MIN(created_at) AS created_at
+        FROM economy_daily_claims
+        WHERE platform = ?
+          AND (username COLLATE NOCASE = ? OR username COLLATE NOCASE = ?)
+        GROUP BY claim_date
+      `).all(platform, sourceUsername, targetUsername) as Array<{
+        claim_date: string
+        streak: number
+        reward: number
+        created_at: string | null
+      }>
+      this.db.prepare(`
+        DELETE FROM economy_daily_claims
+        WHERE platform = ?
+          AND (username COLLATE NOCASE = ? OR username COLLATE NOCASE = ?)
+      `).run(platform, sourceUsername, targetUsername)
+      const insertDailyClaim = this.db.prepare(`
+        INSERT INTO economy_daily_claims (username, platform, claim_date, streak, reward, created_at)
+        VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      `)
+      for (const claim of dailyClaims) {
+        insertDailyClaim.run(
+          targetUsername,
+          platform,
+          claim.claim_date,
+          claim.streak,
+          claim.reward,
+          claim.created_at
+        )
+      }
+      this.db.prepare(`
+        UPDATE economy_redemption_uses
+        SET username = ?
+        WHERE platform = ?
+          AND (username COLLATE NOCASE = ? OR username COLLATE NOCASE = ?)
+      `).run(targetUsername, platform, sourceUsername, targetUsername)
     })
 
     transaction()
@@ -1022,7 +1088,10 @@ export class StatsRepository extends BaseRepository {
     if (!normalizedUsername || !platform) return
     const normalizedPlatformUserId = normalizeOptionalText(platformUserId)
     this.mergeExistingPlatformUserIdRows(platform, normalizedUsername, normalizedPlatformUserId, displayName, profilePictureUrl)
-    const profileId = this.getViewerProfileId(platform, normalizedUsername)
+    const profileId = this.getViewerProfileId(platform, normalizedUsername, {
+      platformUserId: normalizedPlatformUserId,
+      displayName
+    })
 
     this.db.prepare(`
       INSERT INTO user_stats (

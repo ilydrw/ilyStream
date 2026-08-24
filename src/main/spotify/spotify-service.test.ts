@@ -12,6 +12,7 @@ vi.mock('electron', () => ({
 
 const DEFAULT_SETTINGS = {
   spotifyClientId: 'client-id',
+  spotifyTokenExpiresAt: 0,
   spotifySongRequestsEnabled: true,
   spotifyPlayEnabled: true,
   spotifySkipEnabled: true,
@@ -35,16 +36,21 @@ function createService(settings: Record<string, unknown> = {}, options: { connec
     skip: vi.fn(),
     getProfile: vi.fn(),
     getPlaybackState: vi.fn(),
-    getUserQueue: vi.fn()
+    getUserQueue: vi.fn(),
+    pause: vi.fn(),
+    play: vi.fn(),
+    saveTrack: vi.fn(),
+    setAccessToken: vi.fn()
   }
 
   ;(service as any).client = client
   ;(service as any).connected = options.connected ?? true
   ;(service as any).accessToken = settings.spotifyAccessToken || 'access-token'
   ;(service as any).refreshToken = settings.spotifyRefreshToken || 'refresh-token'
+  ;(service as any).accessTokenExpiresAt = Number(settings.spotifyTokenExpiresAt) || Date.now() + 3600_000
   ;(service as any).saveQueueCache = vi.fn()
 
-  return { service, client }
+  return { service, client, db }
 }
 
 function makeTrack(explicit = false, id = 'track-1', name = 'Current Song') {
@@ -294,6 +300,10 @@ describe('SpotifyService chat commands', () => {
 
     await (service as any).poll()
 
+    await vi.waitFor(() => {
+      expect(service.getNowPlaying().queue.map((request) => request.track.id))
+        .toEqual(['track-b', 'track-a', 'track-spotify'])
+    })
     const overlayQueue = service.getNowPlaying().queue
     expect(overlayQueue.map((request) => request.track.id)).toEqual(['track-b', 'track-a', 'track-spotify'])
     expect(overlayQueue[0]).toMatchObject({ id: 'r2', requestedBy: 'bob', status: 'queued' })
@@ -319,6 +329,9 @@ describe('SpotifyService chat commands', () => {
 
     await (service as any).poll()
 
+    await vi.waitFor(() => {
+      expect(service.getNowPlaying().queue.map((request) => request.track.id)).toEqual(['track-b'])
+    })
     const nowPlaying = service.getNowPlaying()
     expect(nowPlaying.requestedBy).toBe('alice display')
     expect(nowPlaying.requesterPlatform).toBe('twitch')
@@ -356,9 +369,120 @@ describe('SpotifyService chat commands', () => {
     const firstPoll = (service as any).poll()
     const secondPoll = (service as any).poll()
 
-    expect(client.getPlaybackState).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(client.getPlaybackState).toHaveBeenCalledTimes(1)
+    })
 
     resolvePlayback(null)
     await Promise.all([firstPoll, secondPoll])
+  })
+
+  it('publishes the current track before a slow Spotify queue request finishes', async () => {
+    const { service, client } = createService()
+    let resolveQueue!: (value: unknown) => void
+    client.getPlaybackState.mockResolvedValue({
+      is_playing: true,
+      item: makeTrack(false, 'track-current', 'Current Song'),
+      progress_ms: 1000
+    })
+    client.getUserQueue.mockReturnValue(new Promise((resolve) => {
+      resolveQueue = resolve
+    }))
+
+    await (service as any).poll()
+
+    expect(service.getNowPlaying()).toMatchObject({
+      trackId: 'track-current',
+      trackName: 'Current Song'
+    })
+    expect((service as any).pollInFlight).toBe(false)
+
+    resolveQueue({ queue: [makeTrack(false, 'track-next', 'Next Song')] })
+    await vi.waitFor(() => {
+      expect(service.getNowPlaying().queue[0]?.track.id).toBe('track-next')
+    })
+  })
+
+  it('does not let a late queue response overwrite a newer track', async () => {
+    const { service, client } = createService()
+    let resolveFirstQueue!: (value: unknown) => void
+    client.getPlaybackState
+      .mockResolvedValueOnce({
+        is_playing: true,
+        item: makeTrack(false, 'track-a', 'Track A'),
+        progress_ms: 1000
+      })
+      .mockResolvedValueOnce({
+        is_playing: true,
+        item: makeTrack(false, 'track-b', 'Track B'),
+        progress_ms: 1000
+      })
+    client.getUserQueue
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveFirstQueue = resolve
+      }))
+      .mockResolvedValueOnce({ queue: [makeTrack(false, 'track-c', 'Track C')] })
+
+    await (service as any).poll()
+    await (service as any).poll()
+    resolveFirstQueue({ queue: [makeTrack(false, 'stale-track', 'Stale Track')] })
+
+    await vi.waitFor(() => {
+      expect(client.getUserQueue).toHaveBeenCalledTimes(2)
+      expect(service.getNowPlaying().trackId).toBe('track-b')
+      expect(service.getNowPlaying().queue[0]?.track.id).toBe('track-c')
+    })
+    expect(service.getNowPlaying().queue.some((request) => request.track.id === 'stale-track')).toBe(false)
+  })
+
+  it('persists token expiry and refreshes within the one-minute safety window', async () => {
+    const { service, client, db } = createService()
+    const now = Date.now()
+    ;(service as any).applyTokens({
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      expiresIn: 3600
+    })
+
+    expect(client.setAccessToken).toHaveBeenCalledWith('new-access-token')
+    const expiryCall = vi.mocked(db.setSetting).mock.calls.find(([key]) => key === 'spotifyTokenExpiresAt')
+    expect(expiryCall?.[1]).toEqual(expect.any(Number))
+    expect(Number(expiryCall?.[1])).toBeGreaterThanOrEqual(now + 3_599_000)
+    expect(Number(expiryCall?.[1])).toBeLessThanOrEqual(Date.now() + 3_600_000)
+
+    const refresh = vi.fn(async () => {
+      ;(service as any).accessTokenExpiresAt = Date.now() + 3600_000
+    })
+    ;(service as any).refreshAccessToken = refresh
+    ;(service as any).accessTokenExpiresAt = Date.now() + 59_000
+    client.getPlaybackState.mockResolvedValue(null)
+
+    await (service as any).poll()
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(client.getPlaybackState.mock.invocationCallOrder[0])
+
+    // Existing installs predate spotifyTokenExpiresAt. Refresh those legacy
+    // tokens once on restore instead of waiting for the next hourly 401.
+    refresh.mockClear()
+    ;(service as any).accessTokenExpiresAt = 0
+    await (service as any).ensureFreshAccessToken()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares one token refresh across concurrent callers', async () => {
+    const { service } = createService()
+    let releaseRefresh!: () => void
+    const performRefresh = vi.fn(() => new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    }))
+    ;(service as any).performAccessTokenRefresh = performRefresh
+
+    const first = (service as any).refreshAccessToken()
+    const second = (service as any).refreshAccessToken()
+
+    expect(performRefresh).toHaveBeenCalledTimes(1)
+    releaseRefresh()
+    await Promise.all([first, second])
   })
 })

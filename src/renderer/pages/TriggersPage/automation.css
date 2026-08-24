@@ -1,0 +1,135 @@
+.automation-view-nav {
+  flex-shrink: 0;
+  padding: 8px;
+}
+
+.automation-view-tab {
+  padding: 12px 16px;
+}
+
+.automation-view-badge {
+  padding: 4px 10px;
+}
+
+.automation-view-panel {
+  flex-shrink: 0;
+}
+
+.automation-rules-toolbar {
+  padding: 16px 20px;
+}
+
+.automation-status-filter-button {
+  padding: 0 12px;
+}
+
+.automation-empty-state {
+  padding: 56px 24px;
+}
+
+.automation-rule-card {
+  padding: 20px;
+}
+
+.automation-rule-meta {
+  margin-top: 8px;
+}
+
+.automation-platform-badge {
+  padding: 2px 8px;
+}
+
+.automation-rule-flow {
+  margin-top: 20px;
+}
+
+.automation-rule-summary {
+  padding: 16px;
+}
+
+.automation-rule-summary-head {
+  margin-bottom: 12px;
+}
+
+.automation-editor-header {
+  padding: 16px 24px;
+}
+
+.automation-editor-title,
+.automation-editor-subtitle,
+.automation-editor-flow-value {
+  margin-top: 4px;
+}
+
+.automation-editor-body {
+  padding: 24px 24px 48px;
+}
+
+.automation-editor-flow-cell {
+  padding: 12px 16px;
+}
+
+.automation-editor-validation {
+  padding: 16px;
+}
+
+.automation-editor-validation ul {
+  margin-top: 8px;
+}
+
+.automation-editor-step {
+  padding: 20px;
+}
+
+.automation-editor-step-body {
+  margin-top: 20px;
+}
+
+.automation-platform-option {
+  padding: 0 12px;
+}
+
+.automation-editor-empty {
+  padding: 24px;
+}
+
+.automation-editor-empty button {
+  margin-top: 16px;
+}
+
+.automation-editor-type {
+  padding: 16px;
+}
+
+.automation-editor-type-head {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.automation-editor-drawer label {
+  margin-bottom: 4px;
+}
+
+.automation-editor-drawer input:not([type='range']):not([type='color']):not([type='checkbox']),
+.automation-editor-drawer select,
+.automation-editor-drawer textarea {
+  padding: 8px 12px;
+}
+
+.automation-editor-field-help {
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .automation-editor-header {
+    padding: 14px 16px;
+  }
+
+  .automation-editor-body {
+    padding: 16px 16px 36px;
+  }
+
+  .automation-editor-step {
+    padding: 16px;
+  }
+}

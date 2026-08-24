@@ -33,7 +33,7 @@ function StatCard({ icon, label, value, tint }: StatCardProps) {
         {icon}
       </div>
       <div className="flex flex-col min-w-0">
-        <span className="text-[10px] font-bold text-white/35 uppercase tracking-widest">{label}</span>
+        <span className="text-[10px] font-bold text-white/35">{label}</span>
         <div className="mt-0.5 text-[15px] font-extrabold text-white tabular-nums truncate leading-none">
           {value}
         </div>

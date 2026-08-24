@@ -1,14 +1,17 @@
 export const RENDERER_EVENT_CHANNELS = [
   'event:stream',
   'event:overlay-broadcast',
+  'event:overlay-performance',
   'event:device-broadcast',
   'automation:run-receipt',
   'platform:status-change',
   'platform:error',
   'platform:reconnecting',
+  'platform:profile-health',
   'tiktok:native-auth-progress',
   'settings:changed',
   'obs:status-changed',
+  'obs:program-consumers-changed',
   'voice:changed',
   'tts:queue-update',
   'tts:speak',
@@ -41,7 +44,8 @@ export const RENDERER_EVENT_CHANNELS = [
   'system:log',
   'virtualcamera:status-changed',
   'system:update-status',
-  'studio:active-scene-changed'
+  'studio:active-scene-changed',
+  'engine:frame'
 ] as const
 
 export type RendererEventChannel = (typeof RENDERER_EVENT_CHANNELS)[number]

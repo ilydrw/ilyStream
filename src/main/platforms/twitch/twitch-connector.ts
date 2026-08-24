@@ -143,7 +143,7 @@ export class TwitchConnector extends BaseConnector {
 
     this.chatClient.onSub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
     this.chatClient.onResub((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, false)))
-    this.chatClient.onSubGift((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(subInfo.userName, subInfo, true)))
+    this.chatClient.onSubGift((channel: string, user: string, subInfo: any) => this.emitEnriched(this.mapper.mapSubscription(user, subInfo, true)))
     this.chatClient.onRaid((channel: string, user: string, raidInfo: any) => this.emitEnriched(this.mapper.mapRaid(user, raidInfo)))
     this.chatClient.on('bits', (channel: string, user: string, message: string, msg: any) => this.emitEnriched(this.mapper.mapGiftEvent(user, msg, this.isFollowerCached(user))))
     

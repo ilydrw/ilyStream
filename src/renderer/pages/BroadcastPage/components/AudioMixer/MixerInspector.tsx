@@ -2,23 +2,22 @@ import React from 'react'
 import { IconActivity, IconAdjustmentsHorizontal, IconHeadphones, IconRoute, IconSparkles, IconVolume, IconVolumeOff, IconWaveSine } from '@tabler/icons-react'
 import { IconPlus, IconTrash } from '../../../../components/ui/icons'
 import type { AudioSource } from '../../../../../shared/studio'
+import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import {
   formatPan,
   getStatusClasses,
   linearToDb,
   dbToLinear,
-  type MeterFrame,
   type AudioTrackStatus
 } from './utils'
 import { FX_PRESETS } from './constants'
 import { Knob } from './Knob'
 import { FxCard } from './FxCard'
-import { MiniPeak, Spectrum } from './Visualizers'
+import { Spectrum } from './Visualizers'
 import { sanitizeChannelMode } from '../../../../utils/audio-engine'
 
 export function MixerInspector({
   selectedSource,
-  selectedMeter,
   mode,
   trackStatuses,
   sidebarWidth,
@@ -32,7 +31,6 @@ export function MixerInspector({
   updateFxParam
 }: {
   selectedSource: AudioSource
-  selectedMeter: MeterFrame
   mode: 'mix' | 'fx' | 'send'
   trackStatuses: Record<string, AudioTrackStatus>
   sidebarWidth: number
@@ -45,6 +43,8 @@ export function MixerInspector({
   removeFx: (source: AudioSource, fxId: string) => void
   updateFxParam: (source: AudioSource, fxId: string, key: string, value: number) => void
 }) {
+  const monitoringMode = normalizeAudioMonitoringMode(selectedSource.monitoringMode, selectedSource.monitoring)
+
   return (
     <>
       {/* Horizontal Resize Handle */}
@@ -61,33 +61,28 @@ export function MixerInspector({
         style={{ width: sidebarWidth }}
       >
         <div className="p-6 border-b border-white/[0.06] bg-black/20">
-          <div className="flex items-start justify-between gap-6">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-semibold tracking-normal text-accent/80 whitespace-nowrap">Source Configuration</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.9)]" />
-              </div>
-              <input
-                value={selectedSource.label || selectedSource.name}
-                onChange={event => updateSource(selectedSource.id, { label: event.target.value })}
-                className="w-full bg-transparent text-lg font-semibold text-white outline-none tracking-tighter focus:text-accent transition-colors"
-                placeholder="Track Label"
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <span className="px-1.5 py-0.5 rounded bg-white/5 text-2xs font-semibold tracking-tight text-white/40">{selectedSource.type}</span>
-                <span className="text-xs font-semibold tracking-normal text-white/20 truncate">
-                  {selectedSource.name}
-                </span>
-              </div>
-              {selectedSource.id !== 'master' && (
-                <div className={`mt-4 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold tracking-tight ${getStatusClasses(trackStatuses[selectedSource.id])}`}>
-                  <span className="h-2 w-2 rounded-full bg-current shadow-[0_0_8px_currentColor]" />
-                  {trackStatuses[selectedSource.id]?.label || 'No stream'}
-                </div>
-              )}
-            </div>
-            <MiniPeak id={selectedSource.id} meter={selectedMeter} />
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-semibold tracking-normal text-accent/80 whitespace-nowrap">Source Configuration</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.9)]" />
           </div>
+          <input
+            value={selectedSource.label || selectedSource.name}
+            onChange={event => updateSource(selectedSource.id, { label: event.target.value })}
+            className="w-full bg-transparent text-lg font-semibold text-white outline-none tracking-tighter focus:text-accent transition-colors"
+            placeholder="Track Label"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-white/5 text-2xs font-semibold tracking-tight text-white/40">{selectedSource.type}</span>
+            <span className="text-xs font-semibold tracking-normal text-white/20 truncate">
+              {selectedSource.name}
+            </span>
+          </div>
+          {selectedSource.id !== 'master' && (
+            <div className={`mt-4 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold tracking-tight ${getStatusClasses(trackStatuses[selectedSource.id])}`}>
+              <span className="h-2 w-2 rounded-full bg-current shadow-[0_0_8px_currentColor]" />
+              {trackStatuses[selectedSource.id]?.label || 'No stream'}
+            </div>
+          )}
 
           <div className={`mt-6 grid gap-3 ${sidebarWidth < 300 ? 'grid-cols-1' : sidebarWidth < 480 ? 'grid-cols-2' : 'grid-cols-3'}`}>
             <InspectorToggle
@@ -97,10 +92,12 @@ export function MixerInspector({
               onClick={() => updateSource(selectedSource.id, { muted: !selectedSource.muted })}
             />
             <InspectorToggle
-              active={selectedSource.monitoring}
+              active={monitoringMode !== 'off'}
               label="Monitor"
               icon={IconHeadphones}
-              onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
+              onClick={() => updateSource(selectedSource.id, {
+                monitoringMode: monitoringMode === 'off' ? 'monitorAndOutput' : 'off'
+              })}
             />
             <InspectorToggle
               active={(selectedSource.filters || []).some((fx: any) => fx.enabled)}
@@ -226,12 +223,27 @@ export function MixerInspector({
               <span className="text-2xs font-semibold tracking-normal text-white/22">Headphones</span>
             </div>
             <div className="grid gap-3">
-              <InspectorToggle
-                active={selectedSource.monitoring}
-                label="Monitor"
-                icon={IconHeadphones}
-                onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
-              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/[0.025] p-1 ring-1 ring-white/[0.06]">
+                {([
+                  ['off', 'Off'],
+                  ['monitorOnly', 'Monitor Only'],
+                  ['monitorAndOutput', 'Monitor + Output']
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => updateSource(selectedSource.id, { monitoringMode: value })}
+                    className={`min-h-10 rounded-lg px-2 text-[10px] font-semibold leading-tight transition-all ${monitoringMode === value ? 'bg-accent text-white' : 'text-white/28 hover:bg-white/[0.035] hover:text-white/55'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {selectedSource.type === 'system' && monitoringMode !== 'off' && (
+                <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] leading-relaxed text-amber-200/70">
+                  Monitoring desktop audio can feed the monitor output back into its own capture. Keep this off unless your monitor device is excluded from desktop capture.
+                </p>
+              )}
               <Knob
                 label="Pan"
                 value={selectedSource.pan || 0}
@@ -266,7 +278,7 @@ function InspectorToggle({ active, label, icon: Icon, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`group relative flex flex-col items-center justify-center gap-2.5 p-4 rounded-md border transition-all duration-300 ${ active ? 'bg-accent border-transparent text-white ' : 'bg-white/0.02] border-white/[0.05] text-white/25 hover:bg-white/[0.04] hover:border-white/10 hover:text-white/40' }`}
+      className={`group relative flex flex-col items-center justify-center gap-2.5 p-4 rounded-md border transition-all duration-300 ${ active ? 'bg-accent/15 border-accent/40 text-accent' : 'bg-white/[0.02] border-white/[0.05] text-white/25 hover:bg-white/[0.04] hover:border-white/10 hover:text-white/40' }`}
     >
       <div className={`p-2 rounded-xl transition-colors ${active ? 'bg-accent/10' : 'bg-white/5 group-hover:bg-white/10'}`}>
         <Icon size={18} />

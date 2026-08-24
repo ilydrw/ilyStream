@@ -4,6 +4,7 @@ import type { EventLabSimulationPayload } from '../../shared/event-lab'
 export type EventLabEntryKind =
   | 'stream'
   | 'overlay'
+  | 'performance'
   | 'device'
   | 'automation'
   | 'alert'
@@ -277,6 +278,7 @@ function isEntryKind(value: unknown): value is EventLabEntryKind {
   return typeof value === 'string' && [
     'stream',
     'overlay',
+    'performance',
     'device',
     'automation',
     'alert',

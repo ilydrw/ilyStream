@@ -11,7 +11,7 @@ import {
   IconWifi
 } from '@tabler/icons-react'
 import { IconDeviceFloppy } from '../../components/ui/icons'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Toggle } from '../../components/ui/Inputs'
 import {
   DEFAULT_APP_SETTINGS,
@@ -24,6 +24,7 @@ import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { applyAppAppearance } from '../../lib/app-appearance'
 import { Metric, OBSStatusBadge, SettingRow, StatusBadge, TextInput } from './components/SettingsShared'
 import { OBSRemoteSection } from './components/OBSRemoteSection'
+import { OBSWorkspaceSection } from './components/OBSWorkspaceSection'
 import { OverlayHubSection } from './components/OverlayHubSection'
 import { AutomationSection } from './components/AutomationSection'
 import { PersonalizationSection } from './components/PersonalizationSection'
@@ -48,10 +49,16 @@ const SETTINGS_TABS = [
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
   const [saved, setSaved] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [overlayStatus, setOverlayStatus] = useState<OverlayRuntimeStatus | null>(null)
   const [obsStatus, setObsStatus] = useState<OBSRuntimeStatus | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTabId>('basic')
+  const persistedSettingsRef = useRef<AppSettings>(DEFAULT_APP_SETTINGS)
+  const draftSettingsRef = useRef<AppSettings>(DEFAULT_APP_SETTINGS)
+  const isDirtyRef = useRef(false)
+  const isSavingRef = useRef(false)
 
   useEffect(() => {
     if (!window.api?.settings) return
@@ -70,6 +77,8 @@ export default function SettingsPage() {
 
     void window.api.settings.getAll().then((all: AppSettings) => {
       const resolved = resolveAppSettings(all)
+      persistedSettingsRef.current = resolved
+      draftSettingsRef.current = resolved
       setSettings(resolved)
       applyAppAppearance(resolved.ui)
       setIsInitialized(true)
@@ -79,8 +88,23 @@ export default function SettingsPage() {
 
     const settingsUnsubscribe = window.api.on('settings:changed', (nextSettings: unknown) => {
       const resolved = resolveAppSettings(nextSettings as Partial<Record<keyof AppSettings, unknown>>)
-      setSettings(resolved)
-      applyAppAppearance(resolved.ui)
+      persistedSettingsRef.current = resolved
+
+      const currentDraft = draftSettingsRef.current
+      const draftStillDiffers = !settingsEqual(currentDraft, resolved)
+      if (isSavingRef.current || !isDirtyRef.current || !draftStillDiffers) {
+        draftSettingsRef.current = resolved
+        isDirtyRef.current = false
+        setSettings(resolved)
+        setIsDirty(false)
+        applyAppAppearance(resolved.ui)
+      } else {
+        // Runtime actions such as "Save & Connect" may persist one subset of
+        // settings. Keep unrelated local edits intact until the user saves or
+        // discards the page-wide draft.
+        applyAppAppearance(currentDraft.ui)
+      }
+
       loadOverlayStatus()
       loadOBSStatus()
     })
@@ -100,6 +124,7 @@ export default function SettingsPage() {
       overlayUnsubscribe()
       obsUnsubscribe()
       window.clearInterval(statusTimer)
+      applyAppAppearance(persistedSettingsRef.current.ui)
     }
   }, [])
 
@@ -109,29 +134,51 @@ export default function SettingsPage() {
 
   const updateSettings = (updates: Partial<AppSettings>) => {
     if (!isInitialized) return
-    
-    setSettings((prev) => {
-      const next = resolveAppSettings({ ...prev, ...updates })
-      applyAppAppearance(next.ui)
-      
-      // Auto-save
-      void window.api.settings.setMany(updates).then(() => {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1000)
-      })
-      
-      return next
-    })
+
+    const next = resolveAppSettings({ ...draftSettingsRef.current, ...updates })
+    const dirty = !settingsEqual(next, persistedSettingsRef.current)
+    draftSettingsRef.current = next
+    isDirtyRef.current = dirty
+    setSettings(next)
+    setIsDirty(dirty)
+    applyAppAppearance(next.ui)
+    setSaved(false)
   }
 
   const handleSave = async () => {
-    await window.api.settings.setMany(settings)
-    const status = (await window.api.overlay.getStatus()) as OverlayRuntimeStatus
-    setOverlayStatus(status)
-    const nextObsStatus = (await window.api.obs.getStatus()) as OBSRuntimeStatus
-    setObsStatus(nextObsStatus)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    if (!isDirty || isSaving) return
+    isSavingRef.current = true
+    setIsSaving(true)
+    try {
+      await window.api.settings.setMany(settings)
+      const persisted = resolveAppSettings(await window.api.settings.getAll())
+      persistedSettingsRef.current = persisted
+      draftSettingsRef.current = persisted
+      isDirtyRef.current = false
+      setSettings(persisted)
+      setIsDirty(false)
+      applyAppAppearance(persisted.ui)
+
+      const status = (await window.api.overlay.getStatus()) as OverlayRuntimeStatus
+      setOverlayStatus(status)
+      const nextObsStatus = (await window.api.obs.getStatus()) as OBSRuntimeStatus
+      setObsStatus(nextObsStatus)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } finally {
+      isSavingRef.current = false
+      setIsSaving(false)
+    }
+  }
+
+  const handleDiscard = () => {
+    const persisted = persistedSettingsRef.current
+    draftSettingsRef.current = persisted
+    isDirtyRef.current = false
+    setSettings(persisted)
+    setIsDirty(false)
+    setSaved(false)
+    applyAppAppearance(persisted.ui)
   }
 
   const handleOBSConnect = async () => {
@@ -167,6 +214,7 @@ export default function SettingsPage() {
                 onUpdate={updateSetting}
                 onConnect={handleOBSConnect}
               />
+              <OBSWorkspaceSection />
               <OverlayHubSection
                 settings={settings}
                 overlayStatus={overlayStatus}
@@ -194,16 +242,25 @@ export default function SettingsPage() {
   return (
     <div className="app-page">
       <PageHeader
-        title="Studio Settings"
+        title="Settings"
         description="App defaults, broadcast output, audio routing, automation, and runtime diagnostics."
         icon={IconDevices}
         actions={
           <>
           <StatusBadge status={overlayStatus} />
           <OBSStatusBadge status={obsStatus} />
-          <button onClick={handleSave} className="app-button-primary !h-12 !px-8">
+          {isDirty ? (
+            <button onClick={handleDiscard} className="app-button !h-12 !px-5">
+              Discard
+            </button>
+          ) : null}
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+            className="app-button-primary !h-12 !px-8"
+          >
             <IconDeviceFloppy size={18} className="mr-2" />
-            {saved ? 'Settings Synced' : 'Save Changes'}
+            {isSaving ? 'Saving…' : saved ? 'Settings synced' : isDirty ? 'Save changes' : 'Saved'}
           </button>
           </>
         }
@@ -211,8 +268,8 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 mb-20">
         <Metric icon={<IconPalette size={24} className="text-accent" />} label="Theme" value={getAppThemeLabel(settings.theme)} />
-        <Metric icon={<IconDatabase size={24} className="text-success" />} label="Message Buffer" value={`${settings.chatMaxMessages}`} />
-        <Metric icon={<IconWifi size={24} className="text-warning" />} label="OBS Remote" value={`${settings.obsHost}`} />
+        <Metric icon={<IconDatabase size={24} className="text-success" />} label="Message buffer" value={`${settings.chatMaxMessages}`} />
+        <Metric icon={<IconWifi size={24} className="text-warning" />} label="OBS remote" value={`${settings.obsHost}`} />
         <Metric icon={<IconMovie size={24} className="text-accent" />} label="Broadcast" value={`${settings.streamingWidth}x${settings.streamingHeight}`} />
       </div>
 
@@ -279,7 +336,7 @@ function RuntimeHealthPanel({
         />
         <HealthItem
           icon={<IconMovie size={16} />}
-          label="OBS Remote"
+          label="OBS remote"
           value={obsRequired ? (obsStatus?.connected ? 'Connected' : obsStatus?.connecting ? 'Connecting' : 'Needs attention') : 'Optional'}
           tone={obsOk ? 'good' : 'muted'}
         />
@@ -357,7 +414,7 @@ function AudioRoutingSection({
               step={0.05}
               value={settings.tts.volume}
               onChange={(event) => onUpdate('ttsVolume', Number(event.currentTarget.value))}
-              className="w-64 accent-[#19c8ff]"
+              className="w-64 accent-accent"
             />
           </SettingRow>
 
@@ -428,8 +485,12 @@ function EventSoundQuickControl({
         value={volume}
         disabled={!enabled}
         onChange={(event) => onVolume(Number(event.currentTarget.value))}
-        className="w-full accent-[#19c8ff] disabled:opacity-30"
+        className="w-full accent-accent disabled:opacity-30"
       />
     </div>
   )
+}
+
+function settingsEqual(a: AppSettings, b: AppSettings): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }

@@ -18,6 +18,18 @@ export function useEventLabSubscriptions(addEntry: (entry: EventLabEntry) => voi
           payload
         })
       }),
+      window.api.on('event:overlay-performance', (payload: any) => {
+        addEntry({
+          id: createEventLabId('overlay-performance'),
+          kind: 'performance',
+          title: `Overlay first paint: ${payload.channel}`,
+          detail: `${Math.round(payload.paintMs ?? 0)}ms to paint · ${Math.round(payload.deliveryMs ?? 0)}ms delivery · ${payload.transport ?? 'unknown transport'}`,
+          timestamp: payload.acknowledgedAt ?? new Date().toISOString(),
+          channel: payload.channel,
+          eventType: payload.widgetType,
+          payload
+        })
+      }),
       window.api.on('event:device-broadcast', (payload: any) => {
         addEntry({
           id: createEventLabId('device'),

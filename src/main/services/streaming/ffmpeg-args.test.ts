@@ -133,6 +133,31 @@ describe('FFmpegArgsBuilder image vs h264 pipe inputs', () => {
   })
 })
 
+describe('FFmpegArgsBuilder color metadata', () => {
+  const builder = new FFmpegArgsBuilder(makeFakeResolver())
+
+  it('defaults SDR output to BT.709 limited range', () => {
+    expect(builder.buildVideoColorArgs()).toEqual([
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709',
+      '-colorspace', 'bt709',
+      '-color_range', 'tv'
+    ])
+  })
+
+  it('rewrites copied H.264 VUI metadata instead of relying on container tags', () => {
+    expect(builder.buildH264ColorMetadataFilter()).toEqual([
+      '-bsf:v',
+      'h264_metadata=video_full_range_flag=0:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1'
+    ])
+  })
+
+  it('uses Rec.2020 PQ tags for HDR10 output', () => {
+    expect(builder.buildVideoColorArgs('hdr10-pq')).toContain('smpte2084')
+    expect(() => builder.buildH264ColorMetadataFilter('hdr10-pq')).toThrow(/10-bit HEVC/)
+  })
+})
+
 describe('FFmpegArgsBuilder.buildStreamArgs', () => {
   it('copies encoded video and OMITS the CFR flags for h264 input', async () => {
     const resolver = makeFakeResolver()
@@ -155,6 +180,9 @@ describe('FFmpegArgsBuilder.buildStreamArgs', () => {
     // -r for the CFR block should be absent (audio input uses -ar, not -r)
     expect(args).not.toContain('-r')
     expect(args).not.toContain('cfr')
+    expect(valuesAfter(args, '-color_primaries')).toContain('bt709')
+    expect(valuesAfter(args, '-color_range')).toContain('tv')
+    expect(valuesAfter(args, '-bsf:v')[0]).toContain('h264_metadata=')
   })
 
   it('encodes with the detected encoder and INCLUDES CFR flags for mjpeg input', async () => {
@@ -209,6 +237,8 @@ describe('FFmpegArgsBuilder.buildStreamArgs', () => {
     expect(joined).toContain('-reconnect_at_eof 1')
     expect(joined).toContain('-reconnect_streamed 1')
     expect(joined).toContain('-reconnect_delay_max 4')
+    expect(joined).toContain('-progress pipe:2')
+    expect(joined).toContain('-stats_period 1')
 
     // The destination URL is always the very last arg.
     expect(args[args.length - 1]).toBe(url)
@@ -234,6 +264,7 @@ describe('FFmpegArgsBuilder.buildStreamArgs', () => {
       expect(joined).not.toContain('-rtmp_buffer')
       expect(joined).not.toContain('-reconnect')
       expect(joined).not.toContain('-tcp_nodelay')
+      expect(joined).not.toContain('-progress')
 
       expect(args[args.length - 1]).toBe(url)
     } finally {

@@ -169,6 +169,7 @@
   align-items: center;
   gap: 24px;
   min-height: 64px;
+  flex-shrink: 0;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line-soft);
 }
@@ -830,7 +831,7 @@
   width: 3px;
   height: 20px;
   border-radius: 0 3px 3px 0;
-  background: var(--grad-brand);
+  background: var(--color-accent);
 }
 
 .app-sidebar-drawer {
@@ -867,9 +868,7 @@
   color: var(--fg-4);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
+  letter-spacing: 0;}
 
 .app-drawer-item {
   min-height: 32px;
@@ -1093,7 +1092,7 @@
 }
 
 .app-rail-item.is-active::before {
-  background: var(--grad-brand);
+  background: var(--color-accent);
 }
 
 .app-drawer-heading h2,
@@ -1143,4 +1142,108 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover,
 .custom-scrollbar-slim::-webkit-scrollbar-thumb:hover {
   background: var(--theme-scrollbar-hover);
+}
+
+/* Density-aware shell geometry. Keep scale and density as separate controls. */
+.app-topbar,
+.app-topbar-brand,
+.app-window-controls,
+.app-window-button {
+  height: var(--h-topbar);
+}
+
+.app-topbar {
+  flex-basis: var(--h-topbar);
+  grid-template-columns: var(--w-drawer) minmax(180px, 1fr) auto auto;
+}
+
+.app-topbar-brand {
+  width: var(--w-drawer);
+}
+
+.app-window-button {
+  width: var(--h-topbar);
+  flex-basis: var(--h-topbar);
+}
+
+.app-topbar-route {
+  height: calc(var(--h-topbar) - 14px);
+}
+
+.app-page {
+  padding: var(--pad-page-y) var(--pad-page-x) calc(var(--pad-page-y) + 16px);
+  row-gap: var(--gap-grid);
+}
+
+.app-page-header {
+  min-height: var(--density-page-header-min);
+  padding-bottom: var(--density-page-header-bottom);
+}
+
+.app-page-title-icon,
+.app-page-header > .flex.items-center > .flex.items-center.justify-center:first-child {
+  width: var(--density-title-icon);
+  height: var(--density-title-icon);
+  flex-basis: var(--density-title-icon);
+}
+
+.app-page-title-icon > svg,
+.app-page-title-icon > img,
+.app-page-header > .flex.items-center > .flex.items-center.justify-center:first-child > svg,
+.app-page-header > .flex.items-center > .flex.items-center.justify-center:first-child > img {
+  max-width: calc(var(--density-title-icon) * 0.6);
+  max-height: calc(var(--density-title-icon) * 0.6);
+}
+
+.app-page-actions .app-button,
+.app-page-actions .app-button-primary,
+.app-page-actions .app-button-secondary {
+  min-height: var(--h-button);
+}
+
+.app-sidebar-rail {
+  width: var(--h-rail);
+  flex-basis: var(--h-rail);
+  padding-block: calc(var(--gap-grid) * 0.6);
+}
+
+.app-rail-icon-wrapper {
+  width: calc(var(--h-rail) - 18px);
+  height: var(--density-rail-icon);
+}
+
+.app-sidebar-drawer {
+  width: var(--w-drawer);
+  max-width: var(--w-drawer);
+  flex-basis: var(--w-drawer);
+}
+
+.app-sidebar-brand {
+  min-height: var(--density-sidebar-brand);
+  padding: calc(var(--density-section-head-y) * 0.75) var(--density-section-head-x);
+}
+
+.app-drawer-heading {
+  padding: var(--density-section-head-y) calc(var(--density-section-head-x) - 2px) 7px;
+}
+
+.app-drawer-item {
+  min-height: var(--density-drawer-item);
+  padding: 5px calc(var(--density-section-head-x) - 6px);
+}
+
+html[data-density="compact"] .app-page-header h1 {
+  font-size: 22px;
+}
+
+html[data-density="compact"] .app-page-intro {
+  font-size: 12px;
+}
+
+html[data-density="compact"] .app-section-head h2 {
+  font-size: 12px;
+}
+
+html[data-density="compact"] .app-section-head p {
+  font-size: 11px;
 }

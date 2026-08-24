@@ -44,6 +44,57 @@ describe('chat relay helpers', () => {
     ).toBe('[Twitch] Stream Friend: SUPER FAN DETECTED Welcome back, @ilydrw!')
   })
 
+  it('replaces TikTok numeric Fan Club emote ids with readable relay text', () => {
+    const emoteId = '7630614458817743630'
+    expect(
+      buildRelayText({
+        ...message,
+        platform: 'tiktok',
+        message: `:${emoteId}:`,
+        emotes: [{
+          id: emoteId,
+          name: `:${emoteId}:`,
+          imageUrl: 'https://example.test/fan-emote.webp',
+          startIndex: 0,
+          endIndex: emoteId.length + 1
+        }]
+      })
+    ).toBe('[TikTok] Stream Friend: [TikTok Fan Club emote]')
+  })
+
+  it('keeps TikTok comment text when an emote is reported as an insertion', () => {
+    expect(
+      buildRelayText({
+        ...message,
+        platform: 'tiktok',
+        message: 'hello queena and restless',
+        emotes: [{
+          id: '7630614499699231501',
+          name: '7630614499699231501',
+          imageUrl: 'https://example.test/fan-emote.webp',
+          startIndex: 25,
+          endIndex: 43
+        }]
+      })
+    ).toBe('[TikTok] Stream Friend: hello queena and restless [TikTok Fan Club emote]')
+  })
+
+  it('uses Twitch emote names as readable cross-platform fallbacks', () => {
+    expect(
+      buildRelayText({
+        ...message,
+        message: 'PogChamp hello',
+        emotes: [{
+          id: '305954156',
+          name: 'PogChamp',
+          imageUrl: 'https://example.test/pogchamp.png',
+          startIndex: 0,
+          endIndex: 7
+        }]
+      })
+    ).toBe('[Twitch] Stream Friend: [PogChamp] hello')
+  })
+
   it('summarizes mixed send results', () => {
     expect(
       summarizeSendResults([

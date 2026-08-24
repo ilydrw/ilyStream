@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ilystream.local/schemas/obs-plugin-package.schema.json",
+  "title": "ilyStream OBS plugin package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pluginId", "version", "architecture"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "pluginId": {
+      "type": "string",
+      "pattern": "^ily[Ss]tream[A-Za-z0-9._-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "architecture": {
+      "const": "x64"
+    },
+    "minimumObsVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+){0,3}$"
+    }
+  }
+}

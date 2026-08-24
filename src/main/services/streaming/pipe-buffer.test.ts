@@ -275,3 +275,23 @@ describe('PipeBuffer – getStats accuracy', () => {
     })
   })
 })
+
+describe('PipeBuffer – explicit codec-boundary discards', () => {
+  it('accounts for producer and queued discards', () => {
+    const pipe = new FakeWritable()
+    pipe.nextWriteResult = false
+    const buffer = new PipeBuffer(pipe as any, 1024)
+
+    buffer.write(Buffer.alloc(10))
+    buffer.write(Buffer.alloc(20))
+    buffer.discard(Buffer.alloc(30))
+    buffer.discardQueued()
+
+    expect(buffer.getStats()).toMatchObject({
+      queuedBytes: 0,
+      queuedChunks: 0,
+      droppedChunks: 2,
+      droppedBytes: 50
+    })
+  })
+})

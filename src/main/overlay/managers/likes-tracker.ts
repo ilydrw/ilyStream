@@ -3,6 +3,11 @@ import type { OverlayFeedItem } from '../../../shared/overlay'
 import type { SSEManager } from '../sse-manager'
 import type { LikesTrackerUser } from '../types'
 
+export interface AcceptedLikeProgress {
+  acceptedAmount: number
+  viewerTotal: number
+}
+
 export class LikesTracker {
   private users = new Map<string, LikesTrackerUser>()
   private totalLikes = 0
@@ -26,7 +31,7 @@ export class LikesTracker {
     }
   }
 
-  updateState(event: LikeEvent, feedItem: OverlayFeedItem): (OverlayFeedItem & { totalLikes: number }) | null {
+  updateState(event: LikeEvent, feedItem: OverlayFeedItem): (OverlayFeedItem & AcceptedLikeProgress & { totalLikes: number }) | null {
     if (this.hasSeenEventSignature(this.getEventSignature(event, feedItem))) return null
 
     const amount = Math.max(1, Math.floor(event.likeCount || feedItem.amount || 1))
@@ -75,13 +80,20 @@ export class LikesTracker {
 
     const result = {
       ...feedItem,
+      key,
       displayName: existing.displayName,
       profilePictureUrl: existing.profilePictureUrl,
       amount: acceptedAmount,
+      acceptedAmount,
+      viewerTotal: existing.count,
       totalLikes: this.totalLikes
     }
 
-    this.sse.broadcast('likes', { type: 'snapshot', payload: this.getSnapshot() })
+    // The browser already maintains the same bounded in-memory leaderboard.
+    // Send the accepted semantic delta instead of sorting and serializing all
+    // users for every packet; connection/restart/gap recovery still hydrates
+    // from getSnapshot() through OverlayRouter.
+    this.sse.broadcast('likes', { type: 'append', payload: result })
 
     return result
   }

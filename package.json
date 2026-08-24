@@ -7,17 +7,19 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build:native-audio": "npm exec -- node-gyp rebuild --directory=src/renderer/utils/native-audio",
     "build:tiktok-bridge": "tsc -p services/tiktok-auth-bridge/tsconfig.build.json",
     "start:tiktok-bridge": "node services/tiktok-auth-bridge/dist/server.js",
     "build:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/build.ps1",
+    "build:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File native/engine/build.ps1",
+    "build:obs-plugin": "powershell -NoProfile -ExecutionPolicy Bypass -File native/obs-plugin/scripts/build.ps1",
+    "validate:obs-integration": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/obs-integration/Test-IlyStreamObsIntegration.ps1",
     "install:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/install.ps1",
     "uninstall:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/uninstall.ps1",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish never",
-    "release": "npm run build:native-audio && npm run build:virtual-camera && npm run build && electron-builder --win --publish always",
+    "package": "npm run build:virtual-camera && npm run build:engine && npm run build:obs-plugin && npm run build && electron-builder --win --publish never",
+    "release": "npm run build:virtual-camera && npm run build:engine && npm run build:obs-plugin && npm run build && electron-builder --win --publish always",
     "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p services/tiktok-auth-bridge/tsconfig.json",
     "test": "vitest run"
   },
@@ -25,14 +27,46 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**/*",
+      "!node_modules/onnxruntime-web/**/*",
+      "!node_modules/@huggingface/transformers/.cache/**/*",
+      "!node_modules/@huggingface/transformers/dist/*.map",
+      "!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.*",
+      "!node_modules/@huggingface/transformers/dist/transformers.web.*",
+      "!node_modules/@huggingface/transformers/dist/transformers.min.js",
+      "!node_modules/@huggingface/transformers/dist/transformers.js",
+      "!node_modules/kokoro-js/voices/!(af_heart|af_bella|af_nicole|af_sarah|af_kore|af_aoede|af_alloy|af_nova|af_sky|am_fenrir|am_michael|am_puck|am_echo|am_eric|bf_emma|bf_isabella|bf_alice|bm_fable|bm_george|bm_lewis).bin",
+      "!native/obs-plugin/.deps/**/*",
+      "!native/obs-plugin/build/**/*",
+      "!native/obs-plugin/package/**/*",
+      "!resources/obs-integration/**/*",
+      "!scripts/obs-integration/**/*"
+    ],
     "asarUnpack": [
       "**/*.node",
-      "node_modules/ffmpeg-static/**/*"
+      "node_modules/ffmpeg-static/**/*",
+      "node_modules/onnxruntime-node/bin/napi-v3/win32/x64/**/*"
     ],
     "extraResources": [
       {
-        "from": "src/renderer/utils/native-audio/build/Release/audio_engine.node",
-        "to": "native-audio/audio_engine.node"
+        "from": "native/engine/build/Release/ilystream_napi.node",
+        "to": "native-engine/ilystream_napi.node"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_preview.node",
+        "to": "native-engine/ilystream_preview.node"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_engine.dll",
+        "to": "native-engine/ilystream_engine.dll"
+      },
+      {
+        "from": "native/engine/build/Release/ilystream_audio.node",
+        "to": "native-audio/ilystream_audio.node"
       },
       {
         "from": "resources/ilyStream-Logo.svg",
@@ -41,6 +75,10 @@
       {
         "from": "resources/ilyStream-AppIcon.ico",
         "to": "ilyStream-AppIcon.ico"
+      },
+      {
+        "from": "resources/companion-emojis",
+        "to": "companion-emojis"
       },
       {
         "from": "native/virtual-camera/bin/x64/Release/IlyStreamVirtualCameraRegistrar.exe",
@@ -61,6 +99,18 @@
       {
         "from": "native/virtual-camera/uninstall.ps1",
         "to": "native/virtual-camera/uninstall.ps1"
+      },
+      {
+        "from": "resources/obs-integration",
+        "to": "obs-integration"
+      },
+      {
+        "from": "scripts/obs-integration",
+        "to": "obs-integration/scripts"
+      },
+      {
+        "from": "native/obs-plugin/package/obs-plugin",
+        "to": "obs-integration/native-plugin"
       }
     ],
     "win": {
@@ -88,26 +138,20 @@
     }
   },
   "dependencies": {
-    "@mediapipe/selfie_segmentation": "^0.1.1675465747",
-    "@tabler/icons-react": "^3.44.0",
+    "@huggingface/transformers": "^3.8.1",
     "@twurple/api": "^8.1.3",
     "@twurple/auth": "^8.1.3",
     "@twurple/chat": "^8.1.3",
     "@twurple/eventsub-ws": "^8.1.3",
-    "@types/fluent-ffmpeg": "^2.1.28",
     "better-sqlite3": "^12.9.0",
-    "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
+    "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.0",
     "electron-updater": "^6.8.3",
     "ffmpeg-static": "^5.3.0",
-    "fluent-ffmpeg": "^2.1.3",
-    "googleapis": "^171.4.0",
     "kokoro-js": "^1.2.1",
     "matter-js": "0.19.0",
-    "node-addon-api": "^8.7.0",
     "obs-websocket-js": "^5.0.8",
-    "tailwind-merge": "^3.5.0",
+    "onnxruntime-node": "1.21.0",
     "tiktok-live-connector": "2.1.1-beta1",
     "ws": "^8.20.1"
   },
@@ -119,20 +163,23 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "@tabler/icons-react": "^3.44.0",
     "@tailwindcss/vite": "^4.1.3",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/discord-rpc": "^4.0.11",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
+    "clsx": "^2.1.1",
     "electron": "^41.5.1",
     "electron-builder": "^26.0.0",
     "electron-vite": "^3.0.0",
     "framer-motion": "^12.38.0",
-    "lucide-react": "^0.503.0",
-    "node-gyp": "^11.5.0",
+    "node-addon-api": "^8.7.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.5.0",
+    "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.1.3",
     "typescript": "^5.8.3",
     "vite": "^6.3.1",

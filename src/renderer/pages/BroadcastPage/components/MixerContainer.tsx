@@ -1,4 +1,3 @@
-import { IconChevronRight } from '../../../components/ui/icons'
 import { AudioMixer } from './AudioMixer'
 
 interface MixerContainerProps {
@@ -28,16 +27,14 @@ export function MixerContainer(props: MixerContainerProps) {
         <div className="broadcast-mixer-resize-grip absolute top-1" />
       </div>
 
-      <div className="absolute top-0 right-6 h-12 flex items-center z-[120]">
-        <button 
-          onClick={onToggleCollapse}
-          className="broadcast-mixer-collapse"
-        >
-          {isCollapsed ? <IconChevronRight className="-rotate-90" size={16} /> : <IconChevronRight className="rotate-90" size={16} />}
-        </button>
-      </div>
-      
-      <AudioMixer activeScene={activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
+      <AudioMixer
+        activeScene={activeScene}
+        videoRefs={videoRefs}
+        devices={devices}
+        streamReady={streamReady}
+        dockCollapsed={isCollapsed}
+        onToggleDockCollapse={onToggleCollapse}
+      />
     </div>
   )
 }

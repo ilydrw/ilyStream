@@ -11,6 +11,7 @@ import { resolveAppSettings } from '../../shared/app-settings'
 import { VoicemodService } from './voicemod-service'
 import { VTubeService } from './vtube-service'
 import { EconomyService } from '../economy/economy-service'
+import { EconomyCommandService } from '../economy/economy-command-service'
 import { StatsService } from '../stats/stats-service'
 import { GoveeService } from './govee-service'
 import { LightingManagerService } from './lighting/lighting-manager'
@@ -23,9 +24,12 @@ import { LowValueGiftCooldown } from '../../shared/gift-alert-protection'
 import { isCohostIdentity } from '../ai/cohost-identity'
 import { htmlToSingleLinePlainText } from '../../shared/plain-text'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
+import { AvatarUrlStabilizer } from '../../shared/avatar-url'
+import { warmAvatarCache } from '../lib/avatar-cache'
 import type { SpotifySongRequest } from '../../shared/spotify-types'
-import type { LoyaltyLevelUpEvent } from '../../shared/loyalty'
+import type { LoyaltyLevelUpEvent, LoyaltyXpAwardedEvent } from '../../shared/loyalty'
 import type { AnyStreamEvent, Platform } from '../platforms/types'
+import type { AcceptedLikeProgress } from '../overlay/managers/likes-tracker'
 import { sendToRenderer } from '../ipc/safe-send'
 
 const HOST_CHAT_MESSAGE_MAX_LENGTH = 140
@@ -37,6 +41,13 @@ export class EventOrchestrator {
   private countedSongRequestIds = new Set<string>()
   private initialized = false
   private lowValueGiftHardwareCooldown = new LowValueGiftCooldown()
+  /**
+   * Keeps each viewer's avatar URL stable across events. TikTok re-signs and
+   * host-rotates the same image on every event; without this the latest-gifter
+   * and likes-leaderboard overlays reset their `<img src>` constantly and the
+   * avatar never finishes loading. See shared/avatar-url.ts.
+   */
+  private avatarStabilizer = new AvatarUrlStabilizer()
   /** Wall-clock ms of the last history-prune pass. Throttles prune to at most
    * once every `HISTORY_PRUNE_INTERVAL_MS` instead of every event. */
   private lastHistoryPruneAt = 0
@@ -56,6 +67,7 @@ export class EventOrchestrator {
     private voicemodService: VoicemodService,
     private vtubeService: VTubeService,
     private economyService: EconomyService,
+    private economyCommandService: EconomyCommandService,
     private loyaltyService: LoyaltyService,
     private statsService: StatsService,
     private goveeService: GoveeService,
@@ -120,6 +132,22 @@ export class EventOrchestrator {
     this.loyaltyService.on('level-up', (event: LoyaltyLevelUpEvent) => {
       this.handleLoyaltyLevelUp(event)
     })
+    this.loyaltyService.on('xp-awarded', (event: LoyaltyXpAwardedEvent) => {
+      try {
+        this.economyService.awardLoyaltyPoints({
+          username: event.username,
+          platform: event.platform,
+          level: event.level,
+          awardedXp: event.awardedXp,
+          reason: event.reason,
+          leveledUp: event.leveledUp,
+          platformUserId: event.platformUserId,
+          displayName: event.displayName
+        })
+      } catch (err) {
+        console.error('[EventOrchestrator] Loyalty point award failed:', err)
+      }
+    })
 
     // 12. Spotify -> Overlay Bridge
     this.spotifyService.on('now-playing', (payload) => {
@@ -165,6 +193,8 @@ export class EventOrchestrator {
       console.log(`[orchestrator] Received ${event.type} event from ${event.platform}`)
     }
 
+    this.stabilizeEventAvatar(event)
+
     // 1. Log to DB
     await this.runEventStage('event history', () => {
       this.db.addEvent(
@@ -176,11 +206,12 @@ export class EventOrchestrator {
     })
 
     // 2. Broadcast to Overlay
+    let likeProgress: AcceptedLikeProgress | undefined
     await this.runEventStage('overlay broadcast', () => {
       if (verboseForEvent) {
         console.log(`[orchestrator] Broadcasting to overlays...`)
       }
-      this.overlayServer.handleStreamEvent(event)
+      likeProgress = this.overlayServer.handleStreamEvent(event)?.likeProgress
     })
 
     if (isDisplayOnlyChatEvent(event)) {
@@ -189,7 +220,7 @@ export class EventOrchestrator {
 
     // 3. Play Sounds
     await this.runEventStage('event sounds', () => {
-      this.eventSoundService.processEvent(event)
+      this.eventSoundService.processEvent(event, likeProgress)
     })
 
     // 4. Spotify Integration (Song Requests, etc)
@@ -198,20 +229,27 @@ export class EventOrchestrator {
       handledBySpotify = await this.spotifyService.processEvent(event)
     })
 
-    // 5. TTS (only if not a spotify command or if configured)
-    if (!handledBySpotify && shouldRouteEventToTts(event)) {
+    // 5. Economy commands and activity. Commands are handled before TTS so
+    // viewers hear the outcome, not the literal "!slots 50" message.
+    let handledByEconomy = false
+    await this.runEventStage('economy', async () => {
+      handledByEconomy = await this.handleEconomy(event)
+    })
+
+    // 6. TTS (only if no command service consumed the message)
+    if (!handledBySpotify && !handledByEconomy && shouldRouteEventToTts(event)) {
       await this.runEventStage('tts', () => {
         console.log(`[orchestrator] Sending ${event.type} to TTS engine...`)
         this.ttsEngine.processEvent(event)
       })
     }
 
-    // 6. Hardware (Hue)
+    // 7. Hardware (Hue)
     await this.runEventStage('hardware alerts', () => {
       this.handleHardwareAlerts(event)
     })
 
-    // 7. Automation Triggers
+    // 8. Automation Triggers
     await this.runEventStage('triggers', () => {
       if (verboseForEvent) {
         console.log(`[orchestrator] Processing triggers...`)
@@ -219,14 +257,9 @@ export class EventOrchestrator {
       this.triggerEngine.evaluate(event)
     })
 
-    // 8. System Automation (Direct Mapping)
+    // 9. System Automation (Direct Mapping)
     await this.runEventStage('automation', () => {
       this.handleAutomation(event)
-    })
-
-    // 9. Economy (Likes, Timer, Points)
-    await this.runEventStage('economy', () => {
-      this.handleEconomy(event)
     })
 
     // 10. Lifetime stats (per-user + global counters surfaced on the Stats page)
@@ -256,6 +289,28 @@ export class EventOrchestrator {
     } catch (err) {
       console.error(`[EventOrchestrator] ${stage} failed:`, err)
     }
+  }
+
+  /**
+   * Pin each viewer's avatar URL to a stable string so the same underlying image
+   * stops re-signing/host-rotating between events. Mutating the event here means
+   * every downstream consumer (overlay widgets, sounds, stats, DB history) sees
+   * the same, cache-friendly URL. See shared/avatar-url.ts for the why.
+   */
+  private stabilizeEventAvatar(event: AnyStreamEvent): void {
+    if (!('user' in event) || !event.user) return
+    const identity = event.user.id || event.user.username
+    if (!identity) return
+    const incoming = event.user.profilePictureUrl
+    const stable = this.avatarStabilizer.stabilize(
+      `${event.platform}:${identity}`,
+      incoming
+    )
+    event.user.profilePictureUrl = stable
+    // Download the image now, while the just-issued signature is still valid —
+    // the pinned URL may have expired by the time an overlay first requests it.
+    // Deduped per image inside warmAvatarCache; never throws.
+    void warmAvatarCache(incoming || stable)
   }
 
   private recordSongRequested(request: SpotifySongRequest): void {
@@ -393,7 +448,11 @@ export class EventOrchestrator {
   }
 
   private handleLoyaltyLevelUp(event: LoyaltyLevelUpEvent): void {
-    const message = `${event.displayName} hit level ${event.level}!`
+    const config = this.economyService.getConfig()
+    const levelBonus = config.enabled ? event.level * config.levelUpBonusPerLevel : 0
+    const message = levelBonus > 0
+      ? `${event.displayName} hit level ${event.level} and earned a ${levelBonus} ${config.currencyName} bonus!`
+      : `${event.displayName} hit level ${event.level}!`
     void this.sendHostChatMessage(event.platform, message)
 
     try {
@@ -590,7 +649,10 @@ export class EventOrchestrator {
         break
 
       case 'STOP_RECORDING':
-        this.streamingService.stopRecording()
+        void this.streamingService.stopRecording().catch((err: any) => {
+          console.error('[Deck] Stop Recording failed:', err)
+          this.overlayServer.broadcastDeckNotification(err?.message || 'Unknown recording error', 'error')
+        })
         break
 
       default:
@@ -598,52 +660,44 @@ export class EventOrchestrator {
     }
   }
 
-  private handleEconomy(event: any): void {
+  private async handleEconomy(event: AnyStreamEvent): Promise<boolean> {
     if (event.type === 'like') {
       const username = event.user?.username || event.user?.id || event.user?.displayName || 'anonymous'
       const displayName = event.user?.displayName || event.user?.username || username
       this.economyService.registerLike(username, event.likeCount, displayName)
+      return false
     } else if (event.type === 'gift') {
       // 1 cent = 1 second for example (standard tikfinity-like logic)
       const seconds = Math.floor(event.monetaryValue / 10) // Simplified
       if (seconds > 0) this.economyService.addTimeToSubathon(seconds)
+      return false
     } else if (event.type === 'chat') {
       const msg = event.message.trim().toLowerCase()
       const displayName = this.getEventDisplayName(event)
       if (msg === '!get') {
-        const claimed = this.economyService.claimPointsDrop(event.user.username, event.platform)
+        // Event Lab simulations should exercise visuals without mutating the
+        // live economy or stealing a real viewer's active drop.
+        if ((event.raw as any)?.simulated) return true
+        const claimed = this.economyService.claimPointsDrop(event.user.username, event.platform, {
+          platformUserId: event.user.id,
+          displayName: event.user.displayName
+        })
         if (claimed) {
           void this.sendHostChatMessage(event.platform, `${displayName} claimed the points drop!`)
+        } else {
+          void this.sendHostChatMessage(event.platform, `${displayName}, there is no active points drop.`)
         }
-      } else if (msg === '!points') {
-        this.economyService.getPoints(event.user.username, event.platform)
-          .then(pts => {
-            const response = `${displayName}, you have ${pts} points.`
-            this.ttsEngine.speak(response)
-            void this.sendHostChatMessage(event.platform, response)
-          })
-          .catch(err => console.error('[EventOrchestrator] Points lookup failed:', err))
-      } else if (msg === '!spin') {
-        this.economyService.spendPoints(event.user.username, event.platform, 5)
-          .then(success => {
-            let response: string
-            if (success) {
-              const win = Math.random() > 0.7 ? 20 : 0
-              if (win > 0) {
-                this.economyService.addPoints(event.user.username, event.platform, win)
-                response = `JACKPOT! ${displayName} won ${win} points!`
-              } else {
-                response = `Sorry ${displayName}, better luck next time.`
-              }
-            } else {
-              response = `${displayName}, you need 5 points to spin.`
-            }
-            this.ttsEngine.speak(response)
-            void this.sendHostChatMessage(event.platform, response)
-          })
-          .catch(err => console.error('[EventOrchestrator] Spin command failed:', err))
+        return true
+      }
+
+      const response = await this.economyCommandService.handleChat(event)
+      if (response) {
+        if (response.speak) this.ttsEngine.speak(response.message)
+        void this.sendHostChatMessage(event.platform, response.message)
+        return true
       }
     }
+    return false
   }
 }
 

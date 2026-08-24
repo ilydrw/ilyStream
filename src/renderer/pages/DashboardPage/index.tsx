@@ -3,7 +3,6 @@ import {
   IconActivity,
   IconAlertTriangle,
   IconChartLine,
-  IconClock,
   IconCurrencyDollar,
   IconDatabase,
   IconGift,
@@ -22,7 +21,7 @@ import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import { Avatar } from '../../components/ui/Avatar'
 import { SpotifyIcon } from '../../components/ui/SpotifyIcon'
 import { PageHeader } from '../../components/layout/PageHeader'
-import { useChatStore } from '../../stores/chat-store'
+import { isChatKind, useChatStore } from '../../stores/chat-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useTTSStore } from '../../stores/tts-store'
 import type { Platform } from '../../../main/platforms/types'
@@ -30,7 +29,8 @@ import type { GlobalStats, UserIdentity } from '../../../shared/stats'
 import { EMPTY_GLOBAL_STATS } from '../../../shared/stats'
 import { sortPlatformsByDisplayOrder } from '../../lib/platform-order'
 
-import { HealthRow, MetricCard, QuickLink, SpotifyMetricCard } from './components/DashboardShared'
+import { HealthRow, QuickLink, SpotifyMetricCard } from './components/DashboardShared'
+import './dashboard.css'
 
 const primaryPlatforms = ['tiktok', 'twitch', 'youtube', 'kick'] as const
 type PrimaryPlatform = (typeof primaryPlatforms)[number]
@@ -245,12 +245,37 @@ function StatPill({ label, value, icon }: { label: string; value: string; icon?:
   )
 }
 
+function OperationSignal({
+  icon,
+  label,
+  value,
+  detail,
+  tone = 'neutral'
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  detail: string
+  tone?: 'good' | 'warning' | 'danger' | 'neutral'
+}) {
+  return (
+    <div className={`dashboard-operation-signal is-${tone}`}>
+      <span className="dashboard-operation-signal-icon">{icon}</span>
+      <span className="dashboard-operation-signal-copy">
+        <em>{label}</em>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </span>
+    </div>
+  )
+}
+
 function PlatformBreakdown({ rows }: { rows: PlatformDashboardRow[] }) {
   return (
     <section className="app-section-card glass">
       <div className="app-section-head">
         <div>
-          <h2>Platform Breakdown</h2>
+          <h2>Platform breakdown</h2>
           <p>Current audience, session chat, and lifetime engagement by service.</p>
         </div>
         <Link to="/stats" className="app-button">
@@ -288,8 +313,8 @@ function PlatformBreakdown({ rows }: { rows: PlatformDashboardRow[] }) {
             </div>
 
             <div className="dashboard-platform-stat-grid">
-              <span><strong>{row.sessionChats.toLocaleString()}</strong><em>session chat</em></span>
-              <span><strong>{formatCompact(row.lifetimeChats)}</strong><em>life chat</em></span>
+              <span><strong>{row.sessionChats.toLocaleString()}</strong><em>session</em></span>
+              <span><strong>{formatCompact(row.lifetimeChats)}</strong><em>lifetime</em></span>
               <span><strong>{formatCompact(row.uniqueUsers)}</strong><em>users</em></span>
               <span><strong>{row.followerCount === null ? '--' : formatCompact(row.followerCount)}</strong><em>followers</em></span>
               <span><strong>{formatCompact(row.lifetimeLikes)}</strong><em>likes</em></span>
@@ -307,7 +332,7 @@ function LifetimeSummary({ global }: { global: GlobalStats }) {
     <section className="app-section-card glass">
       <div className="app-section-head">
         <div>
-          <h2>Lifetime Totals</h2>
+          <h2>Lifetime totals</h2>
           <p>{global.lastUpdatedAt ? `Updated ${relativeTime(new Date(global.lastUpdatedAt).getTime())}` : 'No persisted activity yet'}</p>
         </div>
         <IconDatabase size={16} className="text-white/38" />
@@ -328,9 +353,9 @@ function TopAudience({ identities, loading }: { identities: UserIdentity[]; load
   return (
     <section className="app-section-card glass">
       <div className="app-section-head">
-        <h2>Top Audience</h2>
+        <h2>Top audience</h2>
         <Link to="/stats" className="app-button">
-          View All
+          View all
         </Link>
       </div>
       <div className="app-section-content dashboard-leader-list">
@@ -433,7 +458,9 @@ export default function DashboardPage() {
   const viewerCounts = useConnectionStore((s) => s.viewerCounts)
   const errors = useConnectionStore((s) => s.errors)
   const recentEvents = useConnectionStore((s) => s.recentEvents)
-  const messages = useChatStore((s) => s.messages)
+  // The unified feed also buffers gift/follow/sub events; dashboard stats track chat only.
+  const allFeedItems = useChatStore((s) => s.messages)
+  const messages = useMemo(() => allFeedItems.filter(isChatKind), [allFeedItems])
   const ttsQueue = useTTSStore((s) => s.queue)
   const ttsEnabled = useTTSStore((s) => s.enabled)
   const [globalStats, setGlobalStats] = useState<GlobalStats>(EMPTY_GLOBAL_STATS)
@@ -547,8 +574,6 @@ export default function DashboardPage() {
     }
   })
 
-  const sortedPlatformRows = [...platformRows].sort((a, b) => b.viewers - a.viewers || b.sessionChats - a.sessionChats)
-  const topPlatform = sortedPlatformRows[0]
   const sessionPeak = Math.max(totalViewers, ...audienceSamples.map((sample) => sample.total))
   const previousSample = audienceSamples.length > 1 ? audienceSamples[audienceSamples.length - 2] : null
   const audienceDelta = previousSample ? totalViewers - previousSample.total : 0
@@ -556,16 +581,29 @@ export default function DashboardPage() {
   const lastSample = audienceSamples[audienceSamples.length - 1]
   const statusTone = issueCount > 0 ? 'is-danger' : connectedCount > 0 ? 'is-good' : connectingCount > 0 ? 'is-warning' : 'is-warning'
   const statusText = issueCount > 0 ? 'Attention' : connectedCount > 0 ? 'Online' : connectingCount > 0 ? 'Connecting' : 'Standby'
-  const lifetimeInteractions =
-    globalStats.totalLikes +
-    globalStats.totalGifts +
-    globalStats.totalSubscriptions +
-    globalStats.totalFollows +
-    globalStats.totalShares +
-    globalStats.totalRaids +
-    globalStats.totalChats +
-    globalStats.totalSongRequests
-
+  const issuePlatform = platformRows.find((row) => row.status === 'error')
+  const operationTitle = issueCount > 0
+    ? `${issueCount} connection${issueCount === 1 ? '' : 's'} need attention`
+    : connectedCount > 0
+      ? `${connectedCount} live service${connectedCount === 1 ? '' : 's'} online`
+      : connectingCount > 0
+        ? 'Bringing live services online'
+        : 'Your workspace is in standby'
+  const operationDetail = issueCount > 0
+    ? `${issuePlatform?.label ?? 'A platform'} is reporting a problem. Review Health Center before relying on its audience or chat data.`
+    : connectedCount > 0
+      ? `Audience, chat, and events are being monitored across ${connectedCount} connected platform${connectedCount === 1 ? '' : 's'}.`
+      : connectingCount > 0
+        ? `${connectingCount} platform${connectingCount === 1 ? ' is' : 's are'} negotiating a connection. Live signals will appear here as they arrive.`
+        : 'Connect a platform to start monitoring audience, chat, and routed events from one place.'
+  const primaryAction = issueCount > 0 || connectingCount > 0
+    ? { to: '/health', label: 'Review health' }
+    : connectedCount > 0
+      ? { to: '/broadcast', label: 'Open Broadcast Studio' }
+      : { to: '/health', label: 'Connect platforms' }
+  const secondaryAction = primaryAction.to === '/health'
+    ? { to: '/broadcast', label: 'Broadcast Studio' }
+    : { to: '/health', label: 'Health Center' }
   const eventMixRows = Array.from(
     recentEvents.reduce((map, event) => {
       map.set(event.type, (map.get(event.type) ?? 0) + 1)
@@ -580,132 +618,102 @@ export default function DashboardPage() {
     <div className="app-page dashboard-pro">
       <PageHeader
         kicker="Live Operations"
-        title="Broadcast Dashboard"
-        description="Live audience, chat velocity, service health, and fast go-live controls."
+        title="Dashboard"
+        description="See what is live, what needs attention, and where to act next."
         icon={IconBroadcast}
         actions={
           <>
-          <span className={`app-status-chip ${statusTone}`}>{statusText}</span>
-          <Link to="/broadcast" className="app-button-primary">
-            <IconBroadcast size={14} />
-            Broadcast
-          </Link>
+            <span className={`app-status-chip ${statusTone}`}>{statusText}</span>
+            <Link to="/broadcast" className="app-button-primary">
+              <IconBroadcast size={14} />
+              Broadcast
+            </Link>
           </>
         }
       />
 
-      <div className="dashboard-bento">
-        <div className="flex min-w-0 flex-col gap-[var(--gap-grid)]">
-          <section className="dashboard-hero-panel app-section-card glass">
-            <div className="dashboard-hero-content">
-              <div className="dashboard-hero-copy">
-                <div>
-                  <div className="dashboard-kicker">Live Audience</div>
-                  <div className="dashboard-hero-number tabular-nums">{totalViewers.toLocaleString()}</div>
-                  <p className="dashboard-hero-label">
-                    {connectedCount} connected node{connectedCount === 1 ? '' : 's'} · {formatDuration(firstSample ? Date.now() - firstSample.timestamp : 0)} session
-                  </p>
-                </div>
-
-                <div className="dashboard-hero-stats">
-                  <div className="dashboard-hero-stat">
-                    <span>Sample Delta</span>
-                    <strong>{formatDelta(audienceDelta)}</strong>
-                  </div>
-                  <div className="dashboard-hero-stat">
-                    <span>Session Peak</span>
-                    <strong>{sessionPeak.toLocaleString()}</strong>
-                  </div>
-                  <div className="dashboard-hero-stat">
-                    <span>Last Update</span>
-                    <strong>{relativeTime(lastSample?.timestamp ?? null)}</strong>
-                  </div>
-                </div>
+      <section className={`dashboard-command-panel app-section-card glass ${statusTone}`}>
+        <div className="dashboard-command-main">
+          <div className="dashboard-command-copy">
+            <div>
+              <div className="dashboard-command-eyebrow">
+                <span aria-hidden="true" />
+                Current operating state
               </div>
-
-              <AudienceChart samples={audienceSamples} rows={platformRows} />
+              <div className="dashboard-command-icon" aria-hidden="true">
+                {issueCount > 0 ? <IconAlertTriangle size={22} /> : connectedCount > 0 ? <IconActivity size={22} /> : <IconServer size={22} />}
+              </div>
+              <h2>{operationTitle}</h2>
+              <p>{operationDetail}</p>
             </div>
-          </section>
 
-          <div className="dashboard-metric-grid">
-            <MetricCard
-              icon={<IconServer size={17} />}
-              label="Service Nodes"
-              value={`${connectedCount}/4`}
-              subValue={issueCount > 0 ? `${issueCount} node issues` : connectingCount > 0 ? `${connectingCount} connecting` : 'Connection matrix clean'}
-              trend={issueCount > 0 ? 'down' : connectedCount > 0 ? 'up' : 'neutral'}
-            />
-            <MetricCard
-              icon={<IconUsers size={17} />}
-              label="Audience"
-              value={totalViewers.toLocaleString()}
-              subValue={topPlatform?.viewers > 0 ? `${topPlatform.label} leads at ${Math.round(topPlatform.share * 100)}%` : 'No live viewers reported'}
-              trend={totalViewers > 0 ? 'up' : 'neutral'}
-            />
-            <MetricCard
-              icon={<IconActivity size={17} />}
-              label="Chat Rate"
-              value={`${chatRate >= 10 ? chatRate.toFixed(0) : chatRate.toFixed(1)}/m`}
-              subValue={`${sessionUniqueChatters.toLocaleString()} unique chatters`}
-              trend={chatRate > 0 ? 'up' : 'neutral'}
-            />
-            <MetricCard
-              icon={<IconDatabase size={17} />}
-              label="Lifetime Events"
-              value={formatCompact(lifetimeInteractions)}
-              subValue={`${globalStats.uniqueUserCount.toLocaleString()} tracked users`}
-              trend={lifetimeInteractions > 0 ? 'up' : 'neutral'}
-            />
-            <SpotifyMetricCard />
+            <div className="dashboard-command-actions">
+              <Link to={primaryAction.to} className="app-button-primary">
+                {issueCount > 0 ? <IconAlertTriangle size={14} /> : <IconBroadcast size={14} />}
+                {primaryAction.label}
+              </Link>
+              <Link to={secondaryAction.to} className="app-button">
+                {secondaryAction.label}
+              </Link>
+            </div>
+
+            <div className="dashboard-command-facts">
+              <div>
+                <span>Connected</span>
+                <strong>{connectedCount}/4 services</strong>
+              </div>
+              <div>
+                <span>Session</span>
+                <strong>{formatDuration(firstSample ? Date.now() - firstSample.timestamp : 0)}</strong>
+              </div>
+              <div>
+                <span>Latest chat</span>
+                <strong>{latestMessageTime}</strong>
+              </div>
+            </div>
           </div>
 
-          <section className="app-section-card glass">
-            <div className="app-section-head">
-              <div>
-                <h2>Next Setup Moves</h2>
-                <p>Fast routes for the most common live setup decisions.</p>
-              </div>
-            </div>
-            <div className="app-section-content dashboard-setup-grid">
-              <SetupMove
-                to="/connections/tiktok"
-                icon={<IconServer size={15} />}
-                title="Connect live platforms"
-                detail={connectedCount > 0 ? `${connectedCount} platform${connectedCount === 1 ? '' : 's'} connected` : 'Start here if chat or viewers are missing'}
-                status={issueCount > 0 ? 'attention' : connectedCount > 0 ? 'ready' : 'next'}
-              />
-              <SetupMove
-                to="/broadcast"
-                icon={<IconBroadcast size={15} />}
-                title="Build the broadcast"
-                detail={totalViewers > 0 ? `${totalViewers.toLocaleString()} live viewers currently tracked` : 'Create scenes, sources, and audio before going live'}
-                status={connectedCount > 0 ? 'next' : 'ready'}
-              />
-              <SetupMove
-                to="/tts"
-                icon={<IconTTS size={15} />}
-                title="Tune chat voice"
-                detail={ttsEnabled ? `${ttsQueue.length} item${ttsQueue.length === 1 ? '' : 's'} in queue` : 'TTS is currently disabled'}
-                status={ttsEnabled ? 'ready' : 'attention'}
-              />
-              <SetupMove
-                to="/event-lab"
-                icon={<IconActivity size={15} />}
-                title="Test the event chain"
-                detail={recentEventTotal > 0 ? `${recentEventTotal} recent events routed` : 'Send sample gifts, follows, chats, and alerts'}
-                status={recentEventTotal > 0 ? 'ready' : 'next'}
-              />
-            </div>
-          </section>
+          <AudienceChart samples={audienceSamples} rows={platformRows} />
+        </div>
 
-          <PlatformBreakdown rows={platformRows} />
+        <div className="dashboard-operation-strip" aria-label="Current live signals">
+          <OperationSignal
+            icon={<IconServer size={16} />}
+            label="Service nodes"
+            value={`${connectedCount}/4`}
+            detail={issueCount > 0 ? `${issueCount} need attention` : connectingCount > 0 ? `${connectingCount} connecting` : 'Connection matrix clean'}
+            tone={issueCount > 0 ? 'danger' : connectedCount > 0 ? 'good' : connectingCount > 0 ? 'warning' : 'neutral'}
+          />
+          <OperationSignal
+            icon={<IconActivity size={16} />}
+            label="Chat velocity"
+            value={`${chatRate >= 10 ? chatRate.toFixed(0) : chatRate.toFixed(1)}/m`}
+            detail={`${sessionUniqueChatters.toLocaleString()} unique chatters`}
+            tone={chatRate > 0 ? 'good' : 'neutral'}
+          />
+          <OperationSignal
+            icon={<IconBolt size={16} />}
+            label="Routed events"
+            value={recentEventTotal.toLocaleString()}
+            detail={recentEventTotal > 0 ? 'Event chain is active' : 'Waiting for live events'}
+            tone={recentEventTotal > 0 ? 'good' : 'neutral'}
+          />
+          <OperationSignal
+            icon={<IconChartLine size={16} />}
+            label="Session peak"
+            value={sessionPeak.toLocaleString()}
+            detail={formatDelta(audienceDelta)}
+            tone={audienceDelta > 0 ? 'good' : audienceDelta < 0 ? 'warning' : 'neutral'}
+          />
+        </div>
+      </section>
 
-          <LifetimeSummary global={globalStats} />
-
+      <div className="dashboard-bento">
+        <main className="dashboard-main-stack">
           <section className="app-section-card glass min-h-[380px]">
             <div className="app-section-head">
               <div>
-                <h2>Live Event Pulse</h2>
+                <h2>Live event pulse</h2>
                 <p>{recentEventTotal.toLocaleString()} recent routed events · latest chat {latestMessageTime}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -755,12 +763,81 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
-        </div>
+
+          <PlatformBreakdown rows={platformRows} />
+
+          <LifetimeSummary global={globalStats} />
+        </main>
 
         <aside className="dashboard-side-stack">
+          <section className="app-section-card glass dashboard-next-moves">
+            <div className="app-section-head">
+              <div>
+                <h2>Next moves</h2>
+                <p>Finish the highest-value setup work first.</p>
+              </div>
+              <IconBolt size={16} className="text-white/38" />
+            </div>
+            <div className="app-section-content dashboard-setup-grid is-stack">
+              <SetupMove
+                to="/health"
+                icon={<IconServer size={15} />}
+                title="Connect live platforms"
+                detail={connectedCount > 0 ? `${connectedCount} platform${connectedCount === 1 ? '' : 's'} connected` : 'Start here if chat or viewers are missing'}
+                status={issueCount > 0 ? 'attention' : connectedCount > 0 ? 'ready' : 'next'}
+              />
+              <SetupMove
+                to="/broadcast"
+                icon={<IconBroadcast size={15} />}
+                title="Build the broadcast"
+                detail={totalViewers > 0 ? `${totalViewers.toLocaleString()} live viewers currently tracked` : 'Create scenes, sources, and audio before going live'}
+                status={connectedCount > 0 ? 'next' : 'ready'}
+              />
+              <SetupMove
+                to="/tts"
+                icon={<IconTTS size={15} />}
+                title="Tune chat voice"
+                detail={ttsEnabled ? `${ttsQueue.length} item${ttsQueue.length === 1 ? '' : 's'} in queue` : 'TTS is currently disabled'}
+                status={ttsEnabled ? 'ready' : 'attention'}
+              />
+              <SetupMove
+                to="/event-lab"
+                icon={<IconActivity size={15} />}
+                title="Test the event chain"
+                detail={recentEventTotal > 0 ? `${recentEventTotal} recent events routed` : 'Send sample gifts, follows, chats, and alerts'}
+                status={recentEventTotal > 0 ? 'ready' : 'next'}
+              />
+            </div>
+          </section>
+
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Speech Engine</h2>
+              <h2>Operational health</h2>
+              <IconChartLine size={16} className="text-white/38" />
+            </div>
+            <div className="app-section-content dashboard-health-list">
+              <HealthRow label="Inbound nodes" value={`${connectedCount}/4`} tone={issueCount > 0 ? 'bad' : connectedCount > 0 ? 'good' : 'muted'} />
+              <HealthRow label="Audience samples" value={audienceSamples.length.toString()} tone={audienceSamples.length > 0 ? 'good' : 'muted'} />
+              <HealthRow label="Recent events" value={recentEventTotal.toLocaleString()} tone={recentEventTotal > 0 ? 'good' : 'muted'} />
+              <HealthRow label="Speech queue" value={ttsQueue.length.toString()} tone={ttsQueue.length > 0 ? 'good' : 'muted'} />
+              <div className="dashboard-health-divider" />
+              <HealthRow label="Session duration" value={formatDuration(firstSample ? Date.now() - firstSample.timestamp : 0)} tone={firstSample ? 'good' : 'muted'} />
+              <HealthRow label="Last sample" value={lastSample ? formatTime(lastSample.timestamp) : '--'} tone={lastSample ? 'good' : 'muted'} />
+              <HealthRow label="Lifetime peak" value={globalStats.peakViewerCount.toLocaleString()} tone={globalStats.peakViewerCount > 0 ? 'good' : 'muted'} />
+            </div>
+            {issueCount > 0 && (
+              <div className="px-4 pb-4">
+                <Link to="/health" className="dashboard-warning-line">
+                  <IconAlertTriangle size={14} />
+                  <span>{issueCount} platform connection needs attention</span>
+                </Link>
+              </div>
+            )}
+          </section>
+
+          <section className="app-section-card glass">
+            <div className="app-section-head">
+              <h2>Speech engine</h2>
               <span className={`app-status-chip ${ttsEnabled ? 'is-good' : ''}`}>{ttsEnabled ? 'Active' : 'Standby'}</span>
             </div>
             <div className="app-section-content dashboard-voice-list">
@@ -784,55 +861,24 @@ export default function DashboardPage() {
                 ))
               )}
               <Link to="/tts" className="app-button mt-1 w-full">
-                Manage Voice
+                Manage voice
               </Link>
             </div>
           </section>
+
+          <SpotifyMetricCard />
 
           <TopAudience identities={topIdentities} loading={statsLoading} />
 
           <section className="app-section-card glass">
             <div className="app-section-head">
-              <h2>Quick Routes</h2>
+              <h2>Quick routes</h2>
             </div>
             <div className="app-section-content dashboard-quick-grid">
               <QuickLink to="/chat" icon={<IconChat size={16} />} label="Chat Hub" />
               <QuickLink to="/tts" icon={<IconTTS size={16} />} label="Voice" />
               <QuickLink to="/spotify" icon={<SpotifyIcon size={16} />} label="Spotify" />
               <QuickLink to="/triggers" icon={<IconBolt size={16} />} label="Rules" />
-            </div>
-          </section>
-
-          <section className="app-section-card glass">
-            <div className="app-section-head">
-              <h2>System Health</h2>
-              <IconChartLine size={16} className="text-white/38" />
-            </div>
-            <div className="app-section-content dashboard-health-list">
-              <HealthRow label="Inbound nodes" value={`${connectedCount}/4`} tone={issueCount > 0 ? 'bad' : connectedCount > 0 ? 'good' : 'muted'} />
-              <HealthRow label="Audience samples" value={audienceSamples.length.toString()} tone={audienceSamples.length > 0 ? 'good' : 'muted'} />
-              <HealthRow label="Recent events" value={recentEventTotal.toLocaleString()} tone={recentEventTotal > 0 ? 'good' : 'muted'} />
-              <HealthRow label="Speech queue" value={ttsQueue.length.toString()} tone={ttsQueue.length > 0 ? 'good' : 'muted'} />
-            </div>
-            {issueCount > 0 && (
-              <div className="px-4 pb-4">
-                <div className="dashboard-warning-line">
-                  <IconAlertTriangle size={14} />
-                  <span>{issueCount} platform connection needs attention</span>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="app-section-card glass">
-            <div className="app-section-head">
-              <h2>Session Clock</h2>
-              <IconClock size={16} className="text-white/38" />
-            </div>
-            <div className="app-section-content dashboard-health-list">
-              <HealthRow label="First sample" value={firstSample ? formatTime(firstSample.timestamp) : '--'} tone={firstSample ? 'good' : 'muted'} />
-              <HealthRow label="Last sample" value={lastSample ? formatTime(lastSample.timestamp) : '--'} tone={lastSample ? 'good' : 'muted'} />
-              <HealthRow label="Lifetime peak" value={globalStats.peakViewerCount.toLocaleString()} tone={globalStats.peakViewerCount > 0 ? 'good' : 'muted'} />
             </div>
           </section>
         </aside>

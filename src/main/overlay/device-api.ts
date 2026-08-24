@@ -10,6 +10,7 @@ import type {
   PairCode,
   PairedDevice
 } from '../../shared/device-api'
+import { writeToSseClient } from './sse-backpressure'
 
 const PAIR_CODE_TTL_MS = 5 * 60_000 // 5 minutes (increased from 60s)
 const SERVER_VERSION = '1'
@@ -35,6 +36,7 @@ export type DeviceEventType =
   | 'recordingState'
   | 'viewerCount'
   | 'likes'
+  | 'appTheme'
 
 interface DeviceEventEnvelope {
   type: DeviceEventType
@@ -113,9 +115,7 @@ export class DeviceApi {
     })
     const data = `data: ${JSON.stringify(envelope)}\n\n`
     for (const client of [...this.eventClients]) {
-      try {
-        client.write(data)
-      } catch {
+      if (!writeToSseClient(client, data, 'device-api')) {
         this.eventClients.delete(client)
       }
     }
@@ -325,7 +325,7 @@ export class DeviceApi {
     }
 
     const volume = typeof body.volume === 'number' ? body.volume : 1
-    this.soundboardService.playSound(id, volume)
+    this.soundboardService.playSound(id, volume, 'overlap')
 
     // Surface a visual confirmation on every connected device. We look up the
     // catalog row so the device can show the human-readable name + emoji.
@@ -409,12 +409,11 @@ export class DeviceApi {
     if (this.pingTimer) return
     this.pingTimer = setInterval(() => {
       for (const client of [...this.eventClients]) {
-        try {
-          client.write(': ping\n\n')
-        } catch {
+        if (!writeToSseClient(client, ': ping\n\n', 'device-api')) {
           this.eventClients.delete(client)
         }
       }
+      if (this.eventClients.size === 0) this.stopPingLoop()
     }, SSE_PING_INTERVAL_MS)
   }
 

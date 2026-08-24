@@ -39,7 +39,7 @@ export function AlertRoutesPane({ rules, selectedId, onSelect, onAdd, onToggleEn
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-lg border border-white/10 bg-[#15171c] py-1 shadow-2xl">
-              <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-white/30">Create route for</div>
+              <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold text-white/30">Create route for</div>
               {NEW_ROUTE_OPTIONS.map((opt) => (
                 <button
                   key={opt.platform}

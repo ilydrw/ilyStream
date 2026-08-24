@@ -1,13 +1,51 @@
 import { Widget } from '../../../shared/widgets'
 import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+function parseHexRgb(value: unknown): { r: number; g: number; b: number } | null {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  if (!match) return null
+  let hex = match[1]
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('')
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  }
+}
+
 export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): string {
   const cfg = (_widget.config as any) || {}
-  const glassIntensity = cfg.glassIntensity ?? 0.5
-  const bgOpacity = (0.2 + (glassIntensity * 0.4))
-  const blur = glassIntensity * 60
+  const glassIntensity = clamp01(Number(cfg.glassIntensity ?? 0.5))
+  // Explicit background-opacity slider wins and goes all the way to 0
+  // (fully transparent); widgets saved before the slider existed keep the
+  // legacy glass-derived value (0.2–0.6).
+  const bgOpacity = Number.isFinite(Number(cfg.backgroundOpacity))
+    ? clamp01(Number(cfg.backgroundOpacity))
+    : 0.2 + glassIntensity * 0.4
+  const blur = Number.isFinite(Number(cfg.blur))
+    ? Math.min(120, Math.max(0, Number(cfg.blur)))
+    : glassIntensity * 60
   const borderRadius = cfg.borderRadius ?? 40
+  const borderWidth = Number.isFinite(Number(cfg.borderWidth))
+    ? Math.min(20, Math.max(0, Number(cfg.borderWidth)))
+    : 1
   const fontFamily = cfg.fontFamily || 'Inter'
+  const backgroundRgb = parseHexRgb(cfg.backgroundColor) || { r: 10, g: 12, b: 18 }
+  const textColor = typeof cfg.textColor === 'string' && /^#[0-9a-f]{3,8}$/i.test(cfg.textColor)
+    ? cfg.textColor
+    : '#ffffff'
+  // Panel chrome (drop shadow, inner glow, shine, frost) scales with the
+  // background tint so a transparent card is truly invisible, not a ghost
+  // box of shadow and blur. At the legacy default alpha (0.4) the scale is
+  // exactly 1, preserving the original look.
+  const chromeScale = Math.min(1, bgOpacity / 0.4)
+  const frostScale = Math.min(1, bgOpacity * 4)
 
   return `<!doctype html>
 <html lang="en">
@@ -20,12 +58,18 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     :root {
       --cyber-blue: #00f2ff;
       --cyber-pink: #ff00e5;
-      --glass-bg: rgba(10, 12, 18, ${bgOpacity});
+      --glass-bg: rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, ${bgOpacity});
       --glass-border: rgba(255, 255, 255, 0.15);
       --liquid-shine: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
       --radius: ${borderRadius}px;
       --font-main: "${fontFamily}", Inter, "Segoe UI", Arial, sans-serif;
-      --blur: ${blur}px;
+      --blur: ${(blur * frostScale).toFixed(1)}px;
+      --card-border-width: ${borderWidth}px;
+      --card-shadow-alpha: ${(0.6 * chromeScale).toFixed(3)};
+      --card-inner-alpha: ${(0.05 * chromeScale).toFixed(3)};
+      --card-shine: ${chromeScale.toFixed(3)};
+      --card-saturate: ${100 + Math.round(150 * frostScale)}%;
+      --alert-text-color: ${textColor};
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,16 +140,16 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       align-items: center;
       gap: 20px;
       overflow: visible;
-      border: 1px solid var(--glass-border);
+      border: var(--card-border-width) solid var(--glass-border);
       border-radius: var(--radius);
       background: var(--glass-bg);
       padding: 35px 50px;
       text-align: center;
       box-shadow:
-        0 30px 80px rgba(0, 0, 0, 0.6),
-        inset 0 0 20px rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(var(--blur)) saturate(250%);
-      -webkit-backdrop-filter: blur(var(--blur)) saturate(250%);
+        0 30px 80px rgba(0, 0, 0, var(--card-shadow-alpha)),
+        inset 0 0 20px rgba(255, 255, 255, var(--card-inner-alpha));
+      backdrop-filter: blur(var(--blur)) saturate(var(--card-saturate));
+      -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--card-saturate));
     }
 
     .alert-content::after {
@@ -114,6 +158,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       inset: 0;
       border-radius: inherit;
       background: var(--liquid-shine);
+      opacity: var(--card-shine);
       pointer-events: none;
     }
 
@@ -141,9 +186,9 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     .cyber-border .alert-content::before {
       content: "";
       position: absolute;
-      inset: -3px;
-      border-radius: 35px;
-      padding: 3px;
+      inset: calc(var(--cyber-width, 3px) * -1);
+      border-radius: inherit;
+      padding: var(--cyber-width, 3px);
       background: linear-gradient(90deg, var(--cyber-blue), var(--cyber-pink), var(--cyber-blue));
       background-size: 200% 100%;
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -159,17 +204,41 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     }
 
     .alert-image-container {
+      position: relative;
+      isolation: isolate;
       flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
+      border-radius: 32px;
+    }
+
+    /* Alert artwork is often a transparent black PNG. Give it a neutral,
+       translucent stage so it remains visible on the dark glass alert card
+       without recoloring the uploaded image itself. */
+    .alert-image-container:not(.alert-image-failed)::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      z-index: -1;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: inherit;
+      background: rgba(255, 255, 255, 0.38);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.50),
+        0 0 36px rgba(255, 255, 255, 0.10);
+      pointer-events: none;
     }
 
     .alert-image {
+      position: relative;
+      z-index: 1;
       width: 200px;
       height: 200px;
       object-fit: contain;
-      filter: drop-shadow(0 15px 40px rgba(0, 0, 0, 0.6));
+      filter:
+        drop-shadow(0 12px 28px rgba(0, 0, 0, 0.36))
+        drop-shadow(0 0 1px rgba(255, 255, 255, 0.70));
       animation: float 3s ease-in-out infinite;
     }
 
@@ -221,7 +290,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     }
 
     .alert-main-text {
-      color: #fff;
+      color: var(--alert-text-color, #fff);
       font-size: 42px;
       font-weight: 900;
       line-height: 1.1;
@@ -501,13 +570,19 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     const IS_PREVIEW = ${JSON.stringify(isPreview)};
     const container = document.getElementById('v5-alert-stage');
     const alertQueue = [];
+    const audioQueue = [];
     const seenAlertIds = new Set();
     const playedAudioIds = new Set();
     const audioCache = new Map();
     const AUDIO_CACHE_LIMIT = 32;
+    const AUDIO_PLAYBACK_MAX_MS = 30 * 1000;
+    const MAX_ALERT_AGE_MS = 15 * 1000;
+    const MAX_PENDING_VISUAL_ALERTS = 4;
+    const MAX_PENDING_AUDIO_ALERTS = 4;
     const PLAYED_AUDIO_LIMIT = 500;
     const bootTime = Date.now() - 10000;
     let isShowing = false;
+    let isPlayingAudio = false;
     let pollingTimer = null;
     let eventSource = null;
     let lastPollAt = bootTime;
@@ -524,16 +599,54 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
     }
 
     function shouldShow(alert) {
-      if (!alert || !alert.id) return true;
-      if (seenAlertIds.has(alert.id)) return false;
+      if (!alert) return false;
+      if (alert.id && seenAlertIds.has(alert.id)) return false;
       const createdAt = getAlertCreatedAt(alert);
-      return createdAt === null || createdAt >= bootTime;
+      return createdAt === null || (createdAt >= bootTime && !isAlertStale(alert));
     }
 
     function queueAlert(alert) {
       if (!shouldShow(alert)) return;
       markSeen(alert);
-      showAlert(alert);
+
+      const alertHtml = String(alert.html || alert.template || '');
+      const hasVisual = Boolean(getCleanAlertType(alert) || alert.imageUrl || alertHtml.trim());
+      const hasAudio = Boolean(alert.audioUrl);
+
+      if (hasVisual) {
+        queueVisualAlert(alert);
+      } else if (hasAudio) {
+        // Join sounds and other audio-only items have their own lane. They can
+        // never occupy the visual queue or delay the next on-screen alert.
+        queueAlertAudio(alert);
+      }
+    }
+
+    function isAlertStale(alert) {
+      const createdAt = getAlertCreatedAt(alert);
+      return createdAt !== null && Date.now() - createdAt > MAX_ALERT_AGE_MS;
+    }
+
+    function removeStaleQueuedAlerts(queue, label) {
+      for (let index = queue.length - 1; index >= 0; index -= 1) {
+        if (!isAlertStale(queue[index])) continue;
+        const stale = queue.splice(index, 1)[0];
+        console.warn('[alerts] Dropping stale ' + label + ' alert: ' + String(stale && stale.id || 'unknown'));
+      }
+    }
+
+    function queueVisualAlert(alert) {
+      if (!isShowing) {
+        showAlert(alert);
+        return;
+      }
+
+      removeStaleQueuedAlerts(alertQueue, 'visual');
+      if (alertQueue.length >= MAX_PENDING_VISUAL_ALERTS) {
+        const dropped = alertQueue.shift();
+        console.warn('[alerts] Visual queue full; dropping oldest pending alert: ' + String(dropped && dropped.id || 'unknown'));
+      }
+      alertQueue.push(alert);
     }
 
     function rememberLimited(set, value, limit) {
@@ -583,54 +696,97 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
     function playAlertAudioOnce(alert) {
       const audioKey = getAudioKey(alert);
-      if (!audioKey || playedAudioIds.has(audioKey)) return;
+      if (!audioKey || playedAudioIds.has(audioKey)) return Promise.resolve();
       rememberLimited(playedAudioIds, audioKey, PLAYED_AUDIO_LIMIT);
-      playAlertAudio(alert);
+      return playAlertAudio(alert);
+    }
+
+    function queueAlertAudio(alert) {
+      if (!alert || !alert.audioUrl || isAlertStale(alert)) return;
+
+      const audioKey = getAudioKey(alert);
+      if (!audioKey || playedAudioIds.has(audioKey)) return;
+
+      if (!isPlayingAudio) {
+        playNextAlertAudio(alert);
+        return;
+      }
+
+      removeStaleQueuedAlerts(audioQueue, 'audio');
+      if (audioQueue.length >= MAX_PENDING_AUDIO_ALERTS) {
+        const dropped = audioQueue.shift();
+        console.warn('[alerts] Audio queue full; dropping oldest pending alert: ' + String(dropped && dropped.id || 'unknown'));
+      }
+      audioQueue.push(alert);
+    }
+
+    function playNextAlertAudio(alert) {
+      if (!alert || isAlertStale(alert)) {
+        return finishAlertAudio();
+      }
+
+      isPlayingAudio = true;
+      Promise.resolve(playAlertAudioOnce(alert)).then(finishAlertAudio, function(error) {
+        console.error('[alerts] Audio lane failed:', error);
+        finishAlertAudio();
+      });
+    }
+
+    function finishAlertAudio() {
+      removeStaleQueuedAlerts(audioQueue, 'audio');
+      const next = audioQueue.shift();
+      if (next) {
+        playNextAlertAudio(next);
+      } else {
+        isPlayingAudio = false;
+      }
     }
 
     function playAlertAudio(alert) {
-      if (!alert.audioUrl) return;
+      if (!alert.audioUrl) return Promise.resolve();
 
       const preparedAudio = prepareAlertAudio(alert.audioUrl);
       const audio = preparedAudio ? preparedAudio.cloneNode(true) : new Audio(alert.audioUrl);
       audio.preload = 'auto';
       audio.volume = clampNumber(alert.audioVolume, 0, 1, 1);
-      const cleanup = function() {
-        try {
-          audio.removeAttribute('src');
-          audio.load();
-        } catch {}
-      };
 
-      audio.addEventListener('ended', cleanup, { once: true });
-      audio.addEventListener('error', cleanup, { once: true });
-      audio.play().catch(function(error) {
-        cleanup();
-        console.error('[alerts] Audio failed:', error);
+      return new Promise(function(resolve) {
+        let settled = false;
+        const watchdog = setTimeout(function() {
+          console.warn('[alerts] Audio exceeded queue timeout; stopping it so the queue can continue.');
+          cleanup(true);
+        }, AUDIO_PLAYBACK_MAX_MS);
+
+        function cleanup(stopPlayback) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(watchdog);
+          try {
+            if (stopPlayback) audio.pause();
+            audio.removeAttribute('src');
+            audio.load();
+          } catch {}
+          resolve();
+        }
+
+        audio.addEventListener('ended', function() { cleanup(false); }, { once: true });
+        audio.addEventListener('error', function() { cleanup(true); }, { once: true });
+        audio.play().catch(function(error) {
+          cleanup(true);
+          console.error('[alerts] Audio failed:', error);
+        });
       });
     }
 
     function showAlert(alert) {
-      if (isShowing) {
-        alertQueue.push(alert);
-        return;
-      }
-
       isShowing = true;
-      playAlertAudioOnce(alert);
+      queueAlertAudio(alert);
 
       const alertHtml = String(alert.html || alert.template || '');
       const cleanAlertType = getCleanAlertType(alert);
       const hasVisual = Boolean(cleanAlertType || alert.imageUrl || alertHtml.trim());
-      const hasAudio = Boolean(alert.audioUrl);
 
-      if (!hasVisual && !hasAudio) {
-        isShowing = false;
-        if (alertQueue.length > 0) {
-          showAlert(alertQueue.shift());
-        }
-        return;
-      }
+      if (!hasVisual) return finishAlert();
 
       let wrapper = null;
 
@@ -651,10 +807,7 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         const alertContent = document.createElement('div');
         alertContent.className = 'alert-content';
         if (!cleanAlertType) {
-          alertContent.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
-        }
-        if (!cleanAlertType && !isCyber) {
-          alertContent.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
+          applyCardStyle(alertContent, alert, isCyber);
         }
 
         const innerHtml = [];
@@ -664,19 +817,25 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         } else if (layout !== 'text-only' && alert.imageUrl) {
           const imageLeft = clampNumber(alert.imageLeft, -1000, 1000, 0);
           const imageTop = clampNumber(alert.imageTop, -1000, 1000, 0);
+          const imageSize = clampNumber(alert.imageSize, 0, 1024, 0);
+          const imageStyle = imageSize > 0 ? ' style="width: ' + imageSize + 'px; height: ' + imageSize + 'px"' : '';
           innerHtml.push('<div class="alert-image-container" style="transform: translate(' + imageLeft + 'px, ' + imageTop + 'px)">');
-          innerHtml.push('  <img class="alert-image" src="' + escapeAttr(window.__ilyAvatar.proxy(alert.imageUrl)) + '" alt="" />');
+          innerHtml.push('  <img class="alert-image"' + imageStyle + ' src="' + escapeAttr(window.__ilyAvatar.proxy(alert.imageUrl, alert.id || alert.createdAt)) + '" alt="" />');
           innerHtml.push('</div>');
         }
 
         if (!cleanAlertType && layout !== 'image-only') {
           const fontSize = clampNumber(alert.fontSize, 12, 180, layout === 'side-by-side' ? 34 : 42);
           const fontWeight = clampNumber(alert.fontWeight, 100, 1000, 900);
+          const placement = normalizeImagePlacement(alert.imagePlacement);
+          const effectiveRow = placement ? (placement === 'left' || placement === 'right') : layout === 'side-by-side';
+          const textAlign = normalizeTextAlign(alert.textAlign) || (effectiveRow ? 'left' : 'center');
           const textStyle = [
             'font-size: ' + fontSize + 'px',
-            'color: ' + safeCssValue(alert.textColor, '#ffffff'),
+            'color: ' + safeCssValue(alert.textColor, 'var(--alert-text-color)'),
             'text-shadow: ' + safeCssValue(alert.textShadow, '0 4px 15px rgba(0,0,0,0.5)'),
-            'font-weight: ' + fontWeight
+            'font-weight: ' + fontWeight,
+            'text-align: ' + textAlign
           ].join('; ');
 
           innerHtml.push('<div class="alert-text">');
@@ -695,19 +854,33 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         // asset was uploaded), log the URL and swap in a visible error tile.
         const alertImg = alertContent.querySelector('.alert-image');
         if (alertImg) {
-          alertImg.addEventListener('load', function() {
+          let imageSettled = false;
+          const handleImageLoaded = function() {
+            if (imageSettled) return;
+            imageSettled = true;
             console.log('[alerts] image loaded: ' + alertImg.getAttribute('src'));
-          }, { once: true });
-          alertImg.addEventListener('error', function() {
+          };
+          const handleImageFailed = function() {
+            if (imageSettled) return;
+            imageSettled = true;
             const failedSrc = alertImg.getAttribute('src') || '';
             console.error('[alerts] image FAILED to load: ' + failedSrc +
-              ' — check the asset exists and refresh the OBS browser-source cache.');
+              ' — check the asset exists and the overlay server can reach it.');
             const box = alertImg.closest('.alert-image-container');
             if (box) {
               box.classList.add('alert-image-failed');
               box.setAttribute('data-image-error', failedSrc);
             }
-          }, { once: true });
+          };
+          alertImg.addEventListener('load', handleImageLoaded, { once: true });
+          alertImg.addEventListener('error', handleImageFailed, { once: true });
+
+          // OBS can satisfy a cached image synchronously while innerHTML is
+          // being assigned, before the listeners above exist.
+          if (alertImg.complete) {
+            if (alertImg.naturalWidth > 0) handleImageLoaded();
+            else handleImageFailed();
+          }
         }
 
         setTimeout(function() {
@@ -723,12 +896,16 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
 
         setTimeout(function() {
           if (wrapper) wrapper.remove();
-          isShowing = false;
-          if (alertQueue.length > 0) {
-            showAlert(alertQueue.shift());
-          }
+          finishAlert();
         }, 600);
       }, clampNumber(alert.durationMs, 1000, 30000, 5000));
+
+      function finishAlert() {
+        isShowing = false;
+        removeStaleQueuedAlerts(alertQueue, 'visual');
+        const next = alertQueue.shift();
+        if (next) showAlert(next);
+      }
     }
 
     const diag = null;
@@ -853,17 +1030,129 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
       return 'stacked';
     }
 
+    function normalizeImagePlacement(value) {
+      if (value === 'left' || value === 'right' || value === 'top' || value === 'bottom') return value;
+      return '';
+    }
+
+    function normalizeTextAlign(value) {
+      if (value === 'left' || value === 'center' || value === 'right') return value;
+      return '';
+    }
+
+    // Widget-level blur in px, pre-scaling; per-alert frost scales from this.
+    const BASE_BLUR_PX = ${blur};
+
+    // Mirrors composeAlertBackground in src/shared/alert-rules.ts: combine the
+    // rule's background color with its 0–100 opacity slider. Opacity -1 (or
+    // absent) keeps whatever alpha the color string itself carries.
+    function composeBackground(color, opacityPercent) {
+      const parsed = parseCssColor(typeof color === 'string' ? color : '');
+      if (!parsed) return { css: null, alpha: null };
+      const pct = Number(opacityPercent);
+      const alpha = Number.isFinite(pct) && pct >= 0
+        ? Math.min(100, Math.max(0, pct)) / 100
+        : parsed.alpha;
+      return {
+        css: 'rgba(' + parsed.r + ', ' + parsed.g + ', ' + parsed.b + ', ' + (Math.round(alpha * 1000) / 1000) + ')',
+        alpha: alpha
+      };
+    }
+
+    function parseCssColor(value) {
+      const raw = value.trim();
+      const hexMatch = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+      if (hexMatch) {
+        let hex = hexMatch[1];
+        if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1
+        };
+      }
+      const rgbMatch = raw.match(/^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*(?:,\\s*([0-9.]+)\\s*)?\\)$/i);
+      if (rgbMatch) {
+        const alpha = rgbMatch[4] === undefined ? 1 : Math.min(1, Math.max(0, Number(rgbMatch[4])));
+        if (!Number.isFinite(alpha)) return null;
+        return {
+          r: Math.min(255, Math.max(0, Number(rgbMatch[1]))),
+          g: Math.min(255, Math.max(0, Number(rgbMatch[2]))),
+          b: Math.min(255, Math.max(0, Number(rgbMatch[3]))),
+          alpha: alpha
+        };
+      }
+      return null;
+    }
+
+    // Applies the rule's full card styling. Panel chrome (shadow, inner glow,
+    // shine, frost) scales with the background alpha so opacity 0 renders a
+    // truly invisible card instead of a ghost box of shadow and blur.
+    function applyCardStyle(content, alert, isCyber) {
+      const bg = composeBackground(alert.backgroundColor, alert.backgroundOpacity);
+      if (bg.css) {
+        content.style.background = bg.css;
+      } else {
+        content.style.background = safeCssValue(alert.backgroundColor, 'var(--glass-bg)');
+      }
+
+      if (bg.alpha !== null) {
+        const chromeScale = Math.min(1, bg.alpha / 0.4);
+        const frostScale = Math.min(1, bg.alpha * 4);
+        content.style.setProperty('--card-shadow-alpha', (0.6 * chromeScale).toFixed(3));
+        content.style.setProperty('--card-inner-alpha', (0.05 * chromeScale).toFixed(3));
+        content.style.setProperty('--card-shine', chromeScale.toFixed(3));
+        content.style.setProperty('--blur', (BASE_BLUR_PX * frostScale).toFixed(1) + 'px');
+        content.style.setProperty('--card-saturate', (100 + Math.round(150 * frostScale)) + '%');
+      }
+
+      if (!isCyber) {
+        content.style.borderColor = safeCssValue(alert.borderColor, 'var(--glass-border)');
+      }
+
+      const borderWidth = Number(alert.borderWidth);
+      if (Number.isFinite(borderWidth)) {
+        const width = Math.min(20, Math.max(0, borderWidth));
+        content.style.borderWidth = width + 'px';
+        content.style.setProperty('--cyber-width', Math.max(1, width) + 'px');
+      }
+
+      const radius = Number(alert.borderRadius);
+      if (Number.isFinite(radius) && radius >= 0) {
+        content.style.borderRadius = Math.min(200, radius) + 'px';
+      }
+
+      const paddingX = Number(alert.paddingX);
+      const paddingY = Number(alert.paddingY);
+      if ((Number.isFinite(paddingX) && paddingX >= 0) || (Number.isFinite(paddingY) && paddingY >= 0)) {
+        const px = Number.isFinite(paddingX) && paddingX >= 0 ? Math.min(300, paddingX) : 50;
+        const py = Number.isFinite(paddingY) && paddingY >= 0 ? Math.min(300, paddingY) : 35;
+        content.style.padding = py + 'px ' + px + 'px';
+      }
+
+      const placement = normalizeImagePlacement(alert.imagePlacement);
+      if (placement) {
+        content.style.flexDirection =
+          placement === 'left' ? 'row' :
+          placement === 'right' ? 'row-reverse' :
+          placement === 'top' ? 'column' : 'column-reverse';
+      }
+    }
+
     function getCleanAlertType(alert) {
       if (!alert) return '';
       if (alert.variant === 'clean-gift') return 'gift';
       if (alert.variant === 'clean-follow') return 'follow';
       if (alert.variant === 'clean-superfan') return 'superfan';
+      if (alert.variant === 'clean-like-milestone') return 'like-milestone';
       return '';
     }
 
     function getCleanAlertAccent(cleanAlertType) {
       if (cleanAlertType === 'gift') return '#f7c948';
       if (cleanAlertType === 'superfan') return '#e879f9';
+      if (cleanAlertType === 'like-milestone') return '#fe2c55';
       return '#38bdf8';
     }
 
@@ -873,18 +1162,22 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         ? 'sent a gift'
         : cleanAlertType === 'superfan'
           ? 'joined the community'
+          : cleanAlertType === 'like-milestone'
+            ? 'reached a like milestone'
           : 'started following';
       const fallbackEyebrow = cleanAlertType === 'gift'
         ? 'Gift received'
         : cleanAlertType === 'superfan'
           ? 'Super fan'
+          : cleanAlertType === 'like-milestone'
+            ? 'Like milestone'
           : 'New follower';
       const subtitle = String(alert.subtitle || textFromHtml(alert.html) || fallbackSubtitle);
       const eyebrow = String(alert.eyebrow || fallbackEyebrow);
       const meta = String(alert.meta || platformLabel(alert.platform));
       const initial = (headline.trim().charAt(0) || 'V').toUpperCase();
       const media = alert.imageUrl
-        ? '<img class="clean-alert-image" data-name="' + escapeAttr(headline) + '" src="' + escapeAttr(window.__ilyAvatar.resolve(alert.imageUrl, headline)) + '" alt="" onerror="window.__ilyAvatar.fallbackImage(this, this.dataset.name)" />'
+        ? '<img class="clean-alert-image" data-name="' + escapeAttr(headline) + '" src="' + escapeAttr(window.__ilyAvatar.resolve(alert.imageUrl, headline, alert.id || alert.createdAt)) + '" alt="" onerror="window.__ilyAvatar.fallbackImage(this, this.dataset.name)" />'
         : '<span class="clean-alert-initial">' + escapeHtml(initial) + '</span>';
 
       return ''
@@ -1004,8 +1297,9 @@ export function buildAlertsOverlayHtml(_widget: Widget, isPreview: boolean): str
         animationIn: 'bounce',
         animationOut: 'fade',
         layout: 'stacked',
-        textColor: '#ffffff',
-        backgroundColor: 'rgba(10, 12, 18, 0.72)',
+        // No backgroundColor here on purpose: the preview card falls through
+        // to var(--glass-bg) so the widget editor's background color/opacity
+        // sliders are visible live in the preview.
         borderColor: 'gradient',
         fontSize: 42,
         fontWeight: 900,

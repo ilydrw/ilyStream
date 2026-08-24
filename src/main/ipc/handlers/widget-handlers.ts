@@ -9,10 +9,12 @@ export function registerWidgetHandlers(
   ipcMain.handle('widgets:get-all', () => db.getAllWidgets())
   ipcMain.handle('widgets:save', (_event, widget) => {
     db.saveWidget(widget)
-    overlayServer.broadcastWidgetUpdate(widget.type, widget.id)
+    overlayServer.broadcastWidgetUpdate(widget)
   })
   ipcMain.handle('widgets:delete', (_event, id) => {
+    const widget = db.getAllWidgets().find((candidate) => candidate.id === id)
     db.deleteWidget(id)
+    if (widget) overlayServer.broadcastWidgetDispose(widget)
     if (db.getAllWidgets().length === 0) {
       overlayServer.resetWidgetRuntimeState()
     }

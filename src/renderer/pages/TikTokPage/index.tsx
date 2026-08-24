@@ -16,6 +16,7 @@ import {
 } from '../../components/platforms/PlatformPageLayout'
 
 const PLATFORM_ID = 'tiktok'
+const SENDER_TEST_TIMEOUT_MS = 20_000
 const FIELDS = [
   { key: 'username', label: 'TikTok username', type: 'text', placeholder: '@username' },
   { key: 'sessionId', label: 'Session ID', type: 'password', placeholder: 'Optional for sending' },
@@ -29,8 +30,9 @@ const DEFAULT_SENDER_STATUS: TikTokSenderStatus = {
   isWindowOpen: false,
   isLoggedIn: false,
   isChatReady: false,
+  hasSendCredentials: false,
   isOnTikTok: false,
-  statusMessage: 'Open the TikTok host chat sender',
+  statusMessage: 'Open the TikTok host session',
   maxMessageLength: 150,
   sendCooldownMs: 1500
 }
@@ -166,13 +168,14 @@ export default function TikTokPage() {
   const likeHealthLabel = likeHealth.lastAt
     ? `${likeHealth.count.toLocaleString()} likes, last from ${likeHealth.lastUser}`
     : 'No like events this session'
+  const senderReady = senderStatus.isChatReady || canSend.canSend
   const senderChecks = [
     { label: 'Window', ok: senderStatus.isWindowOpen },
     { label: 'TikTok', ok: senderStatus.isOnTikTok },
     { label: 'Logged in', ok: senderStatus.isLoggedIn },
-    { label: 'Chat ready', ok: senderStatus.isChatReady }
+    { label: 'Chat input', ok: senderReady }
   ]
-  const senderStatusClass = senderStatus.isChatReady
+  const senderStatusClass = senderReady
     ? 'bg-success/10 text-success'
     : senderStatus.isWindowOpen
       ? 'bg-warning/10 text-warning'
@@ -192,8 +195,10 @@ export default function TikTokPage() {
       ok: senderStatus.isLoggedIn
     },
     {
-      label: 'Open LIVE chat',
-      detail: senderStatus.isChatReady ? 'Chat input is ready' : 'Navigate to LIVE Studio chat or chat pop-out',
+      label: 'Open public LIVE chat',
+      detail: senderStatus.isChatReady
+        ? 'TikTok chat input detected'
+        : 'The sender opens your public LIVE page automatically',
       ok: senderStatus.isChatReady
     },
     {
@@ -202,7 +207,9 @@ export default function TikTokPage() {
         ? 'Test message sent'
         : senderTest.state === 'failed'
           ? senderTest.message || 'Test failed'
-          : 'Verify the session before enabling chat recipes',
+          : senderTest.state === 'sending'
+            ? 'Waiting for TikTok to accept the message'
+            : 'Verify the LIVE chat before enabling relays',
       ok: senderTest.state === 'sent'
     }
   ]
@@ -282,10 +289,12 @@ export default function TikTokPage() {
     if (!window.api?.platform) return
     setSenderTest({ state: 'sending' })
     try {
-      const results = await window.api.platform.sendChatMessage({
-        platforms: ['tiktok'],
-        text: 'ilyStream sender test'
-      })
+      const results = await withSenderTestTimeout(
+        window.api.platform.sendChatMessage({
+          platforms: ['tiktok'],
+          text: 'ilyStream sender test'
+        })
+      )
       const result = results?.[0]
       if (result?.ok) {
         setSenderTest({ state: 'sent', message: 'Test message sent.' })
@@ -320,8 +329,8 @@ export default function TikTokPage() {
     <div className="app-page">
       <PlatformPageHeader 
         platformId={PLATFORM_ID}
-        title="TikTok Integration"
-        description="Connect your TikTok Live stream to IlyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
+        title="TikTok"
+        description="Connect your TikTok Live stream to ilyStream. Monitor real-time gifts, follows, and chat events with professional-grade diagnostics."
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -563,19 +572,19 @@ export default function TikTokPage() {
           <section className="app-section-card glass overflow-hidden relative">
             <div className="app-section-head">
               <div>
-                <h2>Host Chat Sender</h2>
-                <p>Visible browser session for sending messages from the host account.</p>
+                <h2>Host Relay Session</h2>
+                <p>Signed-in TikTok session used by the connected LIVE sender.</p>
               </div>
               <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-semibold tracking-tight ${senderStatusClass}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${senderStatus.isChatReady ? 'bg-success animate-pulse' : 'bg-white/20'}`} />
-                {senderStatus.isChatReady ? 'Ready' : 'Setup Needed'}
+                <div className={`w-1.5 h-1.5 rounded-full ${senderReady ? 'bg-success animate-pulse' : 'bg-white/20'}`} />
+                {senderReady ? 'Ready' : 'Setup Needed'}
               </div>
             </div>
             <div className="p-8">
               <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 mb-6">
                 <p className="text-sm text-white/50 leading-relaxed mb-4">
-                  To send messages as yourself, log in inside the sender window and keep it on the LIVE dashboard or chat pop-out.
-                  ilyStream only controls that visible session after you authenticate it.
+                  Log in inside this isolated TikTok window. ilyStream opens your public LIVE page and uses its real chat input
+                  to post relayed messages as the signed-in host account.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-lg border border-white/5">
@@ -645,7 +654,7 @@ export default function TikTokPage() {
                   onClick={handleOpenSender}
                   className="app-button-primary !h-12 flex-1 !px-8 text-sm font-semibold tracking-tight"
                 >
-                  {senderStatus.isWindowOpen ? 'Focus Sender Window' : 'Open Chat Session'}
+                  {senderStatus.isWindowOpen ? 'Focus TikTok Window' : 'Open TikTok Session'}
                 </button>
                 {senderStatus.isWindowOpen && (
                   <button 
@@ -657,12 +666,12 @@ export default function TikTokPage() {
                 )}
                 <button
                   onClick={handleTestSender}
-                  disabled={!senderStatus.isChatReady || senderTest.state === 'sending'}
+                  disabled={!canSend.canSend || senderTest.state === 'sending'}
                   className="app-button-secondary !h-12 !px-6 text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
-                  title={senderStatus.isChatReady ? 'Send a short TikTok test message' : 'Finish sender setup before testing'}
+                  title={canSend.canSend ? 'Send a short TikTok test message' : canSend.reason || 'Finish sender setup before testing'}
                 >
                   {senderTest.state === 'sending' ? <IconAlertCircle size={16} /> : <IconPlayerPlay size={16} />}
-                  Test
+                  {senderTest.state === 'sending' ? 'Testing…' : 'Test'}
                 </button>
               </div>
             </div>
@@ -708,6 +717,22 @@ export default function TikTokPage() {
   )
 }
 
+async function withSenderTestTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeout: number | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = window.setTimeout(() => {
+          reject(new Error('TikTok did not respond within 20 seconds. Reopen the public LIVE chat and try again.'))
+        }, SENDER_TEST_TIMEOUT_MS)
+      })
+    ])
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout)
+  }
+}
+
 function AutomationToggle({
   label,
   detail,
@@ -745,7 +770,7 @@ function AutomationToggle({
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-tight text-white/30">{label}</span>
+      <span className="text-[10px] font-semibold tracking-tight text-white/30">{label}</span>
       <span className="text-lg font-semibold text-white/90">{value}</span>
     </div>
   )

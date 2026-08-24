@@ -4,6 +4,7 @@ import {
   pauseKokoroSpeech,
   prefetchKokoroSpeech,
   preloadKokoroModel,
+  pruneKokoroPrefetches,
   resumeKokoroSpeech,
   speakWithKokoro,
   stopKokoroSpeech,
@@ -20,11 +21,12 @@ import { resolveAppSettings, type TTSUserVoiceOverride } from '../../shared/app-
 import { getElevenLabsApiKey } from '../../shared/elevenlabs-keys'
 import { DEFAULT_KOKORO_VOICE, ELEVENLABS_DEFAULT_VOICE_ID } from '../../shared/tts-providers'
 import { audioEngine } from '../utils/audio-engine'
+import { isStaleLiveTts } from '../../shared/tts-freshness'
 
 /**
  * Hook that handles TTS speech synthesis in the renderer process.
  * Receives speak commands from main process via IPC and delegates to
- * the Kokoro WASM engine or the Web Speech API depending on the voice profile.
+ * the isolated Kokoro engine or the Web Speech API depending on the voice profile.
  */
 export function useTTS(isMounted: boolean) {
   const setQueue = useTTSStore((s) => s.setQueue)
@@ -58,11 +60,23 @@ export function useTTS(isMounted: boolean) {
       void warmConfiguredKokoroProfiles(settings)
     })
 
-    // Delay heavy TTS prep to prioritize UI paint and media stability
+    // Delay heavy TTS prep to prioritize UI paint and media stability.
+    // The Kokoro model runs in a disposable utility process, but only preload
+    // it when something can actually speak (TTS or the AI co-host).
+    // If both are off, the model still loads lazily on the first real
+    // speech request — the only cost is cold-start latency on that line.
     const prepTimer = setTimeout(() => {
-      console.log('[useTTS] Starting background preloading (Kokoro)...')
-      preloadKokoroModel()
-      void warmConfiguredKokoroProfiles()
+      void (async () => {
+        const settingsRaw = await window.api.settings.getAll().catch(() => null)
+        const resolved = resolveAppSettings(settingsRaw || {})
+        if (!resolved.tts.enabled && !resolved.ai.enabled) {
+          console.log('[useTTS] Skipping Kokoro preload — TTS and AI co-host are disabled.')
+          return
+        }
+        console.log('[useTTS] Starting background preloading (Kokoro)...')
+        preloadKokoroModel()
+        void warmConfiguredKokoroProfiles(settingsRaw || undefined)
+      })()
     }, 3000)
 
     const cleanups: (() => void)[] = []
@@ -71,7 +85,7 @@ export function useTTS(isMounted: boolean) {
       if (activeSpeechIdRef.current !== id) return
       activeSpeechIdRef.current = null
       setCurrentlySpeaking(null)
-      window.api.tts.notifySpeechComplete()
+      window.api.tts.notifySpeechComplete(id)
     }
 
     cleanups.push(
@@ -83,7 +97,15 @@ export function useTTS(isMounted: boolean) {
     // Handle speak commands from main process
     cleanups.push(
       window.api.on('tts:speak', async (data: any) => {
-        const { id, text, voice } = data
+        const { id, text, voice, eventType, enqueuedAt } = data
+
+        // IPC can be delivered after a blocked/reloaded renderer wakes up. Do
+        // not turn that delayed command into audible chat from minutes ago.
+        if (isStaleLiveTts({ eventType, enqueuedAt })) {
+          console.warn(`[tts] Dropping stale ${eventType || 'live'} speech ${id}.`)
+          window.api.tts.notifySpeechComplete(id)
+          return
+        }
 
         activeSpeechIdRef.current = id
         setCurrentlySpeaking(text)
@@ -118,13 +140,24 @@ export function useTTS(isMounted: boolean) {
             window.api.overlay?.notifySpeechState?.(true, true)
             const apiKey = getElevenLabsApiKey(elevenlabsSettingsRef.current, voice?.elevenlabsApiKeyId) || elevenlabsKeyRef.current
             await speakWithElevenLabs(id, text, voice, apiKey)
+            completeSpeech(id)
+            return
           } catch (error) {
-            console.error('[tts] ElevenLabs speech failed:', error)
+            console.error('[tts] ElevenLabs speech failed, falling back to local Kokoro:', error)
+            if (activeSpeechIdRef.current !== id) return
+
+            try {
+              await speakWithKokoro(id, text, toMixerRoutableVoice(voice))
+              completeSpeech(id)
+              return
+            } catch (fallbackError) {
+              console.error('[tts] Kokoro fallback failed, falling back to system voice:', fallbackError)
+              if (activeSpeechIdRef.current !== id) return
+              // Continue to the browser's system speech fallback below.
+            }
           } finally {
             window.api.overlay?.notifySpeechState?.(false, false)
-            completeSpeech(id)
           }
-          return
         }
 
         const utterance = new SpeechSynthesisUtterance(text)
@@ -166,8 +199,8 @@ export function useTTS(isMounted: boolean) {
     // generated character, so it must never prefetch invisible/skippable speech.
     cleanups.push(
       window.api.on('tts:prefetch', (data: any) => {
-        const { id, text, voice } = data
-        if (voice?.provider === 'kokoro') {
+        const { id, text, voice, eventType, enqueuedAt } = data
+        if (voice?.provider === 'kokoro' && !isStaleLiveTts({ eventType, enqueuedAt })) {
           prefetchKokoroSpeech(id, text, voice)
         }
       })
@@ -205,7 +238,11 @@ export function useTTS(isMounted: boolean) {
     // Handle queue updates
     cleanups.push(
       window.api.on('tts:queue-update', (queue: any) => {
-        setQueue(queue)
+        const nextQueue = Array.isArray(queue) ? queue : []
+        setQueue(nextQueue)
+        const retainedIds = nextQueue.map((item: any) => String(item?.id || '')).filter(Boolean)
+        if (activeSpeechIdRef.current) retainedIds.push(activeSpeechIdRef.current)
+        pruneKokoroPrefetches(retainedIds)
       })
     )
 
@@ -253,6 +290,14 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
   ])
   const profiles = Array.isArray(profilesValue) ? (profilesValue as VoiceProfile[]) : []
   const settings = settingsValue as Record<string, any>
+
+  // Warming synthesizes audio, which loads the (large) Kokoro model as a side
+  // effect. Never do that while nothing is allowed to speak.
+  const resolved = resolveAppSettings(settings || {})
+  const ttsActive = resolved.tts.enabled
+  const cohostActive = resolved.ai.enabled
+  if (!ttsActive && !cohostActive) return
+
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]))
   const warmProfiles = new Map<string, VoiceProfile>()
 
@@ -261,35 +306,37 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
     warmProfiles.set(profile.id, profile)
   }
 
-  const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0]
-  addProfile(defaultProfile)
+  if (ttsActive) {
+    const defaultProfile = profiles.find((profile) => profile.isDefault) ?? profiles[0]
+    addProfile(defaultProfile)
 
-  for (const { flatKey, nestedKey } of [
-    { flatKey: 'ttsChatVoiceProfileId', nestedKey: 'chatVoiceProfileId' },
-    { flatKey: 'ttsSubscriptionVoiceProfileId', nestedKey: 'subscriptionVoiceProfileId' }
-  ]) {
-    const profileId =
-      typeof settings?.[flatKey] === 'string'
-        ? settings[flatKey]
-        : typeof settings?.tts?.[nestedKey] === 'string'
-          ? settings.tts[nestedKey]
-          : ''
-    addProfile(profileId ? profileById.get(profileId) : defaultProfile)
-  }
+    for (const { flatKey, nestedKey } of [
+      { flatKey: 'ttsChatVoiceProfileId', nestedKey: 'chatVoiceProfileId' },
+      { flatKey: 'ttsSubscriptionVoiceProfileId', nestedKey: 'subscriptionVoiceProfileId' }
+    ]) {
+      const profileId =
+        typeof settings?.[flatKey] === 'string'
+          ? settings[flatKey]
+          : typeof settings?.tts?.[nestedKey] === 'string'
+            ? settings.tts[nestedKey]
+            : ''
+      addProfile(profileId ? profileById.get(profileId) : defaultProfile)
+    }
 
-  const rawOverrides = Array.isArray(settings?.tts?.userVoiceOverrides)
-    ? settings.tts.userVoiceOverrides
-    : settings?.ttsUserVoiceOverrides
-  const overrides = Array.isArray(rawOverrides)
-    ? (rawOverrides as TTSUserVoiceOverride[])
-    : []
-  for (const override of overrides.slice(0, 8)) {
-    if (!override.enabled) continue
+    const rawOverrides = Array.isArray(settings?.tts?.userVoiceOverrides)
+      ? settings.tts.userVoiceOverrides
+      : settings?.ttsUserVoiceOverrides
+    const overrides = Array.isArray(rawOverrides)
+      ? (rawOverrides as TTSUserVoiceOverride[])
+      : []
+    for (const override of overrides.slice(0, 8)) {
+      if (!override.enabled) continue
 
-    if (override.mode === 'profile') {
-      addProfile(profileById.get(override.voiceProfileId))
-    } else if (override.provider === 'kokoro') {
-      warmProfiles.set(`user:${override.id}`, profileFromOverride(override))
+      if (override.mode === 'profile') {
+        addProfile(profileById.get(override.voiceProfileId))
+      } else if (override.provider === 'kokoro') {
+        warmProfiles.set(`user:${override.id}`, profileFromOverride(override))
+      }
     }
   }
 
@@ -297,23 +344,25 @@ async function warmConfiguredKokoroProfiles(settingsSnapshot?: any): Promise<voi
     warmKokoroProfile(profile)
   }
 
-  // Also warm up the AI signature voice
-  warmKokoroProfile({
-    id: 'ai-cohost-voice',
-    name: 'AI Co-Host',
-    provider: 'kokoro',
-    voiceName: '',
-    kokoroVoice: 'af_sky',
-    lang: 'en-US',
-    pitch: 1.1,
-    rate: 1.05,
-    volume: 1.0,
-    effects: [
-      { type: 'robot', enabled: true, params: {} },
-      { type: 'reverb', enabled: true, params: { roomSize: 0.5 } }
-    ],
-    isDefault: false
-  })
+  // Also warm up the AI signature voice, but only when the co-host can speak
+  if (cohostActive) {
+    warmKokoroProfile({
+      id: 'ai-cohost-voice',
+      name: 'AI Co-Host',
+      provider: 'kokoro',
+      voiceName: '',
+      kokoroVoice: 'af_sky',
+      lang: 'en-US',
+      pitch: 1.1,
+      rate: 1.05,
+      volume: 1.0,
+      effects: [
+        { type: 'robot', enabled: true, params: {} },
+        { type: 'reverb', enabled: true, params: { roomSize: 0.5 } }
+      ],
+      isDefault: false
+    })
+  }
 }
 
 function profileFromOverride(override: TTSUserVoiceOverride): VoiceProfile {

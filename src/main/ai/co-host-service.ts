@@ -15,6 +15,7 @@ export class CoHostService {
   private enabled = false
   private requireCommand = true
   private commandPrefixes = ['!ai']
+  private voiceProfileId = ''
 
   constructor(
     private platformManager: PlatformManager,
@@ -35,6 +36,7 @@ export class CoHostService {
     this.enabled = settings?.enabled ?? false
     this.requireCommand = settings?.requireCommand ?? true
     this.commandPrefixes = normalizeCommandPrefixes(settings?.commandPrefixes ?? [], ['!ai'])
+    this.voiceProfileId = settings?.voiceProfileId ?? ''
   }
 
   private async handleChat(event: ChatEvent): Promise<void> {
@@ -92,14 +94,18 @@ export class CoHostService {
 
       console.log(`[CoHost] AI Speaking: "${response.slice(0, 50)}..."`)
 
-      // 5. Speak it - Use the user's default voice profile but keep the robot effect
-      this.ttsEngine.enqueue({
+      // 5. Speak it with the dedicated co-host profile when configured.
+      const speechQueued = this.ttsEngine.enqueue({
         text: response,
         username: 'ilyStream AI',
         platform: 'all',
         priority: 'urgent',
+        voiceProfileId: this.voiceProfileId || undefined,
         eventType: 'chat'
       })
+      if (!speechQueued) {
+        console.warn('[CoHost] Generated a response, but the TTS queue rejected it.')
+      }
 
       // 6. Post it back. If the platform accepts the message, its normal
       // chat echo path can show it; otherwise emit a local fallback below.

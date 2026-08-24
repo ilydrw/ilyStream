@@ -1,0 +1,294 @@
+@OBSThemeMeta {
+    name: 'ilyStream Cyber Neon';
+    id: 'com.ilystream.obs.cyber-neon';
+    extends: 'com.obsproject.Yami';
+    author: 'ilyStream';
+    dark: 'true';
+}
+
+/*
+ * ilyStream's OBS workspace theme.
+ *
+ * This is deliberately a Yami variant instead of a copy of OBS's base theme.
+ * OBS keeps ownership of widget structure and icon resources while this file
+ * supplies ilyStream's palette and a small set of public Qt style overrides.
+ * Browser-dock contents (including StreamElements) are not selected here.
+ */
+@OBSThemeVars {
+    /* ilyStream Cyber Neon palette */
+    --grey8: #020308;
+    --grey7: #05070D;
+    --grey6: #080B13;
+    --grey5: #0D1321;
+    --grey4: #121A2B;
+    --grey3: #19243A;
+    --grey2: #253557;
+    --grey1: #365179;
+
+    --white1: #F5F8FF;
+    --white2: #D9E2F2;
+    --white3: #C0CBE0;
+    --white4: #9AABD0;
+    --white5: #65769D;
+
+    --blue1: #7AE6FF;
+    --blue2: #49D6FF;
+    --blue3: #19C8FF;
+    --blue4: #0D94C1;
+    --blue5: #086886;
+    --blue6: #043B4D;
+
+    --teal1: #7AFFFF;
+    --teal2: #32F3F3;
+    --teal3: #00D5D5;
+    --teal4: #009999;
+    --teal5: #076A6A;
+    --teal6: #044747;
+
+    --purple1: #E071F2;
+    --purple2: #D035F1;
+    --purple3: #A528C2;
+    --purple4: #7A1D90;
+    --purple5: #551464;
+    --purple6: #390D43;
+
+    --pink1: #F381F7;
+    --pink2: #E85DEA;
+    --pink3: #D035F1;
+    --pink4: #9D27B7;
+    --pink5: #6E1B80;
+    --pink6: #481254;
+
+    /* Keep OBS lifecycle colors semantically familiar. */
+    --red1: #FF8A94;
+    --red2: #FF5C6D;
+    --red3: #E33B57;
+    --red4: #B92740;
+    --red5: #861C30;
+    --red6: #5C1422;
+
+    --green1: #7AF0AB;
+    --green2: #45DB86;
+    --green3: #25BA6B;
+    --green4: #198A50;
+    --green5: #126238;
+    --green6: #0B4226;
+
+    --yellow1: #FFE08A;
+    --yellow2: #FFC85C;
+    --yellow3: #DFA92E;
+    --yellow4: #A8791D;
+    --yellow5: #765516;
+    --yellow6: #4E390F;
+
+    --bg_window: #05070D;
+    --bg_base: #0D1321;
+    --bg_preview: #020308;
+
+    /* Dark cyan selections preserve white-text contrast. */
+    --primary: #0D6E8C;
+    --primary_light: #0D94C1;
+    --primary_lighter: #19C8FF;
+    --primary_dark: #07516A;
+    --primary_darker: #043B4D;
+
+    --warning: #DFA92E;
+    --danger: #E33B57;
+    --text: #F5F8FF;
+    --text_light: #D9E2F2;
+    --text_muted: #9AABD0;
+    --text_disabled: #65769D;
+    --text_inactive: #D9E2F2;
+
+    --highlight_width: 1px;
+    --highlight_color: #7AE6FF;
+    --border_highlight: #19C8FF;
+    --border_color: #253557;
+    --border_radius: 5px;
+    --border_radius_small: 3px;
+    --border_radius_large: 8px;
+
+    --input_bg: #121A2B;
+    --input_bg_hover: #19243A;
+    --input_bg_focus: #0D1321;
+    --input_border: #253557;
+    --input_border_hover: #365179;
+    --input_border_focus: #19C8FF;
+
+    --list_item_bg_selected: #0D6E8C;
+    --list_item_bg_hover: #19243A;
+
+    --button_bg: #121A2B;
+    --button_bg_hover: #19243A;
+    --button_bg_down: #0D6E8C;
+    --button_bg_disabled: #0D1321;
+    --button_border: #253557;
+    --button_border_hover: #365179;
+    --button_border_focus: #19C8FF;
+
+    --tab_bg: #080B13;
+    --tab_bg_hover: #121A2B;
+    --tab_bg_down: #0D6E8C;
+    --tab_bg_disabled: #080B13;
+    --tab_border: #253557;
+    --tab_border_hover: #365179;
+    --tab_border_focus: #19C8FF;
+    --tab_border_selected: #19C8FF;
+
+    --scrollbar_bg: #080B13;
+    --scrollbar_handle: #253557;
+    --scrollbar_hover: #365179;
+    --scrollbar_down: #0D94C1;
+    --scrollbar_border: #080B13;
+
+    --separator_hover: #19C8FF;
+
+    --palette_window: #05070D;
+    --palette_windowText: #F5F8FF;
+    --palette_base: #0D1321;
+    --palette_light: #365179;
+    --palette_mid: #080B13;
+    --palette_dark: #05070D;
+    --palette_highlight: #0D6E8C;
+    --palette_highlightedText: #F5F8FF;
+    --palette_text: #F5F8FF;
+    --palette_link: #49D6FF;
+    --palette_linkVisited: #D035F1;
+    --palette_button: #121A2B;
+    --palette_buttonText: #F5F8FF;
+}
+
+/* Subtle cyan splitters make the workspace structure legible. */
+QMainWindow::separator {
+    background-color: #080B13;
+    border: 1px solid #121A2B;
+}
+
+QMainWindow::separator:hover {
+    background-color: #0D6E8C;
+    border-color: #19C8FF;
+}
+
+/* Native dock chrome only. Web content inside browser docks remains untouched. */
+QDockWidget {
+    border: 1px solid #253557;
+}
+
+QDockWidget::title {
+    background-color: #080B13;
+    border-bottom: 1px solid #253557;
+    color: #D9E2F2;
+    font-weight: 600;
+    padding-left: 8px;
+}
+
+QDockWidget::close-button:hover,
+QDockWidget::float-button:hover {
+    background-color: #19243A;
+    border: 1px solid #365179;
+}
+
+QMenuBar {
+    background-color: #05070D;
+    border-bottom: 1px solid #121A2B;
+}
+
+QMenuBar::item:selected,
+QMenuBar::item:pressed {
+    background-color: #121A2B;
+    color: #7AE6FF;
+}
+
+QMenu::separator {
+    background-color: #253557;
+    height: 1px;
+}
+
+QTabBar::tab:selected {
+    color: #F5F8FF;
+    border-bottom-color: #19C8FF;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #7AE6FF;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus,
+QComboBox:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border-color: #19C8FF;
+}
+
+.button-primary,
+QPushButton[themeID="button-primary"] {
+    background-color: #07516A;
+    border-color: #0D94C1;
+}
+
+.button-primary:hover,
+QPushButton[themeID="button-primary"]:hover {
+    background-color: #0D6E8C;
+    border-color: #19C8FF;
+}
+
+QTreeView::item:selected,
+QListView::item:selected,
+QTableView::item:selected {
+    border-left: 2px solid #19C8FF;
+}
+
+QHeaderView::section {
+    background-color: #080B13;
+    border-color: #253557;
+    color: #D9E2F2;
+}
+
+QToolTip {
+    background-color: #121A2B;
+    border: 1px solid #365179;
+    color: #F5F8FF;
+}
+
+QScrollBar::handle:hover {
+    border-color: #19C8FF;
+}
+
+/* Keep the preview stage visually separate from control chrome. */
+OBSQTDisplay {
+    qproperty-displayBackgroundColor: #020308;
+}
+
+OBSBasicStatusBar {
+    background-color: #05070D;
+    border-top: 1px solid #121A2B;
+}
+
+#controlsFrame {
+    background-color: #080B13;
+    border: 1px solid #121A2B;
+    border-radius: 8px;
+}
+
+/* Live/recording state remains red so operator meaning is not relearned. */
+#streamButton:!hover:!pressed.state-active,
+#recordButton:!hover:!pressed.state-active,
+#pauseRecordButton:!hover:!pressed.state-active,
+#replayBufferButton:!hover:!pressed.state-active,
+#virtualCamButton:!hover:!pressed.state-active,
+#broadcastButton:!hover:!pressed.state-active {
+    background-color: #861C30;
+    border-color: #E33B57;
+}
+
+#streamButton:hover:!pressed.state-active,
+#recordButton:hover:!pressed.state-active,
+#pauseRecordButton:hover:!pressed.state-active,
+#replayBufferButton:hover:!pressed.state-active,
+#virtualCamButton:hover:!pressed.state-active,
+#broadcastButton:hover:!pressed.state-active {
+    background-color: #B92740;
+    border-color: #FF5C6D;
+}

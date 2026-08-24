@@ -32,7 +32,8 @@ export function buildRelayText(
     {
       platform: message.platform,
       displayName: message.displayName,
-      message: message.message
+      message: message.message,
+      emotes: message.emotes
     },
     tagMode
   )

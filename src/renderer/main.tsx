@@ -3,7 +3,7 @@ import { HashRouter } from 'react-router-dom'
 import App from './App'
 import './styles/globals.css'
 
-console.log('[Renderer] Starting IlyStream Application...')
+console.log('[Renderer] Starting ilyStream Application...')
 
 const container = document.getElementById('root')
 

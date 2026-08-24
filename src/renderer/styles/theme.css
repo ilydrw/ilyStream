@@ -117,47 +117,6 @@
   --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, -apple-system,
                BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "Cascadia Code", ui-monospace, "JetBrains Mono", "SF Mono", monospace;
-  --font-feat: "cv11", "ss01", "ss03";
-
-  --fs-hero:    clamp(2.6rem, 6vw, 5rem);
-  --fs-display: clamp(1.9rem, 3.4vw, 2.8rem);
-  --fs-h1:      26px;
-  --fs-h2:      20px;
-  --fs-h3:      16px;
-  --fs-title:   1.625rem;
-  --fs-body:    13px;
-  --fs-body-lg: 0.95rem;
-  --fs-sm:      12px;
-  --fs-xs:      11px;
-  --fs-micro:   10px;
-  --fs-nano:    9px;
-
-  --fw-regular: 450;
-  --fw-medium:  600;
-  --fw-semi:    700;
-  --fw-bold:    800;
-  --fw-black:   900;
-  --fw-ultra:   950;
-
-  --tr-display: -0.04em;
-  --tr-tight:   -0.025em;
-  --tr-snug:    -0.01em;
-  --tr-normal:  0;
-  --tr-loose:   0.05em;
-  --tr-wide:    0.12em;
-  --tr-widest:  0.2em;
-
-  /* ---------- Spacing ---------- */
-  --sp-0: 0;
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 24px;
-  --sp-6: 32px;
-  --sp-7: 48px;
-  --sp-8: 64px;
-  --sp-9: 96px;
 
   /* ---------- Heights ---------- */
   --h-topbar:      46px;
@@ -299,9 +258,6 @@
   --radius-xl: var(--r-xl);
   --radius-2xl: var(--r-2xl);
 
-  --tr-display: 0;
-  --tr-tight: 0;
-  --tr-snug: 0;
   --shadow-card: var(--shadow-pro-panel);
 }
 
@@ -425,4 +381,72 @@ html[data-density="compact"] {
 ::selection {
   background: rgba(var(--accent-rgb), 0.28);
   color: var(--theme-text);
+}
+
+/* Interface density is a spacing system, independent from interface scale. */
+:root,
+html[data-density="comfortable"] {
+  --h-topbar: 46px;
+  --h-rail: 60px;
+  --w-drawer: 240px;
+  --h-input: 34px;
+  --h-button: 34px;
+  --pad-page-x: 36px;
+  --pad-page-y: 28px;
+  --pad-panel: 22px;
+  --gap-grid: 16px;
+  --density-section-head-x: 22px;
+  --density-section-head-y: 18px;
+  --density-section-content: 22px;
+  --density-setting-row-y: 22px;
+  --density-card-padding: 16px;
+  --density-page-header-min: 64px;
+  --density-page-header-bottom: 18px;
+  --density-title-icon: 40px;
+  --density-rail-icon: 38px;
+  --density-drawer-item: 32px;
+  --density-sidebar-brand: 58px;
+  --density-panel-radius: var(--r-lg);
+  --density-settings-body: 28px;
+  --density-theme-preview: 64px;
+  --density-choice-height: 40px;
+  --density-swatch: 36px;
+  --density-broadcast-header: 58px;
+  --density-broadcast-dock-head: 56px;
+  --density-broadcast-toolbar: 44px;
+  --density-broadcast-statusbar: 36px;
+  --density-broadcast-mixer-head: 48px;
+}
+
+html[data-density="compact"] {
+  --h-topbar: 42px;
+  --h-rail: 52px;
+  --w-drawer: 216px;
+  --h-input: 28px;
+  --h-button: 28px;
+  --pad-page-x: 24px;
+  --pad-page-y: 18px;
+  --pad-panel: 14px;
+  --gap-grid: 11px;
+  --density-section-head-x: 16px;
+  --density-section-head-y: 12px;
+  --density-section-content: 16px;
+  --density-setting-row-y: 13px;
+  --density-card-padding: 12px;
+  --density-page-header-min: 52px;
+  --density-page-header-bottom: 12px;
+  --density-title-icon: 34px;
+  --density-rail-icon: 32px;
+  --density-drawer-item: 28px;
+  --density-sidebar-brand: 50px;
+  --density-panel-radius: var(--r-md);
+  --density-settings-body: 16px;
+  --density-theme-preview: 48px;
+  --density-choice-height: 32px;
+  --density-swatch: 30px;
+  --density-broadcast-header: 50px;
+  --density-broadcast-dock-head: 48px;
+  --density-broadcast-toolbar: 38px;
+  --density-broadcast-statusbar: 32px;
+  --density-broadcast-mixer-head: 42px;
 }

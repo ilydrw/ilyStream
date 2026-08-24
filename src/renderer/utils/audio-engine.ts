@@ -133,6 +133,10 @@ class AudioEngine {
     return Boolean(this.broadcastBus);
   }
 
+  getContextState(): AudioContextState | 'uninitialized' {
+    return this.context?.state || 'uninitialized';
+  }
+
   async setSinkId(id: string): Promise<void> {
     this.sinkId = id || 'default';
     const ctx = this.context;

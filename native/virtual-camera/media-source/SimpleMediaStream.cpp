@@ -39,6 +39,10 @@ namespace winrt::WindowsSample::implementation
         spMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
         spMediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         spMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+        spMediaType->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+        spMediaType->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+        spMediaType->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+        spMediaType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
         MFSetAttributeSize(spMediaType.get(), MF_MT_FRAME_SIZE, NUM_IMAGE_COLS, NUM_IMAGE_ROWS);
         MFSetAttributeRatio(spMediaType.get(), MF_MT_FRAME_RATE, 30, 1);
         // frame size * pixle bit size * framerate
@@ -52,6 +56,9 @@ namespace winrt::WindowsSample::implementation
         spMediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
         spMediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         spMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+        spMediaType->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+        spMediaType->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_sRGB);
+        spMediaType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_0_255);
         MFSetAttributeSize(spMediaType.get(), MF_MT_FRAME_SIZE, NUM_IMAGE_COLS, NUM_IMAGE_ROWS);
         MFSetAttributeRatio(spMediaType.get(), MF_MT_FRAME_RATE, 30, 1);
         // frame size * pixle bit size * framerate

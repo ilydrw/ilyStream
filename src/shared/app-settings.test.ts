@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAppSetting, resolveAppSettings } from './app-settings'
+import { APP_THEME_DEFINITIONS, resolveAppSetting, resolveAppSettings } from './app-settings'
+
+describe('resolveAppSettings built-in themes', () => {
+  it('preserves every registered theme id through settings normalization', () => {
+    for (const theme of APP_THEME_DEFINITIONS) {
+      const settings = resolveAppSettings({ theme: theme.id })
+      expect(settings.theme).toBe(theme.id)
+      expect(settings.ui.theme).toBe(theme.id)
+    }
+  })
+})
 
 describe('resolveAppSettings TTS command and audience gates', () => {
   it('maps flat chat relay toggles into nested Chat Hub settings', () => {
@@ -302,6 +312,109 @@ describe('resolveAppSettings event sounds', () => {
     expect(settings.eventTextSuperfanBorderColor).toBe('#ff00aa')
     expect(settings.eventTextSuperfanFontSize).toBe(120)
   })
+
+  it('normalizes the optional TikTok like milestone alert', () => {
+    const settings = resolveAppSettings({
+      eventLikeMilestoneEnabled: 'true',
+      eventLikeMilestoneRepeatEnabled: 'false',
+      eventLikeMilestoneTemplate: '  {displayName} reached {milestoneLikes}!  ',
+      eventLikeMilestoneFallbackSoundId: 'alerts/thank-you.mp3',
+      eventLikeMilestoneFallbackVolume: 2,
+      eventLikeMilestoneDurationMs: 99_000
+    })
+
+    expect(settings.alerts.likeMilestone).toEqual({
+      enabled: true,
+      repeatEveryMilestone: false,
+      template: '{displayName} reached {milestoneLikes}!',
+      fallbackSoundId: 'alerts/thank-you.mp3',
+      fallbackSoundVolume: 1,
+      durationMs: 30_000
+    })
+    expect(settings).toEqual(expect.objectContaining({
+      eventLikeMilestoneEnabled: true,
+      eventLikeMilestoneRepeatEnabled: false,
+      eventLikeMilestoneTemplate: '{displayName} reached {milestoneLikes}!',
+      eventLikeMilestoneFallbackSoundId: 'alerts/thank-you.mp3',
+      eventLikeMilestoneFallbackVolume: 1,
+      eventLikeMilestoneDurationMs: 30_000
+    }))
+  })
+})
+
+describe('resolveAppSettings custom themes', () => {
+  it('normalizes saved custom themes, schemes, overrides, and clears dangling active ids', () => {
+    const settings = resolveAppSettings({
+      customThemes: [
+        {
+          id: 'sunset',
+          name: '  Sunset  ',
+          background: '#101010',
+          secondary: '#FF00AA',
+          accent: '#00FFEE',
+          colorScheme: 'light',
+          overrides: { surface: '#ABCDEF', border: 'nope', bogusToken: '#ffffff' }
+        },
+        { name: 'Unnamed', background: 'not-a-color', colorScheme: 'sideways' }
+      ],
+      activeCustomThemeId: 'does-not-exist'
+    })
+
+    expect(settings.ui.customThemes).toEqual([
+      {
+        id: 'sunset',
+        name: 'Sunset',
+        background: '#101010',
+        secondary: '#ff00aa',
+        accent: '#00ffee',
+        colorScheme: 'light',
+        // Invalid hex and unknown tokens are dropped; valid ones are lowercased.
+        overrides: { surface: '#abcdef' }
+      },
+      {
+        id: 'custom-theme-2',
+        name: 'Unnamed',
+        background: '#0b0d12',
+        secondary: '#d035f1',
+        accent: '#19c8ff',
+        colorScheme: 'auto',
+        overrides: {}
+      }
+    ])
+    expect(settings.customThemes).toEqual(settings.ui.customThemes)
+    // Active id must reference a saved theme, otherwise it is cleared.
+    expect(settings.ui.activeCustomThemeId).toBe('')
+  })
+
+  it('normalizes the live custom scheme and per-token overrides', () => {
+    const settings = resolveAppSettings({
+      customColorScheme: 'light',
+      customPalette: { text: '#123456', canvas: 'not-a-color', unknown: '#000000' }
+    })
+
+    expect(settings.ui.customColorScheme).toBe('light')
+    expect(settings.customColorScheme).toBe('light')
+    expect(settings.ui.customPalette).toEqual({ text: '#123456' })
+    expect(settings.customPalette).toEqual(settings.ui.customPalette)
+  })
+
+  it('keeps a valid active custom theme id through flat and nested aliases', () => {
+    const settings = resolveAppSettings({
+      customThemes: [{ id: 'sunset', name: 'Sunset', background: '#101010', secondary: '#ff00aa', accent: '#00ffee' }],
+      activeCustomThemeId: 'sunset'
+    })
+
+    expect(settings.ui.activeCustomThemeId).toBe('sunset')
+    expect(settings.activeCustomThemeId).toBe('sunset')
+  })
+
+  it('defaults to an empty custom theme library and derived palette', () => {
+    const defaults = resolveAppSettings()
+    expect(defaults.ui.customThemes).toEqual([])
+    expect(defaults.ui.activeCustomThemeId).toBe('')
+    expect(defaults.ui.customColorScheme).toBe('auto')
+    expect(defaults.ui.customPalette).toEqual({})
+  })
 })
 
 describe('resolveAppSettings Spotify aliases', () => {
@@ -332,6 +445,17 @@ describe('resolveAppSettings Spotify aliases', () => {
 })
 
 describe('resolveAppSettings chat aliases', () => {
+  it('defaults Chat Hub retention to 150 messages', () => {
+    const defaults = resolveAppSettings()
+    const oversized = resolveAppSettings({ chatMaxMessages: 2000 })
+
+    expect(defaults.chat.maxMessages).toBe(150)
+    expect(defaults.chatMaxMessages).toBe(150)
+    expect(oversized.chat.maxMessages).toBe(150)
+    expect(oversized.chatMaxMessages).toBe(150)
+    expect(resolveAppSetting('chatMaxMessages', 2000)).toBe(150)
+  })
+
   it('returns the host chat response toggle from flat and nested settings', () => {
     const defaults = resolveAppSettings()
     const flat = resolveAppSettings({ chatHostResponsesEnabled: false })

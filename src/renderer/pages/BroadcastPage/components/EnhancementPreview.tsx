@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconArrowsMove } from '@tabler/icons-react'
 import { segmentationService } from '../../../services/SegmentationService'
-import { applyShapeBorderStroke, clampShapeMaskTransform, traceShapePath } from './CanvasEditor.utils'
+import { applyShapeBorderStroke, clampShapeMaskTransform, resolveImageSource, traceShapePath } from './CanvasEditor.utils'
 import type { DragTarget, EnhancementPreviewProps } from './EnhancementModal.types'
 import { defaultShape } from './EnhancementModal.utils'
 
@@ -205,11 +205,11 @@ export function EnhancementPreview({
             let img = (window as any)._vbImageCache?.[vb.value]
             if (!img) {
               img = new Image()
-              img.src = `file://${vb.value}`
+              img.src = resolveImageSource(vb.value)
               if (!(window as any)._vbImageCache) (window as any)._vbImageCache = {}
               ;(window as any)._vbImageCache[vb.value] = img
             }
-            if (img.complete) {
+            if (img.complete && img.naturalWidth > 0) {
               if (vb.blurStrength) ctx.filter = `blur(${vb.blurStrength / 4}px)`
               const mode = vb.scalingMode || 'cover'
               if (mode === 'stretch') {

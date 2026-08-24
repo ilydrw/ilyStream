@@ -7,7 +7,14 @@ import {
 import { reconcileFxChain } from '../../../../utils/audio-fx'
 import { buildLowLatencyAudioConstraints, resolveCameraAudioDeviceId } from '../../utils/media-init'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
-import { type MeterFrame, type LiveMeterNode, cleanupLiveMeterNode } from './utils'
+import {
+  type MeterFrame,
+  type LiveMeterNode,
+  type MeterElements,
+  cleanupLiveMeterNode,
+  meterElementsAreStale,
+  queryMeterElements
+} from './utils'
 
 export function useLiveMeters(
   activeScene: StudioScene,
@@ -22,6 +29,10 @@ export function useLiveMeters(
   const peaksRef = useRef<Record<string, { value: number; lastAt: number }>>({})
   const micStreams = useRef<Record<string, MediaStream>>({})
   const pendingMics = useRef<Set<string>>(new Set())
+  // Meter target elements, keyed by source id ('master' included). Shared by
+  // every meter so the master bus takes the same cache path as a channel strip.
+  const elementsRef = useRef(new Map<string, MeterElements>())
+  const clipHistoryRef = useRef<Record<string, number>>({})
   const masterMeterDataRef = useRef<{ left: Float32Array | null; right: Float32Array | null }>({
     left: null,
     right: null
@@ -199,6 +210,7 @@ export function useLiveMeters(
       if (activeAudioIds.has(id)) continue
       cleanupLiveMeterNode(node)
       nodesRef.current.delete(id)
+      elementsRef.current.delete(id)
     }
 
     const lastTickRef = { current: 0 }
@@ -344,71 +356,37 @@ export function useLiveMeters(
       next.master = { ...masterMeter, holdPeak: peaksRef.current.master.value }
 
       Object.entries(next).forEach(([id, data]) => {
-        let elements: any = null
+        if (id !== 'master' && !nodesRef.current.get(id)) return
 
-        if (id === 'master') {
-          const cached = (window as any).__ilyMasterElements
-          const hasCachedElements = cached && (
-            (cached.peakL?.length || 0) +
-            (cached.peakR?.length || 0) +
-            (cached.clipL?.length || 0) +
-            (cached.clipR?.length || 0)
-          ) > 0
-
-          if (!hasCachedElements) {
-            (window as any).__ilyMasterElements = {
-              peakL: Array.from(document.querySelectorAll(`.meter-peak-l-master`)),
-              peakR: Array.from(document.querySelectorAll(`.meter-peak-r-master`)),
-              clipL: Array.from(document.querySelectorAll(`.meter-clip-l-master`)),
-              clipR: Array.from(document.querySelectorAll(`.meter-clip-r-master`))
-            }
-          }
-          elements = (window as any).__ilyMasterElements
-        } else {
-          const node = nodesRef.current.get(id)
-          if (!node) return
-
-          if (!node.elements) {
-            node.elements = {
-              peakL: Array.from(document.querySelectorAll(`.meter-peak-l-${id}`)) as HTMLElement[],
-              peakR: Array.from(document.querySelectorAll(`.meter-peak-r-${id}`)) as HTMLElement[],
-              clipL: Array.from(document.querySelectorAll(`.meter-clip-l-${id}`)) as HTMLElement[],
-              clipR: Array.from(document.querySelectorAll(`.meter-clip-r-${id}`)) as HTMLElement[],
-              spectrum: document.getElementById(`spectrum-canvas-${id}`) as HTMLCanvasElement | null
-            }
-          }
-          elements = node.elements
+        let elements = elementsRef.current.get(id)
+        if (!elements || meterElementsAreStale(elements)) {
+          elements = queryMeterElements(id)
+          elementsRef.current.set(id, elements)
         }
-
-        if (!elements) return
 
         const peakPercentL = `${Math.max(4, data.left * 100)}%`
         const peakPercentR = `${Math.max(4, data.right * 100)}%`
 
-        elements.peakL.forEach((el: HTMLElement) => { el.style.height = peakPercentL })
-        elements.peakR.forEach((el: HTMLElement) => { el.style.height = peakPercentR })
+        elements.peakL.forEach(el => { el.style.height = peakPercentL })
+        elements.peakR.forEach(el => { el.style.height = peakPercentR })
+        elements.hpeakL.forEach(el => { el.style.width = peakPercentL })
+        elements.hpeakR.forEach(el => { el.style.width = peakPercentR })
 
         const dbL = data.left <= 0.001 ? -60 : 20 * Math.log10(data.left)
         const dbR = data.right <= 0.001 ? -60 : 20 * Math.log10(data.right)
         const clipL = `${100 - Math.max(0, (dbL + 60) / 60) * 100}%`
         const clipR = `${100 - Math.max(0, (dbR + 60) / 60) * 100}%`
 
-        elements.clipL.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipL} 0 0 0)` })
-        elements.clipR.forEach((el: HTMLElement) => { el.style.clipPath = `inset(${clipR} 0 0 0)` })
+        elements.clipL.forEach(el => { el.style.clipPath = `inset(${clipL} 0 0 0)` })
+        elements.clipR.forEach(el => { el.style.clipPath = `inset(${clipR} 0 0 0)` })
 
         // Peak Hold DOM update
         const peakHoldPos = `${100 - ((data.holdPeak || 0) * 100)}%`
-        const holdL = Array.from(document.querySelectorAll(`.meter-hold-l-${id}`)) as HTMLElement[]
-        const holdR = Array.from(document.querySelectorAll(`.meter-hold-r-${id}`)) as HTMLElement[]
-        holdL.forEach(el => { el.style.top = peakHoldPos })
-        holdR.forEach(el => { el.style.top = peakHoldPos })
+        elements.holdL.forEach(el => { el.style.top = peakHoldPos })
+        elements.holdR.forEach(el => { el.style.top = peakHoldPos })
 
         // Clip indicator with sticky hold (1 second)
-        const clipLIndicator = Array.from(document.querySelectorAll(`.meter-clip-indicator-l-${id}`)) as HTMLElement[]
-        const clipRIndicator = Array.from(document.querySelectorAll(`.meter-clip-indicator-r-${id}`)) as HTMLElement[]
-
-        if (!(window as any).__ilyClipHistory) (window as any).__ilyClipHistory = {}
-        const history = (window as any).__ilyClipHistory
+        const history = clipHistoryRef.current
 
         const now = Date.now()
         if (data.left > 0.98) history[`${id}-l`] = now
@@ -417,8 +395,8 @@ export function useLiveMeters(
         const isClippingL = now - (history[`${id}-l`] || 0) < 1000
         const isClippingR = now - (history[`${id}-r`] || 0) < 1000
 
-        clipLIndicator.forEach(el => { el.style.opacity = isClippingL ? '1' : '0' })
-        clipRIndicator.forEach(el => { el.style.opacity = isClippingR ? '1' : '0' })
+        elements.clipIndicatorL.forEach(el => { el.style.opacity = isClippingL ? '1' : '0' })
+        elements.clipIndicatorR.forEach(el => { el.style.opacity = isClippingR ? '1' : '0' })
 
 
         const canvas = elements.spectrum
@@ -468,6 +446,7 @@ export function useLiveMeters(
       cleanupLiveMeterNode(node)
     }
     nodesRef.current.clear()
+    elementsRef.current.clear()
     for (const stream of Object.values(micStreams.current)) {
       stream.getTracks().forEach(t => t.stop())
     }
