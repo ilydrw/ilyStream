@@ -90,6 +90,9 @@ const LIGHT_ON_XY: FakeLightState = {
 const LIGHT_OFF_CT: FakeLightState = {
   on: false, bri: 200, hue: 0, sat: 0, xy: [0.4, 0.4], ct: 366, colormode: 'ct'
 }
+const LIGHT_ON_CT_AT_FLASH_BRIGHTNESS: FakeLightState = {
+  on: true, bri: 254, hue: 0, sat: 0, xy: [0.4, 0.4], ct: 366, colormode: 'ct'
+}
 
 describe('HueService effect restore', () => {
   afterEach(() => {
@@ -146,6 +149,26 @@ describe('HueService effect restore', () => {
     expect(state.on).toBe(true)
     expect(state.bri).toBe(120)
     expect(state.xy[0]).toBeCloseTo(0.5, 3)
+  })
+
+  it('does not accept a stale inactive color value as a successful restore', async () => {
+    vi.useFakeTimers()
+    const bridge = makeBridge({ '1': LIGHT_ON_CT_AT_FLASH_BRIGHTNESS })
+    const service = makeService(bridge, ['1'])
+
+    // Hue retains ct/xy/hs values even when another color mode is active. Drop
+    // the first restore so ct still has the right number while xy remains the
+    // active flash mode; verification must notice the colormode mismatch.
+    let restoreAttempts = 0
+    bridge.setDropPut(body => body.alert === 'none' && ++restoreAttempts === 1)
+
+    await service.triggerFlash({ r: 208, g: 53, b: 241 }, 1000)
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(restoreAttempts).toBeGreaterThanOrEqual(2)
+    const state = bridge.lights.get('1')!
+    expect(state.colormode).toBe('ct')
+    expect(state.ct).toBe(366)
   })
 
   it('re-teaches color memory before switching a previously-off light back off', async () => {

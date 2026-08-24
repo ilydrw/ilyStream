@@ -27,6 +27,10 @@ import {
   type OutputColorConfig,
   type ScreenCaptureDescription
 } from '../../engine/native-engine'
+import {
+  clearProgramExportEngine,
+  setProgramExportEngine
+} from '../../engine/program-export-provider'
 import type { BrowserSourceService } from '../../services/browser-source-service'
 import {
   computeNativeCompositorTransform,
@@ -742,6 +746,7 @@ async function stopNativeBroadcast(): Promise<void> {
   const operation = (async () => {
     const engineToDestroy = broadcastEngine
     broadcastEngine = null
+    clearProgramExportEngine(engineToDestroy)
     detachBrowserSourceSinks()
     for (const session of broadcastSessions.values()) {
       const pendingSceneUpdate = session.sceneUpdatePromise
@@ -1128,6 +1133,8 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
         scene?: NativeBroadcastScene
         /** Which output this drives; omitted means the 16:9 program output. */
         sessionId?: string
+        /** False when the native Program is consumed only by the OBS transport. */
+        presentOutput?: boolean
       }
     ) => {
       const sessionId = opts?.sessionId?.trim() || PROGRAM_SESSION_ID
@@ -1207,11 +1214,16 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
           }], session.outputIndex)
         }
 
-        // Every output is presented as its own shared texture so the renderer
-        // can encode it with no readback — that is the point of the extra
-        // output over a second canvas compositor.
-        if (!(await startBroadcastSharedTexturePresentation(window, eng, session))) {
+        // Preview and encoder consumers receive a persistent Electron shared
+        // texture. OBS-only Program output stays entirely on the native GPU
+        // transport and avoids importing an otherwise unused renderer texture.
+        if (opts?.presentOutput !== false &&
+          !(await startBroadcastSharedTexturePresentation(window, eng, session))) {
           throw new Error('GPU shared-texture output is unavailable')
+        }
+
+        if (sessionId === PROGRAM_SESSION_ID) {
+          setProgramExportEngine(eng)
         }
 
         return {
@@ -1233,6 +1245,7 @@ export function registerEngineHandlers(window: BrowserWindow, browserSourceServi
           }
         } else {
           if (broadcastEngine === eng) broadcastEngine = null
+          clearProgramExportEngine(eng)
           await releaseImportedBroadcastOutput()
           eng?.destroy()
         }

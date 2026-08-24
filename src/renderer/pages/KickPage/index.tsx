@@ -40,6 +40,7 @@ export default function KickPage() {
   const errors = useConnectionStore((s) => s.errors)
   const viewerCounts = useConnectionStore((s) => s.viewerCounts)
   const reconnectInfo = useConnectionStore((s) => s.reconnectInfo)
+  const profileHealth = useConnectionStore((s) => s.profileHealth.kick)
   const recentEvents = useConnectionStore((s) => s.recentEvents)
   const [config, setConfig] = useState<Record<string, ConfigValue>>({})
   const [canSend, setCanSend] = useState({ canSend: false, reason: 'Initializing...' })
@@ -52,6 +53,7 @@ export default function KickPage() {
   const viewers = viewerCounts[PLATFORM_ID] || 0
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
+  const profilesDegraded = profileHealth?.state === 'degraded'
   const webhookPort = String(config.webhookPort || DEFAULT_WEBHOOK_PORT).trim() || DEFAULT_WEBHOOK_PORT
   const webhookPath = normalizeWebhookPath(String(config.webhookPath || DEFAULT_WEBHOOK_PATH))
   const localWebhookUrl = `http://127.0.0.1:${webhookPort}${webhookPath}`
@@ -183,10 +185,10 @@ export default function KickPage() {
           value={isConnected ? 'Live' : isConnecting ? 'Linking' : 'Offline'}
         />
         <Metric 
-          icon={<IconWifi size={20} className={error ? 'text-danger' : 'text-white/20'} />} 
+          icon={<IconWifi size={20} className={error ? 'text-danger' : profilesDegraded ? 'text-warning' : 'text-white/20'} />}
           label="Service Health" 
-          value={error ? 'Critical' : isConnected ? 'Optimal' : 'Standby'} 
-          tone={error ? 'danger' : 'neutral'}
+          value={error ? 'Critical' : profilesDegraded ? 'Profiles Degraded' : isConnected ? 'Optimal' : 'Standby'}
+          tone={error ? 'danger' : profilesDegraded ? 'warning' : 'neutral'}
         />
       </div>
 

@@ -458,13 +458,13 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     const BODY_PADDING = ${bodyPadding};
     const HEADER_HEIGHT = ${headerHeight};
     const WIDGET_SCALE = ${scale};
+    const USER_STATE_LIMIT = Math.max(120, MAX_VISIBLE * 12);
     const SOURCE_MIN_WIDTH = ${sourceMinWidth};
     const SOURCE_MIN_HEIGHT = ${sourceMinHeight};
     const CROWN_MARKUP = ${JSON.stringify(crownMarkup)};
     const IS_PREVIEW = ${JSON.stringify(isPreview)};
     const STREAM_TITLE = ${JSON.stringify(rawTitle)};
     const LIFETIME_TITLE = ${JSON.stringify(rawLifetimeTitle)};
-    const LIFETIME_FALLBACK_ENABLED = ${JSON.stringify(lifetimeCycleEnabled)};
     const LIFETIME_CYCLE_ENABLED = ${JSON.stringify(lifetimeCycleEnabled)};
     const STREAM_WINDOW_MS = ${streamWindowMinutes} * 60 * 1000;
     const LIFETIME_WINDOW_MS = ${lifetimeWindowMinutes} * 60 * 1000;
@@ -560,8 +560,6 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     // 'stream' shows live current-session leaders; 'lifetime' shows the all-time
     // top likers fetched from the stats endpoint.
     let mode = 'stream';
-    let lifetimeFallbackActive = false;
-    let lifetimeFallbackRequestId = 0;
     let totalLikes = 0;
     // Keyed by the server's unique key (\`\${platform}:\${username}\`) so two users
     // sharing a display name don't collapse into one entry. Falls back to
@@ -569,7 +567,9 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
     const users = new Map();
     // Stash the latest stream snapshot data so we can swap back to it when the
     // lifetime glimpse window ends without waiting for a fresh SSE message.
-    let streamCache = { totalLikes: 0, users: [] };
+    let streamCache = { totalLikes: 0, users: new Map() };
+    const pendingLikePayloads = new Map();
+    let pendingLikeFrame = null;
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => (
@@ -585,15 +585,35 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       return String(user && (user.key || user.displayName) || '');
     }
 
-    function addLike(payload) {
-      if (!payload) return;
+    function pruneRankedUsers(map) {
+      if (!map || map.size <= USER_STATE_LIMIT) return;
+      const retained = new Set(
+        Array.from(map.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, USER_STATE_LIMIT)
+          .map(([key]) => key)
+      );
+      map.forEach((value, key) => {
+        if (retained.has(key)) return;
+        if (value.element) value.element.remove();
+        map.delete(key);
+      });
+    }
+
+    function getStreamUsers() {
+      return Array.from(streamCache.users.values());
+    }
+
+    function addLike(payload, deferRender) {
+      if (!payload) return '';
       const { displayName, profilePictureUrl, amount } = payload;
 
       // Skip events without an identifiable user — otherwise we'd key the Map by undefined.
-      if (!displayName) return;
+      if (!displayName) return '';
 
       const key = userKey(payload);
       const likeAmount = Math.max(1, Math.floor(Number(amount)) || 1);
+      const viewerTotal = Math.max(0, Math.floor(Number(payload.viewerTotal)) || 0);
 
       // Drive the pulsing-heart cadence + one-shot burst from every like
       // event, regardless of mode — the header heart should keep pulsing
@@ -615,27 +635,22 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       }
 
       // Always update the stream cache so we have fresh data to swap back to.
-      const cacheEntry = streamCache.users.find((u) => u.key === key);
+      const cacheEntry = streamCache.users.get(key);
       if (cacheEntry) {
-        cacheEntry.count += likeAmount;
+        cacheEntry.count = viewerTotal > 0
+          ? Math.max(cacheEntry.count, viewerTotal)
+          : cacheEntry.count + likeAmount;
         cacheEntry.displayName = displayName || cacheEntry.displayName;
         if (profilePictureUrl) cacheEntry.profilePictureUrl = profilePictureUrl;
       } else {
-        streamCache.users.push({ key, displayName, profilePictureUrl, count: likeAmount });
+        streamCache.users.set(key, {
+          key,
+          displayName,
+          profilePictureUrl,
+          count: viewerTotal > 0 ? viewerTotal : likeAmount
+        });
       }
-
-      if (lifetimeFallbackActive) {
-        lifetimeFallbackActive = false;
-        if (headerTitleEl) headerTitleEl.textContent = STREAM_TITLE;
-        renderUsersFromList(streamCache.users, streamCache.totalLikes);
-        const activeUser = users.get(key);
-        const activeRow = activeUser ? activeUser.element : null;
-        if (activeRow) {
-          pingRowAvatar(activeRow);
-          popRowScore(activeRow);
-        }
-        return;
-      }
+      pruneRankedUsers(streamCache.users);
 
       // Only paint into the live DOM if we're currently in stream mode —
       // during the lifetime glimpse we mustn't disturb the all-time view.
@@ -648,16 +663,22 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       }
       totalLikesEl.textContent = totalLikes.toLocaleString();
 
-      // Per-user count always increments by the per-event delta — the platform
-      // total only describes the aggregate, not the per-user attribution.
+      // Prefer the server's absolute per-viewer count so a user can be pruned
+      // from the bounded local cache and later return without losing rank.
+      // Legacy/preview payloads still increment by their semantic delta.
       let userData = users.get(key);
       if (!userData) {
         userData = { displayName, profilePictureUrl, count: 0, element: null };
         users.set(key, userData);
       }
-      userData.count += likeAmount;
+      userData.count = viewerTotal > 0
+        ? Math.max(userData.count, viewerTotal)
+        : userData.count + likeAmount;
       userData.displayName = displayName || userData.displayName;
       if (profilePictureUrl) userData.profilePictureUrl = profilePictureUrl;
+      pruneRankedUsers(users);
+
+      if (deferRender) return key;
 
       updateLeaderboard(key);
 
@@ -669,17 +690,70 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         pingRowAvatar(activeRow);
         popRowScore(activeRow);
       }
+      return key;
+    }
+
+    function flushQueuedLikes() {
+      pendingLikeFrame = null;
+      if (pendingLikePayloads.size === 0) return;
+      const payloads = Array.from(pendingLikePayloads.values());
+      pendingLikePayloads.clear();
+      const activeKeys = [];
+      payloads.forEach((payload) => {
+        const key = addLike(payload, true);
+        if (key) activeKeys.push(key);
+      });
+      if (mode !== 'stream' || activeKeys.length === 0) return;
+      updateLeaderboard(activeKeys[activeKeys.length - 1]);
+      activeKeys.forEach((key) => {
+        const activeUser = users.get(key);
+        const activeRow = activeUser ? activeUser.element : null;
+        if (activeRow) {
+          pingRowAvatar(activeRow);
+          popRowScore(activeRow);
+        }
+      });
+    }
+
+    function queueLike(payload) {
+      if (!payload || !payload.displayName) return;
+      const key = userKey(payload);
+      const amount = Math.max(1, Math.floor(Number(payload.amount)) || 1);
+      const existing = pendingLikePayloads.get(key);
+      if (existing) {
+        existing.amount += amount;
+        existing.displayName = payload.displayName || existing.displayName;
+        if (payload.profilePictureUrl) existing.profilePictureUrl = payload.profilePictureUrl;
+        const total = Number(payload.totalLikes);
+        if (Number.isFinite(total)) existing.totalLikes = Math.max(Number(existing.totalLikes) || 0, total);
+        const viewerTotal = Number(payload.viewerTotal);
+        if (Number.isFinite(viewerTotal)) {
+          existing.viewerTotal = Math.max(Number(existing.viewerTotal) || 0, viewerTotal);
+        }
+      } else {
+        pendingLikePayloads.set(key, { ...payload, key, amount });
+      }
+      if (pendingLikeFrame !== null) return;
+      if (typeof requestAnimationFrame === 'function') {
+        pendingLikeFrame = requestAnimationFrame(flushQueuedLikes);
+      } else {
+        pendingLikeFrame = setTimeout(flushQueuedLikes, 16);
+      }
     }
 
     function applySnapshot(payload) {
       if (!payload) return;
+      // The snapshot already includes accepted deltas queued before it. Clear
+      // pending work so reconnect/gap recovery cannot double-count a frame.
+      pendingLikePayloads.clear();
 
-      // Capture the previous totals so we can detect "a like just landed" from
-      // a snapshot delta. The server only ever broadcasts snapshots (never
-      // 'append'), so without this diff the pulse-heart / avatar-ping /
-      // score-pop animations the audit added would never fire in live mode.
+      // Capture previous totals so reconnect and gap-recovery snapshots can
+      // still drive the same pulse-heart / avatar-ping / score-pop behavior as
+      // normal append deltas.
       const prevTotalLikes = streamCache.totalLikes;
-      const prevUserCounts = new Map(streamCache.users.map((u) => [u.key, u.count]));
+      const prevUserCounts = new Map(
+        Array.from(streamCache.users.entries()).map(([key, user]) => [key, user.count])
+      );
 
       // Always cache the latest stream snapshot, even while the lifetime view
       // is on screen, so we have fresh data to render when we swap back.
@@ -687,14 +761,19 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         streamCache.totalLikes = Math.max(0, Math.floor(Number(payload.totalLikes)));
       }
       if (Array.isArray(payload.users)) {
-        streamCache.users = payload.users
-          .filter((u) => u && u.displayName)
-          .map((u) => ({
-            key: userKey(u),
-            displayName: u.displayName,
-            profilePictureUrl: u.profilePictureUrl,
-            count: Math.max(0, Math.floor(Number(u.count)) || 0)
-          }));
+        streamCache.users = new Map(
+          payload.users
+            .filter((u) => u && u.displayName)
+            .map((u) => {
+              const key = userKey(u);
+              return [key, {
+                key,
+                displayName: u.displayName,
+                profilePictureUrl: u.profilePictureUrl,
+                count: Math.max(0, Math.floor(Number(u.count)) || 0)
+              }];
+            })
+        );
       }
 
       const totalDelta = streamCache.totalLikes - prevTotalLikes;
@@ -707,23 +786,14 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         burstHeaderHeart();
       }
 
-      const streamHasUsers = streamCache.users.length > 0;
-      if (lifetimeFallbackActive && streamHasUsers) {
-        lifetimeFallbackActive = false;
-        if (headerTitleEl) headerTitleEl.textContent = STREAM_TITLE;
-      }
-
       if (mode !== 'stream') return;
 
-      if (!streamHasUsers) {
-        if (!lifetimeFallbackActive) {
-          renderUsersFromList([], streamCache.totalLikes);
-          void maybeShowLifetimeFallback();
-        }
+      if (streamCache.users.size === 0) {
+        renderUsersFromList([], streamCache.totalLikes);
         return;
       }
 
-      renderUsersFromList(streamCache.users, streamCache.totalLikes);
+      renderUsersFromList(getStreamUsers(), streamCache.totalLikes);
 
       // After the render commits the rows, ping the avatar and pop the
       // score for each user whose count went up. Skip rows we don't have
@@ -823,20 +893,6 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       }
     }
 
-    async function maybeShowLifetimeFallback() {
-      if (!LIFETIME_FALLBACK_ENABLED || lifetimeFallbackActive || mode !== 'stream' || streamCache.users.length > 0) return;
-
-      const requestId = ++lifetimeFallbackRequestId;
-      const snapshot = await fetchLifetimeSnapshot();
-      if (requestId !== lifetimeFallbackRequestId) return;
-      if (mode !== 'stream' || streamCache.users.length > 0) return;
-      if (!snapshot || !Array.isArray(snapshot.users) || snapshot.users.length === 0) return;
-
-      lifetimeFallbackActive = true;
-      if (headerTitleEl) headerTitleEl.textContent = LIFETIME_TITLE;
-      renderUsersFromList(snapshot.users, snapshot.totalLikes);
-    }
-
     async function enterLifetimeMode() {
       if (mode === 'lifetime') return;
       const snapshot = await fetchLifetimeSnapshot();
@@ -844,7 +900,6 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
         // Nothing to show — stay in stream mode for this cycle.
         return;
       }
-      lifetimeFallbackActive = false;
       mode = 'lifetime';
       if (headerTitleEl) headerTitleEl.textContent = LIFETIME_TITLE;
       renderUsersFromList(snapshot.users, snapshot.totalLikes);
@@ -854,8 +909,7 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       if (mode !== 'lifetime') return;
       mode = 'stream';
       if (headerTitleEl) headerTitleEl.textContent = STREAM_TITLE;
-      renderUsersFromList(streamCache.users, streamCache.totalLikes);
-      if (streamCache.users.length === 0) void maybeShowLifetimeFallback();
+      renderUsersFromList(getStreamUsers(), streamCache.totalLikes);
     }
 
     function startCycle() {
@@ -1053,11 +1107,12 @@ export function buildLikesTrackerHtml(widget: Widget, isPreview: boolean = false
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[likes] Received data:', data.type);
           if (data.type === 'snapshot') {
             applySnapshot(data.payload);
           } else if (data.type === 'append') {
-            addLike(data.payload);
+            queueLike(data.payload);
+          } else if (data.type === 'batch' && Array.isArray(data.payload)) {
+            data.payload.forEach(queueLike);
           }
         } catch (e) {
           console.error('[likes] Failed to parse event:', e);

@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { IconRefresh } from '../../../components/ui/icons'
-import { type Widget } from '../../../../shared/widgets'
+import { type Widget, widgetSupportsHotConfig } from '../../../../shared/widgets'
 import { ConfigEditor } from './ConfigEditors'
 import { WidgetThemeSection } from './ConfigEditors/WidgetThemeSection'
 import { Modal } from '../../../components/ui/Modal'
-import { buildWidgetPreviewUrl, getWidgetPreviewFrame } from '../widget-customization'
+import { buildWidgetPreviewUrl, getWidgetPreviewFrame, widgetSupportsThemes } from '../widget-customization'
 import { usePreviewViewportScale } from './usePreviewViewportScale'
 
 // postMessage protocol with the iframe bootstrap (see widget-renderers.ts).
 const PREVIEW_READY_MSG = 'ilystream:preview-ready'
 const PREVIEW_HTML_MSG = 'ilystream:preview-html'
+const PREVIEW_CONFIG_MSG = 'ilystream:preview-config'
+const PREVIEW_NEEDS_HTML_MSG = 'ilystream:preview-needs-html'
 
 // Throttle draft-driven preview renders. The preview uses the full widget HTML
 // renderer so what the user sees before Apply matches the saved browser source.
@@ -37,12 +39,14 @@ export function WidgetEditorModal({
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const iframeReadyRef = useRef(false)
   const pendingWidgetRef = useRef<Widget | null>(null)
+  const lastRequestedWidgetRef = useRef<Widget>(widget)
   const throttleTimerRef = useRef<number | null>(null)
   const lastSentAtRef = useRef(0)
   const renderRequestSeqRef = useRef(0)
 
   const previewWidget = previewOverride ?? draft
   const previewFrame = getWidgetPreviewFrame(previewWidget)
+  const supportsThemes = widgetSupportsThemes(draft)
   const {
     containerRef: previewViewportRef,
     viewportStyle: previewViewportStyle
@@ -120,22 +124,42 @@ export function WidgetEditorModal({
     }
   }, [previewOrigin, previewSessionToken])
 
-  // Push the current draft into the iframe. Throttled to coalesce typing bursts.
-  // Always render full draft HTML so the preview is an exact pre-Apply view,
-  // not a best-effort subset of CSS variables supported by individual widgets.
+  // Push the current draft into the iframe. Supported templates consume config
+  // directly; structural changes explicitly request the same full-HTML fallback
+  // used by every other template. Both paths are throttled to coalesce typing.
   const pushPreview = useCallback((target: Widget) => {
     pendingWidgetRef.current = target
+    lastRequestedWidgetRef.current = target
+    if (!iframeReadyRef.current) return
 
     const send = async () => {
       throttleTimerRef.current = null
       const next = pendingWidgetRef.current
       if (!next) return
+      if (!iframeReadyRef.current) return
+
       pendingWidgetRef.current = null
       lastSentAtRef.current = Date.now()
-
-      if (!iframeReadyRef.current) return
       const iframe = iframeRef.current
       if (!iframe || !iframe.contentWindow) return
+
+      if (widgetSupportsHotConfig(next.type)) {
+        const targetOrigin = previewOrigin
+        const token = previewSessionToken
+        if (!targetOrigin || !token) return
+        // Any in-flight full render is now stale. The child returns
+        // preview-needs-html if this particular change is structural.
+        renderRequestSeqRef.current += 1
+        iframe.contentWindow.postMessage(
+          {
+            type: PREVIEW_CONFIG_MSG,
+            config: next.config,
+            previewToken: token
+          },
+          targetOrigin
+        )
+        return
+      }
 
       await renderAndPostPreviewHtml(next, () => pendingWidgetRef.current === null)
     }
@@ -151,7 +175,7 @@ export function WidgetEditorModal({
     } else if (throttleTimerRef.current === null) {
       throttleTimerRef.current = window.setTimeout(send, PREVIEW_THROTTLE_MS - elapsed)
     }
-  }, [renderAndPostPreviewHtml])
+  }, [previewOrigin, previewSessionToken, renderAndPostPreviewHtml])
 
   // Reset draft when switching widgets (e.g. after Save → onSave passes us a
   // fresh widget object) and force a fresh iframe load.
@@ -160,25 +184,37 @@ export function WidgetEditorModal({
     setPreviewOverride(null)
     iframeReadyRef.current = false
     pendingWidgetRef.current = null
+    lastRequestedWidgetRef.current = widget
     renderRequestSeqRef.current += 1
     setIframeKey((k) => k + 1)
   }, [widget.id])
 
-  // Listen for iframe READY and immediately push the current unsaved draft.
+  // Listen for iframe READY and flush only changes queued while it loaded.
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return
       if (!previewSessionToken || !previewOrigin) return
       if (event.origin !== previewOrigin) return
       if (event.data?.previewToken !== previewSessionToken) return
+      if (event.data?.type === PREVIEW_NEEDS_HTML_MSG) {
+        const target = lastRequestedWidgetRef.current
+        pendingWidgetRef.current = null
+        void renderAndPostPreviewHtml(target)
+        return
+      }
       if (event.data?.type !== PREVIEW_READY_MSG) return
 
       iframeReadyRef.current = true
-      void renderAndPostPreviewHtml(previewWidget)
+      // The HTTP preview shell already contains the saved/current widget HTML.
+      // Reposting it here races the shell's first srcdoc navigation and can
+      // leave both double-buffer frames hidden. Only send if the draft changed
+      // while the shell was still loading (or Refresh explicitly queued it).
+      const pending = pendingWidgetRef.current
+      if (pending) pushPreview(pending)
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [previewOrigin, previewSessionToken, renderAndPostPreviewHtml, previewWidget])
+  }, [previewOrigin, previewSessionToken, pushPreview, renderAndPostPreviewHtml])
 
   // Push fresh HTML when anything the overlay HTML depends on changes. We
   // deliberately key off (type, config) rather than the widget object so
@@ -188,9 +224,11 @@ export function WidgetEditorModal({
     () => JSON.stringify({ t: previewWidget.type, c: previewWidget.config }),
     [previewWidget.type, previewWidget.config]
   )
+  const previousPreviewSignalRef = useRef(previewSignal)
 
   useEffect(() => {
-    if (!iframeReadyRef.current) return
+    if (previousPreviewSignalRef.current === previewSignal) return
+    previousPreviewSignalRef.current = previewSignal
     pushPreview(previewWidget)
     // previewWidget is intentionally not in deps — previewSignal already
     // captures the parts of it that affect rendering.
@@ -217,7 +255,7 @@ export function WidgetEditorModal({
 
   const handleRefresh = () => {
     iframeReadyRef.current = false
-    pendingWidgetRef.current = null
+    pendingWidgetRef.current = previewWidget
     renderRequestSeqRef.current += 1
     setIframeKey((k) => k + 1)
   }
@@ -257,9 +295,11 @@ export function WidgetEditorModal({
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:grid-rows-1">
         {/* Config */}
         <div className="min-w-0 overflow-x-hidden overflow-y-auto border-r border-white/5 bg-black/20 p-6 custom-scrollbar">
-          <div className="mb-8">
-            <WidgetThemeSection draft={draft} onChange={handleDraftChange} />
-          </div>
+          {supportsThemes && (
+            <div className="mb-8">
+              <WidgetThemeSection draft={draft} onChange={handleDraftChange} />
+            </div>
+          )}
           <ConfigEditor draft={draft} onChange={handleDraftChange} onPreview={handlePreviewOverride} />
         </div>
 

@@ -18,6 +18,7 @@ import { DEFAULT_ALERT_RULES, SUPPORTED_EVENTS_BY_PLATFORM } from '../../../shar
 
 import { normalizeAlertSettings, cloneAlertSettings, settingsMatch } from './utils'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { LikeMilestoneAlertSection } from './LikeMilestoneAlertSection'
 
 import './styles.css'
 // Two-pane overhaul — touch comment forces vite to re-transform if HMR got stuck.
@@ -324,6 +325,12 @@ export default function AlertsPage() {
           </div>
           <Toggle value={Boolean(draftSettings.alertSoundLocalMonitoring)} />
         </label>
+
+        <LikeMilestoneAlertSection
+          settings={draftSettings}
+          sounds={sounds}
+          onUpdate={handleUpdate}
+        />
 
         {/* ── Routes (rail) + Editor (pane) ───────────────────────────── */}
         <div className="alerts-two-pane">

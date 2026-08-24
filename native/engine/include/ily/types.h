@@ -108,6 +108,60 @@ typedef struct IlyOutputColorConfig {
     float hdrNominalPeakNits;
 } IlyOutputColorConfig;
 
+/*
+ * Versioned, fixed-size description of the engine's broadcast Program video
+ * export. Output index 0 is the Program output. The two shared handles are
+ * engine-process handles; cross-process consumers must use
+ * IlyEngineDuplicateProgramExportHandles after authenticating their PID.
+ *
+ * Keyed-mutex lifecycle for each slot:
+ *   producer AcquireSync(producerAcquireKey=0, timeout=0)
+ *   producer copies the completed Program frame
+ *   producer ReleaseSync(consumerAcquireKey=1)
+ *   consumer AcquireSync(consumerAcquireKey=1, timeout=0)
+ *   consumer copies/uses the frame
+ *   consumer ReleaseSync(producerAcquireKey=0)
+ *
+ * generation changes whenever the texture pool is recreated. frameSequence
+ * advances only after a frame is successfully published to a slot; it remains
+ * unchanged when both slots are held by a slow consumer.
+ */
+#define ILY_PROGRAM_EXPORT_DESCRIPTOR_VERSION 1u
+#define ILY_PROGRAM_EXPORT_SLOT_COUNT 2u
+#define ILY_PROGRAM_EXPORT_NO_SLOT UINT32_MAX
+
+typedef struct IlyProgramExportDescriptor {
+    uint32_t structSize;
+    uint32_t version;
+    uint64_t generation;
+    uint64_t frameSequence;
+    uint64_t adapterLuid;
+    uint32_t width;
+    uint32_t height;
+    IlyPixelFormat format;
+    uint32_t slotCount;
+    uint32_t latestSlot;
+    uint32_t reserved;
+    uint64_t producerAcquireKey;
+    uint64_t consumerAcquireKey;
+    uint64_t sharedHandleValues[ILY_PROGRAM_EXPORT_SLOT_COUNT];
+    uint32_t controlBlockVersion;
+    uint32_t controlBlockSize;
+    uint64_t controlMappingHandleValue;
+} IlyProgramExportDescriptor;
+
+#define ILY_PROGRAM_EXPORT_DUPLICATED_HANDLES_VERSION 1u
+
+typedef struct IlyProgramExportDuplicatedHandles {
+    uint32_t structSize;
+    uint32_t version;
+    uint64_t generation;
+    uint32_t slotCount;
+    uint32_t reserved;
+    uint64_t textureHandleValues[ILY_PROGRAM_EXPORT_SLOT_COUNT];
+    uint64_t controlHandleValue;
+} IlyProgramExportDuplicatedHandles;
+
 typedef struct IlyScreenCaptureInfo {
     uint32_t width;
     uint32_t height;

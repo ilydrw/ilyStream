@@ -161,6 +161,11 @@ export class FFmpegArgsBuilder {
         '-reconnect_streamed', '1',
         '-reconnect_delay_max', '4',
       ]),
+      ...(isVirtualCam ? [] : [
+        '-nostats',
+        '-stats_period', '1',
+        '-progress', 'pipe:2'
+      ]),
       fullUrl
     ]
   }

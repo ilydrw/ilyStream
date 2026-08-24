@@ -70,6 +70,12 @@ export interface UserIdentity {
   lastSeenAt: string
   accounts: UserStat[]
   /**
+   * Non-streaming identities connected directly to a persisted ilyStream
+   * profile. These do not contribute audience stats and can never be the
+   * profile's primary streaming account.
+   */
+  profileConnections?: ViewerAccount[]
+  /**
    * Overall audience RANK (1 = best). Combines this identity's position across
    * every engagement/contribution category into one leaderboard standing — see
    * StatsRepository.attachOverallRanks. Present when the table is sorted by, or

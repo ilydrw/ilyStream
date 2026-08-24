@@ -237,22 +237,27 @@ export default function StudioOverlayPage({ sceneId: explicitSceneId, layerId: e
   useEffect(() => {
     const unsub = window.api?.on?.('browser-source:frame', async (frame: any) => {
       const { id } = frame
-      if (browserWorkerBusy.current[id]) {
-        latestBrowserBitmaps.current[id] = frame
-      } else {
-        const worker = browserFrameWorkerRef.current
-        if (!worker) return
-        const { id, bitmap, width, height } = frame
-        const layer = activeSceneRef.current?.layers.find(l => l.id === id)
-        browserWorkerBusy.current[id] = true
-        postWorkerFrame(worker, {
-          id,
-          source: bitmap,
-          width,
-          height,
-          transparentBackground: layer?.config?.transparentBackground !== false,
-          transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
-        }, bitmap)
+      try {
+        if (!capturedBrowserSourceIds.current.has(id)) return
+        if (browserWorkerBusy.current[id]) {
+          latestBrowserBitmaps.current[id] = frame
+        } else {
+          const worker = browserFrameWorkerRef.current
+          if (!worker) return
+          const { id, bitmap, width, height } = frame
+          const layer = activeSceneRef.current?.layers.find(l => l.id === id)
+          browserWorkerBusy.current[id] = true
+          postWorkerFrame(worker, {
+            id,
+            source: bitmap,
+            width,
+            height,
+            transparentBackground: layer?.config?.transparentBackground !== false,
+            transparentChromaTolerance: isLikelyScreenBorderLayer(layer) ? 48 : 8
+          }, bitmap)
+        }
+      } finally {
+        window.api.studio.browserSourceFrameConsumed(id)
       }
     })
     return () => unsub?.()

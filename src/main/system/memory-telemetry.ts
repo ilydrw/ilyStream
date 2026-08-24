@@ -27,9 +27,13 @@ const MAX_LOG_BYTES = 10 * 1024 * 1024
 interface ProcessSample {
   pid: number
   type: string
+  /** Electron service label, including named utility processes. */
+  name?: string
+  serviceName?: string
   /** MB, rounded. getAppMetrics reports KB. */
   workingSetMB: number
   peakWorkingSetMB: number
+  privateMB?: number
   cpuPercent: number
   /** What this process hosts (URLs of its webContents), when resolvable. */
   hosts?: string[]
@@ -69,8 +73,13 @@ async function captureSample(): Promise<void> {
       return {
         pid: metric.pid,
         type: metric.type,
+        ...(metric.name ? { name: metric.name } : {}),
+        ...(metric.serviceName ? { serviceName: metric.serviceName } : {}),
         workingSetMB: Math.round(metric.memory.workingSetSize / 1024),
         peakWorkingSetMB: Math.round(metric.memory.peakWorkingSetSize / 1024),
+        ...(typeof metric.memory.privateBytes === 'number'
+          ? { privateMB: Math.round(metric.memory.privateBytes / 1024) }
+          : {}),
         cpuPercent: Math.round(metric.cpu.percentCPUUsage * 10) / 10,
         ...(hosts && hosts.length > 0 ? { hosts } : {})
       }

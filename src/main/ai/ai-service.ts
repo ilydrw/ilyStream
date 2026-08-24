@@ -1,11 +1,23 @@
-import { AppSettings } from '../../shared/app-settings'
+import { DEFAULT_APP_SETTINGS, type AppSettings } from '../../shared/app-settings'
+
+type PersistModel = (model: string) => void | Promise<void>
+const OLLAMA_COHOST_CONTEXT_TOKENS = 8192
+
+interface ChatCompletionResponse {
+  choices?: Array<{ message?: { content?: string } }>
+  message?: { content?: string }
+}
+
+interface OllamaModelList {
+  data?: Array<{ id?: string }>
+}
 
 export class AIService {
   private apiKey: string = ''
-  private model: string = 'minimax-m2.5:cloud'
-  private endpoint: string = 'http://localhost:11434/v1/chat/completions'
-  private systemPrompt: string = 'You are an upbeat livestream co-host. Keep replies short, specific, playful, and safe for a broad audience. Start with the viewer name when it feels natural.'
-  private maxTokens: number = 100
+  private model: string = DEFAULT_APP_SETTINGS.ai.model
+  private endpoint: string = DEFAULT_APP_SETTINGS.ai.endpoint
+  private systemPrompt: string = DEFAULT_APP_SETTINGS.ai.systemPrompt
+  private maxTokens: number = DEFAULT_APP_SETTINGS.ai.maxTokens
 
   // Embedding state — embeddings are optional and gracefully degrade when no
   // embedding model is installed. We cache the unavailability so we don't spam
@@ -15,22 +27,19 @@ export class AIService {
   private embeddingDisabledReason: string = ''
   private embeddingModelTried: string = ''
 
-  constructor() {}
+  constructor(private readonly persistRecoveredModel?: PersistModel) {}
 
   applySettings(settings: AppSettings['ai']) {
     if (!settings) return
     this.apiKey = settings.apiKey || ''
-    const nextModel = settings.model || 'minimax-m2.5:cloud'
-    if (nextModel !== this.model) {
-      // Reset embedding probe — new chat model might pair with a different embed model.
-      this.embeddingsDisabled = false
-      this.embeddingDisabledReason = ''
-      this.embeddingModelTried = ''
-    }
-    this.model = nextModel
-    this.endpoint = settings.endpoint || 'http://localhost:11434/v1/chat/completions'
-    this.systemPrompt = settings.systemPrompt || 'You are a helpful livestream assistant.'
-    this.maxTokens = settings.maxTokens || 500
+    this.setModel(settings.model || DEFAULT_APP_SETTINGS.ai.model)
+    this.endpoint = settings.endpoint || DEFAULT_APP_SETTINGS.ai.endpoint
+    this.systemPrompt = settings.systemPrompt || DEFAULT_APP_SETTINGS.ai.systemPrompt
+    this.maxTokens = settings.maxTokens || DEFAULT_APP_SETTINGS.ai.maxTokens
+  }
+
+  getActiveModel(): string {
+    return this.model
   }
 
   /**
@@ -93,6 +102,17 @@ export class AIService {
     console.warn(`[AI] Embeddings disabled (${reason}). AI co-host will run without long-term memory until restart or model change.`)
   }
 
+  private setModel(model: string): void {
+    if (model === this.model) return
+
+    this.model = model
+    // A recovered chat model may have different embedding support, so allow a
+    // fresh probe instead of carrying forward the previous model's failure.
+    this.embeddingsDisabled = false
+    this.embeddingDisabledReason = ''
+    this.embeddingModelTried = ''
+  }
+
   async generateResponse(userMessage: string, context: { username: string; platform: string; memories?: string[] }): Promise<string> {
     const isLocal = this.endpoint.includes('localhost') || 
                     this.endpoint.includes('127.0.0.1') || 
@@ -109,75 +129,38 @@ export class AIService {
     if (!this.apiKey && !isLocal) {
       console.log(`[AI] No API key provided for non-local endpoint ${this.endpoint}. Attempting connection anyway...`)
     }
+    const messages = [
+      { role: 'system', content: this.systemPrompt },
+      {
+        role: 'system',
+        content: 'ENVIRONMENT CONTEXT: The stream has music request commands enabled. Viewers can request songs using: !play [song], .play [song], or /play [song]. Other commands: !skip, !voteskip.'
+      },
+      ...(context.memories && context.memories.length > 0 ? [
+        {
+          role: 'system',
+          content: `LONG-TERM MEMORY of @${context.username}: ${context.memories.join(' | ')}`
+        }
+      ] : []),
+      { role: 'user', content: `[${context.platform}] ${context.username}: ${userMessage}` }
+    ]
+
     try {
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: 'system', content: this.systemPrompt },
-            { 
-              role: 'system', 
-              content: 'ENVIRONMENT CONTEXT: The stream has music request commands enabled. Viewers can request songs using: !play [song], .play [song], or /play [song]. Other commands: !skip, !voteskip.' 
-            },
-            ...(context.memories && context.memories.length > 0 ? [
-              { 
-                role: 'system', 
-                content: `LONG-TERM MEMORY of @${context.username}: ${context.memories.join(' | ')}` 
-              }
-            ] : []),
-            { role: 'user', content: `[${context.platform}] ${context.username}: ${userMessage}` }
-          ],
-          max_tokens: this.maxTokens
-        })
-      })
+      let response = await this.requestChatCompletion(this.model, headers, messages)
 
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`[AI] Server returned ${response.status}: ${errorText}`)
 
-        // Throw instead of returning a string. Callers (CoHost, triggers,
-        // renderer) wrap in try/catch and log — otherwise the error message
-        // would be spoken aloud by TTS, which is what users were hearing.
-        const usingCloudModel = this.model.includes(':cloud')
-        const messageDetail = parseOllamaErrorMessage(errorText)
-
-        if (response.status === 404) {
-          throw new Error(
-            `404: Endpoint "${this.endpoint}" not found, or model "${this.model}" isn't installed (try "ollama pull ${this.model}").`
-          )
+        const recovered = await this.recoverRetiredOllamaModel(response.status, errorText, headers, messages)
+        if (recovered) {
+          response = recovered
+        } else {
+          this.throwProviderError(response, errorText)
         }
-        if (response.status === 400) {
-          throw new Error(
-            `400: Bad request — usually the model "${this.model}" isn't downloaded yet${messageDetail ? `. ${messageDetail}` : ''}.`
-          )
-        }
-        if (response.status === 401) {
-          throw new Error(
-            `401: Unauthorized — clear the API key for local Ollama, or paste a valid key for hosted providers.`
-          )
-        }
-        if (response.status === 403) {
-          if (usingCloudModel) {
-            throw new Error(
-              `403: Ollama Cloud rejected the request. Model "${this.model}" requires an Ollama account (sign in via "ollama signin") or an API key in Settings → Intelligence → Access Key.`
-            )
-          }
-          throw new Error(
-            `403: Forbidden — your API key is missing, invalid, or lacks access to model "${this.model}"${messageDetail ? `. ${messageDetail}` : ''}.`
-          )
-        }
-        if (response.status === 429) {
-          throw new Error(`429: Rate limited by the AI provider — slow down or upgrade your plan.`)
-        }
-        throw new Error(`HTTP ${response.status}: ${messageDetail || errorText || response.statusText}`)
       }
 
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>
-      }
-      const content = data.choices?.[0]?.message?.content || 'I have nothing to say.'
+      const data = (await response.json()) as ChatCompletionResponse
+      const content = data.choices?.[0]?.message?.content ?? data.message?.content ?? 'I have nothing to say.'
       return normalizeAIResponse(content)
     } catch (err) {
       const error = err as Error
@@ -188,6 +171,143 @@ export class AIService {
       throw error
     }
   }
+
+  private requestChatCompletion(
+    model: string,
+    headers: Record<string, string>,
+    messages: Array<{ role: string; content: string }>
+  ): Promise<Response> {
+    const ollamaBaseUrl = getLocalOllamaBaseUrl(this.endpoint)
+    const url = ollamaBaseUrl ? `${ollamaBaseUrl}/api/chat` : this.endpoint
+    const body: Record<string, unknown> = ollamaBaseUrl
+      ? {
+          model,
+          messages,
+          stream: false,
+          // A livestream reply needs low latency, not a visible reasoning
+          // trace. Bounding context also avoids Ollama reserving the model's
+          // entire 200k+ window on a streaming workstation.
+          think: false,
+          options: {
+            num_ctx: OLLAMA_COHOST_CONTEXT_TOKENS,
+            num_predict: this.maxTokens
+          }
+        }
+      : { model, messages, max_tokens: this.maxTokens }
+
+    return fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    })
+  }
+
+  private async recoverRetiredOllamaModel(
+    status: number,
+    errorText: string,
+    headers: Record<string, string>,
+    messages: Array<{ role: string; content: string }>
+  ): Promise<Response | null> {
+    const ollamaBaseUrl = getLocalOllamaBaseUrl(this.endpoint)
+    if (status !== 410 || !/retired/i.test(errorText) || !ollamaBaseUrl) return null
+
+    let modelListResponse: Response
+    try {
+      modelListResponse = await fetch(`${ollamaBaseUrl}/v1/models`, { headers })
+    } catch (err) {
+      console.warn('[AI] Could not discover a replacement Ollama model:', (err as Error).message)
+      return null
+    }
+
+    if (!modelListResponse.ok) return null
+
+    const modelList = (await modelListResponse.json()) as OllamaModelList
+    const candidates = (modelList.data || [])
+      .map((entry) => entry.id?.trim() || '')
+      .filter((model) => isLocalChatModel(model) && model !== this.model)
+
+    for (const candidate of candidates) {
+      console.warn(`[AI] Model "${this.model}" was retired. Trying installed local model "${candidate}".`)
+      const response = await this.requestChatCompletion(candidate, headers, messages)
+      if (!response.ok) {
+        const candidateError = await response.text().catch(() => '')
+        console.warn(`[AI] Replacement model "${candidate}" failed with HTTP ${response.status}: ${candidateError.slice(0, 200)}`)
+        continue
+      }
+
+      this.setModel(candidate)
+      try {
+        await this.persistRecoveredModel?.(candidate)
+      } catch (err) {
+        // The response is usable even if persistence fails. Keep the recovered
+        // model active for this session and try again after the next restart.
+        console.warn('[AI] Could not persist recovered model:', (err as Error).message)
+      }
+      console.info(`[AI] Recovered from retired model with "${candidate}".`)
+      return response
+    }
+
+    return null
+  }
+
+  private throwProviderError(response: Response, errorText: string): never {
+    // Throw instead of returning a string. Callers (CoHost, triggers,
+    // renderer) wrap in try/catch and log — otherwise the error message would
+    // be spoken aloud by TTS.
+    const usingCloudModel = this.model.includes(':cloud')
+    const messageDetail = parseOllamaErrorMessage(errorText)
+
+    if (response.status === 404) {
+      throw new Error(
+        `404: Endpoint "${this.endpoint}" not found, or model "${this.model}" isn't installed (try "ollama pull ${this.model}").`
+      )
+    }
+    if (response.status === 400) {
+      throw new Error(
+        `400: Bad request — usually the model "${this.model}" isn't downloaded yet${messageDetail ? `. ${messageDetail}` : ''}.`
+      )
+    }
+    if (response.status === 401) {
+      throw new Error(
+        `401: Unauthorized — clear the API key for local Ollama, or paste a valid key for hosted providers.`
+      )
+    }
+    if (response.status === 403) {
+      if (usingCloudModel) {
+        throw new Error(
+          `403: Ollama Cloud rejected the request. Model "${this.model}" requires an Ollama account (sign in via "ollama signin") or an API key in Settings → Intelligence → Access Key.`
+        )
+      }
+      throw new Error(
+        `403: Forbidden — your API key is missing, invalid, or lacks access to model "${this.model}"${messageDetail ? `. ${messageDetail}` : ''}.`
+      )
+    }
+    if (response.status === 410) {
+      throw new Error(
+        `410: Model "${this.model}" was retired. Choose another model installed in Ollama${messageDetail ? `. ${messageDetail}` : ''}.`
+      )
+    }
+    if (response.status === 429) {
+      throw new Error(`429: Rate limited by the AI provider — slow down or upgrade your plan.`)
+    }
+    throw new Error(`HTTP ${response.status}: ${messageDetail || errorText || response.statusText}`)
+  }
+}
+
+function getLocalOllamaBaseUrl(endpoint: string): string | null {
+  try {
+    const url = new URL(endpoint)
+    const isLoopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+    if (!isLoopback || url.port !== '11434') return null
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return null
+  }
+}
+
+function isLocalChatModel(model: string): boolean {
+  if (!model || model.endsWith(':cloud')) return false
+  return !/(^|[-_.:])(embed|embedding)([-_.:]|$)/i.test(model)
 }
 
 function parseOllamaErrorMessage(raw: string): string {

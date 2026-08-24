@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Platform } from '../../../main/platforms/types'
 import type { TriggerRule } from '../../../main/triggers/trigger-types'
 import {
@@ -7,10 +8,10 @@ import {
 } from '../../lib/trigger-editor'
 
 const platformBadgeStyles: Partial<Record<Platform, string>> = {
-  tiktok: 'bg-tiktok/15 text-tiktok border border-tiktok/30',
-  twitch: 'bg-twitch/15 text-twitch border border-twitch/30',
-  youtube: 'bg-youtube/15 text-youtube border border-youtube/30',
-  kick: 'bg-kick/15 text-kick border border-kick/30'
+  tiktok: 'bg-tiktok/15 text-tiktok border-tiktok/30',
+  twitch: 'bg-twitch/15 text-twitch border-twitch/30',
+  youtube: 'bg-youtube/15 text-youtube border-youtube/30',
+  kick: 'bg-kick/15 text-kick border-kick/30'
 }
 
 export function TriggerRuleCard({
@@ -24,94 +25,135 @@ export function TriggerRuleCard({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const cooldownSummary = describeCooldown(trigger)
+
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-md p-6 transition-all hover:bg-white/[0.03] hover:border-white/10 group">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-        <div className="flex items-center gap-6 flex-1">
+    <article
+      className={`automation-rule-card rounded-xl border transition-colors ${
+        trigger.enabled
+          ? 'border-white/10 bg-white/[0.025] hover:border-white/15'
+          : 'border-white/5 bg-black/15 opacity-80 hover:opacity-100'
+      }`}
+    >
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
           <button
+            type="button"
+            role="switch"
+            aria-checked={trigger.enabled}
+            aria-label={`${trigger.enabled ? 'Pause' : 'Enable'} ${trigger.name}`}
             onClick={onToggle}
-            className={`w-12 h-6 rounded-full transition-all relative shrink-0 border border-white/10 ${ trigger.enabled ? 'bg-white' : 'bg-white/5' }`}
+            className={`mt-0.5 flex h-8 shrink-0 items-center gap-2 rounded-full border px-2.5 text-[10px] font-semibold transition-colors ${
+              trigger.enabled
+                ? 'border-success/30 bg-success/10 text-success'
+                : 'border-white/10 bg-white/[0.03] text-white/35 hover:text-white'
+            }`}
           >
-            <div
-              className={`w-4 h-4 rounded-full absolute top-1 transition-all ${ trigger.enabled ? 'left-7 bg-black' : 'left-1 bg-white/40' }`}
-            />
+            <span className={`h-2 w-2 rounded-full ${trigger.enabled ? 'bg-success' : 'bg-white/25'}`} />
+            {trigger.enabled ? 'On' : 'Off'}
           </button>
 
-          <div className="min-width-0 flex-1">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h4 className="font-semibold text-lg tracking-tight text-white">{trigger.name}</h4>
-              <div className={trigger.enabled ? 'app-chip-accent' : 'app-chip'}>
-                {trigger.enabled ? 'Active' : 'Paused'}
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-base font-semibold tracking-tight text-white">
+              {trigger.name}
+            </h3>
+            <div className="automation-rule-meta flex flex-wrap items-center gap-1.5">
               {trigger.platforms.map((platform) => (
                 <span
                   key={platform}
-                  className={`text-[9px] font-semibold tracking-tight px-2 py-0.5 rounded border ${platformBadgeStyles[platform] ?? 'bg-white/5 text-white/60 border border-white/10'}`}
+                  className={`automation-platform-badge rounded-md border text-[9px] font-semibold ${
+                    platformBadgeStyles[platform] ?? 'border-white/10 bg-white/5 text-white/60'
+                  }`}
                 >
                   {PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform}
                 </span>
               ))}
-              <div className="h-4 w-[1px] bg-white/10 mx-1 hidden sm:block" />
-              <span className="text-[10px] font-semibold text-white/40 tracking-wider">
-                {trigger.conditions.length} Conditions
-              </span>
-              <span className="text-[10px] font-semibold text-white/40 tracking-wider">
-                • {trigger.actions.length} Actions
-              </span>
+              {cooldownSummary && (
+                <span className="ml-1 text-[10px] text-white/30">{cooldownSummary}</span>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={onEdit}
-            className="app-button !h-9 !px-4"
-          >
-            Edit Rule
-          </button>
-          <button
-            onClick={onDelete}
-            className="app-button-danger !h-9 !px-4"
-          >
-            Delete
-          </button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {confirmingDelete ? (
+            <>
+              <span className="mr-1 text-xs text-danger">Delete this rule?</span>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="app-button !h-9 !px-3"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="app-button-danger !h-9 !px-3"
+              >
+                Delete rule
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={onEdit} className="app-button !h-9 !px-4">
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="app-button-danger !h-9 !px-3"
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="automation-rule-flow grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-stretch">
         <SummaryGroup
-          title="Execution Logic"
-          items={trigger.conditions.map((condition) => describeCondition(condition))}
+          label="When"
+          helper={trigger.conditions.length > 1 ? 'All conditions must match' : 'Event condition'}
+          items={trigger.conditions.map(describeConditionForFlow)}
         />
+        <div className="hidden items-center justify-center px-1 text-lg text-white/15 lg:flex" aria-hidden="true">
+          →
+        </div>
         <SummaryGroup
-          title="Response Payload"
-          items={trigger.actions.map((action) => describeAction(action))}
+          label="Then"
+          helper={trigger.actions.length > 1 ? 'Runs these actions in order' : 'Automation action'}
+          items={trigger.actions.map(describeAction)}
         />
       </div>
-    </div>
+    </article>
   )
 }
 
-function SummaryGroup({ title, items }: { title: string; items: string[] }) {
+function SummaryGroup({
+  label,
+  helper,
+  items
+}: {
+  label: string
+  helper: string
+  items: string[]
+}) {
   return (
-    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
-      {/* `app-eyebrow` was being applied here but is globally `display: none
-          !important` in components.css (per an earlier user request to suppress
-          page-header eyebrows), which silently hid this group title. The
-          Tailwind utilities below carry the intended micro-label styling. */}
-      <p className="text-[9px] font-semibold text-white/30 mb-3">{title}</p>
-      <div className="space-y-2">
+    <div className="automation-rule-summary rounded-lg border border-white/5 bg-black/20">
+      <div className="automation-rule-summary-head flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">{label}</p>
+        <p className="text-[10px] text-white/25">{helper}</p>
+      </div>
+      <div className="flex flex-col gap-2">
         {items.length === 0 ? (
-          <p className="text-xs text-white/20 italic">No configuration detected</p>
+          <p className="text-xs italic text-white/25">Nothing configured</p>
         ) : (
           items.map((item, index) => (
-            <div key={`${title}-${index}`} className="flex items-start gap-2">
-              <div className="w-1 h-1 rounded-full bg-white/20 mt-1.5 shrink-0" />
-              <p className="text-xs font-medium text-white/70 leading-relaxed">
-                {item}
-              </p>
+            <div key={`${label}-${index}`} className="flex items-start gap-2">
+              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-white/25" />
+              <p className="text-xs font-medium leading-relaxed text-white/70">{item}</p>
             </div>
           ))
         )}
@@ -120,3 +162,16 @@ function SummaryGroup({ title, items }: { title: string; items: string[] }) {
   )
 }
 
+function describeCooldown(trigger: TriggerRule): string | null {
+  const parts: string[] = []
+
+  if (trigger.cooldown > 0) parts.push(`${trigger.cooldown}s rule cooldown`)
+  if (trigger.userCooldown > 0) parts.push(`${trigger.userCooldown}s per viewer`)
+
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+function describeConditionForFlow(condition: TriggerRule['conditions'][number]): string {
+  const description = describeCondition(condition).replace(/^When\s+/i, '')
+  return description.charAt(0).toLocaleUpperCase() + description.slice(1)
+}

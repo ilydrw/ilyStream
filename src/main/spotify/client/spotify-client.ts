@@ -1,4 +1,5 @@
 const API_BASE = 'https://api.spotify.com/v1'
+const API_REQUEST_TIMEOUT_MS = 8_000
 
 export class SpotifyApiError extends Error {
   constructor(
@@ -35,14 +36,42 @@ export class SpotifyClient {
 
   private async fetch(path: string, options: RequestInit = {}): Promise<Response> {
     if (!this.accessToken) throw new Error('No Spotify access token')
-    return fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-        ...(options.headers ?? {})
+
+    const controller = new AbortController()
+    const upstreamSignal = options.signal
+    let timedOut = false
+    const abortFromUpstream = () => controller.abort(upstreamSignal?.reason)
+    const timeout = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, API_REQUEST_TIMEOUT_MS)
+    timeout.unref?.()
+
+    if (upstreamSignal?.aborted) {
+      abortFromUpstream()
+    } else {
+      upstreamSignal?.addEventListener('abort', abortFromUpstream, { once: true })
+    }
+
+    try {
+      return await fetch(`${API_BASE}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+          ...(options.headers ?? {})
+        }
+      })
+    } catch (error) {
+      if (timedOut) {
+        throw new SpotifyApiError('Spotify API request timed out after 8 seconds.', 408)
       }
-    })
+      throw error
+    } finally {
+      clearTimeout(timeout)
+      upstreamSignal?.removeEventListener('abort', abortFromUpstream)
+    }
   }
 
   private getRetryAfterMs(res: Response): number | undefined {

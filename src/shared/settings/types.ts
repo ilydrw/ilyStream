@@ -21,11 +21,11 @@ export const DEFAULT_TTS_COMMAND_PREFIXES = ['!tts', '!say', '!speak']
 export const DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE = '{displayName} says: {message}'
 
 /**
- * Local (Kokoro) voice model precision. fp32 sounds cleanest but holds
- * ~330MB of weights in memory; q8 is nearly as clean at ~90MB.
+ * Local (Kokoro) voice model precision. The model runs in a disposable native
+ * process; q8 uses substantially less memory while sounding nearly identical.
  */
 export type KokoroQuality = 'fp32' | 'q8'
-export const DEFAULT_KOKORO_QUALITY: KokoroQuality = 'fp32'
+export const DEFAULT_KOKORO_QUALITY: KokoroQuality = 'q8'
 
 export interface VoiceModifiers {
   radioFilter: boolean
@@ -39,7 +39,25 @@ export interface ElevenLabsApiKeyEntry {
   apiKey: string
 }
 
-export type AppTheme = 'dark' | 'midnight' | 'aurora' | 'ember' | 'light' | 'gob' | 'synthwave' | 'graphite' | 'custom'
+export type AppTheme =
+  | 'dark'
+  | 'midnight'
+  | 'aurora'
+  | 'ember'
+  | 'light'
+  | 'gob'
+  | 'synthwave'
+  | 'graphite'
+  | 'solarized-dark'
+  | 'solarized-light'
+  | 'catppuccin-mocha'
+  | 'catppuccin-latte'
+  | 'dracula'
+  | 'nord'
+  | 'tokyo-night'
+  | 'gruvbox-dark'
+  | 'one-dark'
+  | 'custom'
 export type InterfaceDensity = 'comfortable' | 'compact'
 
 export type TTSAudiencePermission = 
@@ -148,11 +166,21 @@ export interface AlertVisualSettings {
   soundVolume: number
 }
 
+export interface LikeMilestoneAlertSettings {
+  enabled: boolean
+  repeatEveryMilestone: boolean
+  template: string
+  fallbackSoundId: string
+  fallbackSoundVolume: number
+  durationMs: number
+}
+
 export interface AlertSettings {
   rules: AlertRule[]
   gift: AlertVisualSettings
   follow: AlertVisualSettings
   superfan: AlertVisualSettings
+  likeMilestone: LikeMilestoneAlertSettings
   top: number
   left: number
 }
@@ -210,6 +238,51 @@ export interface IntegrationSettings {
   streamerbot: { enabled: boolean; wsUrl: string }
 }
 
+/**
+ * Semantic workbench tokens a custom theme may override individually. Anything
+ * not overridden is derived from the base background/secondary/accent, so a
+ * theme can be as simple as three colors or as precise as every surface.
+ *
+ * Kept in sync with AppThemePalette by a compile-time check in app-themes.ts.
+ */
+export const CUSTOM_PALETTE_TOKENS = [
+  'canvas',
+  'canvasDeep',
+  'chrome',
+  'sidebar',
+  'surface',
+  'surfaceRaised',
+  'surfaceHover',
+  'border',
+  'borderStrong',
+  'text',
+  'textMuted',
+  'textSubtle'
+] as const
+
+export type CustomPaletteToken = (typeof CUSTOM_PALETTE_TOKENS)[number]
+export type CustomPaletteOverrides = Partial<Record<CustomPaletteToken, string>>
+
+/** How a custom palette decides between the light and dark token treatment. */
+export type CustomColorScheme = 'auto' | 'dark' | 'light'
+
+/**
+ * A user-saved custom theme. The base colors drive a derived palette; the
+ * optional per-token overrides and explicit color scheme let a theme control
+ * as much or as little of the workbench as the user wants. Applying one copies
+ * every field into the live UISettings custom fields so the runtime palette and
+ * LAN companions keep resolving through the exact same path.
+ */
+export interface SavedCustomTheme {
+  id: string
+  name: string
+  background: string
+  secondary: string
+  accent: string
+  colorScheme: CustomColorScheme
+  overrides: CustomPaletteOverrides
+}
+
 export interface UISettings {
   theme: AppTheme
   accentColor: string
@@ -221,6 +294,14 @@ export interface UISettings {
   customBackground: string
   /** Secondary/gradient color when theme === 'custom'. */
   customSecondary: string
+  /** Light/dark treatment for the live custom palette; 'auto' infers it from the background. */
+  customColorScheme: CustomColorScheme
+  /** Per-token overrides for the live custom palette; unset tokens are derived. */
+  customPalette: CustomPaletteOverrides
+  /** User-saved custom palettes, selectable alongside the built-in themes. */
+  customThemes: SavedCustomTheme[]
+  /** Id of the saved custom theme currently loaded, or '' for a freeform palette. */
+  activeCustomThemeId: string
 }
 
 export interface StreamingSettings {
@@ -279,6 +360,13 @@ export interface AppSettings {
    * their OBS overlay audio don't hear every alert twice.
    */
   alertSoundLocalMonitoring: boolean
+  /** Optional TikTok per-viewer 10,000-like milestone alert settings. */
+  eventLikeMilestoneEnabled: boolean
+  eventLikeMilestoneRepeatEnabled: boolean
+  eventLikeMilestoneTemplate: string
+  eventLikeMilestoneFallbackSoundId: string
+  eventLikeMilestoneFallbackVolume: number
+  eventLikeMilestoneDurationMs: number
   /** Per-viewer join sounds, managed from the viewer profile page. */
   viewerJoinSounds: ViewerJoinSound[]
 }

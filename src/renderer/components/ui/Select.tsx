@@ -23,6 +23,8 @@ interface SelectProps {
   disabled?: boolean
   /** Maximum height of the dropdown list in px (default 320). */
   maxListHeight?: number
+  /** Called when the user types in the search box. Use for server-side search. */
+  onSearchChange?: (query: string) => void
 }
 
 interface MenuPosition {
@@ -48,7 +50,8 @@ export function Select({
   searchable,
   emptyLabel = 'No options available.',
   disabled = false,
-  maxListHeight = 320
+  maxListHeight = 320,
+  onSearchChange
 }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState<number>(-1)
@@ -219,8 +222,10 @@ export function Select({
               ref={searchInputRef}
               value={search}
               onChange={(event) => {
-                setSearch(event.currentTarget.value)
+                const query = event.currentTarget.value
+                setSearch(query)
                 setHighlight(0)
+                onSearchChange?.(query)
               }}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') {

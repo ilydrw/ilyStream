@@ -70,6 +70,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
 
   const accentSoftRgba = hexToRgba(cfg.accentColor, 0.15)
   const animatedBorderStops = resolveAnimatedBorderStops(cfg.borderType)
+  const configJson = JSON.stringify(cfg).replace(/</g, '\\u003c')
 
   return `<!doctype html>
 <html lang="en">
@@ -488,6 +489,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
       const barEl = document.getElementById('bar');
       const queuePanel = document.getElementById('queue-panel');
       const queueList = document.getElementById('queue-list');
+      let activeAlbumArtKey = '';
 
       function updateMarquee(el, container) {
         el.classList.remove('marquee');
@@ -509,8 +511,11 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         return div.innerHTML;
       }
 
-      function safeImageUrl(value) {
-        return window.__ilyAvatar.proxy(value);
+      function updateAlbumArt(value, revision) {
+        const nextKey = value ? String(value) + '|' + String(revision || '') : '';
+        if (nextKey === activeAlbumArtKey) return;
+        activeAlbumArtKey = nextKey;
+        window.__ilyAvatar.applyBackground(artEl, value, revision);
       }
 
       function requestJson(url) {
@@ -531,7 +536,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
           container.classList.add('is-visible');
           trackEl.textContent = 'Spotify Unauthorized';
           artistEl.textContent = 'Check settings/login';
-          artEl.style.backgroundImage = '';
+          updateAlbumArt('', 'unauthorized');
           requesterEl.innerHTML = '';
           barEl.style.width = '0%';
           queuePanel.style.display = 'none';
@@ -542,7 +547,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
           container.classList.add('is-visible');
           trackEl.textContent = 'Spotify Connecting...';
           artistEl.textContent = 'Refreshing session';
-          artEl.style.backgroundImage = '';
+          updateAlbumArt('', 'refreshing');
           requesterEl.innerHTML = '';
           barEl.style.width = '0%';
           return;
@@ -552,7 +557,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
           container.classList.add('is-visible');
           trackEl.textContent = 'No active device';
           artistEl.textContent = 'Open Spotify on PC';
-          artEl.style.backgroundImage = '';
+          updateAlbumArt('', 'no-device');
           requesterEl.innerHTML = '';
           barEl.style.width = '0%';
           queuePanel.style.display = 'none';
@@ -562,13 +567,13 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         const hasTrack = Boolean(state.trackId || state.trackName);
 
         if (!hasTrack && (!state.queue || state.queue.length === 0)) {
+          updateAlbumArt('', 'idle');
           if (HIDE_WHEN_IDLE) {
             container.classList.remove('is-visible');
           } else {
             container.classList.add('is-visible');
             trackEl.textContent = 'Nothing playing';
             artistEl.textContent = 'Spotify is idle';
-            artEl.style.backgroundImage = '';
             requesterEl.innerHTML = '';
             barEl.style.width = '0%';
             queuePanel.style.display = 'none';
@@ -587,12 +592,13 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
             updateMarquee(artistEl, artistContainer);
           }, 50);
 
-          const albumArtUrl = safeImageUrl(state.albumArtUrl);
-          if (albumArtUrl) {
-            artEl.style.backgroundImage = 'url("' + albumArtUrl.replace(/"/g, '%22') + '")';
-          } else {
-            artEl.style.backgroundImage = '';
-          }
+          // Preload off-element and commit only the latest completed request.
+          // Long-lived browser sources otherwise allow a slow previous cover
+          // to overwrite the track that is currently playing.
+          updateAlbumArt(
+            state.albumArtUrl,
+            state.trackId || state.trackName || state.albumName || 'current-track'
+          );
 
           if (SHOW_REQUESTER && state.requestedBy) {
             requesterEl.style.display = 'flex';
@@ -603,6 +609,8 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
 
           const progress = state.durationMs > 0 ? (state.progressMs / state.durationMs) * 100 : 0;
           barEl.style.width = progress + '%';
+        } else {
+          updateAlbumArt('', 'queue-only');
         }
 
         const upcoming = Array.isArray(state.queue)
@@ -722,8 +730,9 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
         borderRadius: 1, width: 1, fontSize: 1, glassIntensity: 1, position: 1,
         backgroundColor: 1
       };
+      window.__ilystreamLastConfig = ${configJson};
       window.__ilystreamApplyConfig = function(cfg) {
-        if (!cfg) return;
+        if (!cfg) return true;
         var root = document.documentElement;
         var body = document.body;
         var prev = window.__ilystreamLastConfig || null;
@@ -734,13 +743,9 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
             if (!cfg.hasOwnProperty(k)) continue;
             if (NP_LIVE_FIELDS[k]) continue;
             if (prev[k] !== cfg[k]) {
-              try {
-                window.parent && window.parent.postMessage(
-                  { type: 'ilystream:preview-needs-html' }, '*'
-                );
-              } catch (e) {}
-              // Don't apply partial state — let the HTML push replace us.
-              return;
+              // Don't apply partial state — let the shared runtime or preview
+              // shell perform one clean document replacement.
+              return false;
             }
           }
         }
@@ -771,6 +776,7 @@ export function buildNowPlayingOverlayHtml(widget?: any, isPreview = false): str
           }
         }
         window.__ilystreamLastConfig = cfg;
+        return true;
       };
     </script>
   </body>

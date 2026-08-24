@@ -5,7 +5,7 @@ import { DEFAULT_APP_SETTINGS, resolveAppSettings, type AppSettings } from '../.
 import { buildRelayText, getRelayTargets, getSendablePlatforms, summarizeSendResults } from '../../../lib/chat-relay';
 import { defaultCapabilities } from '../constants';
 import { pickRelaySettings } from '../utils';
-import { useChatStore, type ChatMessage } from '../../../stores/chat-store';
+import { matchesKindFilter, useChatStore, type ChatMessage } from '../../../stores/chat-store';
 import { useConnectionStore } from '../../../stores/connection-store';
 
 
@@ -18,9 +18,17 @@ export function useChatLogic() {
   // Basic chat store values
   const messages = useChatStore((s) => s.messages);
   const platformFilter = useChatStore((s) => s.platformFilter);
+  const kindFilter = useChatStore((s) => s.kindFilter);
   const searchQuery = useChatStore((s) => s.searchQuery);
   const setPlatformFilter = useChatStore((s) => s.setPlatformFilter);
+  const setKindFilter = useChatStore((s) => s.setKindFilter);
   const setSearchQuery = useChatStore((s) => s.setSearchQuery);
+
+  // Feed items surviving the All/Chat/Events filter; platform tabs count within this view.
+  const kindFilteredMessages = useMemo(
+    () => messages.filter((msg) => matchesKindFilter(msg, kindFilter)),
+    [messages, kindFilter]
+  );
 
   // Connection statuses for capability loading
   const statuses = useConnectionStore((s) => s.statuses);
@@ -151,8 +159,10 @@ export function useChatLogic() {
     // store values
     messages,
     platformFilter,
+    kindFilter,
     searchQuery,
     setPlatformFilter,
+    setKindFilter,
     setSearchQuery,
     // UI state
     capabilities,
@@ -171,7 +181,7 @@ export function useChatLogic() {
     // derived data
     filteredMessages: useMemo(
       () =>
-        messages.filter((msg) => {
+        kindFilteredMessages.filter((msg) => {
           if (platformFilter && msg.platform !== platformFilter) return false;
           if (searchQuery) {
             const query = searchQuery.toLowerCase().trim();
@@ -180,15 +190,15 @@ export function useChatLogic() {
           }
           return true;
         }),
-      [messages, platformFilter, searchQuery]
+      [kindFilteredMessages, platformFilter, searchQuery]
     ),
     platformCounts: useMemo(() => {
       const counts: Record<string, number> = {};
-      for (const m of messages) {
+      for (const m of kindFilteredMessages) {
         counts[m.platform] = (counts[m.platform] ?? 0) + 1;
       }
       return counts;
-    }, [messages]),
+    }, [kindFilteredMessages]),
     // handlers
     handleRelay,
     handleFeatureMessage,

@@ -9,6 +9,7 @@ import {
 import { IconPlus } from '../../../../components/ui/icons'
 import { useStudioStore } from '../../../../stores/studio-store'
 import type { AudioSource } from '../../../../../shared/studio'
+import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import { ContextMenu, type ContextMenuItem } from '../../../../components/ui/ContextMenu'
 import { sanitizeChannelMode } from '../../../../utils/audio-engine'
 import {
@@ -61,6 +62,7 @@ export function ChannelStrip({
   const displayName = source.label || source.name
   const channelMode = sanitizeChannelMode(source.channelMode, source.type === 'mic' ? 'mono' : 'stereo')
   const sourceLabel = isMaster ? 'Stream' : source.name !== displayName ? source.name : source.type
+  const monitoringMode = normalizeAudioMonitoringMode(source.monitoringMode, source.monitoring)
   const dbText = db <= -59.5 ? '-inf' : `${db > 0.05 ? '+' : ''}${db.toFixed(1)}`
   const stripStyle = {
     '--track-color': trackColor,
@@ -199,17 +201,31 @@ export function ChannelStrip({
             >
               M
             </button>
-            <button
-              type="button"
-              className={source.monitoring ? 'is-solo' : ''}
-              onClick={event => {
-                event.stopPropagation()
-                onUpdate({ monitoring: !source.monitoring })
-              }}
-              title="Monitor"
-            >
-              S
-            </button>
+            {isMaster ? (
+              <button
+                type="button"
+                className={monitoringMode !== 'off' ? 'is-solo' : ''}
+                onClick={event => {
+                  event.stopPropagation()
+                  onUpdate({ monitoringMode: monitoringMode === 'off' ? 'monitorAndOutput' : 'off' })
+                }}
+                title="Monitor the whole program mix"
+              >
+                H
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={source.solo ? 'is-solo' : ''}
+                onClick={event => {
+                  event.stopPropagation()
+                  onUpdate({ solo: !source.solo })
+                }}
+                title="Solo this source in the program mix"
+              >
+                S
+              </button>
+            )}
           </div>
 
           <div className="pro-channel-source" title={status?.label || sourceLabel}>

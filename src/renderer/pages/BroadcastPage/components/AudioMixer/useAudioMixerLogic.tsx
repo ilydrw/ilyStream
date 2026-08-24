@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useStudioStore } from '../../../../stores/studio-store'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
-import { DEFAULT_AUDIO_SOURCE_VOLUME } from '../../../../../shared/studio'
+import { DEFAULT_AUDIO_SOURCE_VOLUME, normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import { IconEraser, IconHeadphones, IconLock, IconLockOpen, IconPalette, IconRoute, IconSparkles, IconVolume, IconVolumeOff } from '@tabler/icons-react'
 import { IconPencil, IconRefresh, IconTrash } from '../../../../components/ui/icons'
 import type { ContextMenuItem } from '../../../../components/ui/ContextMenu'
@@ -198,6 +198,7 @@ export function useAudioMixerLogic(
   const buildTrackMenu = (source: AudioSource): ContextMenuItem[] => {
     const locked = getTrackLocked(source)
     const isMaster = source.id === 'master'
+    const monitoringMode = normalizeAudioMonitoringMode(source.monitoringMode, source.monitoring)
     return [
       {
         id: 'rename',
@@ -219,7 +220,9 @@ export function useAudioMixerLogic(
           volume: DEFAULT_AUDIO_SOURCE_VOLUME,
           pan: 0,
           muted: false,
-          monitoring: source.id === 'master',
+          monitoringMode: 'off',
+          monitoring: false,
+          solo: false,
           channelMode: source.type === 'mic' ? 'mono' : 'stereo'
         })
       },
@@ -239,9 +242,32 @@ export function useAudioMixerLogic(
       },
       {
         id: 'monitor',
-        label: source.monitoring ? 'Disable Monitor' : 'Monitor Track',
+        label: `Monitoring: ${monitoringMode === 'off' ? 'Off' : monitoringMode === 'monitorOnly' ? 'Monitor Only' : 'Monitor + Output'}`,
         icon: <IconHeadphones size={16} />,
-        onClick: () => updateSource(source.id, { monitoring: !source.monitoring })
+        submenu: [
+          {
+            id: 'monitor-off',
+            label: 'Off',
+            onClick: () => updateSource(source.id, { monitoringMode: 'off' })
+          },
+          {
+            id: 'monitor-only',
+            label: 'Monitor Only (Mute Output)',
+            onClick: () => updateSource(source.id, { monitoringMode: 'monitorOnly' })
+          },
+          {
+            id: 'monitor-and-output',
+            label: 'Monitor and Output',
+            onClick: () => updateSource(source.id, { monitoringMode: 'monitorAndOutput' })
+          }
+        ]
+      },
+      {
+        id: 'solo',
+        label: source.solo ? 'Disable Solo' : 'Solo Track',
+        icon: <IconHeadphones size={16} />,
+        disabled: isMaster,
+        onClick: () => updateSource(source.id, { solo: !source.solo })
       },
       {
         id: 'channel-mode',

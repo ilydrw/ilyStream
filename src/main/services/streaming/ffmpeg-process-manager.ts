@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import type { Writable } from 'stream'
+import type { VideoFramePayload } from '../streaming-types'
+import { H264PipeWriter } from './h264-pipe-writer'
 import { PipeBuffer } from './pipe-buffer'
 
 const AUDIO_PIPE_QUEUE_BYTES = 1024 * 1024 // ~2.7s at 48 kHz stereo f32; protects audio through short encoder/network stalls
@@ -9,6 +11,7 @@ const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
 export class FFmpegProcessManager extends EventEmitter {
   private process: ChildProcess | null = null
   private videoBuffer: PipeBuffer | null = null
+  private h264Writer: H264PipeWriter | null = null
   private audioBuffer: PipeBuffer | null = null
   private lastStderr = ''
   private failureEmitted = false
@@ -18,7 +21,13 @@ export class FFmpegProcessManager extends EventEmitter {
     super()
   }
 
-  start(ffmpegPath: string, args: string[], audioEnabled: boolean, redact?: (val: string) => string): void {
+  start(
+    ffmpegPath: string,
+    args: string[],
+    audioEnabled: boolean,
+    inputFormat: 'h264' | 'mjpeg' = 'mjpeg',
+    redact?: (val: string) => string
+  ): void {
     this.stop()
     this.lastStderr = ''
     this.failureEmitted = false
@@ -37,11 +46,17 @@ export class FFmpegProcessManager extends EventEmitter {
     audioPipe?.on('error', (err) => this.handleError(err, child))
     child.on('error', (err) => this.handleError(err, child))
 
-    const videoBuffer = child.stdin ? new PipeBuffer(child.stdin, VIDEO_PIPE_QUEUE_BYTES) : null
+    const videoBuffer = child.stdin
+      ? new PipeBuffer(child.stdin, {
+          maxQueueBytes: VIDEO_PIPE_QUEUE_BYTES,
+          overflow: inputFormat === 'h264' ? 'drop-newest' : 'drop-oldest'
+        })
+      : null
     const audioBuffer = audioEnabled && audioPipe ? new PipeBuffer(audioPipe, AUDIO_PIPE_QUEUE_BYTES) : null
 
     if (videoBuffer) {
       this.videoBuffer = videoBuffer
+      this.h264Writer = inputFormat === 'h264' ? new H264PipeWriter(videoBuffer) : null
     }
     if (audioBuffer) {
       this.audioBuffer = audioBuffer
@@ -59,7 +74,10 @@ export class FFmpegProcessManager extends EventEmitter {
     child.on('close', (code, signal) => {
       videoBuffer?.detach()
       audioBuffer?.detach()
-      if (this.videoBuffer === videoBuffer) this.videoBuffer = null
+      if (this.videoBuffer === videoBuffer) {
+        this.videoBuffer = null
+        this.h264Writer = null
+      }
       if (this.audioBuffer === audioBuffer) this.audioBuffer = null
       if (this.process === child) this.process = null
 
@@ -85,6 +103,7 @@ export class FFmpegProcessManager extends EventEmitter {
     this.videoBuffer?.detach()
     this.audioBuffer?.detach()
     this.videoBuffer = null
+    this.h264Writer = null
     this.audioBuffer = null
   }
 
@@ -131,8 +150,10 @@ export class FFmpegProcessManager extends EventEmitter {
     child.once('close', () => clearTimeout(timer))
   }
 
-  writeVideo(data: Uint8Array): boolean {
-    return this.videoBuffer?.write(data) ?? false
+  writeVideo(frameData: Uint8Array | VideoFramePayload): boolean {
+    const frame = frameData instanceof Uint8Array ? { data: frameData } : frameData
+    if (this.h264Writer) return this.h264Writer.write(frame)
+    return this.videoBuffer?.write(frame.data) ?? false
   }
 
   writeAudio(data: Uint8Array): boolean {

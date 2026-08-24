@@ -14,6 +14,7 @@ import { isTikTokLikeSystemPayload } from '../../../shared/chat-event-filter'
 import { validateTikTokSenderMessage, type TikTokCapturedCredentials } from './tiktok-chat-sender'
 
 const TIKTOK_FOLLOWER_POLL_INTERVAL_MS = 30_000
+const TIKTOK_CHAT_SEND_TIMEOUT_MS = 15_000
 
 export class TikTokConnector extends BaseConnector {
   readonly platform: Platform = 'tiktok'
@@ -108,35 +109,47 @@ export class TikTokConnector extends BaseConnector {
 
   override getChatCapability(): PlatformChatCapability {
     const senderStatus = this.chatSender?.getStatus()
-    if (this.connection && this.getConfiguredSendCredentials()) {
+    const canUseSignedApi = Boolean(
+      this.connection
+      && this.activeConfig?.signApiKey?.trim()
+      && (this.getConfiguredSendCredentials() || senderStatus?.hasSendCredentials)
+    )
+    if (senderStatus?.isChatReady || canUseSignedApi) {
       return { platform: 'tiktok', canSend: true }
     }
 
-    return senderStatus?.isChatReady
-      ? { platform: 'tiktok', canSend: true }
-      : {
-          platform: 'tiktok',
-          canSend: false,
-          reason: this.connection
-            ? 'Add TikTok host session cookies or open the host chat sender'
-            : senderStatus?.statusMessage || 'Open the TikTok host chat sender'
-        }
+    return {
+      platform: 'tiktok',
+      canSend: false,
+      reason: this.connection
+        ? senderStatus?.statusMessage || 'Open the TikTok host session and sign in'
+        : senderStatus?.statusMessage || 'Open the TikTok host session'
+    }
   }
 
   override async sendChatMessage(text: string): Promise<void> {
     const validation = validateTikTokSenderMessage(text)
     if (!validation.ok) throw new Error(validation.error || 'TikTok chat message is invalid')
 
+    if (this.chatSender.getStatus().isChatReady) {
+      if (await this.chatSender.sendMessage(validation.text)) return
+
+      const senderError = this.chatSender.getStatus().lastError
+      throw new Error(senderError || 'TikTok did not accept the browser chat message')
+    }
+
     const apiError = await this.trySendViaWebcast(validation.text)
     if (!apiError) return
 
-    if (await this.chatSender.sendMessage(text)) return
-
-    const senderError = this.chatSender.getStatus().lastError
-    throw new Error(senderError || apiError || 'TikTok chat sending failed')
+    const senderStatus = this.chatSender.getStatus()
+    throw new Error(senderStatus.statusMessage || apiError || 'TikTok chat sending failed')
   }
 
   private async trySendViaWebcast(text: string): Promise<string | null> {
+    if (!this.activeConfig?.signApiKey?.trim()) {
+      return 'TikTok signed chat API access is not configured'
+    }
+
     if (!this.connection?.sendMessage) {
       return 'TikTok live connector is not connected'
     }
@@ -147,10 +160,16 @@ export class TikTokConnector extends BaseConnector {
     }
 
     try {
-      await this.connection.sendMessage(text, {
-        sessionId: credentials.sessionId,
-        ttTargetIdc: credentials.ttTargetIdc
-      })
+      const response = await withTimeout(
+        this.connection.sendMessage(text, {
+          sessionId: credentials.sessionId,
+          ttTargetIdc: credentials.ttTargetIdc
+        }),
+        TIKTOK_CHAT_SEND_TIMEOUT_MS,
+        'TikTok chat send timed out'
+      )
+      const responseError = getTikTokWebcastSendResponseError(response)
+      if (responseError) return responseError
       return null
     } catch (error) {
       return error instanceof Error ? error.message : String(error)
@@ -195,6 +214,7 @@ export class TikTokConnector extends BaseConnector {
     connection.on('chat', this.onConnectionChat)
     connection.on('emote', this.onConnectionEmote)
     connection.on('gift', this.onConnectionGift)
+    connection.on('envelope', this.onConnectionEnvelope)
     connection.on('like', this.onConnectionLike)
     connection.on('follow', this.onConnectionFollow)
     connection.on('share', this.onConnectionShare)
@@ -225,6 +245,12 @@ export class TikTokConnector extends BaseConnector {
 
   private onConnectionGift = (data: any) => {
     this.emitEvent(this.mapper.mapGift(data))
+  }
+
+  private onConnectionEnvelope = (data: any) => {
+    if (isTikTokSuperFanBoxPayload(data)) {
+      this.emitEvent(this.mapper.mapSuperFanBox(data))
+    }
   }
 
   private onConnectionLike = (data: any) => {
@@ -324,6 +350,34 @@ export class TikTokConnector extends BaseConnector {
   }
 }
 
+export function getTikTokWebcastSendResponseError(response: unknown): string | null {
+  if (!response || typeof response !== 'object') {
+    return 'TikTok chat API returned an invalid response'
+  }
+
+  const code = Number((response as { code?: unknown }).code)
+  if (code === 0 || (code >= 200 && code < 300)) return null
+
+  const message = (response as { message?: unknown }).message
+  return typeof message === 'string' && message.trim()
+    ? message.trim()
+    : `TikTok rejected the chat message${Number.isFinite(code) ? ` (code ${code})` : ''}`
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+      })
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
 export function buildTikTokConnectionOptions(config: TikTokConfig) {
   return {
     sessionId: config.sessionId,
@@ -378,6 +432,25 @@ export function isTikTokFollowSocialPayload(payload: any): boolean {
 
 export function isTikTokLikeSocialPayload(payload: any): boolean {
   return isTikTokLikeSystemPayload(payload)
+}
+
+export function isTikTokSuperFanBoxPayload(payload: any): boolean {
+  if (Number(payload?.envelopeInfo?.businessType ?? payload?.envelope_info?.business_type) === 19) {
+    return true
+  }
+
+  const displayTypes = [
+    payload?.displayType,
+    payload?.common?.displayText?.displayType,
+    payload?.common?.display_text?.display_type
+  ]
+
+  return displayTypes.some((value) => {
+    const normalized = typeof value === 'string'
+      ? value.toLowerCase().replace(/[_-]/g, '')
+      : ''
+    return normalized.includes('superfanbox')
+  })
 }
 
 export function mapTikTokUserInfo(data: any) {

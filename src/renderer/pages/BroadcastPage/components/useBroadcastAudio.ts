@@ -4,11 +4,19 @@ import type { AudioSource } from '../../../../shared/studio'
 import { reconcileFxChain } from '../../../utils/audio-fx'
 import { audioEngine, createChannelModeStage, sanitizeChannelMode, type ChannelModeStage } from '../../../utils/audio-engine'
 import { buildLowLatencyAudioConstraints } from '../utils/media-init'
+import {
+  getAudioRoutePolicy,
+  getProgramSceneGain,
+  hasEligibleSolo,
+  isAudioSourceEligible
+} from './AudioMixer/audio-route-policy'
+import { normalizeAudioMonitoringMode } from '../../../../shared/studio'
 import BroadcastProcessorUrl from '../../../workers/broadcast-processor.ts?worker&url'
 
 interface TrackNodes {
   channelMode: ChannelModeStage
   gain: GainNode
+  programGain: GainNode
   programMonitorSend: GainNode
   panner: StereoPannerNode
   fxInput: GainNode
@@ -58,11 +66,23 @@ export function useBroadcastAudio(
   const audioSources = useStudioStore(s => s.audioSources)
   const activeSceneId = useStudioStore(s => s.activeSceneId)
   const activeScene = useStudioStore(s => s.scenes.find(scene => scene.id === s.activeSceneId))
+  const studioMode = useStudioStore(s => s.studioMode)
+  const previewSceneId = useStudioStore(s => s.previewSceneId)
+  const previewScene = useStudioStore(s => s.scenes.find(scene => scene.id === s.previewSceneId))
+  const transitionState = useStudioStore(s => s.transitionState)
+  const transitionFromScene = useStudioStore(s => s.scenes.find(scene => scene.id === s.transitionState.fromSceneId))
+  const transitionToScene = useStudioStore(s => s.scenes.find(scene => scene.id === s.transitionState.toSceneId))
   const smoothingFactor = useStudioStore(s => s.audioReactivity?.smoothing ?? 0.6)
   // Stable identity for "which layers exist" — reconciliation only cares about
   // membership, so keying the effect on the scene OBJECT made every layer
   // drag/resize re-run the whole audio graph reconcile (mic churn + log spam).
   const activeLayerIdsKey = (activeScene?.layers || []).map(layer => layer.id).sort().join('|')
+  const previewLayerIdsKey = studioMode
+    ? (previewScene?.layers || []).map(layer => layer.id).sort().join('|')
+    : ''
+  const retainedLayerIdsKey = [activeLayerIdsKey, previewLayerIdsKey].filter(Boolean).join('|')
+  const transitionFromLayerIdsKey = (transitionFromScene?.layers || []).map(layer => layer.id).sort().join('|')
+  const transitionToLayerIdsKey = (transitionToScene?.layers || []).map(layer => layer.id).sort().join('|')
   const activeSceneRef2 = useRef(activeScene)
   activeSceneRef2.current = activeScene
   // Streams already warned about ("no live audio tracks") so a video-only
@@ -226,6 +246,7 @@ export function useBroadcastAudio(
         try { nodes._sourceNode?.node?.disconnect() } catch {}
         nodes.channelMode.disconnect()
         try { nodes.gain.disconnect() } catch {}
+        try { nodes.programGain.disconnect() } catch {}
         try { nodes.programMonitorSend.disconnect() } catch {}
         try { nodes.panner.disconnect() } catch {}
         try { nodes.fxInput.disconnect() } catch {}
@@ -314,7 +335,9 @@ export function useBroadcastAudio(
 
             window.api.streaming.feedAudio({
               data: new Uint8Array(buffer),
-              timestamp: Math.round(timestamp)
+              timestamp: Math.round(timestamp),
+              sampleRate: ctx.sampleRate,
+              channels: 2
             })
 
             sampleCountRef.current += (buffer.byteLength / 4)
@@ -367,13 +390,18 @@ export function useBroadcastAudio(
     const masterInput = masterInputRef.current
     if (!ctx || !masterInput || ctx.state === 'closed') return
     const activeLayerIds = new Set((activeSceneRef2.current?.layers || []).map(layer => layer.id))
+    const retainedLayerIds = new Set(activeLayerIds)
+    if (studioMode) {
+      for (const layer of previewScene?.layers || []) retainedLayerIds.add(layer.id)
+    }
 
     // Update Master Bus
     const mVol = masterBus.muted ? 0 : masterBus.volume
     masterInput.gain.setTargetAtTime(mVol, ctx.currentTime, 0.01)
 
     // Main Mix monitoring toggle (do we want to hear the whole mix in our headphones?)
-    const mainMonitorTarget = masterBus.monitoring && !masterBus.muted ? masterBus.volume : 0
+    const masterMonitoringMode = normalizeAudioMonitoringMode(masterBus.monitoringMode, masterBus.monitoring)
+    const mainMonitorTarget = masterMonitoringMode !== 'off' && !masterBus.muted ? masterBus.volume : 0
     mainMixMonitorGainRef.current?.gain.setTargetAtTime(mainMonitorTarget, ctx.currentTime, 0.005)
 
     if (masterFxRef.current) {
@@ -381,7 +409,16 @@ export function useBroadcastAudio(
     }
 
     // Reconcile Tracks
-    const currentIds = new Set(audioSources.map(s => s.id))
+    // Persisted mixer rows are configuration, not proof that a source belongs
+    // to the live scene. Program and Studio Preview retain nodes so TAKE never
+    // has to build a microphone graph mid-cut; a separate scene gate below
+    // keeps Preview out of Program until the transition begins.
+    const currentIds = new Set(
+      audioSources
+        .filter(source => isAudioSourceEligible(source, retainedLayerIds))
+        .map(source => source.id)
+    )
+    const anySolo = hasEligibleSolo(audioSources, activeLayerIds)
 
     // Cleanup removed tracks
     for (const [id, nodes] of tracksRef.current.entries()) {
@@ -398,6 +435,7 @@ export function useBroadcastAudio(
         }
         nodes.channelMode.disconnect()
         try { nodes.gain.disconnect() } catch {}
+        try { nodes.programGain.disconnect() } catch {}
         try { nodes.programMonitorSend.disconnect() } catch {}
         try { nodes.panner.disconnect() } catch {}
         try { nodes.fxInput.disconnect() } catch {}
@@ -415,15 +453,25 @@ export function useBroadcastAudio(
 
     // Update existing or add new tracks
     for (const s of audioSources) {
+      if (!currentIds.has(s.id)) continue
+
       let nodes = tracksRef.current.get(s.id)
       if (!nodes) {
         const channelMode = createChannelModeStage(ctx, sanitizeChannelMode(s.channelMode, s.type === 'mic' ? 'mono' : 'stereo'))
         const gain = ctx.createGain() // Main Fader
+        const programGain = ctx.createGain() // Program/output gate
         const programMonitorSend = ctx.createGain()
         const monitorGain = ctx.createGain() // Monitor Send
         const panner = ctx.createStereoPanner()
         const fxInput = ctx.createGain()
         const fxOutput = ctx.createGain()
+
+        // All routing gates start closed so a newly connected microphone can
+        // never leak a frame before the policy below has been applied.
+        gain.gain.value = 0
+        programGain.gain.value = 0
+        programMonitorSend.gain.value = 0
+        monitorGain.gain.value = 0
 
         channelMode.output.connect(panner)
         panner.connect(fxInput)
@@ -434,7 +482,8 @@ export function useBroadcastAudio(
         // audio when inserts are active.
         fxOutput.connect(gain)
 
-        gain.connect(masterInput)
+        gain.connect(programGain)
+        programGain.connect(masterInput)
         gain.connect(programMonitorSend)
         if (programMonitorMixerRef.current) {
           programMonitorSend.connect(programMonitorMixerRef.current)
@@ -447,7 +496,7 @@ export function useBroadcastAudio(
           console.warn(`[useBroadcastAudio] masterMonitorMixer missing for track ${s.id}`)
         }
 
-        nodes = { channelMode, gain, programMonitorSend, panner, fxInput, fxOutput, monitorGain, monitorSource: null, fxNodes: [] }
+        nodes = { channelMode, gain, programGain, programMonitorSend, panner, fxInput, fxOutput, monitorGain, monitorSource: null, fxNodes: [] }
         tracksRef.current.set(s.id, nodes)
         console.log(`[useBroadcastAudio] Initialized mixer track for ${s.id}`)
       }
@@ -492,7 +541,7 @@ export function useBroadcastAudio(
             warnedSilentStreamsRef.current.add(stream)
             console.warn(`[useBroadcastAudio] Stream found for ${s.id} but has no live audio tracks (video-only source — this is fine).`)
           }
-        } else if (s.type === 'mic' && !activeLayerIds.has(s.id) && s.deviceId && s.deviceId !== 'match' && !pendingStandaloneMicsRef.current.has(s.id)) {
+        } else if (s.type === 'mic' && activeLayerIds.has(s.id) && s.deviceId && s.deviceId !== 'match' && !pendingStandaloneMicsRef.current.has(s.id)) {
           pendingStandaloneMicsRef.current.add(s.id)
           navigator.mediaDevices.getUserMedia({
             audio: buildLowLatencyAudioConstraints(s.deviceId)
@@ -557,20 +606,16 @@ export function useBroadcastAudio(
         console.log(`[useBroadcastAudio] ${s.id} monitor route: ${monitorSource}`)
       }
 
-      const targetGain = s.muted ? 0 : s.volume
+      const route = getAudioRoutePolicy(s, retainedLayerIds, anySolo)
+      const targetGain = s.volume
       if (Math.abs(nodes.gain.gain.value - targetGain) > 0.001) {
         nodes.gain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.01)
-      }
-
-      const targetProgramMonitorGain = s.monitoring ? 0 : 1
-      if (Math.abs(nodes.programMonitorSend.gain.value - targetProgramMonitorGain) > 0.001) {
-        nodes.programMonitorSend.gain.setTargetAtTime(targetProgramMonitorGain, ctx.currentTime, 0.005)
       }
 
       // Direct mic monitoring applies the fader here because it intentionally
       // bypasses the post-FX fader path for the lowest possible confidence
       // monitor latency. Post-fader monitoring is already volume controlled.
-      const targetMonitorGain = !s.monitoring ? 0 : monitorSource === 'direct-mic' ? targetGain : 1
+      const targetMonitorGain = !route.monitor ? 0 : monitorSource === 'direct-mic' ? targetGain : 1
       if (Math.abs(nodes.monitorGain.gain.value - targetMonitorGain) > 0.001) {
         console.log(`[useBroadcastAudio] ${s.id} monitor gain: ${targetMonitorGain}`)
         nodes.monitorGain.gain.setTargetAtTime(targetMonitorGain, ctx.currentTime, 0.005)
@@ -583,5 +628,66 @@ export function useBroadcastAudio(
       nodes.fxNodes = fxState.nodes
 
     }
-  }, [audioSources, masterBus, streamReady, enabled, outputActive, activeSceneId, activeLayerIdsKey])
+  }, [audioSources, masterBus, streamReady, enabled, outputActive, activeSceneId, activeLayerIdsKey, studioMode, previewSceneId, retainedLayerIdsKey])
+
+  // Program/Preview gate. Nodes and streams for both sides already exist; only
+  // these cheap GainNode parameters move during TAKE. A cut swaps ownership in
+  // one store update, while a fade follows the same progress as the compositor.
+  useEffect(() => {
+    if (!enabled) return
+    const ctx = audioCtxRef.current
+    if (!ctx || ctx.state === 'closed') return
+
+    const activeLayerIds = new Set((activeScene?.layers || []).map(layer => layer.id))
+    const retainedLayerIds = new Set(activeLayerIds)
+    if (studioMode) {
+      for (const layer of previewScene?.layers || []) retainedLayerIds.add(layer.id)
+    }
+    const activeSceneHasSolo = hasEligibleSolo(audioSources, activeLayerIds)
+    const fromLayerIds = new Set((transitionFromScene?.layers || []).map(layer => layer.id))
+    const toLayerIds = new Set((transitionToScene?.layers || []).map(layer => layer.id))
+    const sceneTransition = transitionState.isActive && transitionFromScene && transitionToScene
+      ? {
+          isActive: true,
+          type: transitionState.type,
+          progress: transitionState.progress,
+          fromLayerIds,
+          toLayerIds,
+          fromHasSolo: hasEligibleSolo(audioSources, fromLayerIds),
+          toHasSolo: hasEligibleSolo(audioSources, toLayerIds)
+        }
+      : undefined
+
+    for (const source of audioSources) {
+      const nodes = tracksRef.current.get(source.id)
+      if (!nodes) continue
+      // Solo is applied per scene contribution by getProgramSceneGain. Using
+      // one union-wide Solo flag here would let Preview Solo affect Program
+      // before TAKE, or delay it until after a fade completed.
+      const route = getAudioRoutePolicy(source, retainedLayerIds, false)
+      const sceneGain = getProgramSceneGain(source, activeLayerIds, sceneTransition, activeSceneHasSolo)
+      const targetProgramGain = route.output ? sceneGain : 0
+      const targetProgramMonitorGain = route.programMonitor ? sceneGain : 0
+
+      if (Math.abs(nodes.programGain.gain.value - targetProgramGain) > 0.001) {
+        nodes.programGain.gain.setTargetAtTime(targetProgramGain, ctx.currentTime, 0.005)
+      }
+      if (Math.abs(nodes.programMonitorSend.gain.value - targetProgramMonitorGain) > 0.001) {
+        nodes.programMonitorSend.gain.setTargetAtTime(targetProgramMonitorGain, ctx.currentTime, 0.005)
+      }
+    }
+  }, [
+    audioSources,
+    enabled,
+    activeSceneId,
+    activeLayerIdsKey,
+    studioMode,
+    previewSceneId,
+    retainedLayerIdsKey,
+    transitionState.isActive,
+    transitionState.type,
+    transitionState.progress,
+    transitionFromLayerIdsKey,
+    transitionToLayerIdsKey
+  ])
 }

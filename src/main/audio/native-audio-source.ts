@@ -25,15 +25,24 @@ export interface NativeAudioSourceOptions {
   exclusive?: boolean
 }
 
+// Device capture bypasses the scene mixer (per-source mute/solo/faders/FX,
+// monitoring mode, and the master bus). Keep the experimental path fail-closed
+// until it consumes the policy-controlled Program mix instead of raw devices.
+const NATIVE_AUDIO_MIXER_PARITY_READY = false
+
+export function isNativeAudioRequested(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ILY_NATIVE_AUDIO === '1'
+}
+
 /**
  * Whether native capture should drive broadcast audio.
  *
- * Deliberately an explicit opt-in rather than "on if the addon loads": turning
- * this on silently drops TTS and soundboard out of the broadcast mix, which is
- * a change nobody should get by accident.
+ * The request remains explicit, and the readiness gate below keeps it off
+ * until the native path preserves the same Program mixer semantics as the
+ * renderer. Loading an addon can never silently change the live mix.
  */
 export function isNativeAudioEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.ILY_NATIVE_AUDIO === '1'
+  return NATIVE_AUDIO_MIXER_PARITY_READY && isNativeAudioRequested(env)
 }
 
 export function resolveNativeAudioOptions(
@@ -86,7 +95,11 @@ export class NativeAudioSource {
    */
   start(onPcm: (pcm: Uint8Array) => void, env: NodeJS.ProcessEnv = process.env): boolean {
     if (this.session) return true
-    if (!isNativeAudioEnabled(env)) return false
+    if (!isNativeAudioRequested(env)) return false
+    if (!isNativeAudioEnabled(env)) {
+      console.warn('[NativeAudio] opt-in ignored: native device capture does not yet preserve Program mixer routing; using the renderer mix')
+      return false
+    }
     if (!isNativeAudioAvailable()) {
       console.warn('[NativeAudio] enabled but the addon is unavailable; using the renderer path')
       return false

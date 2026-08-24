@@ -1,6 +1,29 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { IconCheck, IconChevronLeft, IconExternalLink, IconPencil, IconStar, IconStarFilled, IconX, IconMessageCircle, IconHeart, IconGift, IconCurrencyDollar, IconShare, IconSwords, IconMusic, IconPhone, IconTrophy, IconUsers, IconClock, IconCalendarPlus } from '@tabler/icons-react'
+import {
+  IconActivity,
+  IconCalendarPlus,
+  IconCheck,
+  IconChevronLeft,
+  IconClock,
+  IconCurrencyDollar,
+  IconDeviceFloppy,
+  IconExternalLink,
+  IconGift,
+  IconHeart,
+  IconLink,
+  IconMessageCircle,
+  IconMusic,
+  IconPencil,
+  IconPhone,
+  IconShare,
+  IconSparkles,
+  IconStar,
+  IconStarFilled,
+  IconSwords,
+  IconTrophy,
+  IconX
+} from '@tabler/icons-react'
 import { Avatar } from '../../components/ui/Avatar'
 import { PlatformLogo } from '../../components/platforms/PlatformLogo'
 import type { UserIdentity } from '../../../shared/stats'
@@ -11,6 +34,8 @@ import { platformNames } from '../../lib/audience-labels'
 import { ViewerPersonalizationSection } from './components/ViewerPersonalizationSection'
 import type { TTSUserVoiceOverride, ViewerJoinSound } from '../../../shared/app-settings'
 import { resolveAppSettings } from '../../../shared/app-settings'
+import { groupProfileAccounts, type ProfileConnection } from './profile-account-groups'
+import './viewer-profile.css'
 
 function sortPlatformsByDisplayOrder(platforms: Platform[]): Platform[] {
   const order: Platform[] = ['twitch', 'youtube', 'tiktok', 'kick']
@@ -33,6 +58,27 @@ function generatePlatformProfileUrl(platform: Platform, username: string): strin
 
 type ProfileTab = 'activity' | 'accounts' | 'personalization'
 
+const PROFILE_TABS: Array<{ key: ProfileTab; label: string; icon: React.ReactNode }> = [
+  { key: 'activity', label: 'Activity', icon: <IconActivity size={15} /> },
+  { key: 'accounts', label: 'Connections', icon: <IconLink size={15} /> },
+  { key: 'personalization', label: 'Personalization', icon: <IconSparkles size={15} /> }
+]
+
+function getRankHighlights(ranks?: UserIdentity['ranks']): Array<{ label: string; rank: number }> {
+  return [
+    { label: 'Chats', rank: ranks?.totalChats },
+    { label: 'Likes', rank: ranks?.totalLikes },
+    { label: 'Gifts', rank: ranks?.totalGifts },
+    { label: 'Revenue', rank: ranks?.totalGiftValueCents },
+    { label: 'Shares', rank: ranks?.totalShares },
+    { label: 'Raids', rank: ranks?.totalRaids },
+    { label: 'Song requests', rank: ranks?.totalSongRequests },
+    { label: 'AI calls', rank: ranks?.totalCohostCalls }
+  ]
+    .filter((item): item is { label: string; rank: number } => typeof item.rank === 'number' && item.rank > 0)
+    .sort((left, right) => left.rank - right.rank)
+}
+
 export default function ViewerProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -48,9 +94,20 @@ export default function ViewerProfilePage() {
   const [linkingSuggestion, setLinkingSuggestion] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<Array<{ platform: Platform; username: string; displayName: string; profilePictureUrl: string | null; similarity: number; profileId: string | null }>>([])
   const [activeTab, setActiveTab] = useState<ProfileTab>('activity')
+  /**
+   * Set before a reload this page triggers itself (linking an account, or being
+   * re-routed onto a profile that was just created for this viewer). Those reloads
+   * must not clobber edits the user hasn't saved yet — only a genuine navigation
+   * to a different viewer resets the drafts.
+   */
+  const preserveDraftsRef = useRef(false)
+  /** Mirror of `originalSettings`, readable inside the async loader. */
+  const originalSettingsRef = useRef<{ ttsUserVoiceOverrides: TTSUserVoiceOverride[], viewerJoinSounds: ViewerJoinSound[] } | null>(null)
 
   const loadIdentityAndSettings = async () => {
     if (!id) return
+    const preserveDrafts = preserveDraftsRef.current
+    preserveDraftsRef.current = false
     setLoading(true)
     try {
       const [res, settingsRaw] = await Promise.all([
@@ -59,16 +116,30 @@ export default function ViewerProfilePage() {
       ])
       const resolvedSettings = resolveAppSettings((settingsRaw || {}) as Record<string, any>)
       setIdentity(res)
-      setDraftName(res?.displayName || '')
-      setDraftPrimaryAccount(null)
 
       const settings = {
         ttsUserVoiceOverrides: resolvedSettings.ttsUserVoiceOverrides || [],
         viewerJoinSounds: resolvedSettings.viewerJoinSounds || []
       }
+      // Linking can merge profiles, which rewrites viewer-scoped settings in the
+      // main process. Drafts taken before that rewrite reference the profile id
+      // that was just merged away, so they can't be carried over — take the
+      // rewritten values instead of saving stale ids back over them.
+      const settingsRewrittenElsewhere = originalSettingsRef.current !== null &&
+        JSON.stringify(originalSettingsRef.current) !== JSON.stringify(settings)
+      const keepDrafts = preserveDrafts && !settingsRewrittenElsewhere
+
+      if (!preserveDrafts) {
+        setDraftName(res?.displayName || '')
+        setDraftPrimaryAccount(null)
+      }
+
+      originalSettingsRef.current = settings
       setOriginalSettings(settings)
-      setDraftVoiceOverrides(settings.ttsUserVoiceOverrides)
-      setDraftJoinSounds(settings.viewerJoinSounds)
+      if (!keepDrafts) {
+        setDraftVoiceOverrides(settings.ttsUserVoiceOverrides)
+        setDraftJoinSounds(settings.viewerJoinSounds)
+      }
 
       if (res && res.id) {
         window.api.stats.getLinkSuggestions(res.id).then(setSuggestions).catch(console.error)
@@ -106,8 +177,12 @@ export default function ViewerProfilePage() {
     )
   }
 
-  const sortedAccounts = [...identity.accounts].sort((a, b) => b.totalChats - a.totalChats)
-  const profileId = identity.accounts.find(account => account.profileId)?.profileId || (!identity.id.includes(':') ? identity.id : null)
+  const { streamingAccounts, profileConnections } = groupProfileAccounts(identity)
+  const sortedAccounts = [...streamingAccounts].sort((a, b) => b.totalChats - a.totalChats)
+  const streamingPlatforms = sortPlatformsByDisplayOrder(
+    [...new Set(streamingAccounts.map((account) => account.platform))]
+  )
+  const profileId = streamingAccounts.find(account => account.profileId)?.profileId || (!identity.id.includes(':') ? identity.id : null)
   const ranks = identity.ranks
   const badges = buildIdentityBadges(identity, 10, 20)
 
@@ -117,8 +192,8 @@ export default function ViewerProfilePage() {
       displayName: identity.displayName,
       profilePictureUrl: identity.profilePictureUrl,
       primaryPlatform: identity.primaryPlatform,
-      primaryUsername: identity.primaryUsername ?? identity.accounts.find((a) => a.platform === identity.primaryPlatform)?.username ?? identity.accounts[0]?.username,
-      accounts: identity.accounts.map((a) => ({
+      primaryUsername: identity.primaryUsername ?? streamingAccounts.find((a) => a.platform === identity.primaryPlatform)?.username ?? streamingAccounts[0]?.username,
+      accounts: streamingAccounts.map((a) => ({
         platform: a.platform, username: a.username, platformUserId: a.platformUserId ?? null,
         displayName: a.displayName, profilePictureUrl: a.profilePictureUrl
       }))
@@ -145,17 +220,23 @@ export default function ViewerProfilePage() {
         platform: suggestion.platform, username: suggestion.username,
         displayName: suggestion.displayName, profilePictureUrl: suggestion.profilePictureUrl
       })
+      // Linking is not a save — whatever the user has typed or picked but not
+      // saved yet has to survive the refresh below.
+      preserveDraftsRef.current = true
       if (pid !== profileId) { navigate(`/stats/viewer/${pid}`, { replace: true }); return }
       loadIdentityAndSettings()
     } finally { setLinkingSuggestion(null) }
   }
 
-  const originalPrimaryUsername = identity.primaryUsername
-    ?? identity.accounts.find(a => a.platform === identity.primaryPlatform)?.username
-    ?? identity.accounts[0]?.username
+  const originalPrimaryAccount = streamingAccounts.find((account) => (
+    account.platform === identity.primaryPlatform &&
+    (!identity.primaryUsername || account.username === identity.primaryUsername)
+  )) ?? streamingAccounts.find((account) => account.platform === identity.primaryPlatform)
+    ?? streamingAccounts[0]
+  const originalPrimaryUsername = originalPrimaryAccount?.username
 
   const primaryUsername = draftPrimaryAccount?.username ?? originalPrimaryUsername
-  const primaryPlatform = draftPrimaryAccount?.platform ?? identity.primaryPlatform
+  const primaryPlatform = draftPrimaryAccount?.platform ?? originalPrimaryAccount?.platform ?? identity.primaryPlatform
   const displayProfilePictureUrl = draftPrimaryAccount?.profilePictureUrl ?? identity.profilePictureUrl
 
   const isNameChanged = draftName.trim() !== identity.displayName && draftName.trim() !== ''
@@ -210,145 +291,189 @@ export default function ViewerProfilePage() {
     }
   }
 
-  const tabs: { key: ProfileTab; label: string; count?: number }[] = [
-    { key: 'activity', label: 'Activity' },
-    { key: 'accounts', label: 'Accounts', count: sortedAccounts.length },
-    { key: 'personalization', label: 'Personalization' }
-  ]
-
   const displayName = draftName || identity.displayName
-  const accentRing = 'linear-gradient(135deg, rgba(var(--accent-rgb), 0.65), rgba(var(--accent-rgb), 0.12))'
+  const rankHighlights = getRankHighlights(ranks)
+  const bestRank = rankHighlights[0]
+  const lifetimeActions = identity.totalChats + identity.totalLikes + identity.totalGifts +
+    identity.totalShares + identity.totalRaids + identity.totalSongRequests + (identity.totalCohostCalls || 0)
+  const unsavedLabels = [
+    isNameChanged ? 'Nickname' : null,
+    isPrimaryChanged ? 'Primary account' : null,
+    isOverridesChanged ? 'Voice rules' : null,
+    isJoinSoundsChanged ? 'Join sound' : null
+  ].filter((label): label is string => Boolean(label))
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar relative z-50" style={{ background: 'var(--bg-base)' }}>
-
-      {/* ── Breadcrumb bar ─────────────────────────────────── */}
-      <div className="sticky top-0 z-30 flex items-center gap-3 px-6 py-3 backdrop-blur-xl" style={{ borderBottom: '1px solid var(--hairline)', background: 'rgba(20, 21, 24, 0.75)' }}>
-        <button onClick={() => navigate('/stats')} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white">
+    <div className="viewer-profile-page custom-scrollbar">
+      <header className="viewer-profile-topbar">
+        <button
+          type="button"
+          onClick={() => navigate('/stats')}
+          className="viewer-profile-back"
+          aria-label="Back to audience stats"
+        >
           <IconChevronLeft size={18} />
         </button>
-        <span className="text-[13px] font-medium text-white/35">Audience</span>
-        <span className="text-white/15">/</span>
-        <span className="truncate text-[13px] font-semibold text-white/80">{displayName}</span>
-      </div>
+        <div className="viewer-profile-breadcrumb">
+          <span>Audience</span>
+          <span aria-hidden="true">/</span>
+          <strong>{displayName}</strong>
+        </div>
+        {hasUnsavedChanges && <span className="viewer-profile-unsaved-dot">Unsaved changes</span>}
+      </header>
 
-      <div className="mx-auto w-full max-w-[960px] px-8 pb-16">
+      <main className="viewer-profile-shell">
+        <section className="viewer-profile-hero" aria-labelledby="viewer-profile-name">
+          <div className="viewer-profile-glow viewer-profile-glow--one" />
+          <div className="viewer-profile-glow viewer-profile-glow--two" />
 
-        {/* ── Banner + identity ────────────────────────────── */}
-        <div
-          className="mt-5 h-28 rounded-2xl"
-          style={{
-            border: '1px solid var(--hairline)',
-            background: `radial-gradient(120% 140% at 15% 0%, rgba(var(--accent-rgb), 0.20), transparent 55%), radial-gradient(120% 160% at 95% 10%, rgba(var(--accent-rgb), 0.08), transparent 50%), var(--mat-thin)`
-          }}
-        />
-
-        <div className="flex items-end gap-5 -mt-12 px-2">
-          {/* Avatar */}
-          <div className="relative shrink-0">
-            <div className="rounded-full p-[2.5px]" style={{ background: accentRing }}>
-              <div className="rounded-full p-[3px]" style={{ background: 'var(--bg-base)' }}>
-                <Avatar url={displayProfilePictureUrl} name={displayName} size="2xl" />
+          <div className="viewer-profile-hero-main">
+            <div className="viewer-profile-identity">
+              <div className="viewer-profile-avatar-wrap">
+                <Avatar
+                  url={displayProfilePictureUrl}
+                  name={displayName}
+                  size="2xl"
+                  className="viewer-profile-avatar"
+                />
+                <span className="viewer-profile-avatar-platform">
+                  <PlatformLogo platform={primaryPlatform} size={16} />
+                </span>
               </div>
-            </div>
-            <span className="absolute bottom-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-full shadow-lg" style={{ background: 'var(--bg-1)', border: '2.5px solid var(--bg-base)' }}>
-              <PlatformLogo platform={primaryPlatform} size={15} />
-            </span>
-          </div>
 
-          {/* Name + handle + badges */}
-          <div className="min-w-0 flex-1 pb-1">
-            <div className="flex items-center gap-2 h-9">
-              {isEditingName ? (
-                <>
-                  <input
-                    value={draftName} onChange={(e) => setDraftName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveNameDraft(); if (e.key === 'Escape') { setDraftName(identity.displayName); setIsEditingName(false) } }}
-                    autoFocus className="h-9 w-64 rounded-lg border px-3 text-xl font-bold text-white outline-none"
-                    style={{ borderColor: 'var(--hairline-strong)', background: 'var(--mat-regular)' }}
-                  />
-                  <button className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-black transition-transform hover:scale-105" onClick={saveNameDraft} title="Save draft"><IconCheck size={15} /></button>
-                  <button className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 hover:text-white" style={{ background: 'var(--mat-thin)' }} onClick={() => { setDraftName(identity.displayName); setIsEditingName(false) }} title="Cancel"><IconX size={15} /></button>
-                </>
-              ) : (
-                <>
-                  <h1 className="truncate text-2xl font-bold tracking-tight text-white">{displayName}</h1>
-                  {badges.length > 0 && (
-                    <span className="flex items-center gap-1 shrink-0">
-                      {badges.map(b => <BadgeChip key={b.key} badge={b} />)}
+              <div className="viewer-profile-identity-copy">
+                <span className="viewer-profile-eyebrow">Viewer profile</span>
+                {isEditingName ? (
+                  <div className="viewer-profile-name-editor">
+                    <input
+                      value={draftName}
+                      onChange={(event) => setDraftName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') saveNameDraft()
+                        if (event.key === 'Escape') {
+                          setDraftName(identity.displayName)
+                          setIsEditingName(false)
+                        }
+                      }}
+                      autoFocus
+                      aria-label="Viewer nickname"
+                    />
+                    <button type="button" onClick={saveNameDraft} title="Keep nickname draft" aria-label="Keep nickname draft">
+                      <IconCheck size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDraftName(identity.displayName); setIsEditingName(false) }}
+                      title="Cancel nickname edit"
+                      aria-label="Cancel nickname edit"
+                    >
+                      <IconX size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="viewer-profile-title-row">
+                    <h1 id="viewer-profile-name">{displayName}</h1>
+                    <button
+                      type="button"
+                      className="viewer-profile-edit-name"
+                      onClick={() => { setDraftName(draftName || identity.displayName); setIsEditingName(true) }}
+                      title="Edit nickname"
+                      aria-label="Edit nickname"
+                    >
+                      <IconPencil size={14} />
+                    </button>
+                  </div>
+                )}
+
+                <div className="viewer-profile-handle-row">
+                  {primaryUsername && (
+                    <span className="viewer-profile-handle">
+                      <PlatformLogo platform={primaryPlatform} size={13} />
+                      @{primaryUsername}
                     </span>
                   )}
-                  <button className="flex shrink-0 items-center justify-center h-6 w-6 rounded-full text-white/30 hover:bg-white/[0.08] hover:text-white transition-colors" onClick={() => { setDraftName(draftName || identity.displayName); setIsEditingName(true) }} title="Edit nickname">
-                    <IconPencil size={14} />
-                  </button>
-                </>
-              )}
-            </div>
-            {primaryUsername && (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[14px] font-medium text-white/40">
-                <PlatformLogo platform={primaryPlatform} size={12} />
-                <span className="truncate">@{primaryUsername}</span>
+                  {badges.length > 0 && (
+                    <span className="viewer-profile-badges">
+                      {badges.map((badge) => <BadgeChip key={badge.key} badge={badge} />)}
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
+
+            <aside className="viewer-profile-standing" aria-label="Audience standing">
+              <div className="viewer-profile-standing-heading">
+                <span>Audience standing</span>
+                <IconTrophy size={16} />
+              </div>
+              <div className="viewer-profile-standing-rank">
+                {typeof identity.overallRank === 'number' && identity.overallRank > 0
+                  ? <><small>#</small>{identity.overallRank.toLocaleString()}</>
+                  : <span>Unranked</span>}
+              </div>
+              <div className="viewer-profile-standing-grid">
+                <div>
+                  <span>Best category</span>
+                  <strong>{bestRank ? `${bestRank.label} · #${bestRank.rank}` : 'Building history'}</strong>
+                </div>
+                <div>
+                  <span>Lifetime actions</span>
+                  <strong>{lifetimeActions.toLocaleString()}</strong>
+                </div>
+              </div>
+            </aside>
           </div>
 
-          {/* Rank */}
-          {typeof identity.overallRank === 'number' && identity.overallRank > 0 && (
-            <div className="flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-4 py-2 pb-1" style={{ background: 'var(--mat-thin)', border: '1px solid var(--hairline)' }}>
-              <div className="flex items-center gap-1">
-                <IconTrophy size={13} style={{ color: identity.overallRank <= 3 ? '#FBBF24' : 'var(--fg-5)' }} />
-                <span className="text-lg font-extrabold tabular-nums text-accent leading-none">#{identity.overallRank}</span>
-              </div>
-              <span className="text-[10px] font-medium text-white/35">Audience rank</span>
+          <div className="viewer-profile-meta-grid">
+            <div className="viewer-profile-meta-item">
+              <span className="viewer-profile-meta-icon-stack">
+                {streamingPlatforms.map((platform) => (
+                  <span key={platform}><PlatformLogo platform={platform} size={12} /></span>
+                ))}
+              </span>
+              <span><strong>{streamingAccounts.length}</strong> streaming {streamingAccounts.length === 1 ? 'account' : 'accounts'}</span>
             </div>
-          )}
-        </div>
+            <div className="viewer-profile-meta-item">
+              <IconLink size={15} />
+              <span><strong>{profileConnections.length}</strong> connected {profileConnections.length === 1 ? 'identity' : 'identities'}</span>
+            </div>
+            <div className="viewer-profile-meta-item">
+              <IconCalendarPlus size={15} />
+              <span>Joined <strong>{formatRelativeTime(identity.firstSeenAt ?? null)}</strong></span>
+            </div>
+            <div className="viewer-profile-meta-item">
+              <IconClock size={15} />
+              <span>Seen <strong>{formatRelativeTime(identity.lastSeenAt)}</strong></span>
+            </div>
+          </div>
+        </section>
 
-        {/* ── Registry meta row ────────────────────────────── */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-2 text-[12px] font-medium text-white/40">
-          <span className="flex items-center gap-1.5">
-            <span className="flex items-center gap-1">
-              {sortPlatformsByDisplayOrder(identity.allPlatforms).map(p => (
-                <span key={p} className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: 'var(--mat-regular)' }}>
-                  <PlatformLogo platform={p} size={10} />
-                </span>
-              ))}
-            </span>
-            <span>{identity.accounts.length} linked {identity.accounts.length === 1 ? 'account' : 'accounts'}</span>
-          </span>
-          <MetaDot />
-          <span className="flex items-center gap-1.5"><IconCalendarPlus size={13} className="text-white/25" /> Joined {formatRelativeTime(identity.firstSeenAt ?? null)}</span>
-          <MetaDot />
-          <span className="flex items-center gap-1.5"><IconClock size={13} className="text-white/25" /> Seen {formatRelativeTime(identity.lastSeenAt)}</span>
-        </div>
-
-        {/* ── Headline totals ──────────────────────────────── */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <HeadlineStat icon={<IconMessageCircle size={15} />} value={identity.totalChats.toLocaleString()} label="Chats" rank={ranks?.totalChats} />
-          <HeadlineStat icon={<IconHeart size={15} />} value={identity.totalLikes.toLocaleString()} label="Likes" rank={ranks?.totalLikes} />
-          <HeadlineStat icon={<IconGift size={15} />} value={identity.totalGifts.toLocaleString()} label="Gifts" rank={ranks?.totalGifts} />
-          <HeadlineStat icon={<IconCurrencyDollar size={15} />} value={formatCurrency(identity.totalGiftValueCents)} label="Revenue" rank={ranks?.totalGiftValueCents} />
-        </div>
-
-        {/* ── Tabs ─────────────────────────────────────────── */}
-        <div className="mt-7 flex justify-center">
-          <div className="app-segment">
-            {tabs.map(tab => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`app-segment-btn ${activeTab === tab.key ? 'is-active' : ''}`}>
-                {tab.label}
-                {typeof tab.count === 'number' && (
-                  <span className="rounded-full px-1.5 text-[11px] font-bold leading-[18px]" style={{ background: activeTab === tab.key ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--mat-regular)', color: activeTab === tab.key ? 'var(--accent)' : 'var(--fg-4)' }}>{tab.count}</span>
-                )}
+        <nav className="viewer-profile-tabs" role="tablist" aria-label="Viewer profile sections">
+          {PROFILE_TABS.map((tab) => {
+            const isActive = activeTab === tab.key
+            const count = tab.key === 'accounts' ? sortedAccounts.length + profileConnections.length : null
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={isActive ? 'is-active' : ''}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+                {count !== null && <span className="viewer-profile-tab-count">{count}</span>}
               </button>
-            ))}
-          </div>
-        </div>
+            )
+          })}
+        </nav>
 
-        {/* ── Tab content ──────────────────────────────────── */}
-        <div className="mt-6">
-          {activeTab === 'activity' && <ActivityTab identity={identity} ranks={ranks} />}
+        <section className="viewer-profile-tab-body" role="tabpanel">
+          {activeTab === 'activity' && <ActivityTab identity={identity} ranks={ranks} accounts={sortedAccounts} />}
           {activeTab === 'accounts' && (
             <AccountsTab identity={identity} sortedAccounts={sortedAccounts} suggestions={suggestions}
+              profileConnections={profileConnections}
               savingPrimary={null} linkingSuggestion={linkingSuggestion}
               setPrimaryAccount={setPrimaryAccount} linkSuggestedAccount={linkSuggestedAccount}
               draftPrimaryAccount={draftPrimaryAccount}
@@ -356,34 +481,47 @@ export default function ViewerProfilePage() {
           )}
           {activeTab === 'personalization' && (
             <ViewerPersonalizationSection profileId={profileId} displayName={identity.displayName}
-              accounts={identity.accounts.map(a => ({ platform: a.platform, username: a.username }))}
+              accounts={streamingAccounts.map(a => ({ platform: a.platform, username: a.username }))}
               ensureProfileId={ensureEditableProfile}
-              onProfileCreated={(newId) => navigate(`/stats/viewer/${newId}`, { replace: true })}
+              onProfileCreated={(newId) => {
+                // The rule that triggered this is still an unsaved draft tagged
+                // with the new profile id — don't reload it away.
+                preserveDraftsRef.current = true
+                navigate(`/stats/viewer/${newId}`, { replace: true })
+              }}
               draftOverrides={draftVoiceOverrides ?? []}
               draftJoinSounds={draftJoinSounds ?? []}
               onUpdateOverrides={setDraftVoiceOverrides}
               onUpdateJoinSounds={setDraftJoinSounds}
             />
           )}
-        </div>
-      </div>
+        </section>
+      </main>
 
       {hasUnsavedChanges && (
-        <div className="sticky bottom-0 z-50 p-4 animate-in slide-in-from-bottom-4">
-          <div className="mx-auto max-w-[640px] flex items-center justify-between rounded-xl bg-white/[0.08] backdrop-blur-xl border border-white/10 px-5 py-3 shadow-2xl">
-            <span className="text-[13px] font-semibold text-white">You have unsaved changes</span>
-            <div className="flex items-center gap-2">
+        <div className="viewer-profile-save-dock animate-in slide-in-from-bottom-4">
+          <div className="viewer-profile-save-dock-inner">
+            <div className="viewer-profile-save-summary">
+              <span className="viewer-profile-save-icon"><IconDeviceFloppy size={17} /></span>
+              <div>
+                <strong>{unsavedLabels.length} unsaved {unsavedLabels.length === 1 ? 'change' : 'changes'}</strong>
+                <span>{unsavedLabels.join(' · ')}</span>
+              </div>
+            </div>
+            <div className="viewer-profile-save-actions">
               <button
+                type="button"
                 onClick={discardAllChanges}
                 disabled={savingAll}
-                className="px-4 py-2 text-[12px] font-bold text-white/50 hover:text-white/80 transition-colors"
+                className="viewer-profile-discard"
               >
                 Discard
               </button>
               <button
+                type="button"
                 onClick={saveAllChanges}
                 disabled={savingAll}
-                className="app-button-primary !h-8 !px-4 text-[12px] font-bold disabled:opacity-40"
+                className="app-button-primary viewer-profile-save-button"
               >
                 {savingAll ? 'Saving...' : 'Save changes'}
               </button>
@@ -395,31 +533,16 @@ export default function ViewerProfilePage() {
   )
 }
 
-function MetaDot() {
-  return <span className="h-1 w-1 rounded-full bg-white/15" />
-}
-
-/* ── Headline stat (topline count under identity) ─────────── */
-function HeadlineStat({ icon, value, label, rank }: { icon: React.ReactNode; value: string; label: string; rank?: number }) {
-  const medal = rank === 1 ? '#FBBF24' : rank === 2 ? '#CBD5E1' : rank === 3 ? '#CD7F32' : null
-  return (
-    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--mat-thin)', border: '1px solid var(--hairline)', boxShadow: 'var(--inset-top)' }}>
-      <div className="flex items-center justify-between text-white/35">
-        <span className="flex items-center gap-1.5 text-[12px] font-medium text-white/45">
-          <span className="text-white/30">{icon}</span>
-          {label}
-        </span>
-        {typeof rank === 'number' && rank > 0 && (
-          <span className="text-[10px] font-bold tabular-nums rounded px-1 leading-none py-[2px]" style={{ color: medal ?? 'var(--fg-5)', background: medal ? `${medal}18` : 'var(--mat-regular)' }}>#{rank}</span>
-        )}
-      </div>
-      <div className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-white leading-none">{value}</div>
-    </div>
-  )
-}
-
 /* ── Activity tab ─────────────────────────────────────────── */
-function ActivityTab({ identity, ranks }: { identity: UserIdentity; ranks?: UserIdentity['ranks'] }) {
+function ActivityTab({
+  identity,
+  ranks,
+  accounts
+}: {
+  identity: UserIdentity
+  ranks?: UserIdentity['ranks']
+  accounts: UserIdentity['accounts']
+}) {
   const stats: { icon: React.ReactNode; label: string; value: string; color: string; rank?: number }[] = [
     { icon: <IconMessageCircle size={16} />, label: 'Chat messages', value: identity.totalChats.toLocaleString(), color: '255, 255, 255', rank: ranks?.totalChats },
     { icon: <IconHeart size={16} />, label: 'Likes', value: identity.totalLikes.toLocaleString(), color: '244, 114, 182', rank: ranks?.totalLikes },
@@ -430,45 +553,110 @@ function ActivityTab({ identity, ranks }: { identity: UserIdentity; ranks?: User
     { icon: <IconMusic size={16} />, label: 'Song requests', value: identity.totalSongRequests.toLocaleString(), color: '74, 222, 128', rank: ranks?.totalSongRequests },
     { icon: <IconPhone size={16} />, label: 'AI co-host calls', value: (identity.totalCohostCalls || 0).toLocaleString(), color: '239, 68, 68', rank: ranks?.totalCohostCalls }
   ]
+
+  const platformActivity = Array.from(accounts.reduce((totals, account) => {
+    const activity = account.totalChats + account.totalLikes + account.totalGifts + account.totalShares +
+      account.totalRaids + account.totalSongRequests + (account.totalCohostCalls || 0)
+    totals.set(account.platform, (totals.get(account.platform) || 0) + activity)
+    return totals
+  }, new Map<Platform, number>()))
+    .map(([platform, activity]) => ({ platform, activity }))
+    .sort((left, right) => right.activity - left.activity)
+  const platformActivityTotal = platformActivity.reduce((total, item) => total + item.activity, 0)
+
   return (
-    <div>
-      <SectionLabel>Lifetime activity</SectionLabel>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {stats.map(s => <StatCard key={s.label} {...s} />)}
+    <div className="viewer-profile-section">
+      <SectionHeader
+        eyebrow="Audience history"
+        title="Lifetime activity"
+        description="A complete view of how this person has shown up across your streams."
+      />
+      <div className="viewer-profile-activity-layout">
+        <div className="viewer-profile-metric-grid">
+          {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
+        </div>
+
+        <aside className="viewer-profile-platform-mix">
+          <div className="viewer-profile-platform-mix-head">
+            <div>
+              <span>Engagement mix</span>
+              <strong>By platform</strong>
+            </div>
+            <span>{platformActivity.length}</span>
+          </div>
+          <div className="viewer-profile-platform-list">
+            {platformActivity.map(({ platform, activity }) => {
+              const share = platformActivityTotal > 0 ? Math.round((activity / platformActivityTotal) * 100) : 0
+              return (
+                <div key={platform} className="viewer-profile-platform-row">
+                  <div className="viewer-profile-platform-label">
+                    <span><PlatformLogo platform={platform} size={14} /></span>
+                    <strong>{platformNames[platform]}</strong>
+                    <small>{share}%</small>
+                  </div>
+                  <div className="viewer-profile-platform-track">
+                    <span style={{ width: `${share}%` }} />
+                  </div>
+                  <div className="viewer-profile-platform-value">{activity.toLocaleString()} actions</div>
+                </div>
+              )
+            })}
+            {platformActivity.length === 0 && (
+              <div className="viewer-profile-empty-copy">No streaming activity has been recorded yet.</div>
+            )}
+          </div>
+          <div className="viewer-profile-platform-foot">
+            <IconActivity size={14} />
+            <span>{platformActivityTotal.toLocaleString()} measured interactions</span>
+          </div>
+        </aside>
       </div>
     </div>
   )
 }
 
-/* ── Section label ────────────────────────────────────────── */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="mb-3 text-[12px] font-semibold text-white/35">{children}</div>
+function SectionHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <div className="viewer-profile-section-header">
+      <span>{eyebrow}</span>
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </div>
+  )
 }
 
 /* ── Stat card ────────────────────────────────────────────── */
 function StatCard({ icon, label, value, color, rank }: { icon: React.ReactNode; label: string; value: React.ReactNode; color: string; rank?: number }) {
   const medal = rank === 1 ? '#FBBF24' : rank === 2 ? '#CBD5E1' : rank === 3 ? '#CD7F32' : null
   return (
-    <div className="relative rounded-xl p-3.5 group transition-colors" style={{ background: 'var(--mat-thin)', border: '1px solid var(--hairline)', boxShadow: 'var(--inset-top)' }}>
-      <div className="absolute inset-x-3 bottom-0 h-px opacity-0 group-hover:opacity-40 transition-opacity" style={{ background: `rgb(${color})` }} />
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ color: `rgb(${color})`, background: `rgba(${color}, 0.08)` }}>{icon}</span>
+    <div
+      className="viewer-profile-metric-card"
+      style={{ '--metric-rgb': color } as React.CSSProperties}
+    >
+      <div className="viewer-profile-metric-topline">
+        <span className="viewer-profile-metric-icon">{icon}</span>
         {typeof rank === 'number' && rank > 0 && (
-          <span className="text-[9px] font-extrabold tabular-nums rounded px-1 py-[2px] leading-none" style={{ color: medal ?? 'var(--fg-5)', background: medal ? `${medal}18` : 'var(--mat-thin)', border: `1px solid ${medal ? `${medal}33` : 'var(--hairline)'}` }}>#{rank}</span>
+          <span
+            className="viewer-profile-metric-rank"
+            style={{ color: medal ?? 'var(--fg-4)', background: medal ? `${medal}16` : undefined, borderColor: medal ? `${medal}32` : undefined }}
+          >
+            #{rank}
+          </span>
         )}
       </div>
-      <div className="text-lg font-bold tabular-nums tracking-tight leading-none" style={{ color: `rgb(${color})` }}>{value}</div>
-      <div className="mt-1.5 text-[10px] font-medium text-white/30">{label}</div>
+      <div className="viewer-profile-metric-value">{value}</div>
+      <div className="viewer-profile-metric-label">{label}</div>
     </div>
   )
 }
 
 /* ── Accounts tab ─────────────────────────────────────────── */
 function AccountsTab({
-  identity, sortedAccounts, suggestions, savingPrimary, linkingSuggestion, setPrimaryAccount, linkSuggestedAccount, draftPrimaryAccount
+  identity, sortedAccounts, profileConnections, suggestions, savingPrimary, linkingSuggestion, setPrimaryAccount, linkSuggestedAccount, draftPrimaryAccount
 }: {
   identity: UserIdentity
   sortedAccounts: UserIdentity['accounts']
+  profileConnections: ProfileConnection[]
   suggestions: Array<{ platform: Platform; username: string; displayName: string; profilePictureUrl: string | null; similarity: number; profileId: string | null }>
   savingPrimary: string | null
   linkingSuggestion: string | null
@@ -477,90 +665,134 @@ function AccountsTab({
   draftPrimaryAccount: UserIdentity['accounts'][number] | null
 }) {
   return (
-    <div>
-      <SectionLabel>Connected accounts</SectionLabel>
-      <div className="grid gap-2.5 sm:grid-cols-2">
+    <div className="viewer-profile-section">
+      <SectionHeader
+        eyebrow="Identity graph"
+        title="Connected accounts"
+        description="Choose how this viewer appears in ilyStream and see where their activity comes from."
+      />
+      <div className="viewer-profile-account-grid">
         {sortedAccounts.map(acc => {
           const url = generatePlatformProfileUrl(acc.platform, acc.username)
 
-          const primaryUsername = draftPrimaryAccount?.username ?? identity.primaryUsername
-            ?? identity.accounts.find(a => a.platform === identity.primaryPlatform)?.username
-            ?? identity.accounts[0]?.username
-          const primaryPlatform = draftPrimaryAccount?.platform ?? identity.primaryPlatform
+          const primaryAccount = sortedAccounts.find((account) => (
+            account.platform === identity.primaryPlatform &&
+            (!identity.primaryUsername || account.username === identity.primaryUsername)
+          )) ?? sortedAccounts.find((account) => account.platform === identity.primaryPlatform)
+            ?? sortedAccounts[0]
+          const primaryUsername = draftPrimaryAccount?.username ?? primaryAccount?.username
+          const primaryPlatform = draftPrimaryAccount?.platform ?? primaryAccount?.platform ?? identity.primaryPlatform
 
           const isPrimary = acc.platform === primaryPlatform && acc.username === primaryUsername
           const accountKey = `${acc.platform}:${acc.username}`
 
           return (
-            <div key={accountKey} className="relative rounded-xl overflow-hidden transition-colors" style={{
-              background: isPrimary ? 'rgba(var(--accent-rgb), 0.04)' : 'var(--mat-thin)',
-              border: isPrimary ? '1px solid rgba(var(--accent-rgb), 0.22)' : '1px solid var(--hairline)',
-              boxShadow: 'var(--inset-top)'
-            }}>
-              {isPrimary && <div className="h-[2px]" style={{ background: 'linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb), 0.15), transparent)' }} />}
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-3.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative shrink-0">
+            <article key={accountKey} className={`viewer-profile-account-card ${isPrimary ? 'is-primary' : ''}`}>
+              <div className="viewer-profile-account-card-body">
+                <div className="viewer-profile-account-head">
+                  <div className="viewer-profile-account-identity">
+                    <div className="viewer-profile-account-avatar">
                       <Avatar url={acc.profilePictureUrl} name={acc.displayName || acc.username} size="lg" />
-                      <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full" style={{ background: 'var(--bg-1)', border: '2px solid var(--bg-base)' }}>
+                      <span>
                         <PlatformLogo platform={acc.platform} size={10} />
                       </span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-[14px] font-bold text-white leading-tight">{acc.displayName || acc.username}</div>
-                      <div className="truncate text-[11px] font-medium text-white/30 mt-0.5">@{acc.username}</div>
+                    <div className="viewer-profile-account-copy">
+                      <strong>{acc.displayName || acc.username}</strong>
+                      <span>@{acc.username}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button type="button" disabled={isPrimary || savingPrimary === accountKey} onClick={() => void setPrimaryAccount(acc)}
-                      className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold transition-colors disabled:cursor-default"
-                      style={{ background: isPrimary ? 'rgba(var(--accent-rgb), 0.10)' : 'var(--mat-thin)', border: isPrimary ? '1px solid rgba(var(--accent-rgb), 0.25)' : '1px solid var(--hairline)', color: isPrimary ? 'var(--accent)' : 'var(--fg-4)' }}
+                  <div className="viewer-profile-account-actions">
+                    <button
+                      type="button"
+                      disabled={isPrimary || savingPrimary === accountKey}
+                      onClick={() => void setPrimaryAccount(acc)}
+                      className={`viewer-profile-primary-button ${isPrimary ? 'is-primary' : ''}`}
                       title={isPrimary ? 'Primary account' : 'Make primary'}
                     >
                       {isPrimary ? <IconStarFilled size={11} /> : <IconStar size={11} />}
                       {isPrimary ? 'Primary' : 'Make primary'}
                     </button>
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="flex h-7 w-7 items-center justify-center rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/60 transition-colors" style={{ border: '1px solid var(--hairline)' }} title={`Open on ${platformNames[acc.platform]}`}>
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="viewer-profile-external-link" title={`Open on ${platformNames[acc.platform]}`}>
                       <IconExternalLink size={13} />
                     </a>
                   </div>
                 </div>
-                <div className={`grid gap-1.5 ${acc.platform === 'twitch' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                <div className={`viewer-profile-account-stats ${acc.platform === 'twitch' ? 'is-two-column' : ''}`}>
                   <MiniStat label="Chats" value={acc.totalChats.toLocaleString()} />
                   {acc.platform !== 'twitch' && <MiniStat label="Likes" value={acc.totalLikes.toLocaleString()} />}
                   <MiniStat label="Gifts" value={acc.totalGifts.toLocaleString()} />
                 </div>
               </div>
-            </div>
+            </article>
           )
         })}
       </div>
 
-      {suggestions.length > 0 && (
-        <div className="mt-8">
-          <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-accent">
-            Suggested connections
-            <span className="rounded-full px-1.5 text-[10px] font-bold leading-[18px]" style={{ background: 'rgba(var(--accent-rgb), 0.10)' }}>{suggestions.length}</span>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {suggestions.map(s => (
-              <div key={`${s.platform}:${s.username}`} className="flex items-center justify-between gap-3 rounded-xl p-3.5 transition-colors" style={{ background: 'rgba(var(--accent-rgb), 0.02)', border: '1px solid rgba(var(--accent-rgb), 0.12)' }}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <Avatar url={s.profilePictureUrl} name={s.displayName} size="md" />
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-bold text-white">{s.displayName || s.username}</div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/30 mt-0.5">
-                      <PlatformLogo platform={s.platform} size={10} />
-                      <span className="truncate">@{s.username}</span>
-                      <span className="text-white/15">·</span>
-                      <span className="shrink-0">{Math.round(s.similarity * 100)}% match</span>
+      {profileConnections.length > 0 && (
+        <div className="viewer-profile-subsection">
+          <SubsectionHeader
+            title="Service identities"
+            description="Used for recognition in connected services; these do not affect stream stats or the primary account."
+            count={profileConnections.length}
+          />
+          <div className="viewer-profile-service-list">
+            {profileConnections.map((connection) => {
+              const isDiscord = connection.platform === 'discord'
+              return (
+                <div
+                  key={`${connection.platform}:${connection.platformUserId || connection.username}`}
+                  className={`viewer-profile-service-card ${isDiscord ? 'is-discord' : ''}`}
+                >
+                  <div className="viewer-profile-service-identity">
+                    <span className="viewer-profile-service-icon">
+                      <PlatformLogo platform={connection.platform} size={20} />
+                    </span>
+                    <div className="viewer-profile-service-copy">
+                      <div>
+                        <strong>{platformNames[connection.platform]}</strong>
+                        <span>Connected identity</span>
+                      </div>
+                      <small>@{connection.username}</small>
                     </div>
                   </div>
+                  <div className="viewer-profile-service-purpose">
+                    <strong>Profile matching</strong>
+                    <span>{isDiscord ? 'Calls and voice overlays' : 'Connected service identity'}</span>
+                  </div>
                 </div>
-                <button type="button" disabled={linkingSuggestion === `${s.platform}:${s.username}`} onClick={() => void linkSuggestedAccount(s)}
-                  className="flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-accent hover:bg-accent/20 disabled:cursor-wait disabled:opacity-50 transition-colors"
-                  style={{ background: 'rgba(var(--accent-rgb), 0.10)' }}
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <div className="viewer-profile-subsection">
+          <SubsectionHeader
+            title="Suggested matches"
+            description="Potential accounts that may belong to this viewer. Review each match before linking it."
+            count={suggestions.length}
+            accent
+          />
+          <div className="viewer-profile-suggestion-grid">
+            {suggestions.map(s => (
+              <div key={`${s.platform}:${s.username}`} className="viewer-profile-suggestion-card">
+                <div className="viewer-profile-suggestion-identity">
+                  <Avatar url={s.profilePictureUrl} name={s.displayName} size="md" />
+                  <div>
+                    <strong>{s.displayName || s.username}</strong>
+                    <span>
+                      <PlatformLogo platform={s.platform} size={10} />
+                      @{s.username} · {Math.round(s.similarity * 100)}% match
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={linkingSuggestion === `${s.platform}:${s.username}`}
+                  onClick={() => void linkSuggestedAccount(s)}
+                  className="viewer-profile-link-button"
                 >
                   <IconCheck size={13} />
                   {linkingSuggestion === `${s.platform}:${s.username}` ? 'Linking…' : 'Link'}
@@ -574,12 +806,34 @@ function AccountsTab({
   )
 }
 
+function SubsectionHeader({
+  title,
+  description,
+  count,
+  accent = false
+}: {
+  title: string
+  description: string
+  count: number
+  accent?: boolean
+}) {
+  return (
+    <div className={`viewer-profile-subsection-header ${accent ? 'is-accent' : ''}`}>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+      <span>{count}</span>
+    </div>
+  )
+}
+
 /* ── MiniStat ─────────────────────────────────────────────── */
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg py-2" style={{ background: 'rgba(0,0,0,0.15)' }}>
-      <div className="text-[9px] font-semibold text-white/25 mb-0.5">{label}</div>
-      <div className="text-[13px] font-bold tabular-nums text-white/80">{value}</div>
+    <div className="viewer-profile-mini-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   )
 }

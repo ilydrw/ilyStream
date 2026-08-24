@@ -28,7 +28,8 @@ const SENSITIVE_SETTING_KEYS = new Set([
   'voicemodApiKey',
   'vtubeToken',
   'discordWebhookUrl',
-  'discordBotToken'
+  'discordBotToken',
+  'obsWorkspacePairToken'
 ])
 
 const ENC_PREFIX = 'enc:v1:'

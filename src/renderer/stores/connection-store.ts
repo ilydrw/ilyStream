@@ -15,6 +15,15 @@ export interface PlatformEventDiagnostic {
   type: string
   summary: string
   timestamp: Date
+  simulated: boolean
+}
+
+export interface PlatformProfileHealth {
+  state: 'idle' | 'healthy' | 'degraded'
+  lastSuccessAt?: number
+  lastFailureAt?: number
+  retryAt?: number
+  error?: string
 }
 
 interface ConnectionStore {
@@ -22,12 +31,14 @@ interface ConnectionStore {
   viewerCounts: Partial<Record<Platform, number>>
   errors: Partial<Record<Platform, string | null>>
   reconnectInfo: Partial<Record<Platform, ReconnectInfo | null>>
+  profileHealth: Partial<Record<Platform, PlatformProfileHealth>>
   recentEvents: PlatformEventDiagnostic[]
 
   setStatus: (platform: Platform, status: ConnectionStatus) => void
   setViewerCount: (platform: Platform, count: number) => void
   setError: (platform: Platform, message: string | null) => void
   setReconnectInfo: (platform: Platform, info: ReconnectInfo | null) => void
+  setProfileHealth: (platform: Platform, health: PlatformProfileHealth) => void
   addEventDiagnostic: (event: PlatformEventDiagnostic) => void
 }
 
@@ -36,16 +47,20 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
   viewerCounts: {},
   errors: {},
   reconnectInfo: {},
+  profileHealth: {},
   recentEvents: [],
 
   setStatus: (platform, status) =>
     set((state) => {
       const viewerCounts = { ...state.viewerCounts }
+      const profileHealth = { ...state.profileHealth }
       if (status !== 'connected') delete viewerCounts[platform]
+      if (status !== 'connected') delete profileHealth[platform]
 
       return {
         statuses: { ...state.statuses, [platform]: status },
         viewerCounts,
+        profileHealth,
         errors:
           status === 'error'
             ? state.errors
@@ -74,6 +89,11 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
   setReconnectInfo: (platform, info) =>
     set((state) => ({
       reconnectInfo: { ...state.reconnectInfo, [platform]: info }
+    })),
+
+  setProfileHealth: (platform, health) =>
+    set((state) => ({
+      profileHealth: { ...state.profileHealth, [platform]: health }
     })),
 
   addEventDiagnostic: (event) =>

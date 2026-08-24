@@ -83,7 +83,7 @@ export default function AICoHostPage() {
     try {
       const response = await window.api.ai.testConnection()
       if (response.success) {
-        toast.success('Neural link established')
+        toast.success(`Neural link established with ${response.model || settings.ai.model}`)
         setStatus('connected')
       } else {
         toast.error(`Neural link failed: ${response.error}`)
@@ -133,7 +133,7 @@ export default function AICoHostPage() {
 
             <div className="app-section-content !pt-0">
               <div className="flex flex-col gap-6">
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-3 gap-5">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11px] font-medium text-white/55">Endpoint URL</label>
                     <div className="flex gap-2">
@@ -152,6 +152,17 @@ export default function AICoHostPage() {
                         {isTesting ? 'Testing…' : 'Ping'}
                       </button>
                     </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-medium text-white/55">Model ID</label>
+                    <input
+                      type="text"
+                      value={settings.ai.model || ''}
+                      onChange={(e) => onUpdate('aiModel', e.target.value)}
+                      placeholder="e.g. glm-4.7-flash:latest"
+                      className="app-input w-full"
+                    />
                   </div>
 
                   <div className="flex flex-col gap-1.5">

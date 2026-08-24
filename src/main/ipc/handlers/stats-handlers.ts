@@ -3,7 +3,16 @@ import type { StatsService } from '../../stats/stats-service'
 import type { GetTopUsersOptions, ViewerAccountInput, ViewerProfileInput } from '../../../shared/stats'
 import type { Platform } from '../../platforms/types'
 
-export function registerStatsHandlers(stats: StatsService): void {
+export function registerStatsHandlers(
+  stats: StatsService,
+  /**
+   * Linking accounts can merge two viewer profiles, which re-points viewer-scoped
+   * settings (TTS voice rules, join sounds) onto the surviving profile. Those
+   * writes bypass the settings IPC path, so services holding cached settings have
+   * to be refreshed here.
+   */
+  onViewerProfilesMerged: () => Promise<void> | void = () => {}
+): void {
   ipcMain.handle('stats:get-global', () => stats.getGlobalStats())
 
   ipcMain.handle('stats:get-top-users', (_event, opts: GetTopUsersOptions) => {
@@ -46,13 +55,15 @@ export function registerStatsHandlers(stats: StatsService): void {
     return stats.getGlobalStats()
   })
 
-  ipcMain.handle('stats:link-accounts', (_event, payload: { p1: Platform; u1: string; p2: Platform; u2: string }) => {
+  ipcMain.handle('stats:link-accounts', async (_event, payload: { p1: Platform; u1: string; p2: Platform; u2: string }) => {
     const profile = stats.linkAccounts(payload.p1, payload.u1, payload.p2, payload.u2)
+    await onViewerProfilesMerged()
     return { success: true, profile }
   })
 
-  ipcMain.handle('stats:unlink-account', (_event, payload: { platform: Platform; username: string }) => {
+  ipcMain.handle('stats:unlink-account', async (_event, payload: { platform: Platform; username: string }) => {
     stats.unlinkAccount(payload.platform, payload.username)
+    await onViewerProfilesMerged()
     return { success: true }
   })
 
@@ -69,13 +80,17 @@ export function registerStatsHandlers(stats: StatsService): void {
     return stats.getLinkSuggestions(profileId)
   })
 
-  ipcMain.handle('stats:update-viewer-profile', (_event, payload: { id: string; patch: Partial<ViewerProfileInput> }) => {
+  ipcMain.handle('stats:update-viewer-profile', async (_event, payload: { id: string; patch: Partial<ViewerProfileInput> }) => {
     if (!payload?.id) return null
-    return stats.updateViewerProfile(payload.id, payload.patch || {})
+    const profile = stats.updateViewerProfile(payload.id, payload.patch || {})
+    await onViewerProfilesMerged()
+    return profile
   })
 
-  ipcMain.handle('stats:add-viewer-account', (_event, payload: { profileId: string; account: ViewerAccountInput }) => {
+  ipcMain.handle('stats:add-viewer-account', async (_event, payload: { profileId: string; account: ViewerAccountInput }) => {
     if (!payload?.profileId || !payload.account) return null
-    return stats.addViewerAccount(payload.profileId, payload.account)
+    const profile = stats.addViewerAccount(payload.profileId, payload.account)
+    await onViewerProfilesMerged()
+    return profile
   })
 }

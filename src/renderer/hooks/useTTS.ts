@@ -4,6 +4,7 @@ import {
   pauseKokoroSpeech,
   prefetchKokoroSpeech,
   preloadKokoroModel,
+  pruneKokoroPrefetches,
   resumeKokoroSpeech,
   speakWithKokoro,
   stopKokoroSpeech,
@@ -20,11 +21,12 @@ import { resolveAppSettings, type TTSUserVoiceOverride } from '../../shared/app-
 import { getElevenLabsApiKey } from '../../shared/elevenlabs-keys'
 import { DEFAULT_KOKORO_VOICE, ELEVENLABS_DEFAULT_VOICE_ID } from '../../shared/tts-providers'
 import { audioEngine } from '../utils/audio-engine'
+import { isStaleLiveTts } from '../../shared/tts-freshness'
 
 /**
  * Hook that handles TTS speech synthesis in the renderer process.
  * Receives speak commands from main process via IPC and delegates to
- * the Kokoro WASM engine or the Web Speech API depending on the voice profile.
+ * the isolated Kokoro engine or the Web Speech API depending on the voice profile.
  */
 export function useTTS(isMounted: boolean) {
   const setQueue = useTTSStore((s) => s.setQueue)
@@ -59,8 +61,8 @@ export function useTTS(isMounted: boolean) {
     })
 
     // Delay heavy TTS prep to prioritize UI paint and media stability.
-    // The Kokoro model holds hundreds of MB in WASM memory, so it is only
-    // preloaded when something can actually speak (TTS or the AI co-host).
+    // The Kokoro model runs in a disposable utility process, but only preload
+    // it when something can actually speak (TTS or the AI co-host).
     // If both are off, the model still loads lazily on the first real
     // speech request — the only cost is cold-start latency on that line.
     const prepTimer = setTimeout(() => {
@@ -83,7 +85,7 @@ export function useTTS(isMounted: boolean) {
       if (activeSpeechIdRef.current !== id) return
       activeSpeechIdRef.current = null
       setCurrentlySpeaking(null)
-      window.api.tts.notifySpeechComplete()
+      window.api.tts.notifySpeechComplete(id)
     }
 
     cleanups.push(
@@ -95,7 +97,15 @@ export function useTTS(isMounted: boolean) {
     // Handle speak commands from main process
     cleanups.push(
       window.api.on('tts:speak', async (data: any) => {
-        const { id, text, voice } = data
+        const { id, text, voice, eventType, enqueuedAt } = data
+
+        // IPC can be delivered after a blocked/reloaded renderer wakes up. Do
+        // not turn that delayed command into audible chat from minutes ago.
+        if (isStaleLiveTts({ eventType, enqueuedAt })) {
+          console.warn(`[tts] Dropping stale ${eventType || 'live'} speech ${id}.`)
+          window.api.tts.notifySpeechComplete(id)
+          return
+        }
 
         activeSpeechIdRef.current = id
         setCurrentlySpeaking(text)
@@ -130,13 +140,24 @@ export function useTTS(isMounted: boolean) {
             window.api.overlay?.notifySpeechState?.(true, true)
             const apiKey = getElevenLabsApiKey(elevenlabsSettingsRef.current, voice?.elevenlabsApiKeyId) || elevenlabsKeyRef.current
             await speakWithElevenLabs(id, text, voice, apiKey)
+            completeSpeech(id)
+            return
           } catch (error) {
-            console.error('[tts] ElevenLabs speech failed:', error)
+            console.error('[tts] ElevenLabs speech failed, falling back to local Kokoro:', error)
+            if (activeSpeechIdRef.current !== id) return
+
+            try {
+              await speakWithKokoro(id, text, toMixerRoutableVoice(voice))
+              completeSpeech(id)
+              return
+            } catch (fallbackError) {
+              console.error('[tts] Kokoro fallback failed, falling back to system voice:', fallbackError)
+              if (activeSpeechIdRef.current !== id) return
+              // Continue to the browser's system speech fallback below.
+            }
           } finally {
             window.api.overlay?.notifySpeechState?.(false, false)
-            completeSpeech(id)
           }
-          return
         }
 
         const utterance = new SpeechSynthesisUtterance(text)
@@ -178,8 +199,8 @@ export function useTTS(isMounted: boolean) {
     // generated character, so it must never prefetch invisible/skippable speech.
     cleanups.push(
       window.api.on('tts:prefetch', (data: any) => {
-        const { id, text, voice } = data
-        if (voice?.provider === 'kokoro') {
+        const { id, text, voice, eventType, enqueuedAt } = data
+        if (voice?.provider === 'kokoro' && !isStaleLiveTts({ eventType, enqueuedAt })) {
           prefetchKokoroSpeech(id, text, voice)
         }
       })
@@ -217,7 +238,11 @@ export function useTTS(isMounted: boolean) {
     // Handle queue updates
     cleanups.push(
       window.api.on('tts:queue-update', (queue: any) => {
-        setQueue(queue)
+        const nextQueue = Array.isArray(queue) ? queue : []
+        setQueue(nextQueue)
+        const retainedIds = nextQueue.map((item: any) => String(item?.id || '')).filter(Boolean)
+        if (activeSpeechIdRef.current) retainedIds.push(activeSpeechIdRef.current)
+        pruneKokoroPrefetches(retainedIds)
       })
     )
 

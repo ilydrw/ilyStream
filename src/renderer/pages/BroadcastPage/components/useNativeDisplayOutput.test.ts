@@ -363,6 +363,10 @@ describe('shouldPresentNativeProgramPreview', () => {
     expect(shouldPresentNativeProgramPreview(false, false, '16:9')).toBe(false)
     expect(shouldPresentNativeProgramPreview(false, true, '9:16')).toBe(false)
   })
+
+  it('keeps the Canvas2D Program owner when recording or a legacy output needs it', () => {
+    expect(shouldPresentNativeProgramPreview(false, true, '16:9', true)).toBe(false)
+  })
 })
 
 describe('aspect-ratio aware native scenes', () => {

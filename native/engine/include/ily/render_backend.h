@@ -72,6 +72,29 @@ public:
         return outputIndex == 0 ? GetSharedOutputTexture(outHandle, outWidth, outHeight) : ILY_ERROR_NOT_FOUND;
     }
 
+    // Dedicated broadcast Program export. This is deliberately separate from
+    // GetSharedOutputTexture: Electron keeps its persistent presentation
+    // texture while external consumers use a bounded keyed-mutex pool.
+    virtual IlyResult GetProgramExportDescriptor(IlyProgramExportDescriptor* outDescriptor) {
+        (void)outDescriptor;
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+    virtual IlyResult SetProgramExportEnabled(bool enabled) {
+        (void)enabled;
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+    virtual IlyResult DuplicateProgramExportHandles(
+        uint32_t targetProcessId,
+        uint64_t expectedGeneration,
+        uint32_t expectedSlotCount,
+        IlyProgramExportDuplicatedHandles* outHandles) {
+        (void)targetProcessId;
+        (void)expectedGeneration;
+        (void)expectedSlotCount;
+        (void)outHandles;
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+
     // Packed LUID (high << 32 | low) of the GPU adapter the backend is running
     // on, when the platform has one. Native capture sources must create their
     // own D3D11 device on this adapter: a shared texture created on a different

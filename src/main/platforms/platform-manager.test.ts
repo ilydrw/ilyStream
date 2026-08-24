@@ -36,6 +36,22 @@ describe('PlatformManager', () => {
     expect(resolvePlatformAutoReconnect({ platform: { autoReconnect: false } })).toBe(false)
   })
 
+  it('immediately retries only connectors waiting for a live channel', async () => {
+    const db = { getAllSettings: vi.fn().mockReturnValue({}) } as any
+    const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
+    const manager = new PlatformManager(db, tiktokChatSender)
+    const retryTikTok = vi.fn().mockResolvedValue(true)
+    const retryTwitch = vi.fn().mockResolvedValue(false)
+    ;(manager as any).connectors = new Map([
+      ['tiktok', { retryWaitingNow: retryTikTok }],
+      ['twitch', { retryWaitingNow: retryTwitch }]
+    ])
+
+    await expect(manager.retryWaitingConnections()).resolves.toEqual(['tiktok'])
+    expect(retryTikTok).toHaveBeenCalledTimes(1)
+    expect(retryTwitch).toHaveBeenCalledTimes(1)
+  })
+
   it('persists refreshed platform access tokens without dropping the existing refresh token', () => {
     const existingConfig = {
       platform: 'twitch',
@@ -64,5 +80,40 @@ describe('PlatformManager', () => {
       accessToken: 'new-access-token',
       refreshToken: 'old-refresh-token'
     })
+  })
+
+  it('removes only a Discord RPC token after Discord rejects its application binding', () => {
+    const existingConfig = {
+      platform: 'discord',
+      enabled: false,
+      webhookUrl: 'https://discord.com/api/webhooks/example',
+      botToken: 'bot-token',
+      clientId: '123456789012345678',
+      clientSecret: 'client-secret',
+      redirectUrl: 'http://localhost:8888/callback/discord',
+      accessToken: 'stale-rpc-access-token'
+    }
+    const db = {
+      getAllSettings: vi.fn().mockReturnValue({}),
+      getPlatformConfig: vi.fn().mockReturnValue(existingConfig),
+      savePlatformConfig: vi.fn()
+    } as any
+    const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
+    const manager = new PlatformManager(db, tiktokChatSender)
+
+    ;(manager as any).discordConnector.emit('token-invalidated', { platform: 'discord' })
+
+    expect(db.savePlatformConfig).toHaveBeenCalledOnce()
+    const saved = db.savePlatformConfig.mock.calls[0][0]
+    expect(saved).toEqual({
+      platform: 'discord',
+      enabled: false,
+      webhookUrl: existingConfig.webhookUrl,
+      botToken: existingConfig.botToken,
+      clientId: existingConfig.clientId,
+      clientSecret: existingConfig.clientSecret,
+      redirectUrl: existingConfig.redirectUrl
+    })
+    expect('accessToken' in saved).toBe(false)
   })
 })

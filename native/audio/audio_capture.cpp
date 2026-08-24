@@ -16,6 +16,9 @@
 #include <napi.h>
 
 #include <atomic>
+#include <algorithm>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -23,6 +26,11 @@
 #include <vector>
 
 #include "SpscQueue.h"
+#include "../program-transport/program-audio-ring.hpp"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -56,6 +64,246 @@ struct CaptureSession {
 
 std::mutex g_sessionMutex;
 std::unique_ptr<CaptureSession> g_session;
+
+#ifdef _WIN32
+struct ProgramAudioTransport {
+    HANDLE mapping = nullptr;
+    void* view = nullptr;
+    ilystream::program_transport::ProgramAudioRingHeader* header = nullptr;
+    float* samples = nullptr;
+    std::wstring ringName;
+};
+
+std::mutex g_programAudioMutex;
+std::unique_ptr<ProgramAudioTransport> g_programAudio;
+
+void StopProgramAudioTransportLocked() {
+    if (!g_programAudio) return;
+
+    if (g_programAudio->header) {
+        auto* sequence = reinterpret_cast<volatile LONG64*>(&g_programAudio->header->publishSequence);
+        InterlockedIncrement64(sequence);
+        g_programAudio->header->magic = 0;
+        MemoryBarrier();
+        InterlockedIncrement64(sequence);
+    }
+    if (g_programAudio->view) UnmapViewOfFile(g_programAudio->view);
+    if (g_programAudio->mapping) CloseHandle(g_programAudio->mapping);
+    g_programAudio.reset();
+}
+
+bool IsValidProgramAudioRingName(const std::string& value) {
+    constexpr const char* prefix = "Local\\ilyStream.Program.Audio.";
+    constexpr size_t prefixLength = 30;
+    if (value.size() <= prefixLength || value.size() > prefixLength + 64 ||
+        value.compare(0, prefixLength, prefix) != 0) {
+        return false;
+    }
+    for (size_t index = prefixLength; index < value.size(); ++index) {
+        const unsigned char ch = static_cast<unsigned char>(value[index]);
+        const bool allowed = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                             (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-';
+        if (!allowed) return false;
+    }
+    return true;
+}
+
+std::wstring Utf8ToWide(const std::string& value) {
+    if (value.empty()) return {};
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                           static_cast<int>(value.size()), nullptr, 0);
+    if (length <= 0) return {};
+    std::wstring wide(static_cast<size_t>(length), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                            static_cast<int>(value.size()), wide.data(), length) != length) {
+        return {};
+    }
+    return wide;
+}
+
+bool ReadUint64(const Napi::Value& value, std::uint64_t& out) {
+    if (!value.IsBigInt()) return false;
+    bool lossless = false;
+    out = value.As<Napi::BigInt>().Uint64Value(&lossless);
+    return lossless;
+}
+
+Napi::Value StartProgramAudioTransport(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "Expected a Program audio transport options object")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Object options = info[0].As<Napi::Object>();
+    if (!options.Has("ringName") || !options.Get("ringName").IsString() ||
+        !options.Has("generation") || !options.Has("sampleRate") ||
+        !options.Has("channels") || !options.Has("capacityFrames") ||
+        !options.Has("blockFrames")) {
+        Napi::TypeError::New(env, "Incomplete Program audio transport options")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    const std::string ringName = options.Get("ringName").As<Napi::String>().Utf8Value();
+    std::uint64_t generation = 0;
+    const std::uint32_t sampleRate = options.Get("sampleRate").As<Napi::Number>().Uint32Value();
+    const std::uint32_t channels = options.Get("channels").As<Napi::Number>().Uint32Value();
+    const std::uint32_t capacityFrames = options.Get("capacityFrames").As<Napi::Number>().Uint32Value();
+    const std::uint32_t blockFrames = options.Get("blockFrames").As<Napi::Number>().Uint32Value();
+
+    if (!IsValidProgramAudioRingName(ringName) ||
+        !ReadUint64(options.Get("generation"), generation) || generation == 0 ||
+        sampleRate != 48000 || channels != 2 || blockFrames == 0 || blockFrames > 4096 ||
+        capacityFrames < blockFrames || capacityFrames > 480000 ||
+        capacityFrames % blockFrames != 0) {
+        Napi::TypeError::New(env, "Invalid Program audio transport options")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    const std::uint64_t sampleBytes = static_cast<std::uint64_t>(capacityFrames) * channels * sizeof(float);
+    const std::uint64_t mappingBytes = ilystream::program_transport::kProgramAudioRingHeaderBytes + sampleBytes;
+    if (mappingBytes > std::numeric_limits<std::uint32_t>::max()) {
+        Napi::RangeError::New(env, "Program audio ring is too large").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    const std::wstring wideName = Utf8ToWide(ringName);
+    if (wideName.empty()) {
+        Napi::TypeError::New(env, "Program audio ring name is not valid UTF-8")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    std::lock_guard<std::mutex> lock(g_programAudioMutex);
+    StopProgramAudioTransportLocked();
+
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+                                        static_cast<DWORD>(mappingBytes >> 32U),
+                                        static_cast<DWORD>(mappingBytes & 0xffffffffU), wideName.c_str());
+    if (!mapping) {
+        Napi::Error::New(env, "Could not create the Program audio ring")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(mapping);
+        Napi::Error::New(env, "Program audio ring name is already in use")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    void* view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, static_cast<SIZE_T>(mappingBytes));
+    if (!view) {
+        CloseHandle(mapping);
+        Napi::Error::New(env, "Could not map the Program audio ring")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    std::memset(view, 0, static_cast<size_t>(mappingBytes));
+    auto transport = std::make_unique<ProgramAudioTransport>();
+    transport->mapping = mapping;
+    transport->view = view;
+    transport->header = static_cast<ilystream::program_transport::ProgramAudioRingHeader*>(view);
+    transport->samples = reinterpret_cast<float*>(
+        static_cast<std::uint8_t*>(view) + ilystream::program_transport::kProgramAudioRingHeaderBytes);
+    transport->ringName = wideName;
+
+    transport->header->magic = ilystream::program_transport::kProgramAudioRingMagic;
+    transport->header->version = ilystream::program_transport::kProgramAudioRingVersion;
+    transport->header->headerBytes = static_cast<std::uint16_t>(
+        ilystream::program_transport::kProgramAudioRingHeaderBytes);
+    transport->header->mappingBytes = static_cast<std::uint32_t>(mappingBytes);
+    transport->header->sampleRate = sampleRate;
+    transport->header->channels = static_cast<std::uint16_t>(channels);
+    transport->header->format = ilystream::program_transport::kProgramAudioFormatF32Interleaved;
+    transport->header->capacityFrames = capacityFrames;
+    transport->header->blockFrames = blockFrames;
+    transport->header->generation = generation;
+    g_programAudio = std::move(transport);
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("ringName", Napi::String::New(env, ringName));
+    result.Set("generation", Napi::BigInt::New(env, generation));
+    result.Set("sampleRate", Napi::Number::New(env, sampleRate));
+    result.Set("channels", Napi::Number::New(env, channels));
+    result.Set("capacityFrames", Napi::Number::New(env, capacityFrames));
+    result.Set("blockFrames", Napi::Number::New(env, blockFrames));
+    return result;
+}
+
+Napi::Value PushProgramAudio(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected (Buffer, timestampNs)").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    std::uint64_t timestampNs = 0;
+    if (!ReadUint64(info[1], timestampNs) || timestampNs == 0) {
+        Napi::TypeError::New(env, "Program audio timestamp must be a positive bigint")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    const auto pcm = info[0].As<Napi::Buffer<std::uint8_t>>();
+    std::lock_guard<std::mutex> lock(g_programAudioMutex);
+    if (!g_programAudio || !g_programAudio->header ||
+        g_programAudio->header->magic != ilystream::program_transport::kProgramAudioRingMagic) {
+        return Napi::Boolean::New(env, false);
+    }
+
+    auto* header = g_programAudio->header;
+    const size_t bytesPerFrame = static_cast<size_t>(header->channels) * sizeof(float);
+    if (pcm.Length() == 0 || pcm.Length() % bytesPerFrame != 0) {
+        return Napi::Boolean::New(env, false);
+    }
+
+    size_t frameCount = pcm.Length() / bytesPerFrame;
+    if (frameCount > header->blockFrames) return Napi::Boolean::New(env, false);
+
+    const float* input = reinterpret_cast<const float*>(pcm.Data());
+    std::uint64_t writeFrame = header->writeFrame;
+    if (frameCount > header->capacityFrames) {
+        const size_t skipped = frameCount - header->capacityFrames;
+        input += skipped * header->channels;
+        frameCount = header->capacityFrames;
+        header->framesDropped += skipped;
+    }
+
+    auto* sequence = reinterpret_cast<volatile LONG64*>(&header->publishSequence);
+    InterlockedIncrement64(sequence);
+
+    const size_t firstFrame = static_cast<size_t>(writeFrame % header->capacityFrames);
+    const size_t firstCount = std::min(frameCount, static_cast<size_t>(header->capacityFrames) - firstFrame);
+    std::memcpy(g_programAudio->samples + firstFrame * header->channels, input,
+                firstCount * bytesPerFrame);
+    if (firstCount < frameCount) {
+        std::memcpy(g_programAudio->samples, input + firstCount * header->channels,
+                    (frameCount - firstCount) * bytesPerFrame);
+    }
+
+    header->anchorFrame = writeFrame;
+    header->anchorTimestampNs = timestampNs;
+    writeFrame += frameCount;
+    header->writeFrame = writeFrame;
+    header->oldestFrame = writeFrame > header->capacityFrames
+        ? writeFrame - header->capacityFrames
+        : 0;
+    MemoryBarrier();
+    InterlockedIncrement64(sequence);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value StopProgramAudioTransport(const Napi::CallbackInfo& info) {
+    std::lock_guard<std::mutex> lock(g_programAudioMutex);
+    StopProgramAudioTransportLocked();
+    return info.Env().Undefined();
+}
+#endif
 
 void DataCallback(ma_device* device, void* /*output*/, const void* input, ma_uint32 frameCount) {
     auto* session = static_cast<CaptureSession*>(device->pUserData);
@@ -326,6 +574,11 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("startCapture", Napi::Function::New(env, StartCapture));
     exports.Set("stopCapture", Napi::Function::New(env, StopCapture));
     exports.Set("getStatus", Napi::Function::New(env, GetStatus));
+#ifdef _WIN32
+    exports.Set("startProgramAudioTransport", Napi::Function::New(env, StartProgramAudioTransport));
+    exports.Set("pushProgramAudio", Napi::Function::New(env, PushProgramAudio));
+    exports.Set("stopProgramAudioTransport", Napi::Function::New(env, StopProgramAudioTransport));
+#endif
     return exports;
 }
 

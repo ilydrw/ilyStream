@@ -2,6 +2,7 @@ import { AnyStreamEvent } from '../platforms/types'
 import type { OverlayAlertItem, OverlayFeedBadge, OverlayFeedItem } from '../../shared/overlay'
 import { shouldSuppressStreamEventFromChat } from '../../shared/chat-event-filter'
 import { htmlToPlainText, plainTextToSafeHtml } from '../../shared/plain-text'
+import { getSubscriptionFeedPresentation } from '../../shared/subscription-display'
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -107,6 +108,7 @@ export function eventToOverlayFeedItem(event: AnyStreamEvent): OverlayFeedItem |
         profilePictureUrl: event.user.profilePictureUrl,
         badges,
         message: event.message,
+        emotes: event.emotes.length ? event.emotes : undefined,
         accentColor,
         timestamp: toISO(event.timestamp),
         emphasis: false
@@ -129,22 +131,23 @@ export function eventToOverlayFeedItem(event: AnyStreamEvent): OverlayFeedItem |
         emphasis: true
       }
 
-    case 'subscription':
+    case 'subscription': {
+      const presentation = getSubscriptionFeedPresentation(event)
+      const displayUser = presentation.user
       return {
         id: event.id,
         kind: 'subscription',
         platform: event.platform,
         platformLabel,
-        displayName: event.user.displayName || event.user.username,
-        profilePictureUrl: event.user.profilePictureUrl,
-        badges,
-        message: event.isGift
-          ? `received a gifted ${event.tier} subscription`
-          : `subscribed at ${event.tier}${event.months > 1 ? ` for ${event.months} months` : ''}`,
+        displayName: displayUser.displayName || displayUser.username || 'Someone',
+        profilePictureUrl: displayUser.profilePictureUrl,
+        badges: event.isGift ? undefined : badges,
+        message: presentation.message,
         accentColor,
         timestamp: toISO(event.timestamp),
         emphasis: true
       }
+    }
 
     case 'follow':
       return {

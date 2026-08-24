@@ -4,6 +4,10 @@
 export const STREAM_PLATFORMS = ['tiktok', 'twitch', 'youtube', 'kick'] as const
 export type StreamPlatform = (typeof STREAM_PLATFORMS)[number]
 
+export function isStreamPlatform(platform: string): platform is StreamPlatform {
+  return (STREAM_PLATFORMS as readonly string[]).includes(platform)
+}
+
 /** Every platform the app knows about, including social/presence-only ones. */
 export const ALL_PLATFORMS = [
   ...STREAM_PLATFORMS,
@@ -90,6 +94,8 @@ export interface GiftEvent extends StreamEvent {
   giftId: string
   giftCount: number
   giftImageUrl?: string
+  /** TikTok's Super Fan Box is a gift, but uses the subscription alert route. */
+  isSuperFanBox?: boolean
   /** Value in USD cents */
   monetaryValue: number
   isCombo: boolean
@@ -278,6 +284,9 @@ export interface DiscordConfig extends PlatformConfig {
   webhookUrl: string
   botToken?: string
   clientId?: string
+  clientSecret?: string
+  redirectUrl?: string
+  accessToken?: string
 }
 
 export interface FacebookConfig extends PlatformConfig {

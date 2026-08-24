@@ -1,4 +1,5 @@
 export * from './settings/types'
 export * from './settings/defaults'
 export * from './settings/resolver'
+export * from './settings/chat-retention'
 export * from './app-themes'

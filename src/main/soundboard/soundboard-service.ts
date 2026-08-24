@@ -17,6 +17,7 @@ export interface SoundFile {
  * sounds ('alerts'), and per-viewer join sounds ('join').
  */
 export type SoundCategory = 'alerts' | 'board' | 'join'
+export type SoundPlaybackMode = 'queued' | 'overlap'
 
 const SOUND_CATEGORIES: SoundCategory[] = ['alerts', 'board', 'join']
 
@@ -129,7 +130,7 @@ export class SoundboardService extends EventEmitter {
     }
   }
 
-  playSound(id: string, volume = 1.0): boolean {
+  playSound(id: string, volume = 1.0, playbackMode: SoundPlaybackMode = 'queued'): boolean {
     const filePath = this.getSoundPath(id)
     if (!filePath || !existsSync(filePath)) {
       console.warn(`[soundboard] Sound not found: ${id}`)
@@ -146,7 +147,8 @@ export class SoundboardService extends EventEmitter {
       fileUrl: pathToFileURL(filePath).toString(),
       dataUrl,
       mimeType,
-      volume: clampVolume(volume)
+      volume: clampVolume(volume),
+      playbackMode
     })
 
     return true

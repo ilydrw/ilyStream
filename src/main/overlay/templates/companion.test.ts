@@ -1,3 +1,5 @@
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { buildCompanionHtml } from './companion'
 
@@ -30,5 +32,34 @@ describe('DeskThing companion chat feed', () => {
     expect(html).not.toContain('cancelAnimationFrame(chatScrollFrame)')
     expect(html).toContain('feedEl.scrollTop = feedEl.scrollHeight;')
     expect(html).toContain('const chatResizeObserver = new ResizeObserver(() => scheduleChatScrollToBottom());')
+  })
+
+  it('renders platform emote images with readable text fallbacks', () => {
+    const html = renderCompanion()
+
+    expect(html).toContain("function renderChatMessage(container, item)")
+    expect(html).toContain("appendEmoteImage(container, safeImageUrl(emote.imageUrl), fallback);")
+    expect(html).toContain("return '[TikTok Fan Club emote]';")
+    expect(html).toContain("image.replaceWith(document.createTextNode(fallback))")
+    expect(html).toContain('.msg .emote {')
+  })
+
+  it('uses bundled image art for TikTok shortcodes and Unicode emoji', () => {
+    const html = renderCompanion()
+
+    expect(html).toContain('/overlay/companion/emoji/emoji_u1f602.svg')
+    expect(html).toContain('/overlay/companion/emoji/emoji_u1f60d.svg')
+    expect(html).toContain("function resolveTikTokShortcodeAsset(shortcode)")
+    expect(html).toContain("function appendTikTokUnicodeEmoji(container, text)")
+    expect(html).toContain("const shortcodePattern = /\\[([^\\[\\]\\r\\n]{1,48})\\]/g;")
+
+    const assetNames = new Set(
+      Array.from(html.matchAll(/\/overlay\/companion\/emoji\/(emoji_u[0-9a-f_]+\.svg)/g))
+        .map((match) => match[1])
+    )
+    expect(assetNames.size).toBeGreaterThan(30)
+    for (const assetName of assetNames) {
+      expect(existsSync(join(process.cwd(), 'resources', 'companion-emojis', assetName))).toBe(true)
+    }
   })
 })

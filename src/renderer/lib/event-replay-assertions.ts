@@ -42,7 +42,8 @@ export function evaluateReplayAssertions(
     assertGgGiftsDoNotDoubleAlert(session, runEntries),
     assertSpotifyCommandsUpdateQueue(session, runEntries),
     assertDeskThingReceivesPackets(runEntries),
-    assertOverlayReceivesPackets(runEntries)
+    assertOverlayReceivesPackets(runEntries),
+    assertOverlayPaintLatency(runEntries)
   ].filter((result): result is ReplayAssertionResult => Boolean(result))
 
   return {
@@ -257,6 +258,40 @@ function assertOverlayReceivesPackets(entries: EventLabEntry[]): ReplayAssertion
     expected: '>= 1 overlay broadcast when overlay features are active',
     observed: `${overlayPackets.length} overlay packet(s)`,
     evidenceCount: overlayPackets.length
+  }
+}
+
+function assertOverlayPaintLatency(entries: EventLabEntry[]): ReplayAssertionResult {
+  const receipts = entries
+    .filter((entry) => entry.kind === 'performance')
+    .map((entry) => Number((entry.payload as any)?.paintMs))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((a, b) => a - b)
+
+  if (receipts.length === 0) {
+    return {
+      id: 'overlay-paint-latency',
+      label: 'Overlay first-paint latency',
+      status: 'warning',
+      detail: 'No sampled browser-source paint receipts were observed. Open at least one affected overlay while running the replay.',
+      expected: 'p95 <= 100ms',
+      observed: 'No paint samples',
+      evidenceCount: 0
+    }
+  }
+
+  const p95Index = Math.max(0, Math.ceil(receipts.length * 0.95) - 1)
+  const p95 = receipts[p95Index]
+  return {
+    id: 'overlay-paint-latency',
+    label: 'Overlay first-paint latency',
+    status: p95 <= 100 ? 'passed' : 'failed',
+    detail: p95 <= 100
+      ? 'Sampled overlays stayed within the initial local first-paint budget.'
+      : 'Sampled overlay first paint exceeded the 100ms p95 budget.',
+    expected: 'p95 <= 100ms',
+    observed: `p95 ${Math.round(p95)}ms across ${receipts.length} sample(s)`,
+    evidenceCount: receipts.length
   }
 }
 

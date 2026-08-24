@@ -274,6 +274,49 @@ IlyResult Renderer::GetSharedOutputTexture(void** outHandle, uint32_t* outWidth,
     return future.get();
 }
 
+IlyResult Renderer::GetProgramExportDescriptor(IlyProgramExportDescriptor* outDescriptor) {
+    if (!m_threadRunning || !outDescriptor) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::GetProgramExportDescriptor;
+    cmd.programExportDescriptor = outDescriptor;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::SetProgramExportEnabled(bool enabled) {
+    if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::SetProgramExportEnabled;
+    cmd.programExportEnabled = enabled;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
+IlyResult Renderer::DuplicateProgramExportHandles(
+    uint32_t targetProcessId,
+    uint64_t expectedGeneration,
+    uint32_t expectedSlotCount,
+    IlyProgramExportDuplicatedHandles* outHandles) {
+    if (!m_threadRunning || !outHandles) return ILY_ERROR_INITIALIZATION_FAILED;
+    auto promise = std::make_shared<std::promise<IlyResult>>();
+    auto future = promise->get_future();
+    RenderThreadCommand cmd{};
+    cmd.type = RenderCommandType::DuplicateProgramExportHandles;
+    cmd.targetProcessId = targetProcessId;
+    cmd.expectedExportGeneration = expectedGeneration;
+    cmd.expectedExportSlotCount = expectedSlotCount;
+    cmd.programExportHandles = outHandles;
+    cmd.promise = promise;
+    m_commandQueue.Push(cmd);
+    return future.get();
+}
+
 IlyResult Renderer::ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) {
     if (!m_threadRunning) return ILY_ERROR_INITIALIZATION_FAILED;
     auto promise = std::make_shared<std::promise<IlyResult>>();
@@ -432,6 +475,40 @@ void Renderer::RenderThreadLoop() {
                         ? backend->GetSharedOutputTextureForOutput(
                               cmd.outputIndex, cmd.sharedOutputHandle,
                               cmd.sharedOutputWidth, cmd.sharedOutputHeight)
+                        : ILY_ERROR_INITIALIZATION_FAILED;
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::GetProgramExportDescriptor: {
+                    IRenderBackend* backend = m_device.GetBackend();
+                    IlyResult res = backend
+                        ? backend->GetProgramExportDescriptor(cmd.programExportDescriptor)
+                        : ILY_ERROR_INITIALIZATION_FAILED;
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::SetProgramExportEnabled: {
+                    IRenderBackend* backend = m_device.GetBackend();
+                    IlyResult res = backend
+                        ? backend->SetProgramExportEnabled(cmd.programExportEnabled)
+                        : ILY_ERROR_INITIALIZATION_FAILED;
+                    if (cmd.promise) {
+                        cmd.promise->set_value(res);
+                    }
+                    break;
+                }
+                case RenderCommandType::DuplicateProgramExportHandles: {
+                    IRenderBackend* backend = m_device.GetBackend();
+                    IlyResult res = backend
+                        ? backend->DuplicateProgramExportHandles(
+                              cmd.targetProcessId,
+                              cmd.expectedExportGeneration,
+                              cmd.expectedExportSlotCount,
+                              cmd.programExportHandles)
                         : ILY_ERROR_INITIALIZATION_FAILED;
                     if (cmd.promise) {
                         cmd.promise->set_value(res);

@@ -28,6 +28,9 @@ enum class RenderCommandType {
     CreateSpriteProgram,
     DrawQuad,
     GetSharedOutputTexture,
+    GetProgramExportDescriptor,
+    SetProgramExportEnabled,
+    DuplicateProgramExportHandles,
     ReadPixels,
     CreateOutput,
     DestroyOutput,
@@ -38,7 +41,8 @@ enum class RenderCommandType {
 //
 // MEMORY SAFETY INVARIANTS FOR RAW POINTERS:
 // The fields `textureData`, `sharedOutputHandle`, `sharedOutputWidth`,
-// `sharedOutputHeight`, `readbackDst`, `readbackOutWidth`, and
+// `sharedOutputHeight`, `programExportDescriptor`, `programExportHandles`,
+// `readbackDst`, `readbackOutWidth`, and
 // `readbackOutHeight` are raw pointers passed from the caller thread (e.g. JS/V8).
 // These pointers are SAFE to use by the render thread ONLY because the enqueueing 
 // methods (e.g. CreateTexture, UpdateTexture, ReadPixels) are synchronous 
@@ -78,6 +82,12 @@ struct RenderThreadCommand {
     void** sharedOutputHandle = nullptr;
     uint32_t* sharedOutputWidth = nullptr;
     uint32_t* sharedOutputHeight = nullptr;
+    IlyProgramExportDescriptor* programExportDescriptor = nullptr;
+    bool programExportEnabled = false;
+    uint32_t targetProcessId = 0;
+    uint64_t expectedExportGeneration = 0;
+    uint32_t expectedExportSlotCount = 0;
+    IlyProgramExportDuplicatedHandles* programExportHandles = nullptr;
     // Readback destination (ReadPixels): caller-owned buffer + size and optional
     // out-params for the surface dimensions.
     void* readbackDst = nullptr;
@@ -119,6 +129,13 @@ public:
     ResourceHandle CreateSpriteProgram();
     IlyResult DrawQuad(ResourceHandle textureHandle, const IlyTransform& transform, float opacity, IlyBlendMode blendMode, const IlyChromaKey* chroma = nullptr, const IlyColorAdjust* colorAdjust = nullptr, float cornerRadius = 0.0f, float blurSigma = 0.0f, const IlyCircleMask* circleMask = nullptr, ResourceHandle maskTexture = ILY_INVALID_HANDLE, const float* maskTransform = nullptr);
     IlyResult GetSharedOutputTexture(void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
+    IlyResult GetProgramExportDescriptor(IlyProgramExportDescriptor* outDescriptor);
+    IlyResult SetProgramExportEnabled(bool enabled);
+    IlyResult DuplicateProgramExportHandles(
+        uint32_t targetProcessId,
+        uint64_t expectedGeneration,
+        uint32_t expectedSlotCount,
+        IlyProgramExportDuplicatedHandles* outHandles);
     IlyResult ReadPixels(void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight);
 
     RenderDevice& GetDevice() { return m_device; }

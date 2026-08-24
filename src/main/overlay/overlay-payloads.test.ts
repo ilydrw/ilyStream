@@ -5,7 +5,7 @@ import {
   sanitizeOverlayHtml,
   shouldBroadcastParticleEvent
 } from './overlay-payloads'
-import type { ChatEvent, GiftEvent, LikeEvent } from '../platforms/types'
+import type { ChatEvent, GiftEvent, LikeEvent, SubscriptionEvent } from '../platforms/types'
 
 describe('overlay payload helpers', () => {
   it('maps chat events into overlay feed items', () => {
@@ -36,6 +36,56 @@ describe('overlay payload helpers', () => {
         message: 'hello overlay'
       })
     )
+  })
+
+  it('preserves TikTok and Twitch emote metadata for DeskThing chat clients', () => {
+    const event: ChatEvent = {
+      id: 'chat-emote-1',
+      platform: 'tiktok',
+      timestamp: new Date('2026-04-10T10:00:00.000Z'),
+      type: 'chat',
+      raw: {},
+      message: ':7630614458817743630:',
+      emotes: [{
+        id: '7630614458817743630',
+        name: ':7630614458817743630:',
+        imageUrl: 'https://example.test/fan-emote.webp',
+        startIndex: 0,
+        endIndex: 20
+      }],
+      user: {
+        id: 'user-emote-1',
+        username: 'fan_friend',
+        displayName: 'Fan Friend',
+        isModerator: false,
+        isSubscriber: true,
+        isVip: false,
+        badges: []
+      }
+    }
+
+    expect(eventToOverlayFeedItem(event)).toEqual(expect.objectContaining({
+      message: ':7630614458817743630:',
+      emotes: event.emotes
+    }))
+
+    const twitchEvent: ChatEvent = {
+      ...event,
+      id: 'chat-emote-2',
+      platform: 'twitch',
+      message: 'PogChamp',
+      emotes: [{
+        id: '305954156',
+        name: 'PogChamp',
+        imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/2.0',
+        startIndex: 0,
+        endIndex: 7
+      }]
+    }
+    expect(eventToOverlayFeedItem(twitchEvent)).toEqual(expect.objectContaining({
+      message: 'PogChamp',
+      emotes: twitchEvent.emotes
+    }))
   })
 
   it('maps monetized events into highlighted overlay feed items', () => {
@@ -70,6 +120,40 @@ describe('overlay payload helpers', () => {
         emphasis: true
       })
     )
+  })
+
+  it('attributes Twitch gift subscriptions to the gifter with a readable tier', () => {
+    const event: SubscriptionEvent = {
+      id: 'gift-sub-1',
+      platform: 'twitch',
+      timestamp: new Date('2026-08-01T05:23:08.811Z'),
+      type: 'subscription',
+      raw: {
+        gifter: 'eastons76',
+        gifterUserId: '623683411',
+        gifterDisplayName: 'Eastons76'
+      },
+      user: {
+        id: '1507664691',
+        username: 'cikezzee',
+        displayName: 'Cikezzee',
+        isModerator: false,
+        isSubscriber: true,
+        isVip: false,
+        badges: []
+      },
+      tier: '1000',
+      months: 1,
+      isGift: true,
+      monetaryValue: 499
+    }
+
+    expect(eventToOverlayFeedItem(event)).toEqual(expect.objectContaining({
+      displayName: 'Eastons76',
+      message: 'gifted Cikezzee a Tier 1 subscription',
+      profilePictureUrl: undefined,
+      badges: undefined
+    }))
   })
 
   it('sanitizes alert html before it reaches the overlay', () => {

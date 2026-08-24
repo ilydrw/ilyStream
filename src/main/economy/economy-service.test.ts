@@ -7,6 +7,11 @@ describe('EconomyService schema', () => {
     expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS stream_state')
     expect(SCHEMA_SQL).toContain('key TEXT PRIMARY KEY')
     expect(SCHEMA_SQL).toContain('value_json TEXT NOT NULL')
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS economy_transactions')
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS economy_redemptions')
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS economy_redemption_uses')
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS economy_daily_claims')
+    expect(SCHEMA_SQL).toContain('CREATE INDEX IF NOT EXISTS idx_economy_users_owner_nocase')
   })
 })
 
@@ -26,6 +31,7 @@ function makeFakeDb() {
   const rows = new Map<string, EconomyRow>()
   let runCount = 0
   let transactionCount = 0
+  let failNextTransaction = false
 
   function rowKey(username: string, platform: string) { return `${platform}:${username}` }
 
@@ -60,6 +66,10 @@ function makeFakeDb() {
   function fakeTransaction<TArgs extends any[]>(fn: (...a: TArgs) => void) {
     return (...args: TArgs) => {
       transactionCount++
+      if (failNextTransaction) {
+        failNextTransaction = false
+        throw new Error('synthetic database busy')
+      }
       fn(...args)
     }
   }
@@ -69,7 +79,8 @@ function makeFakeDb() {
     db: { getRawDb: () => raw } as any,
     rows,
     getRunCount: () => runCount,
-    getTransactionCount: () => transactionCount
+    getTransactionCount: () => transactionCount,
+    failNextTransaction: () => { failNextTransaction = true }
   }
 }
 
@@ -134,6 +145,21 @@ describe('EconomyService like batching', () => {
     service.registerLike('alice', 2)
     vi.advanceTimersByTime(1000)
     expect(fake.rows.get('tiktok:alice')?.total_likes).toBe(10)
+  })
+
+  it('retries a failed like batch without waiting for another viewer event', () => {
+    const fake = makeFakeDb()
+    const service = new EconomyService(fake.db)
+
+    service.registerLike('alice', 3)
+    fake.failNextTransaction()
+    vi.advanceTimersByTime(1000)
+    expect(fake.rows.get('tiktok:alice')).toBeUndefined()
+
+    vi.advanceTimersByTime(4999)
+    expect(fake.rows.get('tiktok:alice')).toBeUndefined()
+    vi.advanceTimersByTime(1)
+    expect(fake.rows.get('tiktok:alice')?.total_likes).toBe(3)
   })
 
   it('in-memory like score is updated synchronously so the leaderboard sort is current', () => {

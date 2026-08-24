@@ -10,12 +10,19 @@ vi.mock('electron', async () => {
 
   class MockWebContents extends EventEmitter {
     send = vi.fn()
+    mainFrame = {
+      detached: false,
+      isDestroyed: vi.fn().mockReturnValue(false),
+      send: this.send
+    }
     setFrameRate = vi.fn()
     setUserAgent = vi.fn()
     setWindowOpenHandler = vi.fn()
     insertCSS = vi.fn().mockResolvedValue(undefined)
+    capturePage = vi.fn()
     reloadIgnoringCache = vi.fn()
     invalidate = vi.fn()
+    isCrashed = vi.fn().mockReturnValue(false)
     isDestroyed = vi.fn().mockReturnValue(false)
   }
 
@@ -314,6 +321,47 @@ describe('BrowserSourceService shared texture capture', () => {
     captureWindow.webContents.emit('paint', { texture }, {}, { isEmpty: () => true })
 
     expect(texture.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('polls the renderer preview at the requested capture cadence', async () => {
+    const owner = new BrowserWindow({} as never)
+    const service = new BrowserSourceService()
+    service.start(owner, {
+      id: 'smooth-widget',
+      url: 'http://127.0.0.1:8899/overlay/smooth-widget',
+      width: 600,
+      height: 200,
+      fps: 60,
+      deliverToRenderer: true
+    })
+
+    const captureWindow = electronMocks.windows[1]
+    captureWindow.webContents.capturePage.mockResolvedValue({
+      isEmpty: () => false,
+      getSize: () => ({ width: 600, height: 200 }),
+      toBitmap: () => Buffer.alloc(4)
+    })
+
+    await vi.advanceTimersByTimeAsync(17)
+    expect(captureWindow.webContents.capturePage).toHaveBeenCalledTimes(1)
+
+    service.rendererFrameConsumed(owner, 'smooth-widget')
+    await vi.advanceTimersByTimeAsync(17)
+    expect(captureWindow.webContents.capturePage).toHaveBeenCalledTimes(2)
+
+    service.update(owner, {
+      id: 'smooth-widget',
+      url: 'http://127.0.0.1:8899/overlay/smooth-widget',
+      width: 600,
+      height: 200,
+      fps: 30
+    })
+    service.rendererFrameConsumed(owner, 'smooth-widget')
+
+    await vi.advanceTimersByTimeAsync(17)
+    expect(captureWindow.webContents.capturePage).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(17)
+    expect(captureWindow.webContents.capturePage).toHaveBeenCalledTimes(3)
   })
 
   // Padding would otherwise be composited as part of the widget: the engine

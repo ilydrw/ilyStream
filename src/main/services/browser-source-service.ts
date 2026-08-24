@@ -46,6 +46,8 @@ interface BrowserSourceCapture {
    * something is actually looking at it.
    */
   previewTimer: NodeJS.Timeout | null
+  /** Current capturePage polling interval so FPS changes can retime it live. */
+  previewIntervalMs: number | null
   previewInFlight: boolean
 }
 
@@ -57,10 +59,6 @@ const MAX_CAPTURE_FPS = 60
 // three processes. Sources that genuinely need 60 can still request it
 // per-layer.
 const DEFAULT_CAPTURE_FPS = 30
-// The studio editor preview only has to look live to a human dragging a layer
-// around; it does not have to match the compositor's cadence. Polling it well
-// below capture rate keeps the readback off the hot path.
-const PREVIEW_POLL_FPS = 10
 
 /**
  * Frame delivered to an in-main-process consumer (e.g. the native engine).
@@ -299,6 +297,7 @@ export class BrowserSourceService {
       repaintTimer: null,
       sharedTexture: useSharedTexture,
       previewTimer: null,
+      previewIntervalMs: null,
       previewInFlight: false
     }
     this.captures.set(key, capture)
@@ -356,6 +355,7 @@ export class BrowserSourceService {
     }
 
     capture.window.webContents.setFrameRate(fps)
+    if (capture.sharedTexture) this.syncPreviewPolling(capture)
     if (sizeChanged) {
       capture.window.setContentSize(width, height)
     }
@@ -474,13 +474,23 @@ export class BrowserSourceService {
         clearInterval(capture.previewTimer)
         capture.previewTimer = null
       }
+      capture.previewIntervalMs = null
       return
     }
-    if (capture.previewTimer) return
+
+    // The renderer preview must honor the layer's requested cadence. The old
+    // fixed 10fps capturePage poll made otherwise smooth 30/60fps widgets look
+    // visibly stepped in Studio. previewInFlight + rendererFrameInFlight still
+    // bound this to one readback and one IPC bitmap at a time, so a slow
+    // renderer drops intermediate polls instead of building a frame queue.
+    const intervalMs = Math.max(1, Math.round(1000 / capture.fps))
+    if (capture.previewTimer && capture.previewIntervalMs === intervalMs) return
+    if (capture.previewTimer) clearInterval(capture.previewTimer)
 
     capture.previewTimer = setInterval(() => {
       void this.deliverPreviewFrame(capture)
-    }, Math.round(1000 / PREVIEW_POLL_FPS))
+    }, intervalMs)
+    capture.previewIntervalMs = intervalMs
     capture.previewTimer.unref?.()
   }
 
@@ -548,6 +558,7 @@ export class BrowserSourceService {
       clearInterval(capture.previewTimer)
       capture.previewTimer = null
     }
+    capture.previewIntervalMs = null
     if (!capture.owner.isDestroyed()) {
       capture.owner.off('closed', capture.ownerClosedHandler)
     }

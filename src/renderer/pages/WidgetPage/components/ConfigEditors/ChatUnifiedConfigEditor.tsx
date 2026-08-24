@@ -55,6 +55,16 @@ export function ChatUnifiedConfigEditor({
           max={MAX_UNIFIED_CHAT_MESSAGES}
           onChange={(v) => update('maxItems', v)}
         />
+        <Slider
+          label="Disappear after"
+          hint="Each message fades away after this long. 0 keeps messages until newer ones replace them."
+          value={config.fadeOutAfterSeconds}
+          min={0}
+          max={120}
+          step={5}
+          format={(v) => (v === 0 ? 'never' : `${v}s`)}
+          onChange={(v) => update('fadeOutAfterSeconds', v)}
+        />
         <SwitchRow
           label="Platform badges"
           hint="Show a small TikTok / Twitch / YouTube / Kick mark next to each name."

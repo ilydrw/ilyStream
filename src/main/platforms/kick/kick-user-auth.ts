@@ -21,9 +21,10 @@ export const KICK_REDIRECT_URI = `http://127.0.0.1:${KICK_REDIRECT_PORT}/callbac
 const AUTH_URL = 'https://id.kick.com/oauth/authorize'
 const TOKEN_URL = 'https://id.kick.com/oauth/token'
 
-// channel:read/write cover reading + patching stream title/category;
-// user:read lets us confirm which account authorized.
-const SCOPES = ['user:read', 'channel:read', 'channel:write'].join(' ')
+// user:read powers profile enrichment, channel:read/write cover stream metadata,
+// and events:subscribe lets the refreshable user token back the official event
+// path when app-token issuance is temporarily unavailable.
+const SCOPES = ['user:read', 'channel:read', 'channel:write', 'events:subscribe'].join(' ')
 
 export interface KickUserTokens {
   accessToken: string

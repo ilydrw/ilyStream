@@ -45,13 +45,17 @@ describe('buildLikesTrackerHtml', () => {
     expect(html).toContain('function requestJson(url)')
     expect(html).toContain('new XMLHttpRequest()')
     expect(html).toContain('function updateVisibleLimitFromViewport()')
+    expect(html).toContain('const USER_STATE_LIMIT = Math.max(120, MAX_VISIBLE * 12);')
+    expect(html).toContain('users: new Map()')
+    expect(html).not.toContain("if (mode !== 'stream') return key;")
+    expect(html).not.toContain("console.log('[likes] Received data:'")
     expect(html).not.toContain('window.resizeTo(SOURCE_MIN_WIDTH, SOURCE_MIN_HEIGHT)')
     expect(html).not.toContain('Browser source too small')
     expect(html).toContain('inset: 0;')
     expect(html).toContain('Waiting for likes')
-    expect(html).toContain('function maybeShowLifetimeFallback()')
-    expect(html).toContain('const LIFETIME_FALLBACK_ENABLED = false;')
-    expect(html).toContain('lifetimeFallbackActive')
+    expect(html).not.toContain('maybeShowLifetimeFallback')
+    expect(html).not.toContain('LIFETIME_FALLBACK_ENABLED')
+    expect(html).not.toContain('lifetimeFallbackActive')
     expect(html).not.toContain('?.')
   })
 
@@ -65,24 +69,29 @@ describe('buildLikesTrackerHtml', () => {
     }
   })
 
-  it('keeps the idle all-time fallback disabled when the periodic glimpse is disabled', () => {
+  it('keeps lifetime cycling disabled when the periodic glimpse is disabled', () => {
     const html = buildLikesTrackerHtml(makeWidget({
       lifetimeGlimpseEnabled: false
     }), false)
 
-    expect(html).toContain('const LIFETIME_FALLBACK_ENABLED = false;')
     expect(html).toContain('const LIFETIME_CYCLE_ENABLED = false;')
-    expect(html).toContain('if (!LIFETIME_FALLBACK_ENABLED || lifetimeFallbackActive')
     expect(html).toContain('if (!LIFETIME_CYCLE_ENABLED) return;')
   })
 
-  it('enables the idle all-time fallback with periodic lifetime glimpses', () => {
+  it('limits all-time leaders to the configured periodic glimpse window', () => {
     const html = buildLikesTrackerHtml(makeWidget({
-      lifetimeGlimpseEnabled: true
+      lifetimeGlimpseEnabled: true,
+      streamWindowMinutes: 4,
+      lifetimeWindowMinutes: 1
     }), false)
 
-    expect(html).toContain('const LIFETIME_FALLBACK_ENABLED = true;')
     expect(html).toContain('const LIFETIME_CYCLE_ENABLED = true;')
+    expect(html).toContain('const STREAM_WINDOW_MS = 4 * 60 * 1000;')
+    expect(html).toContain('const LIFETIME_WINDOW_MS = 1 * 60 * 1000;')
+    expect(html).not.toContain('maybeShowLifetimeFallback')
+    expect(html).not.toContain('lifetimeFallbackActive')
+    expect(html).toContain('await enterLifetimeMode();')
+    expect(html).toContain('exitLifetimeMode();')
   })
 })
 

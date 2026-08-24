@@ -85,6 +85,16 @@ export function IconStats(props: NavIconProps) {
   )
 }
 
+export function IconEconomy(props: NavIconProps) {
+  return (
+    <Ic {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M15.5 8.75c-.8-.75-1.9-1.15-3.25-1.15-1.9 0-3.25.9-3.25 2.2 0 1.45 1.3 1.9 3.3 2.25 2.05.35 3.2.8 3.2 2.25 0 1.4-1.4 2.35-3.45 2.35-1.55 0-2.85-.5-3.75-1.4" />
+      <path d="M12 5.5v13" />
+    </Ic>
+  )
+}
+
 export function IconBroadcast(props: NavIconProps) {
   return (
     <Ic {...props}>

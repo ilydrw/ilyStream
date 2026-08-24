@@ -59,6 +59,7 @@ endif()
 # subdir, e.g. #include "dx11/vs_sprite.sc.bin.h". Regenerate the contents with
 # shaders/compile_shaders.ps1; no shaderc is needed for a normal engine build.
 target_include_directories(ilystream_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/generated)
+target_include_directories(ilystream_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../program-transport)
 
 # The vcpkg manifest disables bgfx's internal render thread. The engine already
 # owns a dedicated renderer thread, and bgfx native interop (getInternalData /
@@ -230,11 +231,15 @@ target_link_libraries(engine_tests PRIVATE
 
 # Stress tests executable target
 add_executable(renderer_stress_test tests/renderer_stress_test.cpp)
+target_include_directories(renderer_stress_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../program-transport)
 target_link_libraries(renderer_stress_test PRIVATE
     ilystream_engine
     Catch2::Catch2WithMain
     nlohmann_json::nlohmann_json
 )
+if(WIN32)
+    target_link_libraries(renderer_stress_test PRIVATE d3d11 dxgi)
+endif()
 
 # Texture pipeline tests executable target
 add_executable(texture_pipeline_test tests/texture_pipeline_test.cpp)

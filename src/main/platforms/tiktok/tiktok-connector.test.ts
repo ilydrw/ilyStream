@@ -4,10 +4,12 @@ import {
   buildTikTokConnectionOptions,
   buildTikTokConnectionOptionCandidates,
   extractTikTokFollowerCount,
+  getTikTokWebcastSendResponseError,
   isFatalTikTokConnectionErrorMessage,
   isTikTokOfflineErrorMessage,
   isTikTokFollowSocialPayload,
   isTikTokLikeSocialPayload,
+  isTikTokSuperFanBoxPayload,
   mapTikTokUserInfo,
   TikTokConnector
 } from './tiktok-connector'
@@ -73,6 +75,31 @@ describe('TikTokConnector connection hardening', () => {
     })
   })
 
+  it('does not advertise cookies alone as TikTok chat access', () => {
+    const connector = new TikTokConnector({} as any, {
+      getStatus: vi.fn().mockReturnValue({
+        isChatReady: false,
+        hasSendCredentials: true,
+        statusMessage: 'Signed in; open your public LIVE page to send relays'
+      })
+    } as any)
+    ;(connector as any).connection = { sendMessage: vi.fn() }
+
+    expect(connector.getChatCapability()).toEqual({
+      platform: 'tiktok',
+      canSend: false,
+      reason: 'Signed in; open your public LIVE page to send relays'
+    })
+  })
+
+  it('enables outbound relay when the public TikTok LIVE chat input is ready', () => {
+    const connector = new TikTokConnector({} as any, {
+      getStatus: vi.fn().mockReturnValue({ isChatReady: true })
+    } as any)
+
+    expect(connector.getChatCapability()).toEqual({ platform: 'tiktok', canSend: true })
+  })
+
   it('surfaces host sender failures when outbound TikTok chat sending fails', async () => {
     const connector = new TikTokConnector({} as any, {
       sendMessage: vi.fn().mockResolvedValue(false),
@@ -87,7 +114,7 @@ describe('TikTokConnector connection hardening', () => {
   })
 
   it('sends outbound chat through the authenticated TikTok live connector when cookies are configured', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({})
+    const sendMessage = vi.fn().mockResolvedValue({ code: 200 })
     const connector = new TikTokConnector({} as any, {
       sendMessage: vi.fn(),
       getStatus: vi.fn().mockReturnValue({ isChatReady: false }),
@@ -98,6 +125,7 @@ describe('TikTokConnector connection hardening', () => {
       platform: 'tiktok',
       enabled: true,
       username: 'creator',
+      signApiKey: 'paid-signing-key',
       sessionId: 'session-id',
       ttTargetIdc: 'useast2a'
     }
@@ -111,7 +139,7 @@ describe('TikTokConnector connection hardening', () => {
   })
 
   it('captures sender-window cookies for the authenticated TikTok live send path', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({})
+    const sendMessage = vi.fn().mockResolvedValue({ code: 200 })
     const captureAuthCredentials = vi.fn().mockResolvedValue({
       sessionId: 'captured-session',
       ttTargetIdc: 'useast1a',
@@ -126,7 +154,8 @@ describe('TikTokConnector connection hardening', () => {
     ;(connector as any).activeConfig = {
       platform: 'tiktok',
       enabled: true,
-      username: 'creator'
+      username: 'creator',
+      signApiKey: 'paid-signing-key'
     }
 
     await connector.sendChatMessage('captured cookie send')
@@ -138,20 +167,22 @@ describe('TikTokConnector connection hardening', () => {
     })
   })
 
-  it('falls back to the host sender window when authenticated TikTok live sending fails', async () => {
+  it('uses the public LIVE browser before the paid signed API', async () => {
     const senderSendMessage = vi.fn().mockResolvedValue(true)
+    const apiSendMessage = vi.fn().mockRejectedValue(new Error('webcast send rejected'))
     const connector = new TikTokConnector({} as any, {
       sendMessage: senderSendMessage,
       getStatus: vi.fn().mockReturnValue({ isChatReady: true }),
       captureAuthCredentials: vi.fn().mockResolvedValue({ sessionId: null, ttTargetIdc: null, loggedIn: false })
     } as any)
     ;(connector as any).connection = {
-      sendMessage: vi.fn().mockRejectedValue(new Error('webcast send rejected'))
+      sendMessage: apiSendMessage
     }
     ;(connector as any).activeConfig = {
       platform: 'tiktok',
       enabled: true,
       username: 'creator',
+      signApiKey: 'paid-signing-key',
       sessionId: 'session-id',
       ttTargetIdc: 'useast2a'
     }
@@ -159,6 +190,24 @@ describe('TikTokConnector connection hardening', () => {
     await connector.sendChatMessage('fallback please')
 
     expect(senderSendMessage).toHaveBeenCalledWith('fallback please')
+    expect(apiSendMessage).not.toHaveBeenCalled()
+  })
+
+  it('surfaces TikTok API response rejection codes', () => {
+    expect(getTikTokWebcastSendResponseError({ code: 200 })).toBeNull()
+    expect(getTikTokWebcastSendResponseError({ code: 0 })).toBeNull()
+    expect(getTikTokWebcastSendResponseError({ code: 403, message: 'Paid plan required' })).toBe('Paid plan required')
+    expect(getTikTokWebcastSendResponseError({ code: 500 })).toBe('TikTok rejected the chat message (code 500)')
+    expect(getTikTokWebcastSendResponseError(undefined)).toBe('TikTok chat API returned an invalid response')
+  })
+
+  it('recognizes TikTok Super Fan Box envelopes without matching ordinary boxes', () => {
+    expect(isTikTokSuperFanBoxPayload({ envelopeInfo: { businessType: 19 } })).toBe(true)
+    expect(isTikTokSuperFanBoxPayload({ displayType: 'ttlive_superFanBox_send' })).toBe(true)
+    expect(isTikTokSuperFanBoxPayload({
+      common: { displayText: { displayType: 'ttlive_super_fan_box_send' } }
+    })).toBe(true)
+    expect(isTikTokSuperFanBoxPayload({ envelopeInfo: { businessType: 1 } })).toBe(false)
   })
 
   it('tries every transient connection candidate and rejects when TikTok is unreachable', async () => {
@@ -408,6 +457,37 @@ describe('TikTokConnector connection hardening', () => {
     }))
   })
 
+  it('emits Super Fan Box envelopes as tagged gift events', () => {
+    const connector = new TikTokConnector({} as any, {} as any)
+    const connection = new EventEmitter()
+    const events: any[] = []
+
+    connector.on('event', (event) => events.push(event))
+    ;(connector as any).setupEventListeners(connection)
+
+    connection.emit('envelope', {
+      msgId: 'ordinary-box',
+      envelopeInfo: { businessType: 1, sendUserName: 'ordinary_friend' }
+    })
+    connection.emit('envelope', {
+      msgId: 'super-box',
+      envelopeInfo: {
+        envelopeId: 'super-envelope',
+        businessType: 19,
+        sendUserId: 'viewer-1',
+        sendUserName: 'box_friend'
+      }
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toEqual(expect.objectContaining({
+      id: 'super-box',
+      type: 'gift',
+      giftName: 'Super Fan Box',
+      isSuperFanBox: true
+    }))
+  })
+
   it('maps TikTok followInfo followStatus as follower permission', () => {
     const user = mapTikTokUserInfo({
       userId: '123',
@@ -445,12 +525,14 @@ describe('TikTokConnector listener cleanup', () => {
     ;(connector as any).setupEventListeners(connection)
     expect(connection.listenerCount('chat')).toBe(1)
     expect(connection.listenerCount('gift')).toBe(1)
+    expect(connection.listenerCount('envelope')).toBe(1)
     expect(connection.listenerCount('error')).toBe(1)
 
     ;(connector as any).cleanupConnection()
 
     expect(connection.listenerCount('chat')).toBe(0)
     expect(connection.listenerCount('gift')).toBe(0)
+    expect(connection.listenerCount('envelope')).toBe(0)
     expect(connection.listenerCount('error')).toBe(0)
     expect(connection.disconnect).toHaveBeenCalled()
     expect((connector as any).connection).toBeNull()

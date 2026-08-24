@@ -23,7 +23,7 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
     try {
       const response = await window.api.ai.testConnection()
       if (response.success) {
-        toast.success('AI Connection Successful!')
+        toast.success(`AI connection successful with ${response.model || settings.ai.model}`)
       } else {
         toast.error(`Connection Failed: ${response.error}`)
       }
@@ -101,6 +101,14 @@ export function IntelligenceSection({ settings, onUpdate }: IntelligenceSectionP
                 {isTesting ? 'Testing...' : 'Test'}
               </button>
             </div>
+          </SettingRow>
+
+          <SettingRow label="Model ID" hint="Exact model name exposed by your provider, such as an installed Ollama model.">
+            <TextInput
+              value={settings.ai.model || ''}
+              onChange={(value) => onUpdate('aiModel', value)}
+              placeholder="glm-4.7-flash:latest"
+            />
           </SettingRow>
 
           <SettingRow label="Access Key" hint="Securely stored locally. Leave empty for local models.">

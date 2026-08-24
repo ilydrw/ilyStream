@@ -3,6 +3,15 @@ import { randomUUID, verify as verifySignature } from 'crypto'
 import { BaseConnector } from '../base-connector'
 import { ensureKickEventSubscriptions } from './kick-api'
 import {
+  KickProfileResolver,
+  type KickProfile,
+  type KickProfileHealth,
+  type KickProfileResolverLike
+} from './kick-profile-resolver'
+import type { KickUserTokens } from './kick-user-auth'
+import { ensureKickUserToken } from './kick-stream-info'
+import type { Database } from '../../db/database'
+import {
   registerLoopbackRoute,
   type LoopbackRouteRegistration
 } from '../loopback-route-server'
@@ -28,7 +37,8 @@ import {
   FollowerCountEvent,
   ViewerCountEvent,
   StreamInfoEvent,
-  UserInfo
+  UserInfo,
+  AnyStreamEvent
 } from '../types'
 
 const DEFAULT_WEBHOOK_PORT = 8792
@@ -38,6 +48,8 @@ const REALTIME_CONNECT_TIMEOUT_MS = 15_000
 const REALTIME_PONG_GRACE_MS = 30_000
 const VIEWER_POLL_INTERVAL_MS = 30_000
 const VIEWER_POLL_MAX_BACKOFF_MS = 5 * 60_000
+const PROFILE_ENRICHMENT_TIMEOUT_MS = 1_750
+const SEMANTIC_EVENT_DEDUPE_TTL_MS = 15_000
 // A live chat socket should keep reconnecting through overnight blips rather
 // than giving up after a handful of drops — mirrors the TikTok connector.
 const KICK_MAX_RECONNECT_ATTEMPTS = 120
@@ -61,12 +73,16 @@ interface KickWebhookHeaders {
 }
 
 interface KickConnectorDependencies {
+  db?: Pick<Database, 'getUserStat'>
   resolveViewerCount?: typeof resolveKickViewerCount
+  profileResolver?: KickProfileResolverLike
 }
 
 export class KickConnector extends BaseConnector {
   readonly platform: Platform = 'kick'
+  private readonly db?: Pick<Database, 'getUserStat'>
   private readonly resolveViewerCount: typeof resolveKickViewerCount
+  private readonly profileResolver: KickProfileResolverLike
   private ws: any = null
   private channelInfo: KickChannelInfo | null = null
   private connectionToken = 0
@@ -83,11 +99,26 @@ export class KickConnector extends BaseConnector {
   // Chat ids we've already emitted, so the (optional) official webhook path and
   // the real-time socket never surface the same message twice.
   private processedChatIds = new Set<string>()
+  private processedSemanticEvents = new Map<string, number>()
+  private profileHealth: KickProfileHealth = { state: 'idle' }
 
   constructor(deps: KickConnectorDependencies = {}) {
     super()
+    this.db = deps.db
     this.resolveViewerCount = deps.resolveViewerCount ?? resolveKickViewerCount
+    this.profileResolver = deps.profileResolver ?? new KickProfileResolver({
+      getConfig: () => this.currentConfig as KickConfig | null,
+      onTokensRefreshed: (tokens) => this.handleRefreshedUserTokens(tokens),
+      onHealthChange: (health) => {
+        this.profileHealth = health
+        this.emit('profile-health', { platform: 'kick', ...health })
+      }
+    })
     this.setMaxReconnectAttempts(KICK_MAX_RECONNECT_ATTEMPTS)
+  }
+
+  getProfileHealth(): KickProfileHealth {
+    return { ...this.profileHealth }
   }
 
   validateConfig(config: PlatformConfig): string | null {
@@ -255,17 +286,17 @@ export class KickConnector extends BaseConnector {
   private handleRealtimeEvent(eventName: string, data: any): void {
     switch (eventName) {
       case 'ChatMessageEvent':
-        this.emitChatOnce(this.mapWebhookChat(data, syntheticChatHeaders(data)))
+        void this.emitEnriched(this.mapWebhookChat(data, syntheticChatHeaders(data)))
         break
       case 'SubscriptionEvent':
       case 'ChannelSubscriptionEvent':
-        this.emitEvent(this.mapRealtimeSubscription(data))
+        void this.emitEnriched(this.mapRealtimeSubscription(data))
         break
       case 'GiftedSubscriptionsEvent':
       case 'LuckyUsersWhoGotGiftSubscriptionsEvent': {
-        const gifter = firstNonEmptyString(data.gifter_username, data.gifter?.username, data.sender?.username)
-        for (const giftee of extractGifteeUsernames(data)) {
-          this.emitEvent(this.mapRealtimeGiftSubscription(giftee, gifter, data))
+        const gifter = data.gifter || data.sender || data.gifter_username
+        for (const giftee of extractGifteeUsers(data)) {
+          void this.emitEnriched(this.mapRealtimeGiftSubscription(giftee, gifter, data))
         }
         break
       }
@@ -273,10 +304,10 @@ export class KickConnector extends BaseConnector {
         this.emitFollowerUpdate(data)
         break
       case 'StreamerIsLive':
-        this.emitEvent(this.mapRealtimeStreamInfo(data, true))
+        this.emitDedupedEvent(this.mapRealtimeStreamInfo(data, true))
         break
       case 'StopStreamBroadcast':
-        this.emitEvent(this.mapRealtimeStreamInfo(data, false))
+        this.emitDedupedEvent(this.mapRealtimeStreamInfo(data, false))
         break
       // Chat moderation / presence frames we don't surface yet.
       case 'MessageDeletedEvent':
@@ -396,12 +427,18 @@ export class KickConnector extends BaseConnector {
     const broadcasterUserId = String(config.broadcasterUserId || '').trim()
     if (!clientId || !clientSecret || (!broadcasterUserId && !channelName)) return
 
-    void ensureKickEventSubscriptions({
+    const userScopes = String(config.userScopes || '').split(/[\s,]+/).filter(Boolean)
+    const accessToken = userScopes.includes('events:subscribe')
+      ? ensureKickUserToken(config, (tokens) => this.handleRefreshedUserTokens(tokens)).catch(() => '')
+      : Promise.resolve('')
+
+    void accessToken.then((resolvedAccessToken) => ensureKickEventSubscriptions({
       clientId,
       clientSecret,
+      accessToken: resolvedAccessToken || undefined,
       broadcasterUserId: broadcasterUserId || undefined,
       channelName
-    }).then((result) => {
+    })).then((result) => {
       const failed = result.subscriptions.filter((entry) => entry.error)
       if (failed.length > 0) {
         console.warn(`[kick] ${failed.length} event subscription(s) failed: ${failed.map((entry) => entry.name).join(', ')}`)
@@ -549,32 +586,32 @@ export class KickConnector extends BaseConnector {
 
     switch (resolvedType) {
       case 'chat.message.sent':
-        this.emitChatOnce(this.mapWebhookChat(data, headers))
+        void this.emitEnriched(this.mapWebhookChat(data, headers))
         break
       case 'channel.followed':
-        this.emitEvent(this.mapWebhookFollow(data))
+        void this.emitEnriched(this.mapWebhookFollow(data))
         break
       case 'subscription.new':
       case 'channel.subscription.new':
       case 'subscription.renewal':
       case 'channel.subscription.renewal':
-        this.emitEvent(this.mapWebhookSubscription(data, false))
+        void this.emitEnriched(this.mapWebhookSubscription(data, false))
         break
       case 'subscription.gifts':
       case 'channel.subscription.gifts': {
         const giftees = Array.isArray(data.giftees) ? data.giftees : []
         if (giftees.length === 0) {
-          this.emitEvent(this.mapWebhookSubscription(data, true))
+          void this.emitEnriched(this.mapWebhookSubscription(data, true))
           break
         }
         giftees.forEach((giftee: unknown) => {
-          this.emitEvent(this.mapWebhookSubscription({ ...data, giftee }, true))
+          void this.emitEnriched(this.mapWebhookSubscription({ ...data, giftee }, true))
         })
         break
       }
       case 'livestream.status.updated':
       case 'livestream.metadata.updated':
-        this.emitEvent(this.mapStreamInfo(data))
+        this.emitDedupedEvent(this.mapStreamInfo(data))
         break
       default:
         console.warn(`[kick] Ignored webhook event "${resolvedType || 'unknown'}"`)
@@ -602,18 +639,130 @@ export class KickConnector extends BaseConnector {
     this.channelInfo = null
   }
 
-  /** Emits a chat event once, deduped by message id across socket + webhook. */
-  private emitChatOnce(event: ChatEvent): void {
-    const id = event.id
-    if (id) {
-      if (this.processedChatIds.has(id)) return
-      this.processedChatIds.add(id)
-      if (this.processedChatIds.size > 1000) {
-        const oldest = this.processedChatIds.values().next().value
-        if (oldest) this.processedChatIds.delete(oldest)
+  private async emitEnriched(event: AnyStreamEvent): Promise<void> {
+    try {
+      const enriched = await withTimeout(
+        this.enrichEventWithKickProfile(event),
+        PROFILE_ENRICHMENT_TIMEOUT_MS,
+        `Kick profile enrichment timed out after ${PROFILE_ENRICHMENT_TIMEOUT_MS}ms`
+      )
+      this.emitDedupedEvent(enriched)
+    } catch (error) {
+      console.warn(`[kick] Profile enrichment skipped for ${event.type}: ${formatError(error)}`)
+      this.emitDedupedEvent(event)
+    }
+  }
+
+  private async enrichEventWithKickProfile(event: AnyStreamEvent): Promise<AnyStreamEvent> {
+    if ('user' in event && event.user) {
+      await this.enrichUser(event.user)
+    }
+    if (event.type === 'subscription' && event.gifterUser) {
+      await this.enrichUser(event.gifterUser)
+    }
+    return event
+  }
+
+  private async enrichUser(user: UserInfo): Promise<void> {
+    const numericId = normalizeNumericUserId(user.id)
+    const cached = this.userCache.get('kick', numericId || undefined, user.username)
+      ?? this.userCache.get('kick', undefined, user.username)
+    if (cached) this.mergeCachedUser(user, cached)
+
+    if (this.db && user.username) {
+      const stats: any = this.db.getUserStat('kick', user.username)
+      if (stats) {
+        const storedId = normalizeNumericUserId(stats.platform_user_id)
+        if (!normalizeNumericUserId(user.id) && storedId) user.id = storedId
+        this.preferDisplayName(user, firstNonEmptyString(stats.display_name))
+        user.profilePictureUrl ||= firstNonEmptyString(stats.profile_picture_url) || undefined
+        user.isFollower = Boolean(user.isFollower || Number(stats.total_follows || 0) > 0)
+        user.isModerator = Boolean(user.isModerator || stats.is_moderator)
       }
     }
+
+    const resolvedId = normalizeNumericUserId(user.id)
+    if (!user.profilePictureUrl && resolvedId) {
+      const profile = await this.profileResolver.resolve(resolvedId)
+      if (profile) this.mergeKickProfile(user, profile)
+    }
+
+    this.userCache.set('kick', user)
+  }
+
+  private mergeCachedUser(user: UserInfo, cached: UserInfo): void {
+    if (!normalizeNumericUserId(user.id) && normalizeNumericUserId(cached.id)) user.id = cached.id
+    user.username ||= cached.username
+    this.preferDisplayName(user, cached.displayName)
+    user.profilePictureUrl ||= cached.profilePictureUrl
+    user.isModerator = Boolean(user.isModerator || cached.isModerator)
+    user.isSubscriber = Boolean(user.isSubscriber || cached.isSubscriber)
+    user.isVip = Boolean(user.isVip || cached.isVip)
+    user.isFollower = Boolean(user.isFollower || cached.isFollower)
+    user.isFanClubMember = Boolean(user.isFanClubMember || cached.isFanClubMember)
+    user.isTeamMember = Boolean(user.isTeamMember || cached.isTeamMember)
+    if (user.badges.length === 0 && cached.badges.length > 0) user.badges = cached.badges
+  }
+
+  private mergeKickProfile(user: UserInfo, profile: KickProfile): void {
+    if (!normalizeNumericUserId(user.id)) user.id = profile.id
+    user.username ||= profile.username || ''
+    if (profile.displayName) user.displayName = profile.displayName
+    user.profilePictureUrl ||= profile.profilePictureUrl
+  }
+
+  private preferDisplayName(user: UserInfo, candidate: string | undefined): void {
+    const current = firstNonEmptyString(user.displayName)
+    const normalizedCurrent = current.toLowerCase()
+    const normalizedUsername = firstNonEmptyString(user.username).toLowerCase()
+    if (candidate && (!current || normalizedCurrent === normalizedUsername || normalizedCurrent === 'unknown')) {
+      user.displayName = candidate
+    }
+  }
+
+  /** De-dupes the site socket and official webhook before downstream side effects. */
+  private emitDedupedEvent(event: AnyStreamEvent): void {
+    if (event.type === 'chat') {
+      const id = event.id
+      if (id) {
+        if (this.processedChatIds.has(id)) return
+        this.processedChatIds.add(id)
+        if (this.processedChatIds.size > 1000) {
+          const oldest = this.processedChatIds.values().next().value
+          if (oldest) this.processedChatIds.delete(oldest)
+        }
+      }
+      this.emitEvent(event)
+      return
+    }
+
+    const now = Date.now()
+    for (const [key, expiresAt] of this.processedSemanticEvents) {
+      if (expiresAt <= now) this.processedSemanticEvents.delete(key)
+    }
+    const fingerprint = semanticEventFingerprint(event)
+    if (fingerprint) {
+      if ((this.processedSemanticEvents.get(fingerprint) || 0) > now) return
+      this.processedSemanticEvents.set(fingerprint, now + SEMANTIC_EVENT_DEDUPE_TTL_MS)
+    }
     this.emitEvent(event)
+  }
+
+  private handleRefreshedUserTokens(tokens: KickUserTokens): void {
+    const config = this.currentConfig as KickConfig | null
+    if (config) {
+      config.userAccessToken = tokens.accessToken
+      config.userRefreshToken = tokens.refreshToken || config.userRefreshToken
+      config.userTokenExpiresAt = tokens.expiresAt
+      config.userScopes = tokens.scopes || config.userScopes
+    }
+    this.emit('token-refresh', {
+      platform: 'kick',
+      userAccessToken: tokens.accessToken,
+      userRefreshToken: tokens.refreshToken,
+      userTokenExpiresAt: tokens.expiresAt,
+      userScopes: tokens.scopes
+    })
   }
 
   private emitFollowerUpdate(data: any): void {
@@ -633,13 +782,14 @@ export class KickConnector extends BaseConnector {
     // individual follow when Kick actually names the follower.
     const username = firstNonEmptyString(data.username, data.user?.username, data.follower?.username)
     if (username && data.followed !== false) {
-      this.emitEvent({
+      const payload = data.follower || data.user || data
+      void this.emitEnriched({
         id: randomUUID(),
         platform: 'kick',
         timestamp: new Date(data.created_at || Date.now()),
         type: 'follow',
         raw: data,
-        user: this.mapUsernameUser(username)
+        user: typeof payload === 'object' ? this.mapUser(payload) : this.mapUsernameUser(username)
       } as FollowEvent)
     }
   }
@@ -661,10 +811,10 @@ export class KickConnector extends BaseConnector {
     const isSubscriber = Boolean(sender.is_subscriber || badgeText.includes('subscriber'))
 
     return {
-      id: String(sender.user_id || sender.id || username || ''),
+      id: String(sender.user_id || sender.id || ''),
       username,
       displayName: sender.displayName || sender.display_name || sender.username || sender.name || sender.slug || 'Unknown',
-      profilePictureUrl: sender.profile_picture || sender.profile_pic || sender.profilePicture || sender.profilePictureUrl || undefined,
+      profilePictureUrl: sender.profile_picture || sender.profile_pic || sender.profilePicture || sender.profilePictureUrl || sender.avatar_url || sender.avatar || undefined,
       isModerator: Boolean(sender.is_moderator || badgeText.includes('moderator')),
       isSubscriber,
       isVip: Boolean(sender.is_broadcaster || sender.is_verified || badgeText.includes('broadcaster')),
@@ -679,7 +829,10 @@ export class KickConnector extends BaseConnector {
   private mapUsernameUser(username: unknown, opts: { isSubscriber?: boolean } = {}): UserInfo {
     const name = firstNonEmptyString(username) || 'Anonymous'
     return {
-      id: name.toLowerCase(),
+      // Username-only Pusher events do not carry a stable platform ID. Leaving
+      // this empty lets cache/DB lookup fall back to the username instead of
+      // persisting a username-shaped value as if it were a permanent Kick ID.
+      id: '',
       username: name,
       displayName: name,
       isModerator: false,
@@ -710,14 +863,16 @@ export class KickConnector extends BaseConnector {
   }
 
   private mapRealtimeSubscription(data: any): SubscriptionEvent {
-    const username = firstNonEmptyString(data.username, data.user?.username, data.subscriber?.username)
+    const user = this.mapUser(data.subscriber || data.user || data)
+    user.isSubscriber = true
+    user.isFanClubMember = true
     return {
       id: randomUUID(),
       platform: 'kick',
       timestamp: new Date(data.created_at || data.timestamp || Date.now()),
       type: 'subscription',
       raw: data,
-      user: this.mapUsernameUser(username, { isSubscriber: true }),
+      user,
       tier: 'Kick Sub',
       months: Number(data.months || data.duration || 1) || 1,
       isGift: false,
@@ -725,18 +880,28 @@ export class KickConnector extends BaseConnector {
     }
   }
 
-  private mapRealtimeGiftSubscription(giftee: string, gifter: string, data: any): SubscriptionEvent {
+  private mapRealtimeGiftSubscription(giftee: unknown, gifter: unknown, data: any): SubscriptionEvent {
+    const user = typeof giftee === 'string'
+      ? this.mapUsernameUser(giftee, { isSubscriber: true })
+      : this.mapUser(giftee)
+    user.isSubscriber = true
+    user.isFanClubMember = true
+    const gifterUser = typeof gifter === 'string'
+      ? this.mapUsernameUser(gifter)
+      : gifter && typeof gifter === 'object'
+        ? this.mapUser(gifter)
+        : undefined
     return {
       id: randomUUID(),
       platform: 'kick',
       timestamp: new Date(data.created_at || data.timestamp || Date.now()),
       type: 'subscription',
       raw: data,
-      user: this.mapUsernameUser(giftee, { isSubscriber: true }),
+      user,
       tier: 'Kick Sub',
       months: 1,
       isGift: true,
-      gifterUser: gifter ? this.mapUsernameUser(gifter) : undefined,
+      gifterUser,
       monetaryValue: 499
     }
   }
@@ -761,6 +926,10 @@ export class KickConnector extends BaseConnector {
 
   private mapWebhookSubscription(data: any, isGift: boolean): SubscriptionEvent {
     const userPayload = isGift ? (data.giftee || data.gifted_to || data.subscriber || data) : (data.subscriber || data)
+    const user = this.mapUser(userPayload)
+    user.isSubscriber = true
+    user.isFanClubMember = true
+    const gifterPayload = data.gifter || data.sender
     const createdAt = data.created_at || data.timestamp || Date.now()
     return {
       id: randomUUID(),
@@ -768,11 +937,11 @@ export class KickConnector extends BaseConnector {
       timestamp: new Date(createdAt),
       type: 'subscription',
       raw: data,
-      user: this.mapUser(userPayload),
+      user,
       tier: 'Kick Sub',
       months: Number(data.duration || data.months || 1),
       isGift,
-      gifterUser: isGift ? this.mapUser(data.gifter || data.sender || data) : undefined,
+      gifterUser: isGift && gifterPayload ? this.mapUser(gifterPayload) : undefined,
       monetaryValue: 499
     }
   }
@@ -915,7 +1084,18 @@ function syntheticChatHeaders(data: any): KickWebhookHeaders {
 
 /** Pulls the list of gifted usernames out of the various gift-sub payloads. */
 export function extractGifteeUsernames(data: any): string[] {
+  return extractGifteeUsers(data)
+    .map((entry) => firstNonEmptyString(
+      typeof entry === 'string' ? entry : (entry as any)?.username,
+      (entry as any)?.user?.username
+    ))
+    .filter((name): name is string => name.length > 0)
+}
+
+/** Keeps rich giftee objects intact when Kick includes IDs or avatars. */
+export function extractGifteeUsers(data: any): unknown[] {
   const candidates = [
+    data?.gifted_users,
     data?.gifted_usernames,
     data?.usernames,
     data?.giftees,
@@ -923,12 +1103,14 @@ export function extractGifteeUsernames(data: any): string[] {
   ]
   for (const candidate of candidates) {
     if (Array.isArray(candidate) && candidate.length > 0) {
-      return candidate
-        .map((entry) => firstNonEmptyString(typeof entry === 'string' ? entry : entry?.username, entry?.user?.username))
-        .filter((name): name is string => name.length > 0)
+      return candidate.filter((entry) => {
+        if (typeof entry === 'string') return entry.trim().length > 0
+        return Boolean(entry && typeof entry === 'object')
+      })
     }
   }
-  const single = firstNonEmptyString(data?.username, data?.giftee?.username)
+  if (data?.giftee && typeof data.giftee === 'object') return [data.giftee]
+  const single = firstNonEmptyString(data?.username)
   return single ? [single] : []
 }
 
@@ -1080,6 +1262,48 @@ function firstFiniteNumber(...values: unknown[]): number | null {
     if (Number.isFinite(number)) return Math.floor(number)
   }
   return null
+}
+
+function normalizeNumericUserId(value: unknown): string | null {
+  const text = String(value ?? '').trim()
+  if (!/^\d+$/.test(text)) return null
+  const id = Number(text)
+  return Number.isSafeInteger(id) && id > 0 ? String(id) : null
+}
+
+function semanticEventFingerprint(event: AnyStreamEvent): string | null {
+  if (event.type !== 'follow' && event.type !== 'subscription') return null
+  const user = normalizeEventUserKey(event.user)
+  if (!user) return null
+  if (event.type === 'follow') return `follow:${user}`
+
+  const gifter = event.gifterUser ? normalizeEventUserKey(event.gifterUser) : ''
+  return [
+    'subscription',
+    user,
+    event.isGift ? 'gift' : 'direct',
+    gifter,
+    Math.max(1, Number(event.months || 1))
+  ].join(':')
+}
+
+function normalizeEventUserKey(user: UserInfo): string {
+  return firstNonEmptyString(user.username, user.displayName).toLowerCase()
+    || normalizeNumericUserId(user.id)
+    || ''
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([
+    promise.finally(() => {
+      if (timeout) clearTimeout(timeout)
+    }),
+    timeoutPromise
+  ])
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

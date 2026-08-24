@@ -343,9 +343,10 @@ export function resolveNativeMonitorIndex(
 export function shouldPresentNativeProgramPreview(
   isPreview: boolean,
   isVisible: boolean,
-  aspectRatio: '16:9' | '9:16'
+  aspectRatio: '16:9' | '9:16',
+  primaryCanvasOutputActive = false
 ): boolean {
-  return !isPreview && isVisible && aspectRatio === '16:9'
+  return !isPreview && isVisible && aspectRatio === '16:9' && !primaryCanvasOutputActive
 }
 
 function hashTextSource(value: string): string {
@@ -1356,7 +1357,8 @@ export function useNativeDisplayOutput(options: NativeDisplayOutputOptions): Nat
           height: outputHeight,
           fps,
           scene: initialNativeScene,
-          sessionId
+          sessionId,
+          presentOutput: Boolean(presentCanvasId) || encodeFrames
         })
       })
       if (!result || disposed) return

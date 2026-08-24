@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { getAppPath: () => 'C:/app' } }))
 
-import { isNativeAudioEnabled, resolveNativeAudioOptions } from './native-audio-source'
+import { isNativeAudioEnabled, isNativeAudioRequested, resolveNativeAudioOptions } from './native-audio-source'
 
 /**
  * Native capture replaces the renderer's worklet as the encoder's audio source,
@@ -15,13 +15,15 @@ describe('isNativeAudioEnabled', () => {
     expect(isNativeAudioEnabled({})).toBe(false)
   })
 
-  it('is on only for an exact "1"', () => {
-    expect(isNativeAudioEnabled({ ILY_NATIVE_AUDIO: '1' })).toBe(true)
+  it('recognizes an exact opt-in but stays disabled until mixer parity is implemented', () => {
+    expect(isNativeAudioRequested({ ILY_NATIVE_AUDIO: '1' })).toBe(true)
+    expect(isNativeAudioEnabled({ ILY_NATIVE_AUDIO: '1' })).toBe(false)
   })
 
   it('does not treat other truthy-looking values as opt-in', () => {
     for (const value of ['true', 'yes', 'on', '0', '', 'TRUE']) {
       expect(isNativeAudioEnabled({ ILY_NATIVE_AUDIO: value })).toBe(false)
+      expect(isNativeAudioRequested({ ILY_NATIVE_AUDIO: value })).toBe(false)
     }
   })
 })

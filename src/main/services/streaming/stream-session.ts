@@ -3,6 +3,8 @@ import { EventEmitter } from 'events'
 import type { Writable } from 'stream'
 import type { VideoFramePayload } from '../streaming-types'
 import { PipeBuffer } from './pipe-buffer'
+import { scanFfmpegProgress } from './ffmpeg-progress'
+import { H264PipeWriter } from './h264-pipe-writer'
 
 const AUDIO_PIPE_QUEUE_BYTES = 1024 * 1024 // ~2.7s at 48 kHz stereo f32; protects audio through short encoder/network stalls
 const VIDEO_PIPE_QUEUE_BYTES = 2 * 1024 * 1024
@@ -24,6 +26,7 @@ export class StreamSession extends EventEmitter {
   public failureEmitted = false
   private videoBuffer: PipeBuffer | null = null
   private audioBuffer: PipeBuffer | null = null
+  private h264Writer: H264PipeWriter | null = null
   private healthTimer: ReturnType<typeof setInterval> | null = null
   private cfrTimer: ReturnType<typeof setInterval> | null = null
   private latestVideoFrame: Uint8Array | null = null
@@ -33,6 +36,8 @@ export class StreamSession extends EventEmitter {
   private lastHealthReportAt = Date.now()
   private lastVideoDroppedChunks = 0
   private lastAudioDroppedChunks = 0
+  private progressBuffer = ''
+  private connectedEmitted = false
   public framesSinceLastReport = 0
   public lastFrameReceivedAt: number = 0
 
@@ -49,7 +54,11 @@ export class StreamSession extends EventEmitter {
     }
 
     if (this.process.stdin) {
-      this.videoBuffer = new PipeBuffer(this.process.stdin, VIDEO_PIPE_QUEUE_BYTES)
+      this.videoBuffer = new PipeBuffer(this.process.stdin, {
+        maxQueueBytes: VIDEO_PIPE_QUEUE_BYTES,
+        overflow: config.inputFormat === 'h264' ? 'drop-newest' : 'drop-oldest'
+      })
+      if (config.inputFormat === 'h264') this.h264Writer = new H264PipeWriter(this.videoBuffer)
     }
     if (config.audioEnabled) {
       const audioPipe = this.process.stdio[3] as Writable | undefined
@@ -70,17 +79,26 @@ export class StreamSession extends EventEmitter {
     
     this.process.stderr?.on('data', (data) => {
       const msg = this.config.redactSecret(data.toString())
-      this.lastStderr = this.appendStderr(this.lastStderr, msg)
+      const progress = scanFfmpegProgress(this.progressBuffer, msg)
+      this.progressBuffer = progress.buffer
+      if (progress.connected && !this.connectedEmitted) {
+        this.connectedEmitted = true
+        this.emit('connected')
+      }
+
+      const diagnosticMsg = progress.diagnosticText
+      if (!diagnosticMsg) return
+      this.lastStderr = this.appendStderr(this.lastStderr, `${diagnosticMsg}\n`)
       
       const inStartup = Date.now() < startupLogUntil
-      const isError = /error|failed|invalid|denied|unable|could not|cannot|broken|closed|dropped/i.test(msg)
+      const isError = /error|failed|invalid|denied|unable|could not|cannot|broken|closed|dropped/i.test(diagnosticMsg)
       
       if (inStartup) {
-        msg.split(/\r?\n/).filter(Boolean).forEach(line => {
+        diagnosticMsg.split(/\r?\n/).filter(Boolean).forEach(line => {
           console.log(`[FFmpeg Stream:${this.config.id}]`, line.trim())
         })
       } else if (isError) {
-        console.error(`[FFmpeg Stream:${this.config.id}]`, msg.trim())
+        console.error(`[FFmpeg Stream:${this.config.id}]`, diagnosticMsg.trim())
       }
     })
 
@@ -102,6 +120,7 @@ export class StreamSession extends EventEmitter {
       this.stopCfrPacer()
       this.videoBuffer?.detach()
       this.videoBuffer = null
+      this.h264Writer = null
       this.audioBuffer?.detach()
       this.audioBuffer = null
       if (this.failureEmitted) return
@@ -174,7 +193,8 @@ export class StreamSession extends EventEmitter {
       return
     }
 
-    this.videoBuffer?.write(payload.data)
+    if (this.h264Writer) this.h264Writer.write(payload)
+    else this.videoBuffer?.write(payload.data)
   }
 
   private startCfrPacer() {
@@ -225,6 +245,7 @@ export class StreamSession extends EventEmitter {
     this.stopCfrPacer()
     this.videoBuffer?.detach()
     this.videoBuffer = null
+    this.h264Writer = null
     this.audioBuffer?.detach()
     this.audioBuffer = null
     try {

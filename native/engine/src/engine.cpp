@@ -847,6 +847,68 @@ ILY_API IlyResult IlyEngineGetSharedOutputTextureForOutput(ResourceHandle engine
     return it->second->renderer->GetSharedOutputTextureForOutput(outputIndex, outHandle, outWidth, outHeight);
 }
 
+ILY_API IlyResult IlyEngineGetProgramExportDescriptor(
+    ResourceHandle engineHandle,
+    IlyProgramExportDescriptor* outDescriptor) {
+    if (!outDescriptor) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::memset(outDescriptor, 0, sizeof(*outDescriptor));
+    outDescriptor->structSize = sizeof(*outDescriptor);
+    outDescriptor->version = ILY_PROGRAM_EXPORT_DESCRIPTOR_VERSION;
+    outDescriptor->latestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->GetProgramExportDescriptor(outDescriptor);
+}
+
+ILY_API IlyResult IlyEngineSetProgramExportEnabled(
+    ResourceHandle engineHandle,
+    bool enabled) {
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->SetProgramExportEnabled(enabled);
+}
+
+ILY_API IlyResult IlyEngineDuplicateProgramExportHandles(
+    ResourceHandle engineHandle,
+    uint32_t targetProcessId,
+    uint64_t expectedGeneration,
+    uint32_t expectedSlotCount,
+    IlyProgramExportDuplicatedHandles* outHandles) {
+    if (!outHandles ||
+        expectedSlotCount != ILY_PROGRAM_EXPORT_SLOT_COUNT || targetProcessId == 0) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::memset(outHandles, 0, sizeof(*outHandles));
+    outHandles->structSize = sizeof(*outHandles);
+    outHandles->version = ILY_PROGRAM_EXPORT_DUPLICATED_HANDLES_VERSION;
+
+    std::lock_guard<std::mutex> lock(g_EngineMutex);
+    auto it = g_Engines.find(engineHandle);
+    if (it == g_Engines.end()) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::lock_guard<std::mutex> instLock(it->second->mutex);
+    return it->second->renderer->DuplicateProgramExportHandles(
+        targetProcessId,
+        expectedGeneration,
+        expectedSlotCount,
+        outHandles);
+}
+
 ILY_API IlyResult IlyEngineReadPixels(ResourceHandle engineHandle, void* buffer, uint32_t bufferSize, uint32_t* outWidth, uint32_t* outHeight) {
     if (!buffer) {
         return ILY_ERROR_INVALID_ARGUMENT;

@@ -3,8 +3,10 @@ import { TIKTOK_SHORTCODE_PAIRS } from '../../../shared/tiktok-shortcode-emojis'
 import { getAnimationCss } from './animation-utils'
 import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
 
-type UnifiedChatRuntimeConfig = ChatConfig & ChatUnifiedConfig
+type UnifiedChatRuntimeConfig = ChatConfig & ChatUnifiedConfig & { dockMode?: boolean }
 const UNIFIED_CHAT_MAX_MESSAGES = 5
+const UNIFIED_CHAT_DOCK_MAX_MESSAGES = 80
+const UNIFIED_CHAT_MAX_LIFETIME_SECONDS = 120
 
 /**
  * Unified multi-platform chat feed, modeled on Social Stream Ninja's compact
@@ -27,20 +29,36 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
   const borderRadius = Math.max(4, Math.min(28, Number(cfg.borderRadius ?? 10)))
   const fontFamily = cfg.fontFamily || 'Inter'
   const animationStyle = cfg.animationStyle || 'slide'
-  const scale = Math.max(0.4, Math.min(2.5, Number(cfg.scale || 1)))
+  const dockMode = cfg.dockMode === true
+  const scale = dockMode ? 1 : Math.max(0.4, Math.min(2.5, Number(cfg.scale || 1)))
   const opacity = Math.max(0, Math.min(1, Number(cfg.opacity ?? 1)))
   const showPlatformBadge = cfg.showPlatformBadge !== false
-  const maxMessages = Math.max(1, Math.min(UNIFIED_CHAT_MAX_MESSAGES, Number(cfg.maxItems) || DEFAULT_CHAT_UNIFIED_CONFIG.maxItems))
-  const fontSize = Math.max(12, Math.min(40, Number(cfg.fontSize) || 15))
+  const maxMessages = dockMode
+    ? UNIFIED_CHAT_DOCK_MAX_MESSAGES
+    : Math.max(1, Math.min(UNIFIED_CHAT_MAX_MESSAGES, Number(cfg.maxItems) || DEFAULT_CHAT_UNIFIED_CONFIG.maxItems))
+  const fadeOutAfterSeconds = dockMode
+    ? 0
+    : Math.max(0, Math.min(
+        UNIFIED_CHAT_MAX_LIFETIME_SECONDS,
+        Number(cfg.fadeOutAfterSeconds) || 0
+      ))
+  const configuredFontSize = Number(cfg.fontSize) || 15
+  const fontSize = dockMode
+    ? Math.max(12, Math.min(18, configuredFontSize))
+    : Math.max(12, Math.min(40, configuredFontSize))
   const maxWidth = Math.max(220, Math.min(1200, Number(cfg.width) || 480))
   const position = String(cfg.position || 'top-left')
   const anchorBottom = position.startsWith('bottom')
   const anchorRight = position.endsWith('right')
+  const pageBackground = dockMode ? '#080d16' : 'transparent'
   const tiktokShortcodePairs = JSON.stringify(TIKTOK_SHORTCODE_PAIRS)
+  const emptyStateHtml = dockMode
+    ? `<div class="empty-placeholder"><div class="empty-state-inner"><div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2.5 6.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zm5.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zm5.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z"/></svg></div><div class="empty-title">Chat is quiet</div><div class="empty-copy">Messages from every connected platform will show up here.</div></div></div>`
+    : '<div class="empty-placeholder">Waiting for chat messages...</div>'
 
   return `
 <!DOCTYPE html>
-<html lang="en" style="background: transparent !important; background-color: transparent !important;">
+<html lang="en" data-dock-mode="${dockMode ? '1' : '0'}" style="background: ${pageBackground} !important; background-color: ${pageBackground} !important;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -60,24 +78,134 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         html, body {
             margin: 0;
             padding: 0;
-            background: transparent;
+            background: ${dockMode
+              ? 'radial-gradient(circle at 110% -10%, rgba(119, 70, 255, 0.12), transparent 42%), #080d16'
+              : 'transparent'};
             width: 100%;
             height: 100%;
             overflow: hidden;
         }
 
         body {
-            padding: 6px;
+            padding: ${dockMode ? '0' : '6px'};
             box-sizing: border-box;
             font-family: var(--font-main);
             color: #fff;
             display: flex;
             flex-direction: column;
-            align-items: ${anchorRight ? 'flex-end' : 'flex-start'};
-            justify-content: ${anchorBottom ? 'flex-end' : 'flex-start'};
+            align-items: ${dockMode ? 'stretch' : (anchorRight ? 'flex-end' : 'flex-start')};
+            justify-content: ${dockMode ? 'stretch' : (anchorBottom ? 'flex-end' : 'flex-start')};
             /* Force GPU acceleration and keep-alive for embedded browsers */
             transform: translateZ(0);
             animation: keep-alive 10s infinite linear;
+        }
+
+        .dock-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex: 0 0 auto;
+            min-height: 54px;
+            gap: 10px;
+            padding: 7px 10px;
+            box-sizing: border-box;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(20, 28, 45, 0.98), rgba(13, 20, 34, 0.98));
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            z-index: 2;
+        }
+
+        .dock-identity {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .dock-logo {
+            display: grid;
+            place-items: center;
+            width: 30px;
+            height: 30px;
+            flex: 0 0 auto;
+            border: 1px solid rgba(67, 210, 255, 0.38);
+            border-radius: 9px;
+            color: #66dcff;
+            background: linear-gradient(145deg, rgba(102, 220, 255, 0.16), rgba(126, 92, 255, 0.12));
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 5px 16px rgba(0, 0, 0, 0.22);
+        }
+
+        .dock-logo svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .dock-heading {
+            min-width: 0;
+        }
+
+        .dock-title {
+            overflow: hidden;
+            color: #f7f9ff;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            line-height: 1.15;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .dock-summary {
+            overflow: hidden;
+            margin-top: 3px;
+            color: rgba(215, 224, 240, 0.55);
+            font-size: 9px;
+            font-weight: 650;
+            letter-spacing: 0.025em;
+            line-height: 1.1;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .dock-connection {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+            padding: 4px 7px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            color: rgba(226, 232, 243, 0.68);
+            background: rgba(2, 6, 13, 0.46);
+            font-size: 9px;
+            font-weight: 750;
+            letter-spacing: 0.025em;
+            white-space: nowrap;
+        }
+
+        .dock-status-dot {
+            width: 6px;
+            height: 6px;
+            flex: 0 0 auto;
+            border-radius: 999px;
+            background: #94a3b8;
+            box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.09);
+        }
+
+        .dock-connection[data-state="live"] { color: #b9f8dd; border-color: rgba(52, 211, 153, 0.18); }
+        .dock-connection[data-state="live"] .dock-status-dot { background: #34d399; box-shadow: 0 0 9px rgba(52, 211, 153, 0.58); }
+        .dock-connection[data-state="polling"] { color: #beeafb; border-color: rgba(56, 189, 248, 0.2); }
+        .dock-connection[data-state="polling"] .dock-status-dot { background: #38bdf8; box-shadow: 0 0 9px rgba(56, 189, 248, 0.5); }
+        .dock-connection[data-state="offline"] { color: #fecaca; border-color: rgba(248, 113, 113, 0.2); }
+        .dock-connection[data-state="offline"] .dock-status-dot { background: #f87171; box-shadow: 0 0 9px rgba(248, 113, 113, 0.48); }
+        .dock-connection[data-state="connecting"] .dock-status-dot {
+            animation: dock-pulse 1.35s ease-in-out infinite;
+        }
+
+        @keyframes dock-pulse {
+            0%, 100% { opacity: 0.45; }
+            50% { opacity: 1; }
         }
 
         @keyframes keep-alive {
@@ -89,14 +217,26 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         #v2-chat-feed {
             display: flex;
             flex-direction: column;
-            justify-content: ${anchorBottom ? 'flex-end' : 'flex-start'};
+            justify-content: ${dockMode ? 'flex-start' : (anchorBottom ? 'flex-end' : 'flex-start')};
             gap: 6px;
-            width: 100%;
-            max-width: ${maxWidth}px;
+            width: ${dockMode ? 'auto' : '100%'};
+            max-width: ${dockMode ? 'none' : `${maxWidth}px`};
             min-height: 0;
+            ${dockMode ? 'flex: 1 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 7px; box-sizing: border-box;' : ''}
             opacity: var(--feed-opacity);
             transform: scale(var(--feed-scale));
             transform-origin: ${anchorBottom ? 'bottom' : 'top'} ${anchorRight ? 'right' : 'left'};
+            scrollbar-color: rgba(105, 126, 158, 0.62) transparent;
+            scrollbar-width: thin;
+        }
+
+        #v2-chat-feed::-webkit-scrollbar { width: 7px; }
+        #v2-chat-feed::-webkit-scrollbar-track { background: transparent; }
+        #v2-chat-feed::-webkit-scrollbar-thumb {
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background: rgba(105, 126, 158, 0.62);
+            background-clip: padding-box;
         }
 
         .message {
@@ -133,6 +273,39 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             border: 2px dashed rgba(255,255,255,0.2);
             border-radius: 14px;
             color: rgba(255,255,255,0.75);
+            ${dockMode
+              ? 'display: flex; flex: 1 1 auto; min-height: 150px; align-items: center; justify-content: center; padding: 22px 18px; border: 0; background: transparent; color: rgba(245, 248, 255, 0.7); opacity: 1; text-transform: none; letter-spacing: 0;'
+              : ''}
+        }
+
+        .empty-state-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 220px;
+        }
+
+        .empty-icon {
+            display: grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            margin-bottom: 11px;
+            border: 1px solid rgba(102, 220, 255, 0.2);
+            border-radius: 13px;
+            color: rgba(102, 220, 255, 0.72);
+            background: rgba(102, 220, 255, 0.06);
+        }
+
+        .empty-icon svg { width: 20px; height: 20px; fill: currentColor; }
+        .empty-title { color: rgba(247, 249, 255, 0.88); font-size: 12px; font-weight: 800; }
+        .empty-copy {
+            margin-top: 5px;
+            color: rgba(190, 202, 222, 0.5);
+            font-size: 10px;
+            font-weight: 550;
+            line-height: 1.4;
+            text-transform: none;
         }
 
         .avatar-wrap {
@@ -276,6 +449,106 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             text-shadow: 0 1px 2px rgba(0,0,0,0.85);
         }
 
+        .message-time {
+            display: none;
+            margin-left: auto;
+            padding-left: 5px;
+            color: rgba(190, 202, 222, 0.43);
+            font-size: 9px;
+            font-weight: 650;
+            letter-spacing: 0;
+            text-shadow: none;
+            white-space: nowrap;
+        }
+
+        html[data-dock-mode="1"] #v2-chat-feed {
+            --feed-scale: 1;
+            --feed-opacity: 1;
+        }
+
+        html[data-dock-mode="1"] .message {
+            width: 100%;
+            flex: 0 0 auto;
+            gap: 7px;
+        }
+
+        html[data-dock-mode="1"] .avatar-wrap {
+            width: 29px;
+            height: 29px;
+            margin-top: 2px;
+        }
+
+        html[data-dock-mode="1"] .avatar {
+            border-width: 1px;
+            font-size: 11px;
+        }
+
+        html[data-dock-mode="1"] .platform-badge {
+            right: -2px;
+            bottom: -2px;
+            width: 13px;
+            height: 13px;
+            border-width: 2px;
+        }
+
+        html[data-dock-mode="1"] .content-box {
+            padding: 6px 8px 7px;
+            border: 1px solid rgba(255, 255, 255, 0.055);
+            border-left: 2px solid var(--platform-color, rgba(255,255,255,0.3));
+            border-radius: 8px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 55%), rgba(15, 23, 38, 0.9);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+            transition: border-color 120ms ease, background 120ms ease;
+        }
+
+        html[data-dock-mode="1"] .message:hover .content-box {
+            border-top-color: rgba(255, 255, 255, 0.1);
+            border-right-color: rgba(255, 255, 255, 0.1);
+            border-bottom-color: rgba(255, 255, 255, 0.1);
+            background: rgba(20, 30, 48, 0.96);
+        }
+
+        html[data-dock-mode="1"] .username {
+            min-width: 0;
+            flex-wrap: nowrap;
+            gap: 4px;
+            font-size: 10.5px;
+            line-height: 1.2;
+            text-shadow: none;
+        }
+
+        html[data-dock-mode="1"] .display-name {
+            overflow: hidden;
+            min-width: 0;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        html[data-dock-mode="1"] .role-badges { gap: 2px; }
+        html[data-dock-mode="1"] .role-badge,
+        html[data-dock-mode="1"] .role-badge-glyph { width: 11px; height: 11px; }
+        html[data-dock-mode="1"] .kind-tag { padding: 1px 4px; font-size: 8px; }
+
+        html[data-dock-mode="1"] .text {
+            margin-top: 3px;
+            color: rgba(248, 250, 255, 0.93);
+            font-size: 12.5px;
+            font-weight: 540;
+            line-height: 1.34;
+            text-shadow: none;
+        }
+
+        html[data-dock-mode="1"] .message-time { display: inline-block; }
+        html[data-dock-mode="1"] .meta { font-size: 10px; text-shadow: none; }
+
+        @media (max-width: 225px) {
+            .dock-connection-label { display: none; }
+            .dock-connection { padding: 5px; }
+            .dock-logo { width: 27px; height: 27px; border-radius: 8px; }
+            .dock-logo svg { width: 16px; height: 16px; }
+            html[data-dock-mode="1"] .avatar-wrap { width: 26px; height: 26px; }
+        }
+
         /* Featured Message Pop-up */
         #featured-overlay {
             position: fixed;
@@ -336,8 +609,20 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
     </style>
 </head>
 <body>
+    ${dockMode ? `<header class="dock-header">
+        <div class="dock-identity">
+            <div class="dock-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 6v2h4V9H7zm6 0v2h4V9h-4z"/></svg></div>
+            <div class="dock-heading">
+                <div class="dock-title">ilyStream Chat</div>
+                <div class="dock-summary"><span id="dock-message-count">0 messages</span> · All platforms</div>
+            </div>
+        </div>
+        <div class="dock-connection" id="dock-connection" data-state="connecting" title="Connecting to ilyStream">
+            <span class="dock-status-dot"></span><span class="dock-connection-label" id="dock-connection-label">Connecting</span>
+        </div>
+    </header>` : ''}
     <div id="v2-chat-feed">
-        <div class="empty-placeholder">Waiting for chat messages...</div>
+        ${emptyStateHtml}
     </div>
 
     <div id="featured-overlay">
@@ -362,10 +647,12 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         const feed = document.getElementById('v2-chat-feed');
         const featuredOverlay = document.getElementById('featured-overlay');
         const MAX_MESSAGES = ${maxMessages};
-        const FADE_OUT_MS = ${(cfg as any).fadeOutAfterSeconds || 0} * 1000;
+        const FADE_OUT_MS = ${fadeOutAfterSeconds * 1000};
         const SHOW_PLATFORM_BADGE = ${showPlatformBadge};
         const IS_PREVIEW = ${JSON.stringify(isPreview)};
+        const DOCK_MODE = ${JSON.stringify(dockMode)};
         const ANCHOR_BOTTOM = ${JSON.stringify(anchorBottom)};
+        const EMPTY_STATE_HTML = ${JSON.stringify(emptyStateHtml)};
         const DUPLICATE_WINDOW_MS = 2500;
         const SEEN_ID_TTL_MS = 5 * 60 * 1000;
         const PREVIEW_MESSAGES = [
@@ -381,7 +668,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                     { kind: 'superfan', title: 'Super Fan' }
                 ],
                 message: 'The overlay is looking clean tonight.',
-                accentColor: '#00f2ea'
+                accentColor: '#FE2C55'
             },
             {
                 id: 'preview-chat-2',
@@ -422,14 +709,72 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 profilePictureUrl: '',
                 badges: [{ kind: 'member', title: 'TikTok Fan Club' }],
                 message: 'Top-left stack is easier to read.',
-                accentColor: '#25f4ee'
+                accentColor: '#FE2C55'
             }
         ];
         const seenMessageIds = new Map();
         const seenChatFingerprints = new Map();
+        const messageTimeouts = new Set();
+        const dockConnection = document.getElementById('dock-connection');
+        const dockConnectionLabel = document.getElementById('dock-connection-label');
+        const dockMessageCount = document.getElementById('dock-message-count');
+        let connectionState = 'connecting';
+
+        function setConnectionState(state, label) {
+            connectionState = state;
+            if (!dockConnection || !dockConnectionLabel) return;
+            dockConnection.dataset.state = state;
+            dockConnection.title = label + ' to ilyStream';
+            dockConnectionLabel.textContent = label;
+        }
+
+        function updateFeedSummary() {
+            if (!dockMessageCount) return;
+            const count = feed.querySelectorAll('.message').length;
+            dockMessageCount.textContent = count + (count === 1 ? ' message' : ' messages');
+        }
+
+        function showEmptyState() {
+            feed.innerHTML = EMPTY_STATE_HTML;
+            updateFeedSummary();
+        }
+
+        function isNearLatestMessage() {
+            if (!DOCK_MODE) return false;
+            return feed.scrollHeight - feed.scrollTop - feed.clientHeight < 56;
+        }
+
+        function scrollToLatestMessage() {
+            if (!DOCK_MODE) return;
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function formatMessageTime(value) {
+            const parsed = Date.parse(String(value || ''));
+            const date = Number.isFinite(parsed) ? new Date(parsed) : new Date();
+            try {
+                return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            } catch (error) {
+                return '';
+            }
+        }
+
+        function clearMessageTimeouts() {
+            messageTimeouts.forEach((timeout) => clearTimeout(timeout));
+            messageTimeouts.clear();
+        }
+
+        function scheduleMessageTimeout(callback, delay) {
+            const timeout = setTimeout(() => {
+                messageTimeouts.delete(timeout);
+                callback();
+            }, delay);
+            messageTimeouts.add(timeout);
+        }
 
         window.__ilystreamUnifiedChatCleanup = function() {
             stopPolling();
+            clearMessageTimeouts();
 
             if (activeEventSource) {
                 try { activeEventSource.close(); } catch (error) {}
@@ -613,15 +958,29 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
         }
 
+        function getMessageRemainingLifetimeMs(msg) {
+            if (FADE_OUT_MS <= 0) return null;
+
+            const timestamp = Date.parse(String(msg.timestamp || ''));
+            if (!Number.isFinite(timestamp)) return FADE_OUT_MS;
+
+            const age = Math.max(0, Date.now() - timestamp);
+            return Math.max(0, FADE_OUT_MS - age);
+        }
+
         // Inline avatar img onerror calls this to swap in an initial-letter fallback.
         window.__buildAvatarFallback = function(initial) {
             return '<div class="avatar">' + escapeHtml(initial || '?') + '</div>';
         };
 
-        function addMessage(msg) {
+        function addMessage(msg, allowAutoScroll) {
             const allowedKinds = ['chat', 'gift', 'follow', 'subscription', 'raid'];
             if (msg.kind && !allowedKinds.includes(msg.kind)) return;
+            const remainingLifetimeMs = getMessageRemainingLifetimeMs(msg);
+            if (remainingLifetimeMs !== null && remainingLifetimeMs <= 0) return;
             if (shouldSkipDuplicateMessage(msg)) return;
+            const followLatest = DOCK_MODE && allowAutoScroll !== false &&
+                (!feed.querySelector('.message') || isNearLatestMessage());
 
             const placeholder = feed.querySelector('.empty-placeholder');
             if (placeholder) placeholder.remove();
@@ -633,7 +992,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             const platformColors = {
                 twitch: '#a970ff',
                 youtube: '#ff4d4d',
-                tiktok: '#25f4ee',
+                tiktok: '#FE2C55',
                 kick: '#53fc18'
             };
 
@@ -665,6 +1024,9 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 : '';
 
             const meta = msg.meta ? '<span class="meta">' + escapeHtml(msg.meta) + '</span>' : '';
+            const messageTime = DOCK_MODE
+                ? '<span class="message-time">' + escapeHtml(formatMessageTime(msg.timestamp)) + '</span>'
+                : '';
 
             div.innerHTML =
                 '<div class="avatar-wrap">' +
@@ -673,9 +1035,9 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 '</div>' +
                 '<div class="content-box">' +
                     '<div class="username">' +
-                        '<span>' + escapeHtml(name) + '</span>' +
+                        '<span class="display-name">' + escapeHtml(name) + '</span>' +
                         buildRoleBadges(msg.badges) +
-                        kindTag +
+                        kindTag + messageTime +
                     '</div>' +
                     '<div class="text">' + renderMessageText(msg.message || '', msg.platform) + meta + '</div>' +
                 '</div>';
@@ -686,11 +1048,19 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 feed.removeChild(feed.firstChild);
             }
 
-            if (FADE_OUT_MS > 0) {
-                setTimeout(() => {
+            updateFeedSummary();
+            if (followLatest) requestAnimationFrame(scrollToLatestMessage);
+
+            if (remainingLifetimeMs !== null) {
+                scheduleMessageTimeout(() => {
+                    if (!div.isConnected) return;
                     div.classList.add('fading-out');
-                    setTimeout(() => div.remove(), 600);
-                }, FADE_OUT_MS);
+                    scheduleMessageTimeout(() => {
+                        div.remove();
+                        if (!feed.querySelector('.message')) showEmptyState();
+                        else updateFeedSummary();
+                    }, 600);
+                }, remainingLifetimeMs);
             }
         }
 
@@ -712,6 +1082,9 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         }
 
         function renderSnapshot(items) {
+            const previousScrollTop = feed.scrollTop;
+            const followLatest = DOCK_MODE && (!feed.querySelector('.message') || isNearLatestMessage());
+            clearMessageTimeouts();
             feed.innerHTML = '';
             resetMessageDedupe();
             if (items && items.length > 0) {
@@ -720,14 +1093,17 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
                 // Isolate each item: one malformed message must never blank the
                 // whole feed by throwing out of the forEach.
                 tail.forEach((item) => {
-                    try { addMessage(item); } catch (error) { console.warn('[unified-chat] skipped bad item', error); }
+                    try { addMessage(item, false); } catch (error) { console.warn('[unified-chat] skipped bad item', error); }
                 });
                 if (!feed.querySelector('.message')) {
-                    feed.innerHTML = '<div class="empty-placeholder">Waiting for chat messages...</div>';
+                    showEmptyState();
                 }
             } else {
-                feed.innerHTML = '<div class="empty-placeholder">Waiting for chat messages...</div>';
+                showEmptyState();
             }
+            updateFeedSummary();
+            if (followLatest) requestAnimationFrame(scrollToLatestMessage);
+            else if (DOCK_MODE) feed.scrollTop = previousScrollTop;
         }
 
         function handleRealtimePacket(data) {
@@ -780,8 +1156,14 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
 
         function hydrateChatState() {
             return requestJson(chatStateUrl())
-                .then(renderSnapshot)
-                .catch((error) => console.warn('[unified-chat] hydration failed', error));
+                .then((items) => {
+                    renderSnapshot(items);
+                    if (connectionState !== 'live') setConnectionState('polling', 'Synced');
+                })
+                .catch((error) => {
+                    if (connectionState !== 'live') setConnectionState('offline', 'Offline');
+                    console.warn('[unified-chat] hydration failed', error);
+                });
         }
 
         function startPolling() {
@@ -789,8 +1171,14 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             pollingStarted = true;
             const poll = () => {
                 requestJson(chatStateUrl())
-                    .then(renderSnapshot)
-                    .catch((error) => console.warn('[unified-chat] polling failed', error));
+                    .then((items) => {
+                        renderSnapshot(items);
+                        setConnectionState('polling', 'Polling');
+                    })
+                    .catch((error) => {
+                        setConnectionState('offline', 'Offline');
+                        console.warn('[unified-chat] polling failed', error);
+                    });
             };
             poll();
             pollingTimer = setInterval(poll, 2000);
@@ -829,6 +1217,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             }
             evs.onopen = () => {
                 stopPolling();
+                setConnectionState('live', 'Live');
             };
             evs.onmessage = (event) => {
                 try {
@@ -841,6 +1230,7 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
             evs.onerror = () => {
                 evs.close();
                 if (activeEventSource === evs) activeEventSource = null;
+                setConnectionState('connecting', 'Reconnecting');
                 startPolling();
                 scheduleReconnect();
             };
@@ -886,6 +1276,8 @@ export function buildChatWidgetHtml(widget?: any, isPreview = false): string {
         if (IS_PREVIEW) {
             feed.innerHTML = '';
             PREVIEW_MESSAGES.forEach(addMessage);
+            setConnectionState('polling', 'Preview');
+            requestAnimationFrame(scrollToLatestMessage);
         } else {
             hydrateChatState();
             connect();

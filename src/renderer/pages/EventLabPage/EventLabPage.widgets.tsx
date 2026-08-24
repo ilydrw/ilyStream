@@ -174,6 +174,7 @@ function toneForKind(kind: EventLabEntryKind): string {
   switch (kind) {
     case 'stream': return 'bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.4)]'
     case 'overlay': return 'bg-[#d035f1] shadow-[0_0_12px_rgba(208,53,241,0.35)]'
+    case 'performance': return 'bg-teal-300 shadow-[0_0_12px_rgba(94,234,212,0.35)]'
     case 'device': return 'bg-lime-300 shadow-[0_0_12px_rgba(190,242,100,0.35)]'
     case 'automation': return 'bg-violet-300 shadow-[0_0_12px_rgba(196,181,253,0.35)]'
     case 'alert': return 'bg-rose-300 shadow-[0_0_12px_rgba(253,164,175,0.35)]'

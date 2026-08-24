@@ -8,6 +8,7 @@ describe('connection viewer counts', () => {
       viewerCounts: {},
       errors: {},
       reconnectInfo: {},
+      profileHealth: {},
       recentEvents: []
     })
   })
@@ -30,5 +31,17 @@ describe('connection viewer counts', () => {
       tiktok: 0,
       twitch: 7
     })
+  })
+
+  it('tracks profile enrichment health and clears it on disconnect', () => {
+    useConnectionStore.getState().setStatus('kick', 'connected')
+    useConnectionStore.getState().setProfileHealth('kick', {
+      state: 'degraded',
+      error: 'Kick profile lookup failed (401)'
+    })
+    expect(useConnectionStore.getState().profileHealth.kick?.state).toBe('degraded')
+
+    useConnectionStore.getState().setStatus('kick', 'disconnected')
+    expect(useConnectionStore.getState().profileHealth.kick).toBeUndefined()
   })
 })

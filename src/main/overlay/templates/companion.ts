@@ -1,4 +1,5 @@
 import { INLINE_AVATAR_RUNTIME_SCRIPT } from './runtime-assets'
+import { TIKTOK_SHORTCODE_PAIRS } from '../../../shared/tiktok-shortcode-emojis'
 
 export function buildCompanionHtml(data: {
   obsStatus: any;
@@ -18,6 +19,15 @@ export function buildCompanionHtml(data: {
   const currentSceneHtml = escapeHtml(currentScene);
   const scenesJson = jsonForScript(scenes);
   const alertsJson = jsonForScript(Array.isArray(latestAlerts) ? latestAlerts.slice(0, 4) : []);
+  const tiktokShortcodeAssetsJson = jsonForScript(
+    TIKTOK_SHORTCODE_PAIRS.map(([shortcode, emoji]) => [
+      shortcode,
+      {
+        emoji,
+        url: `/overlay/companion/emoji/${notoEmojiAssetName(emoji)}`
+      }
+    ])
+  );
 
   // Theme logic ('joker' is the legacy id for the gob theme)
   const isGob = ui?.theme === 'gob' || ui?.theme === 'joker';
@@ -133,6 +143,7 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
   .msg .body-txt { min-width: 0; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
   .msg .nm { font-weight: 800; letter-spacing: -.01em; margin-right: 6px; }
   .msg .txt { color: rgba(255,255,255,.82); font-weight: 500; }
+  .msg .emote { display: inline-block; width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin: -4px 2px -3px; }
 
   .msg.event { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 9px; padding: 5px 9px; }
   .msg.event .txt { color: rgba(255,255,255,.7); font-weight: 600; }
@@ -369,6 +380,23 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
     let forceChatScroll = false;
 
     const feedEl = document.getElementById('chat-feed');
+    const TIKTOK_SHORTCODE_ASSETS = ${tiktokShortcodeAssetsJson};
+    const TIKTOK_SHORTCODE_LOOKUP = TIKTOK_SHORTCODE_ASSETS.reduce((acc, pair) => {
+      const normalized = normalizeTikTokShortcode(pair[0]);
+      acc[normalized] = pair[1];
+      acc[normalized.replace(/\\s+/g, '')] = pair[1];
+      return acc;
+    }, {});
+    const TIKTOK_UNICODE_EMOJI_ASSETS = TIKTOK_SHORTCODE_ASSETS.reduce((acc, pair) => {
+      if (!acc[pair[1].emoji]) {
+        acc[pair[1].emoji] = {
+          emoji: pair[1].emoji,
+          url: pair[1].url,
+          shortcode: pair[0]
+        };
+      }
+      return acc;
+    }, {});
 
     function isNearChatBottom() {
       return feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight <= CHAT_BOTTOM_THRESHOLD;
@@ -419,7 +447,7 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
 
       const txt = document.createElement('span');
       txt.className = 'txt';
-      txt.textContent = item.message || '';
+      renderChatMessage(txt, item);
 
       if (!isChat) {
         const glyph = document.createElement('span');
@@ -433,6 +461,148 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
       row.appendChild(av);
       row.appendChild(body);
       return row;
+    }
+
+    function emoteFallback(name, platform) {
+      const label = String(name || '').trim().replace(/^:+|:+$/g, '').trim();
+      if (platform === 'tiktok' && (!label || /^\\d+$/.test(label) || label === 'emote')) {
+        return '[TikTok Fan Club emote]';
+      }
+      return label && !/^\\d+$/.test(label) && label !== 'emote'
+        ? ':' + label + ':'
+        : '[' + (platform || 'Platform') + ' emote]';
+    }
+
+    function emoteEndIndex(message, emote, startIndex) {
+      const declaredEndIndex = Math.floor(Number(emote.endIndex));
+      if (Number.isFinite(declaredEndIndex) && declaredEndIndex >= startIndex) {
+        return Math.min(message.length, declaredEndIndex + 1);
+      }
+
+      const rawName = String(emote.name || '').trim();
+      const bareName = rawName.replace(/^:+|:+$/g, '');
+      const candidates = [rawName, bareName, bareName ? ':' + bareName + ':' : ''].filter(Boolean);
+      for (const candidate of candidates) {
+        if (message.slice(startIndex, startIndex + candidate.length) === candidate) {
+          return Math.min(message.length, startIndex + candidate.length);
+        }
+      }
+      return startIndex;
+    }
+
+    function normalizeTikTokShortcode(shortcode) {
+      return String(shortcode || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .trim()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\\s+/g, ' ');
+    }
+
+    function resolveTikTokShortcodeAsset(shortcode) {
+      const normalized = normalizeTikTokShortcode(shortcode);
+      if (!normalized) return null;
+
+      const direct = TIKTOK_SHORTCODE_LOOKUP[normalized] ||
+        TIKTOK_SHORTCODE_LOOKUP[normalized.replace(/\\s+/g, '')];
+      if (direct) return direct;
+
+      const withoutRockyPrefix = normalized.replace(/^rocky\\s+/, '');
+      return withoutRockyPrefix === normalized
+        ? null
+        : TIKTOK_SHORTCODE_LOOKUP[withoutRockyPrefix] ||
+          TIKTOK_SHORTCODE_LOOKUP[withoutRockyPrefix.replace(/\\s+/g, '')] ||
+          null;
+    }
+
+    function appendEmoteImage(container, source, fallback, title = fallback) {
+      if (!source) {
+        container.appendChild(document.createTextNode(fallback));
+        return;
+      }
+
+      const image = document.createElement('img');
+      image.className = 'emote';
+      image.src = source;
+      image.alt = fallback;
+      image.title = title;
+      image.loading = 'lazy';
+      image.referrerPolicy = 'no-referrer';
+      image.addEventListener('error', () => image.replaceWith(document.createTextNode(fallback)), { once: true });
+      container.appendChild(image);
+    }
+
+    function appendTikTokUnicodeEmoji(container, text) {
+      let plainText = '';
+      const flushText = () => {
+        if (!plainText) return;
+        container.appendChild(document.createTextNode(plainText));
+        plainText = '';
+      };
+
+      Array.from(text).forEach((character) => {
+        const asset = TIKTOK_UNICODE_EMOJI_ASSETS[character];
+        if (!asset) {
+          plainText += character;
+          return;
+        }
+
+        flushText();
+        const fallback = '[' + asset.shortcode + ']';
+        appendEmoteImage(container, asset.url, fallback, fallback);
+      });
+      flushText();
+    }
+
+    function appendTikTokText(container, text, platform) {
+      const value = String(text || '');
+      if (platform !== 'tiktok') {
+        container.appendChild(document.createTextNode(value));
+        return;
+      }
+
+      let lastIndex = 0;
+      let match;
+      const shortcodePattern = /\\[([^\\[\\]\\r\\n]{1,48})\\]/g;
+      while ((match = shortcodePattern.exec(value)) !== null) {
+        const asset = resolveTikTokShortcodeAsset(match[1]);
+        if (!asset) continue;
+
+        appendTikTokUnicodeEmoji(container, value.slice(lastIndex, match.index));
+        const label = '[' + String(match[1]).trim() + ']';
+        appendEmoteImage(container, asset.url, label, label);
+        lastIndex = match.index + match[0].length;
+      }
+
+      if (lastIndex === 0) {
+        appendTikTokUnicodeEmoji(container, value);
+      } else if (lastIndex < value.length) {
+        appendTikTokUnicodeEmoji(container, value.slice(lastIndex));
+      }
+    }
+
+    function renderChatMessage(container, item) {
+      const message = String(item.message || '');
+      const emotes = Array.isArray(item.emotes)
+        ? item.emotes.slice().sort((a, b) => Number(a.startIndex) - Number(b.startIndex))
+        : [];
+      if (emotes.length === 0) {
+        appendTikTokText(container, message, item.platform);
+        return;
+      }
+
+      let cursor = 0;
+      emotes.forEach((emote) => {
+        const startIndex = Math.max(0, Math.min(message.length, Math.floor(Number(emote.startIndex) || 0)));
+        if (startIndex < cursor) return;
+        if (startIndex > cursor) appendTikTokText(container, message.slice(cursor, startIndex), item.platform);
+
+        const fallback = emoteFallback(emote.name, item.platform);
+        appendEmoteImage(container, safeImageUrl(emote.imageUrl), fallback);
+        cursor = emoteEndIndex(message, emote, startIndex);
+      });
+
+      if (cursor < message.length) appendTikTokText(container, message.slice(cursor), item.platform);
     }
 
     function appendChat(item, scroll = true) {
@@ -548,6 +718,15 @@ ${INLINE_AVATAR_RUNTIME_SCRIPT}
 </body>
 </html>
   `;
+}
+
+function notoEmojiAssetName(emoji: string): string {
+  const codepoints = Array.from(emoji)
+    .map((character) => character.codePointAt(0))
+    .filter((codepoint): codepoint is number => codepoint !== undefined && codepoint !== 0xfe0f)
+    .map((codepoint) => codepoint.toString(16))
+
+  return `emoji_u${codepoints.join('_')}.svg`
 }
 
 function escapeHtml(value: string): string {

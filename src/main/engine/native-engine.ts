@@ -246,6 +246,42 @@ export interface SharedOutputTexture {
   color: OutputColorConfig
 }
 
+export interface ProgramExportDescriptor {
+  structSize: number
+  version: 1
+  /** Changes whenever the two GPU slots are recreated. */
+  generation: bigint
+  /** Advances only when the producer publishes a complete frame. */
+  frameSequence: bigint
+  /** Packed Windows adapter LUID: unsigned high 32 bits followed by low 32 bits. */
+  adapterLuid: bigint
+  width: number
+  height: number
+  format: PixelFormat.RGBA8
+  slotCount: 2
+  /** UINT32_MAX until the first frame is published; otherwise 0 or 1. */
+  latestSlot: number
+  producerAcquireKey: 0n
+  consumerAcquireKey: 1n
+  controlBlockVersion: 1
+  controlBlockSize: number
+  /** Engine-process handles; never send these to another process. */
+  sharedHandles: [Buffer, Buffer]
+  /** Engine-process anonymous mapping handle; never send this to another process. */
+  controlMappingHandle: Buffer
+}
+
+export interface ProgramExportDuplicatedHandles {
+  structSize: number
+  version: 1
+  generation: bigint
+  slotCount: 2
+  /** Handles already duplicated into the authenticated target process. */
+  textureHandles: [bigint, bigint]
+  /** Read-only anonymous control-mapping handle in the target process. */
+  controlHandle: bigint
+}
+
 /** Shape of the native addon's exports (see native/engine/src/napi_bindings.cpp). */
 interface NativeAddon {
   initializeSystem(): number
@@ -267,6 +303,14 @@ interface NativeAddon {
   engineCreateOutput(engine: bigint, width: number, height: number): number
   engineDestroyOutput(engine: bigint, outputIndex: number): number
   engineGetSharedOutputTexture(engine: bigint, outputIndex?: number): SharedOutputTexture
+  engineGetProgramExportDescriptor(engine: bigint): ProgramExportDescriptor
+  engineSetProgramExportEnabled(engine: bigint, enabled: boolean): number
+  engineDuplicateProgramExportHandles(
+    engine: bigint,
+    targetProcessId: number,
+    expectedGeneration: bigint,
+    expectedSlotCount: number
+  ): ProgramExportDuplicatedHandles
   engineGetOutputColorConfig(engine: bigint): OutputColorConfig
   engineReadPixels(
     engine: bigint,
@@ -480,6 +524,43 @@ export class NativeEngine {
   getSharedOutputTexture(outputIndex = 0): SharedOutputTexture {
     this.assertAlive()
     return this.api.engineGetSharedOutputTexture(this.handle, outputIndex)
+  }
+
+  /**
+   * Describe the dedicated broadcast Program export. This is independent of
+   * getSharedOutputTexture so Electron preview lifetime remains unchanged.
+   */
+  getProgramExportDescriptor(): ProgramExportDescriptor {
+    this.assertAlive()
+    return this.api.engineGetProgramExportDescriptor(this.handle)
+  }
+
+  /** Enable GPU publication only while at least one authenticated consumer exists. */
+  setProgramExportEnabled(enabled: boolean): void {
+    this.assertAlive()
+    const result = this.api.engineSetProgramExportEnabled(this.handle, enabled)
+    if (result !== 0) {
+      throw new Error(`Native engine Program export toggle failed with code ${result}`)
+    }
+  }
+
+  /**
+   * Duplicate this descriptor generation's two NT handles into an already
+   * authenticated consumer process. The target process owns and closes them.
+   * Callers must authenticate and strictly validate targetProcessId before use.
+   */
+  duplicateProgramExportHandles(
+    targetProcessId: number,
+    expectedGeneration: bigint,
+    expectedSlotCount = 2
+  ): ProgramExportDuplicatedHandles {
+    this.assertAlive()
+    return this.api.engineDuplicateProgramExportHandles(
+      this.handle,
+      targetProcessId,
+      expectedGeneration,
+      expectedSlotCount
+    )
   }
 
   getOutputColorConfig(): OutputColorConfig {

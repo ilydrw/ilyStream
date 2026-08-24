@@ -108,6 +108,19 @@ export class Database {
     } catch (err) {
       console.error('[db] One-time merge for dizzy_dork failed:', err)
     }
+
+    try {
+      // Runs last, after anything above that can merge profiles. Not guarded by a
+      // migration flag: it's a cheap self-heal, so any future path that deletes a
+      // profile without carrying its settings across gets cleaned up on the next
+      // launch instead of leaving rules behind that can never match again.
+      const pruned = this.stats.pruneOrphanedViewerScopedSettings()
+      if (pruned > 0) {
+        console.log(`[db] Removed ${pruned} viewer voice/join sound rule(s) pointing at deleted profiles.`)
+      }
+    } catch (err) {
+      console.error('[db] Orphaned viewer settings cleanup failed:', err)
+    }
   }
 
   // Settings

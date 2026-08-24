@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { TTSEngine } from './tts-engine'
 import { DEFAULT_APP_SETTINGS } from '../../shared/app-settings'
+import { LIVE_TTS_MAX_AGE_MS } from '../../shared/tts-freshness'
 import type { ChatEvent, FollowEvent, GiftEvent, UserInfo } from '../platforms/types'
 
 describe('TTSEngine settings', () => {
@@ -354,6 +355,142 @@ describe('TTSEngine settings', () => {
     )
   })
 
+  it('drops queued live chat that is too old to remain conversational', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-03T10:00:00.000Z'))
+    const engine = new TTSEngine()
+    const speakListener = vi.fn()
+    engine.on('tts:speak', speakListener)
+    engine.pause()
+
+    try {
+      expect(engine.enqueue({
+        text: 'do not replay this later',
+        username: 'alice',
+        platform: 'tiktok',
+        priority: 'normal',
+        eventType: 'chat'
+      })).toBe(true)
+      expect(engine.getQueue()).toHaveLength(1)
+
+      vi.advanceTimersByTime(LIVE_TTS_MAX_AGE_MS + 1)
+      engine.resume()
+
+      expect(speakListener).not.toHaveBeenCalled()
+      expect(engine.getQueue()).toHaveLength(0)
+    } finally {
+      engine.setEnabled(false)
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores late completion signals from speech that is no longer current', () => {
+    const engine = new TTSEngine()
+    const speakListener = vi.fn()
+    engine.on('tts:speak', speakListener)
+
+    try {
+      engine.enqueue({
+        text: 'first current message',
+        username: 'alice',
+        platform: 'tiktok',
+        priority: 'normal',
+        eventType: 'chat'
+      })
+      engine.enqueue({
+        text: 'second queued message',
+        username: 'bob',
+        platform: 'tiktok',
+        priority: 'normal',
+        eventType: 'chat'
+      })
+
+      const firstPayload = speakListener.mock.calls[0][0]
+      expect(firstPayload).toEqual(expect.objectContaining({
+        eventType: 'chat',
+        enqueuedAt: expect.any(Number)
+      }))
+
+      engine.onSpeechComplete('old-renderer-message')
+      expect(speakListener).toHaveBeenCalledTimes(1)
+      expect(engine.getQueue()).toHaveLength(1)
+
+      engine.onSpeechComplete(firstPayload.id)
+      expect(speakListener).toHaveBeenCalledTimes(2)
+    } finally {
+      engine.setEnabled(false)
+    }
+  })
+
+  it('does not give a profile voice to an unlinked impersonator with a copied display name', () => {
+    const realQueenaProfileId = '0aaf8b84-67b2-4ca7-af24-14fc660fd90e'
+    const resolveViewerProfileId = vi.fn((platform: string, username: string, identity?: { platformUserId?: string | null }) => {
+      if (
+        platform === 'tiktok' &&
+        username === 'queena.chaos' &&
+        identity?.platformUserId === '6519208051391184906'
+      ) {
+        return realQueenaProfileId
+      }
+      return null
+    })
+    const engine = new TTSEngine(resolveViewerProfileId)
+    const speakListener = vi.fn()
+
+    engine.applySettings({
+      ...DEFAULT_APP_SETTINGS.tts,
+      chatVoiceProfileId: 'default',
+      userVoiceOverrides: [
+        {
+          id: 'real-queena-voice',
+          platform: 'all',
+          // Stale/copied usernames must not weaken a profile-scoped rule.
+          username: 'queena.chaos2',
+          viewerProfileId: realQueenaProfileId,
+          mode: 'custom',
+          voiceProfileId: '',
+          provider: 'system',
+          voiceName: 'Queena profile voice',
+          kokoroVoice: 'af_heart',
+          elevenlabsVoiceId: '',
+          elevenlabsStability: 0.5,
+          elevenlabsSimilarity: 0.8,
+          elevenlabsStyle: 0,
+          lang: 'en-US',
+          pitch: 1.4,
+          rate: 1,
+          volume: 1,
+          enabled: true
+        }
+      ]
+    })
+    engine.on('tts:speak', speakListener)
+
+    engine.processEvent(makeChatEvent({
+      message: 'copied display name',
+      user: makeUser({
+        id: '7668867738030785549',
+        username: 'queena.chaos2',
+        displayName: 'Queena.Chaos'
+      })
+    }))
+
+    expect(resolveViewerProfileId).toHaveBeenCalledWith(
+      'tiktok',
+      'queena.chaos2',
+      expect.objectContaining({
+        platformUserId: '7668867738030785549',
+        displayName: 'Queena.Chaos'
+      })
+    )
+    expect(speakListener).toHaveBeenCalledWith(expect.objectContaining({
+      voice: expect.objectContaining({ id: 'default' })
+    }))
+    expect(speakListener).not.toHaveBeenCalledWith(expect.objectContaining({
+      voice: expect.objectContaining({ id: 'user-voice:real-queena-voice' })
+    }))
+  })
+
   it('can speak with an inline per-user voice without a saved profile', () => {
     const engine = new TTSEngine()
     const speakListener = vi.fn()
@@ -550,6 +687,7 @@ describe('TTSEngine settings', () => {
     engine.pause()
 
     engine.processEvent(makeChatEvent({ message: '!ai tell me a joke' }))
+    engine.processEvent(makeChatEvent({ message: '!AI is really cool' }))
     engine.processEvent(makeChatEvent({ message: '!play current song' }))
 
     expect(engine.getQueue()).toHaveLength(0)
@@ -564,11 +702,9 @@ describe('TTSEngine settings', () => {
     })
     engine.pause()
 
-    engine.processEvent(makeChatEvent({ message: '!AI is really cool' }))
     engine.processEvent(makeChatEvent({ message: '!play dark souls' }))
 
     expect(engine.getQueue()).toEqual([
-      expect.objectContaining({ text: 'Alice says: !AI is really cool' }),
       expect.objectContaining({ text: 'Alice says: !play dark souls' })
     ])
   })

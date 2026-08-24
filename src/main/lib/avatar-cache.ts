@@ -1,7 +1,7 @@
-import { createHash } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 import { createRequire } from 'module'
-import { join } from 'path'
-import { mkdir, readFile, rename, stat, writeFile } from 'fs/promises'
+import { join, resolve } from 'path'
+import { mkdir, readFile, stat, unlink, writeFile, rename } from 'fs/promises'
 import { avatarImageKey } from '../../shared/avatar-url'
 import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from './ssrf-guard'
 import { detectAvatarContentType, resolveAvatarContentType } from './avatar-content-type'
@@ -32,6 +32,9 @@ const requireModule = createRequire(import.meta.url)
 
 const MAX_TRACKED_IMAGES = 5000
 const WARM_RETRY_COOLDOWN_MS = 60_000
+export const AVATAR_CACHE_TTL_MS = 5 * 60_000
+export const AVATAR_FETCH_TIMEOUT_MS = 8_000
+const AVATAR_CACHE_SCHEMA_VERSION = '3'
 
 /** imageKey → most recently seen (freshest-signed) URL for that image. */
 const freshestUrlByImageKey = new Map<string, string>()
@@ -41,6 +44,8 @@ const warmInFlight = new Set<string>()
 const warmedImageKeys = new Set<string>()
 /** imageKey → last warm attempt, so a failing CDN isn't hammered per event. */
 const lastWarmAttemptAt = new Map<string, number>()
+/** cacheDir + imageKey → one normal cache/revalidation load in flight. */
+const loadInFlight = new Map<string, Promise<CachedAvatar>>()
 
 export class AvatarFetchError extends Error {
   constructor(
@@ -55,6 +60,16 @@ export class AvatarFetchError extends Error {
 export interface CachedAvatar {
   data: Buffer
   contentType: string
+  etag: string
+}
+
+interface CachedAvatarEntry extends CachedAvatar {
+  stale: boolean
+}
+
+export interface LoadAvatarOptions {
+  maxAgeMs?: number
+  fetchTimeoutMs?: number
 }
 
 /**
@@ -92,12 +107,19 @@ function resolveFetchImpl(): (input: string, init?: RequestInit) => Promise<Resp
 
 /** Cache file name keyed on the stable image identity, not the signed URL. */
 export function avatarCacheFileName(url: string): string {
-  return createHash('sha256').update(avatarImageKey(url)).digest('hex')
+  return createHash('sha256')
+    .update(`${AVATAR_CACHE_SCHEMA_VERSION}:${avatarImageKey(url)}`)
+    .digest('hex')
 }
 
 /** Cache file name used by older builds (full signed URL). */
 export function legacyAvatarCacheFileName(url: string): string {
   return createHash('sha256').update(url).digest('hex')
+}
+
+/** Cache file name used by v2 builds (stable identity without a schema prefix). */
+function legacyStableAvatarCacheFileName(url: string): string {
+  return createHash('sha256').update(avatarImageKey(url)).digest('hex')
 }
 
 /** Record the newest signed URL seen for an image so retries can use it. */
@@ -119,34 +141,73 @@ export function freshestUrlForImage(url: string): string | undefined {
   return freshestUrlByImageKey.get(avatarImageKey(url))
 }
 
-async function readCacheFile(path: string): Promise<Buffer | null> {
+function avatarEtag(data: Buffer): string {
+  return `"${createHash('sha256').update(data).digest('base64url')}"`
+}
+
+async function readCacheFile(path: string): Promise<{ data: Buffer; mtimeMs: number } | null> {
   try {
     const fileStats = await stat(path)
     if (!fileStats.isFile()) return null
-    return await readFile(path)
+    if (fileStats.size <= 0 || fileStats.size > MAX_AVATAR_BYTES) {
+      await unlink(path).catch(() => {})
+      return null
+    }
+    return { data: await readFile(path), mtimeMs: fileStats.mtimeMs }
   } catch {
     return null
   }
 }
 
-export async function readCachedAvatar(cacheDir: string, url: string): Promise<CachedAvatar | null> {
-  const stablePath = join(cacheDir, avatarCacheFileName(url))
-  let data = await readCacheFile(stablePath)
+async function readCachedAvatarEntry(
+  cacheDir: string,
+  url: string,
+  maxAgeMs: number
+): Promise<CachedAvatarEntry | null> {
+  const currentPath = join(cacheDir, avatarCacheFileName(url))
+  const candidates = [
+    { path: currentPath, legacy: false },
+    { path: join(cacheDir, legacyStableAvatarCacheFileName(url)), legacy: true },
+    { path: join(cacheDir, legacyAvatarCacheFileName(url)), legacy: true }
+  ]
+  const checked = new Set<string>()
 
-  if (!data) {
-    const legacyPath = join(cacheDir, legacyAvatarCacheFileName(url))
-    if (legacyPath !== stablePath) {
-      data = await readCacheFile(legacyPath)
-      // Migrate to the stable name so re-signed URLs find this file too.
-      if (data) await rename(legacyPath, stablePath).catch(() => {})
+  for (const candidate of candidates) {
+    if (checked.has(candidate.path)) continue
+    checked.add(candidate.path)
+
+    const cached = await readCacheFile(candidate.path)
+    if (!cached) continue
+
+    const contentType = detectAvatarContentType(cached.data)
+    if (!contentType) {
+      // Do not let a partial write, HTML error page, or other corrupt entry
+      // become a permanent image. A normal load will refetch after removal.
+      await unlink(candidate.path).catch(() => {})
+      continue
+    }
+
+    return {
+      data: cached.data,
+      contentType,
+      etag: avatarEtag(cached.data),
+      // Files created before the v3 cache schema have no trustworthy freshness
+      // metadata for this policy, so always revalidate them before migrating.
+      stale: candidate.legacy || Date.now() - cached.mtimeMs >= maxAgeMs
     }
   }
 
-  if (!data) return null
-  return { data, contentType: detectAvatarContentType(data) || 'application/octet-stream' }
+  return null
 }
 
-async function fetchAvatarOnce(url: string): Promise<CachedAvatar> {
+export async function readCachedAvatar(cacheDir: string, url: string): Promise<CachedAvatar | null> {
+  const cached = await readCachedAvatarEntry(cacheDir, url, AVATAR_CACHE_TTL_MS)
+  if (!cached) return null
+  const { stale: _stale, ...avatar } = cached
+  return avatar
+}
+
+async function fetchAvatarOnce(url: string, timeoutMs: number): Promise<CachedAvatar> {
   try {
     await assertSafePublicHttpUrl(url)
   } catch (err) {
@@ -157,37 +218,75 @@ async function fetchAvatarOnce(url: string): Promise<CachedAvatar> {
   }
 
   const fetchImpl = resolveFetchImpl()
-  const response = await fetchImpl(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      Referer: 'https://www.tiktok.com/'
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
+
+  try {
+    const response = await fetchImpl(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Referer: 'https://www.tiktok.com/'
+      }
+    })
+
+    if (!response.ok) {
+      throw new AvatarFetchError(`Avatar fetch failed (HTTP ${response.status})`, response.status)
     }
-  })
 
-  if (!response.ok) {
-    throw new AvatarFetchError(`Avatar fetch failed (HTTP ${response.status})`, response.status)
+    const declaredLength = Number(response.headers.get('Content-Length'))
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_AVATAR_BYTES) {
+      throw new AvatarFetchError('Avatar too large', 413)
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer())
+    if (buffer.byteLength > MAX_AVATAR_BYTES) {
+      throw new AvatarFetchError('Avatar too large', 413)
+    }
+
+    // Trust the bytes over the declared header: TikTok's CDN sometimes labels
+    // real images `application/octet-stream`, which must not fail the request.
+    const contentType = resolveAvatarContentType(buffer, response.headers.get('Content-Type'))
+    if (!contentType) {
+      throw new AvatarFetchError('Not an image', 415)
+    }
+
+    return { data: buffer, contentType, etag: avatarEtag(buffer) }
+  } catch (err) {
+    if (err instanceof AvatarFetchError) throw err
+    if (controller.signal.aborted) {
+      throw new AvatarFetchError('Avatar fetch timed out', 504)
+    }
+    throw new AvatarFetchError(
+      `Avatar fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+      502
+    )
+  } finally {
+    clearTimeout(timeout)
   }
-
-  const buffer = Buffer.from(await response.arrayBuffer())
-  if (buffer.byteLength > MAX_AVATAR_BYTES) {
-    throw new AvatarFetchError('Avatar too large', 413)
-  }
-
-  // Trust the bytes over the declared header: TikTok's CDN sometimes labels
-  // real images `application/octet-stream`, which must not fail the request.
-  const contentType = resolveAvatarContentType(buffer, response.headers.get('Content-Type'))
-  if (!contentType) {
-    throw new AvatarFetchError('Not an image', 415)
-  }
-
-  return { data: buffer, contentType }
 }
 
-export async function fetchAndCacheAvatar(cacheDir: string, url: string): Promise<CachedAvatar> {
-  const avatar = await fetchAvatarOnce(url)
+async function writeAvatarAtomically(cacheDir: string, fileName: string, data: Buffer): Promise<void> {
+  await mkdir(cacheDir, { recursive: true })
+  const targetPath = join(cacheDir, fileName)
+  const tempPath = join(cacheDir, `.${fileName}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`)
+
   try {
-    await mkdir(cacheDir, { recursive: true })
-    await writeFile(join(cacheDir, avatarCacheFileName(url)), avatar.data)
+    await writeFile(tempPath, data, { flag: 'wx' })
+    await rename(tempPath, targetPath)
+  } finally {
+    await unlink(tempPath).catch(() => {})
+  }
+}
+
+export async function fetchAndCacheAvatar(
+  cacheDir: string,
+  url: string,
+  timeoutMs = AVATAR_FETCH_TIMEOUT_MS
+): Promise<CachedAvatar> {
+  const avatar = await fetchAvatarOnce(url, timeoutMs)
+  try {
+    await writeAvatarAtomically(cacheDir, avatarCacheFileName(url), avatar.data)
   } catch (err) {
     console.error('[AvatarCache] Failed to cache avatar:', err)
   }
@@ -199,13 +298,22 @@ export async function fetchAndCacheAvatar(cacheDir: string, url: string): Promis
  * the freshest signed URL seen for the same image (the requested signature may
  * have expired between the event and this request).
  */
-export async function loadAvatar(cacheDir: string, url: string): Promise<CachedAvatar> {
-  const cached = await readCachedAvatar(cacheDir, url)
-  if (cached) return cached
+async function loadAvatarOnce(
+  cacheDir: string,
+  url: string,
+  options: LoadAvatarOptions
+): Promise<CachedAvatar> {
+  const maxAgeMs = Math.max(0, options.maxAgeMs ?? AVATAR_CACHE_TTL_MS)
+  const timeoutMs = Math.max(1, options.fetchTimeoutMs ?? AVATAR_FETCH_TIMEOUT_MS)
+  const cached = await readCachedAvatarEntry(cacheDir, url, maxAgeMs)
+  if (cached && !cached.stale) {
+    const { stale: _stale, ...avatar } = cached
+    return avatar
+  }
 
   let firstError: unknown
   try {
-    return await fetchAndCacheAvatar(cacheDir, url)
+    return await fetchAndCacheAvatar(cacheDir, url, timeoutMs)
   } catch (err) {
     firstError = err
   }
@@ -213,13 +321,35 @@ export async function loadAvatar(cacheDir: string, url: string): Promise<CachedA
   const freshest = freshestUrlForImage(url)
   if (freshest && freshest !== url) {
     try {
-      return await fetchAndCacheAvatar(cacheDir, freshest)
+      return await fetchAndCacheAvatar(cacheDir, freshest, timeoutMs)
     } catch {
       // Fall through to the original error.
     }
   }
 
+  if (cached) {
+    const { stale: _stale, ...avatar } = cached
+    return avatar
+  }
+
   throw firstError
+}
+
+export function loadAvatar(
+  cacheDir: string,
+  url: string,
+  options: LoadAvatarOptions = {}
+): Promise<CachedAvatar> {
+  const key = `${resolve(cacheDir)}\0${avatarImageKey(url)}`
+  const existing = loadInFlight.get(key)
+  if (existing) return existing
+
+  const pending = loadAvatarOnce(cacheDir, url, options)
+  loadInFlight.set(key, pending)
+  void pending.finally(() => {
+    if (loadInFlight.get(key) === pending) loadInFlight.delete(key)
+  }).catch(() => {})
+  return pending
 }
 
 /**
@@ -250,9 +380,7 @@ export function warmAvatarCache(url: string | null | undefined, cacheDir?: strin
 
   return (async () => {
     try {
-      if (!(await readCachedAvatar(dir, value))) {
-        await fetchAndCacheAvatar(dir, value)
-      }
+      await loadAvatar(dir, value)
       if (warmedImageKeys.size >= MAX_TRACKED_IMAGES) warmedImageKeys.clear()
       warmedImageKeys.add(key)
     } catch {
@@ -269,4 +397,5 @@ export function __resetAvatarCacheStateForTests(): void {
   warmInFlight.clear()
   warmedImageKeys.clear()
   lastWarmAttemptAt.clear()
+  loadInFlight.clear()
 }

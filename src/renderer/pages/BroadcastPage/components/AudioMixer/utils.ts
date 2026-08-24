@@ -1,5 +1,6 @@
 import React from 'react'
 import type { AudioSource, StudioScene } from '../../../../../shared/studio'
+import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import {
   audioEngine,
   sanitizeChannelMode,
@@ -7,6 +8,7 @@ import {
   sanitizeVolume,
   type ChannelModeStage
 } from '../../../../utils/audio-engine'
+import { isAudioSourceEligible } from './audio-route-policy'
 
 export interface MeterFrame {
   left: number
@@ -117,6 +119,14 @@ export function sanitizeAudioSourceUpdates(updates: Partial<AudioSource>): Parti
   if ('channelMode' in next) next.channelMode = sanitizeChannelMode(next.channelMode, 'stereo')
   if ('color' in next) next.color = normalizeTrackColor(next.color)
   if ('filters' in next && !Array.isArray(next.filters)) next.filters = []
+  if ('monitoringMode' in next) {
+    next.monitoringMode = normalizeAudioMonitoringMode(next.monitoringMode)
+    next.monitoring = next.monitoringMode !== 'off'
+  } else if ('monitoring' in next) {
+    next.monitoringMode = normalizeAudioMonitoringMode(undefined, next.monitoring)
+    next.monitoring = next.monitoringMode !== 'off'
+  }
+  if ('solo' in next) next.solo = Boolean(next.solo)
   return next
 }
 
@@ -201,7 +211,7 @@ export function getTrackStatuses(
   const statuses: Record<string, AudioTrackStatus> = {}
 
   for (const source of audioSources) {
-    if (source.id !== 'soundboard' && source.id !== 'tts-audio' && !activeLayerIds.has(source.id)) {
+    if (!isAudioSourceEligible(source, activeLayerIds)) {
       statuses[source.id] = { hasStream: false, hasAudio: false, live: false, label: 'Not in scene' }
       continue
     }

@@ -11,6 +11,7 @@ import {
   IconFx,
   IconSettings,
   IconStats,
+  IconEconomy,
   IconWidgets,
   IconHealthCenter
 } from './components/ui/icons/nav'
@@ -113,6 +114,14 @@ export const routes: AppRoute[] = [
     section: 'operate',
     icon: IconStats,
     component: lazy(() => import('./pages/StatsPage'))
+  },
+  {
+    path: '/economy',
+    label: 'Points & Rewards',
+    description: 'Manage viewer points, level bonuses, games, redemptions, sounds, and lighting rewards.',
+    section: 'operate',
+    icon: IconEconomy,
+    component: lazy(() => import('./pages/EconomyPage'))
   },
   {
     path: '/broadcast',

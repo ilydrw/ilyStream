@@ -1,5 +1,10 @@
 import { WIDGET_TEMPLATES, type WidgetTemplate } from './constants'
-import { type Widget, type WidgetType } from '../../../shared/widgets'
+import { getWidgetNaturalFrame, type Widget, type WidgetType } from '../../../shared/widgets'
+import {
+  applyWidgetThemeConfig,
+  DEFAULT_WIDGET_THEME_ID,
+  widgetConfigSupportsThemes
+} from '../../../shared/widget-themes'
 
 type WidgetConfigRecord = Record<string, unknown>
 type WidgetPreviewAspectRatio = 'auto' | 'tiktok' | 'landscape'
@@ -15,41 +20,6 @@ export interface WidgetPreviewFrame {
   width: number
   /** Natural canvas height in pixels. */
   height: number
-}
-
-/**
- * Per-widget natural canvas dimensions. These mirror the browser-source
- * dimensions a streamer would typically use in OBS for each widget type, so
- * the editor preview looks like what the user will actually composite.
- *
- * Widgets whose config exposes `aspectRatio: 'tiktok' | 'landscape'` or
- * `forceTikTokDimensions: true` override this map at preview time.
- */
-const WIDGET_NATURAL_FRAMES: Partial<Record<WidgetType, { width: number; height: number }>> = {
-  // Full-screen overlays — these widgets paint across the whole browser source.
-  alerts: { width: 1920, height: 1080 },
-  chat: { width: 1920, height: 1080 },
-  'event-particles': { width: 1920, height: 1080 },
-  'falling-roses': { width: 1080, height: 1920 },
-  particles: { width: 1920, height: 1080 },
-  'node-network': { width: 1920, height: 1080 },
-  physics: { width: 1920, height: 1080 },
-  'screen-border': { width: 1920, height: 1080 },
-
-  // Bar / banner widgets — short and wide.
-  goal: { width: 720, height: 160 },
-  'follower-goal': { width: 720, height: 180 },
-  socials: { width: 720, height: 140 },
-  'discord-promo': { width: 520, height: 160 },
-
-  // Notification cards — small horizontal rectangles.
-  'latest-gifter': { width: 520, height: 180 },
-  'now-playing': { width: 560, height: 220 },
-  'likes-tracker': { width: 400, height: 280 },
-
-  // Sidebar / portrait widgets.
-  'chat-unified': { width: 1080, height: 1920 },
-  leaderboard: { width: 440, height: 640 }
 }
 
 const FULLSCREEN_LANDSCAPE = { width: 1920, height: 1080 } as const
@@ -69,6 +39,11 @@ export function getWidgetTemplate(type: WidgetType): WidgetTemplate | undefined 
   return WIDGET_TEMPLATES.find((template) => template.type === type)
 }
 
+export function widgetSupportsThemes(widget: Pick<Widget, 'type' | 'config'>): boolean {
+  const template = getWidgetTemplate(widget.type)
+  return widgetConfigSupportsThemes(template?.defaultConfig ?? widget.config)
+}
+
 export function cloneWidgetConfig(config: WidgetConfigRecord): WidgetConfigRecord {
   if (typeof structuredClone === 'function') {
     return structuredClone(config)
@@ -78,11 +53,15 @@ export function cloneWidgetConfig(config: WidgetConfigRecord): WidgetConfigRecor
 }
 
 export function createWidgetFromTemplate(template: WidgetTemplate, id: string = crypto.randomUUID()): Widget {
+  const config = cloneWidgetConfig(template.defaultConfig)
+
   return {
     id,
     name: template.label,
     type: template.type,
-    config: cloneWidgetConfig(template.defaultConfig)
+    config: widgetConfigSupportsThemes(config)
+      ? applyWidgetThemeConfig(config, DEFAULT_WIDGET_THEME_ID)
+      : config
   }
 }
 
@@ -156,11 +135,37 @@ export function getWidgetPreviewFrame(
   }
 
   if (type) {
-    const natural = WIDGET_NATURAL_FRAMES[type]
-    if (natural) return makePreviewFrame(natural.width, natural.height)
+    const natural = getWidgetNaturalFrame(type)
+    if (natural) {
+      if (type === 'text') {
+        return makePreviewFrame(
+          readClampedDimension(config, 'canvasWidth', 240, 1920, natural.width),
+          readClampedDimension(config, 'canvasHeight', 80, 1080, natural.height)
+        )
+      }
+      if (type === 'discord-call') {
+        return makePreviewFrame(
+          readClampedDimension(config, 'panelWidth', 240, 1200, natural.width),
+          readClampedDimension(config, 'panelMaxHeight', 140, 900, natural.height)
+        )
+      }
+      return makePreviewFrame(natural.width, natural.height)
+    }
   }
 
   return makePreviewFrame(FULLSCREEN_LANDSCAPE.width, FULLSCREEN_LANDSCAPE.height)
+}
+
+function readClampedDimension(
+  config: unknown,
+  key: string,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  if (!config || typeof config !== 'object') return fallback
+  const value = Number((config as Record<string, unknown>)[key])
+  return Number.isFinite(value) ? Math.round(Math.min(max, Math.max(min, value))) : fallback
 }
 
 function normalizeFrameInput(

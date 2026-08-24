@@ -9,6 +9,7 @@ import { ParticleConfigEditor } from './ParticleConfigEditor'
 import { RoseConfigEditor } from './RoseConfigEditor'
 import { ParticlesConfigEditor } from './ParticlesConfigEditor'
 import { DiscordPromoConfigEditor } from './DiscordPromoConfigEditor'
+import { DiscordCallConfigEditor } from './DiscordCallConfigEditor'
 import { NodeNetworkConfigEditor } from './NodeNetworkConfigEditor'
 import { LatestGifterConfigEditor } from './LatestGifterConfigEditor'
 import { PhysicsConfigEditor } from './PhysicsConfigEditor'
@@ -16,6 +17,9 @@ import { ChatUnifiedConfigEditor } from './ChatUnifiedConfigEditor'
 import { LikesTrackerConfigEditor } from './LikesTrackerConfigEditor'
 import { AlertsConfigEditor } from './AlertsConfigEditor'
 import { LeaderboardConfigEditor } from './LeaderboardConfigEditor'
+import { BrbScreenConfigEditor } from './BrbScreenConfigEditor'
+import { CameraFrameConfigEditor } from './CameraFrameConfigEditor'
+import { TextWidgetConfigEditor } from './TextWidgetConfigEditor'
 
 type ConfigEditorProps = {
   draft: Widget
@@ -29,20 +33,24 @@ const CONFIG_EDITORS: Partial<Record<Widget['type'], ConfigEditorComponent>> = {
   'now-playing': NowPlayingConfigEditor,
   chat: ChatConfigEditor,
   'follower-goal': FollowerGoalConfigEditor,
+  text: TextWidgetConfigEditor,
   socials: SocialsConfigEditor,
   'screen-border': BorderConfigEditor,
+  'camera-frame': CameraFrameConfigEditor,
   'event-particles': ParticleConfigEditor,
   'gift-overlays': ParticleConfigEditor,
   'falling-roses': RoseConfigEditor,
   particles: ParticlesConfigEditor,
   'discord-promo': DiscordPromoConfigEditor,
+  'discord-call': DiscordCallConfigEditor,
   'node-network': NodeNetworkConfigEditor,
   'latest-gifter': LatestGifterConfigEditor,
   physics: PhysicsConfigEditor,
   'chat-unified': ChatUnifiedConfigEditor,
   'likes-tracker': LikesTrackerConfigEditor,
   alerts: AlertsConfigEditor,
-  leaderboard: LeaderboardConfigEditor
+  leaderboard: LeaderboardConfigEditor,
+  'brb-screen': BrbScreenConfigEditor
 }
 
 export function ConfigEditor({

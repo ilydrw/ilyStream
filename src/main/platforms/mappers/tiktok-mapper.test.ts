@@ -49,6 +49,85 @@ describe('TikTokMapper', () => {
     }).giftName).toBe("You're Awesome")
   })
 
+  it('maps the authoritative TikTok gift artwork into alert events', () => {
+    const mapper = new TikTokMapper()
+
+    expect(mapper.mapGift({
+      ...makeGiftPayload(true, 1),
+      giftDetails: {
+        id: '5655',
+        giftName: 'Rose',
+        diamondCount: 1,
+        giftImage: { url: ['https://example.com/tiktok-gifts/rose.webp'] }
+      }
+    })).toEqual(expect.objectContaining({
+      giftId: '5655',
+      giftName: 'Rose',
+      giftImageUrl: 'https://example.com/tiktok-gifts/rose.webp'
+    }))
+  })
+
+  it('corrects TikTok\'s retired Autumn 2024 label for Lightning Bolt', () => {
+    const mapper = new TikTokMapper()
+
+    const gift = mapper.mapGift({
+      ...makeGiftPayload(true, 1),
+      giftId: 6652,
+      giftName: 'Autumn 2024',
+      diamondCount: 1
+    })
+
+    expect(gift).toEqual(expect.objectContaining({
+      giftId: '6652',
+      giftName: 'Lightning Bolt'
+    }))
+    expect(mapper.mapGift({
+      ...makeGiftPayload(true, 1),
+      giftId: 9999,
+      giftName: 'Autumn 2024'
+    }).giftName).toBe('Autumn 2024')
+    expect(mapper.mapGift({
+      ...makeGiftPayload(true, 1),
+      giftId: 6652,
+      giftName: 'Lightning Bolt'
+    }).giftName).toBe('Lightning Bolt')
+  })
+
+  it('maps a Super Fan Box envelope as a gift with superfan identity', () => {
+    const mapper = new TikTokMapper()
+
+    const event = mapper.mapSuperFanBox({
+      msgId: 'super-fan-box-1',
+      envelopeInfo: {
+        envelopeId: 'envelope-1',
+        businessType: 19,
+        sendUserId: 'viewer-1',
+        sendUserName: 'box_friend',
+        diamondCount: 100,
+        sendUserAvatar: { urlList: ['https://example.com/box-friend.png'] }
+      }
+    })
+
+    expect(event).toEqual(expect.objectContaining({
+      id: 'super-fan-box-1',
+      type: 'gift',
+      giftName: 'Super Fan Box',
+      giftId: 'envelope-1',
+      giftCount: 1,
+      isCombo: false,
+      isSuperFanBox: true
+    }))
+    expect(event.user).toEqual(expect.objectContaining({
+      id: 'viewer-1',
+      username: 'box_friend',
+      displayName: 'box_friend',
+      profilePictureUrl: 'https://example.com/box-friend.png',
+      isSubscriber: true,
+      isFanClubMember: true,
+      isSuperFan: true
+    }))
+  })
+
   it('maps alternate TikTok like counter fields into real like totals', () => {
     const mapper = new TikTokMapper()
 

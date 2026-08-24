@@ -1,3 +1,5 @@
+import { nextEncoderTimestamp } from './encoder-timestamp'
+
 let offscreenCanvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 let videoEncoder: VideoEncoder | null = null
@@ -17,6 +19,7 @@ let jpegEncodeInFlight = false
 let startedAtMs = 0
 let lastEncodeAtMs = 0
 let compositedFrameMode = false
+let lastEncodedTimestamp: number | null = null
 // Compositor cadence is driven by a fixed timer rather than
 // requestAnimationFrame so the stream keeps producing frames when the host
 // window is minimized, occluded, or the display goes to sleep — rAF in a
@@ -62,6 +65,7 @@ self.onmessage = async (e) => {
     startedAtMs = performance.now()
     lastEncodeAtMs = 0
     compositedFrameMode = false
+    lastEncodedTimestamp = null
 
     if (captureFormat === 'h264') {
       videoEncoder = new VideoEncoder({
@@ -296,7 +300,7 @@ function renderLoop() {
 
       const forceKeyFrame = forceNextKeyFrame || frameCountTotal % (streamFps * 2) === 0
       forceNextKeyFrame = false
-      const timestampMicrosec = Math.round((frameCountTotal / streamFps) * 1_000_000);
+      const timestampMicrosec = advanceEncoderTimestamp()
       const frame = new VideoFrame(offscreenCanvas, { timestamp: timestampMicrosec })
 
       videoEncoder.encode(frame, { keyFrame: forceKeyFrame })
@@ -319,12 +323,15 @@ function encodeVideoFrame(frame: VideoFrame) {
   frameCountTotal++
   const forceKeyFrame = forceNextKeyFrame || frameCountTotal % (streamFps * 2) === 1
   forceNextKeyFrame = false
+  let retimedFrame: VideoFrame | null = null
 
   try {
-    videoEncoder.encode(frame, { keyFrame: forceKeyFrame })
+    retimedFrame = new VideoFrame(frame, { timestamp: advanceEncoderTimestamp() })
+    videoEncoder.encode(retimedFrame, { keyFrame: forceKeyFrame })
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err) })
   } finally {
+    retimedFrame?.close()
     frame.close()
   }
 }
@@ -333,7 +340,7 @@ async function emitJpegFrame() {
   if (!offscreenCanvas || jpegEncodeInFlight) return
   jpegEncodeInFlight = true
   try {
-    const timestamp = Math.round((frameCountTotal / streamFps) * 1_000_000)
+    const timestamp = advanceEncoderTimestamp()
     const blob = await offscreenCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.86 })
     const buffer = await blob.arrayBuffer()
     self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
@@ -355,7 +362,7 @@ async function emitJpegFrameFromVideoFrame(frame: VideoFrame) {
     ctx.clearRect(0, 0, cw, ch)
     ctx.drawImage(frame, 0, 0, cw, ch)
     frameCountTotal++
-    const timestamp = frame.timestamp ?? Math.round((frameCountTotal / streamFps) * 1_000_000)
+    const timestamp = advanceEncoderTimestamp()
     const blob = await offscreenCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.84 })
     const buffer = await blob.arrayBuffer()
     self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
@@ -389,13 +396,18 @@ function emitBgraFrame(frame: VideoFrame) {
     }
 
     frameCountTotal++
-    const timestamp = frame.timestamp ?? Math.round((frameCountTotal / streamFps) * 1_000_000)
+    const timestamp = advanceEncoderTimestamp()
     self.postMessage({ type: 'chunk', buffer, isKey: true, timestamp }, [buffer] as any)
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err) })
   } finally {
     frame.close()
   }
+}
+
+function advanceEncoderTimestamp(): number {
+  lastEncodedTimestamp = nextEncoderTimestamp(lastEncodedTimestamp, streamFps)
+  return lastEncodedTimestamp
 }
 
 export {}

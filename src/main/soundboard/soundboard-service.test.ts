@@ -50,6 +50,21 @@ describe('SoundboardService', () => {
 
     expect(() => service.uploadSound(directoryPath)).toThrow('Sound file was not found.')
   })
+
+  it('includes the requested playback mode in emitted sound actions', () => {
+    const service = new SoundboardService(makeDb())
+    const boardPath = join(userDataDir, 'sounds', 'board', 'button.wav')
+    writeFileSync(boardPath, 'button')
+    const listener = vi.fn()
+    service.on('action:play-sound', listener)
+
+    expect(service.playSound('board/button.wav', 0.75, 'overlap')).toBe(true)
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'board/button.wav',
+      volume: 0.75,
+      playbackMode: 'overlap'
+    }))
+  })
 })
 
 function makeDb(): any {

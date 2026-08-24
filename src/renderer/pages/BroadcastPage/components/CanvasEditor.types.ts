@@ -50,6 +50,8 @@ export interface CanvasEditorProps {
   dualVerticalOverlayEnabled?: boolean
   isVisible?: boolean
   isPreview?: boolean
+  /** Studio Program stays observable but cannot be edited before a TAKE. */
+  readOnly?: boolean
   // Force the per-aspect output canvases to render even when no stream or
   // overlay needs them. Used by the projector mirror feature so it can grab
   // a 9:16 (or 16:9) render on demand.
@@ -57,6 +59,13 @@ export interface CanvasEditorProps {
   forceHorizontalCanvas?: boolean
   /** Keep browser-source frames active while this editor is rendering. */
   browserFramesNeeded?: boolean
+  /** Shared cache lets Program and Preview consume one browser-source frame. */
+  browserFrameCacheRef?: MutableRefObject<Record<string, BrowserFrameSurface>>
+  /** Program owns the union of Program + selected Preview browser sources. */
+  browserSourceLayers?: StudioLayer[]
+  manageBrowserSources?: boolean
+  /** Sources needed by an imminent transition; kept warm in Program caches. */
+  prewarmScene?: StudioScene
   onContextMenu?: (e: React.MouseEvent, layer: StudioLayer | null, aspectRatio: '16:9' | '9:16') => void
   onSelectionContextChange?: (context: '16:9' | '9:16') => void
   /** Double-click on a source — used to jump straight into widget editing. */

@@ -201,7 +201,10 @@ function createWindow(): void {
     console.error(`[main] Main renderer exited: ${details.reason} (${details.exitCode})`)
   })
 
-  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // Preview updates intentionally replace srcdoc subframes. Chromium reports
+    // superseded subframe navigations as ERR_ABORTED (-3), which is expected.
+    if (errorCode === -3 && !isMainFrame) return
     console.error(`[main] Window failed to load: ${errorCode} ${errorDescription} at ${validatedURL}`)
   })
 

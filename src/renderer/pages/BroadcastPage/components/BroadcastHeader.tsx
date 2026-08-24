@@ -1,4 +1,4 @@
-import { IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconVideo, IconSquare, IconLayoutGrid, IconKeyboard, IconSettings, IconBroadcast, IconScreenShare, IconSparkles } from '@tabler/icons-react'
+import { IconMenu2, IconDeviceDesktop, IconDeviceMobile, IconStack2, IconRotate2, IconRotateClockwise2, IconCamera, IconVideo, IconSquare, IconLayoutGrid, IconKeyboard, IconSettings, IconBroadcast, IconScreenShare, IconSparkles, IconChecklist } from '@tabler/icons-react'
 import { IconRefresh, IconChevronRight, IconChevronLeft, IconPlus, IconChevronDown, IconDeviceFloppy, IconPencil } from '../../../components/ui/icons'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -7,6 +7,8 @@ import { Select } from '../../../components/ui/Select'
 import { PlatformLogo } from '../../../components/platforms/PlatformLogo'
 import { Tooltip } from '../../../components/ui/Tooltip'
 import type { VirtualCameraFeedConfig, VirtualCameraFeedMode, VirtualCameraSourceFitMode, VirtualCameraSourceOption } from './CanvasEditor.types'
+import { LiveReadinessPanel } from './LiveReadinessPanel'
+import type { LiveReadinessIncident, LiveReadinessReport } from '../utils/live-readiness'
 
 interface BroadcastHeaderProps {
   isStreaming: boolean
@@ -55,10 +57,16 @@ interface BroadcastHeaderProps {
   onStopBroadcast: () => void
   onShowMultiView: () => void
   studioMode: boolean
+  studioModeToggleDisabled?: boolean
   onToggleStudioMode: () => void
   onToggleHotkeys: () => void
   showHotkeys: boolean
   onOpenRecordingSettings: () => void
+  readinessReport: LiveReadinessReport
+  readinessRefreshing: boolean
+  streamIncidents: LiveReadinessIncident[]
+  onRefreshReadiness: () => void
+  onCopyReadinessDiagnostic: () => void
 }
 
 export function BroadcastHeader(props: BroadcastHeaderProps) {
@@ -73,12 +81,13 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
     platforms, layoutAssignments, onToggleLayoutAssignment, onRemoveLayoutAssignment,
     customRtmpUrl, onCustomRtmpUrlChange, customStreamKey, onCustomStreamKeyChange,
     streamInfoTitle, onOpenStreamInfo,
-    onStartBroadcast, onStopBroadcast, studioMode, onToggleStudioMode,
-    onToggleHotkeys, showHotkeys, onOpenRecordingSettings
+    onStartBroadcast, onStopBroadcast, studioMode, studioModeToggleDisabled = false, onToggleStudioMode,
+    onToggleHotkeys, showHotkeys, onOpenRecordingSettings,
+    readinessReport, readinessRefreshing, streamIncidents, onRefreshReadiness, onCopyReadinessDiagnostic
   } = props
 
   const [showOutputsMenu, setShowOutputsMenu] = useState(false)
-  const assignedStreamCount = layoutAssignments.horizontal.length + layoutAssignments.vertical.length
+  const [showReadiness, setShowReadiness] = useState(false)
   const selectedVirtualCameraSource = virtualCameraSourceOptions.find(option => option.id === virtualCameraFeed.sourceLayerId)
   const virtualCameraSourceSelectOptions = virtualCameraSourceOptions.map(option => ({
     value: option.id,
@@ -122,12 +131,17 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
   const reconnectingOutputs = isStreaming
     ? (props.outputHealth ?? []).filter(output => output.state === 'reconnecting')
     : []
+  const startingOutputs = isStreaming
+    ? (props.outputHealth ?? []).filter(output => output.state === 'starting')
+    : []
   const degradedOutputs = isStreaming
     ? (props.outputHealth ?? []).filter(output => output.state === 'live' && output.degraded)
     : []
   const unhealthyOutputs = [...reconnectingOutputs, ...degradedOutputs]
   const sessionLabel = reconnectingOutputs.length > 0
     ? 'Reconnecting'
+    : startingOutputs.length > 0 || (isStreaming && (props.outputHealth ?? []).length === 0)
+      ? 'Starting'
     : degradedOutputs.length > 0
       ? 'Dropping frames'
       : isStreaming
@@ -150,6 +164,25 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
       <span>{sessionLabel}</span>
     </div>
   )
+  const readinessLabel = readinessReport.blockerCount > 0
+    ? `${readinessReport.blockerCount} blocked`
+    : readinessReport.warningCount > 0 || readinessReport.checkingCount > 0
+      ? 'Check'
+      : 'Ready'
+  const readinessTooltip = readinessReport.blockerCount > 0
+    ? `${readinessReport.blockerCount} required live-readiness check${readinessReport.blockerCount === 1 ? '' : 's'} failed`
+    : readinessReport.warningCount > 0 || readinessReport.checkingCount > 0
+      ? 'Review live-readiness warnings'
+      : 'Live readiness checks passed'
+  const attemptStartBroadcast = () => {
+    if (readinessReport.blockerCount > 0) {
+      setShowReadiness(true)
+      setShowOutputsMenu(false)
+      onRefreshReadiness()
+      return
+    }
+    onStartBroadcast()
+  }
 
   return (
     <header className="broadcast-header" style={{ WebkitAppRegion: 'drag' } as any}>
@@ -183,6 +216,8 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
           <div className="broadcast-header-divider" />
           <button
             onClick={onToggleStudioMode}
+            disabled={studioModeToggleDisabled}
+            title={studioModeToggleDisabled ? 'Stop streaming and recording before changing Studio Mode' : 'Toggle Studio Mode'}
             className={`broadcast-header-text-button ${studioMode ? 'is-active' : ''}`}
           >
             <span className="broadcast-header-mode-dot" />
@@ -247,6 +282,67 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
               <IconSettings size={17} />
             </button>
           </Tooltip>
+        </div>
+
+        <div className="relative">
+          <Tooltip content={readinessTooltip} position="bottom">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showReadiness
+                setShowReadiness(next)
+                if (next) {
+                  setShowOutputsMenu(false)
+                  onRefreshReadiness()
+                }
+              }}
+              aria-label="Live readiness"
+              aria-expanded={showReadiness}
+              className={`broadcast-header-action ${showReadiness ? 'is-active' : ''}`}
+            >
+              <IconChecklist size={18} />
+              <span className="hidden 2xl:inline">{readinessLabel}</span>
+              <span
+                className={`h-2 w-2 rounded-sm ${
+                  readinessReport.tone === 'ready'
+                    ? 'bg-emerald-400'
+                    : readinessReport.tone === 'blocked'
+                      ? 'bg-red-400'
+                      : 'bg-amber-400'
+                }`}
+              />
+            </button>
+          </Tooltip>
+
+          <AnimatePresence>
+            {showReadiness && (
+              <>
+                <motion.button
+                  type="button"
+                  aria-label="Close live readiness"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[610] cursor-default bg-transparent"
+                  onClick={() => setShowReadiness(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                >
+                  <LiveReadinessPanel
+                    report={readinessReport}
+                    refreshing={readinessRefreshing}
+                    incidents={streamIncidents}
+                    onRefresh={onRefreshReadiness}
+                    onCopyDiagnostic={onCopyReadinessDiagnostic}
+                    onClose={() => setShowReadiness(false)}
+                  />
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
 
         <Tooltip content="Keyboard shortcuts" position="bottom">
@@ -488,10 +584,9 @@ export function BroadcastHeader(props: BroadcastHeaderProps) {
             </button>
           ) : (
             <button
-              onClick={onStartBroadcast}
-              disabled={assignedStreamCount === 0 && (!customRtmpUrl.trim() || !customStreamKey.trim())}
+              onClick={attemptStartBroadcast}
               className="app-button-primary"
-              title="Start the live broadcast"
+              title={readinessReport.blockerCount > 0 ? 'Review the required live-readiness checks' : 'Start the live broadcast'}
             >
               <IconBroadcast size={14} /> Go live
             </button>

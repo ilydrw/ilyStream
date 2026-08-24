@@ -8,6 +8,7 @@ import type { Platform } from '../main/platforms/types'
 import type { VideoFramePayload, AudioFramePayload } from '../main/services/streaming-service'
 import type { EventLabSimulationPayload } from '../shared/event-lab'
 import type { LightingState } from '../shared/lighting'
+import type { EconomyConfig, EconomyRedemption } from '../shared/economy'
 import type { RazerStatus, RazerThemeSettings } from '../shared/razer'
 import { isRendererEventChannel, type RendererEventChannel } from '../shared/ipc-events'
 import type {
@@ -18,6 +19,13 @@ import type { BroadcastStreamInfo, StreamInfoPreset, TwitchCategory } from '../s
 import type { NativeBroadcastScene, NativeLiveSourceFrame } from '../shared/native-scene'
 import type { KokoroSynthesisRequest } from '../shared/kokoro-worker'
 import type { SegmentationFrame, SegmentationMask } from '../shared/segmentation-worker'
+import type { DiscordCallState } from '../shared/discord-call'
+import type {
+  OBSWorkspaceAccess,
+  OBSWorkspaceSetupResult,
+  OBSWorkspaceSetupStatus,
+  OBSWorkspaceSnapshot
+} from '../shared/obs-workspace'
 
 export type IpcCallback = (...args: any[]) => void
 
@@ -294,6 +302,23 @@ const api = {
     stopAll: () => ipcRenderer.invoke('sound:stop-all')
   },
 
+  // --- Viewer economy ---
+  economy: {
+    getDashboard: () => ipcRenderer.invoke('economy:get-dashboard'),
+    getConfig: (): Promise<EconomyConfig> => ipcRenderer.invoke('economy:get-config'),
+    updateConfig: (config: Partial<EconomyConfig>): Promise<EconomyConfig> =>
+      ipcRenderer.invoke('economy:update-config', config),
+    getRedemptions: (includeDisabled = true): Promise<EconomyRedemption[]> =>
+      ipcRenderer.invoke('economy:get-redemptions', includeDisabled),
+    saveRedemption: (redemption: Partial<EconomyRedemption>): Promise<EconomyRedemption> =>
+      ipcRenderer.invoke('economy:save-redemption', redemption),
+    deleteRedemption: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('economy:delete-redemption', id),
+    getTransactions: (limit = 100) => ipcRenderer.invoke('economy:get-transactions', limit),
+    grantPoints: (input: { username: string; platform: string; amount: number; reason?: string }): Promise<number> =>
+      ipcRenderer.invoke('economy:grant-points', input)
+  },
+
   // --- Assets (Images) ---
   assets: {
     images: {
@@ -432,7 +457,7 @@ const api = {
     getKokoroStatus: () => ipcRenderer.invoke('tts:kokoro:get-status'),
     testSpeak: (payload: { text: string; voiceProfileId?: string }) =>
       ipcRenderer.invoke('tts:test-speak', payload),
-    notifySpeechComplete: () => ipcRenderer.send('tts:speech-complete'),
+    notifySpeechComplete: (id?: string) => ipcRenderer.send('tts:speech-complete', id),
     notifyReady: () => ipcRenderer.send('tts:renderer-ready')
   },
 
@@ -459,6 +484,11 @@ const api = {
     getSync: (key: AppSettingKey) => ipcRenderer.sendSync('settings:get-sync', key)
   },
 
+  // --- Discord voice call ---
+  discord: {
+    getCallState: () => ipcRenderer.invoke('discord:get-call-state') as Promise<DiscordCallState>
+  },
+
   // --- Overlay ---
   overlay: {
     getStatus: () => ipcRenderer.invoke('overlay:get-status'),
@@ -482,6 +512,18 @@ const api = {
     startVirtualCamera: () => ipcRenderer.invoke('obs:start-virtual-camera'),
     stopVirtualCamera: () => ipcRenderer.invoke('obs:stop-virtual-camera'),
     toggleVirtualCamera: () => ipcRenderer.invoke('obs:toggle-virtual-camera')
+  },
+
+  // --- OBS-native ilyStream workspace ---
+  obsWorkspace: {
+    getAccess: () => ipcRenderer.invoke('obs-workspace:get-access') as Promise<OBSWorkspaceAccess>,
+    getSnapshot: () => ipcRenderer.invoke('obs-workspace:get-snapshot') as Promise<OBSWorkspaceSnapshot>,
+    rotatePairing: () => ipcRenderer.invoke('obs-workspace:rotate-pairing') as Promise<OBSWorkspaceAccess>,
+    openControlCenter: () => ipcRenderer.invoke('obs-workspace:open-control-center') as Promise<boolean>,
+    getSetupStatus: () => ipcRenderer.invoke('obs-workspace:get-setup-status') as Promise<OBSWorkspaceSetupStatus>,
+    installTheme: () => ipcRenderer.invoke('obs-workspace:install-theme') as Promise<OBSWorkspaceSetupResult>,
+    stagePlugin: () => ipcRenderer.invoke('obs-workspace:stage-plugin') as Promise<OBSWorkspaceSetupResult>,
+    installStagedPlugin: () => ipcRenderer.invoke('obs-workspace:install-staged-plugin') as Promise<OBSWorkspaceSetupResult>
   },
 
   // --- Window ---
@@ -763,6 +805,8 @@ const api = {
       scene?: NativeBroadcastScene
       /** Which engine output to drive; omitted means the 16:9 program. */
       sessionId?: string
+      /** False when OBS is the only consumer and no renderer texture is needed. */
+      presentOutput?: boolean
     }) => {
       // Only the program owns the shared preview texture; a secondary session
       // joins the running engine and must not tear it down.

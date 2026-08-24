@@ -6,9 +6,15 @@ import {
   buildWidgetPreviewUrl,
   createWidgetFromTemplate,
   getWidgetPreviewFrame,
-  normalizeOverlayHost
+  normalizeOverlayHost,
+  widgetSupportsThemes
 } from './widget-customization'
 import { type SocialsConfig, type Widget } from '../../../shared/widgets'
+import {
+  applyWidgetThemeConfig,
+  widgetConfigSupportsThemes,
+  WIDGET_THEMES
+} from '../../../shared/widget-themes'
 
 describe('widget customization helpers', () => {
   it('creates widgets with independent default config copies', () => {
@@ -25,6 +31,54 @@ describe('widget customization helpers', () => {
     expect((second.config as SocialsConfig).accounts[0].username).toBe('@IlyStreamer')
     expect(first.config).not.toBe(template!.defaultConfig)
     expect(second.config).not.toBe(template!.defaultConfig)
+  })
+
+  it('starts themeable widgets with Cyber Neon without theming widgets that do not use presets', () => {
+    const themedTemplate = WIDGET_TEMPLATES.find((item) => item.type === 'socials')
+    const unthemedTemplate = WIDGET_TEMPLATES.find((item) => item.type === 'physics')
+
+    expect(themedTemplate).toBeDefined()
+    expect(unthemedTemplate).toBeDefined()
+
+    const themed = createWidgetFromTemplate(themedTemplate!, 'themed')
+    const unthemed = createWidgetFromTemplate(unthemedTemplate!, 'unthemed')
+
+    expect(themed.config).toEqual(expect.objectContaining({
+      themeId: 'cyber',
+      widgetThemeName: 'Cyber Neon',
+      style: 'cyber',
+      accentColor: '#19C8FF'
+    }))
+    expect(unthemed.config).toEqual(unthemedTemplate!.defaultConfig)
+    expect(unthemed.config).not.toHaveProperty('themeId')
+  })
+
+  it('hides presets for non-themeable widget types even if an old config contains unused theme fields', () => {
+    expect(widgetSupportsThemes({
+      type: 'physics',
+      config: {
+        ...WIDGET_TEMPLATES.find((item) => item.type === 'physics')!.defaultConfig,
+        themeId: 'chroma',
+        primaryColor: '#FF3B30',
+        secondaryColor: '#34D399'
+      }
+    })).toBe(false)
+  })
+
+  it('makes every preset available to every themeable widget template', () => {
+    const themeableTemplates = WIDGET_TEMPLATES.filter((template) =>
+      widgetConfigSupportsThemes(template.defaultConfig)
+    )
+
+    expect(themeableTemplates.length).toBeGreaterThan(0)
+    for (const template of themeableTemplates) {
+      for (const theme of WIDGET_THEMES) {
+        expect(applyWidgetThemeConfig(template.defaultConfig, theme.id)).toEqual(expect.objectContaining({
+          themeId: theme.id,
+          widgetThemeName: theme.name
+        }))
+      }
+    }
   })
 
   it('uses the shared overlay URL format', () => {
@@ -101,14 +155,37 @@ describe('widget customization helpers', () => {
       getWidgetPreviewFrame({ type: 'follower-goal', config: {} })
     ).toMatchObject({ isVertical: false, width: 720, height: 180 })
 
+    expect(
+      getWidgetPreviewFrame({ type: 'text', config: { canvasWidth: 960, canvasHeight: 260 } })
+    ).toMatchObject({ isVertical: false, width: 960, height: 260 })
+
     // Compact TLS-friendly board canvas.
     expect(
       getWidgetPreviewFrame({ type: 'likes-tracker', config: {} })
     ).toMatchObject({ isVertical: false, width: 400, height: 280 })
 
+    expect(
+      getWidgetPreviewFrame({ type: 'discord-call', config: {} })
+    ).toMatchObject({ isVertical: false, width: 480, height: 360 })
+
+    expect(
+      getWidgetPreviewFrame({
+        type: 'discord-call',
+        config: { panelWidth: 360, panelMaxHeight: 240 }
+      })
+    ).toMatchObject({ isVertical: false, width: 360, height: 240 })
+
     // Full-screen overlay stays 16:9.
     expect(
       getWidgetPreviewFrame({ type: 'screen-border', config: {} })
+    ).toMatchObject({ isVertical: false, width: 1920, height: 1080 })
+
+
+    expect(
+      getWidgetPreviewFrame({ type: 'camera-frame', config: {} })
+    ).toMatchObject({ isVertical: false, width: 640, height: 360 })
+    expect(
+      getWidgetPreviewFrame({ type: 'brb-screen', config: {} })
     ).toMatchObject({ isVertical: false, width: 1920, height: 1080 })
   })
 

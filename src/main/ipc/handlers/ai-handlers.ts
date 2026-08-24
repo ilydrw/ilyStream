@@ -14,7 +14,7 @@ export function registerAIHandlers(aiService: AIService, streamIntelligenceServi
   ipcMain.handle('ai:test-connection', async () => {
     try {
       await aiService.generateResponse('Hello, testing connection.', { username: 'test-user', platform: 'test' })
-      return { success: true }
+      return { success: true, model: aiService.getActiveModel() }
     } catch (err: any) {
       return { success: false, error: err.message }
     }

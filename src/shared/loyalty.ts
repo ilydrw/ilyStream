@@ -15,14 +15,24 @@ export interface LoyaltyXpAward {
   username: string
   platform: Platform
   displayName: string
+  platformUserId?: string | null
   amount: number
   reason: string
 }
 
 export interface LoyaltyLevelUpEvent extends LoyaltyProgress {
+  platformUserId?: string | null
   previousLevel: number
   awardedXp: number
   reason: string
+}
+
+export interface LoyaltyXpAwardedEvent extends LoyaltyProgress {
+  platformUserId?: string | null
+  previousLevel: number
+  awardedXp: number
+  reason: string
+  leveledUp: boolean
 }
 
 export const LOYALTY_LEVEL_BASE_XP = 100

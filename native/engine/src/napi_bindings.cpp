@@ -873,6 +873,141 @@ static Napi::Value EngineGetSharedOutputTexture(const Napi::CallbackInfo& info) 
     return result;
 }
 
+// engineGetProgramExportDescriptor(engineHandle: BigInt) -> versioned
+// two-slot keyed-mutex Program export metadata. The handle buffers here belong
+// to this process; use engineDuplicateProgramExportHandles for OBS.
+static Napi::Value EngineGetProgramExportDescriptor(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBigInt()) {
+        Napi::TypeError::New(env, "BigInt engine handle expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool lossless = false;
+    const uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    if (!lossless) {
+        Napi::TypeError::New(env, "Invalid engine handle").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    IlyProgramExportDescriptor descriptor{};
+    const IlyResult res = IlyEngineGetProgramExportDescriptor(
+        Uint64ToResourceHandle(engineVal), &descriptor);
+    if (res != ILY_SUCCESS) {
+        Napi::Error::New(
+            env, "Program export unavailable, code: " + std::to_string(res))
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("structSize", Napi::Number::New(env, descriptor.structSize));
+    result.Set("version", Napi::Number::New(env, descriptor.version));
+    result.Set("generation", Napi::BigInt::New(env, descriptor.generation));
+    result.Set("frameSequence", Napi::BigInt::New(env, descriptor.frameSequence));
+    result.Set("adapterLuid", Napi::BigInt::New(env, descriptor.adapterLuid));
+    result.Set("width", Napi::Number::New(env, descriptor.width));
+    result.Set("height", Napi::Number::New(env, descriptor.height));
+    result.Set("format", Napi::Number::New(env, descriptor.format));
+    result.Set("slotCount", Napi::Number::New(env, descriptor.slotCount));
+    result.Set("latestSlot", Napi::Number::New(env, descriptor.latestSlot));
+    result.Set("producerAcquireKey", Napi::BigInt::New(env, descriptor.producerAcquireKey));
+    result.Set("consumerAcquireKey", Napi::BigInt::New(env, descriptor.consumerAcquireKey));
+    result.Set("controlBlockVersion", Napi::Number::New(env, descriptor.controlBlockVersion));
+    result.Set("controlBlockSize", Napi::Number::New(env, descriptor.controlBlockSize));
+
+    Napi::Array handles = Napi::Array::New(env, descriptor.slotCount);
+    for (uint32_t index = 0; index < descriptor.slotCount; ++index) {
+        const uintptr_t nativeHandle = static_cast<uintptr_t>(
+            descriptor.sharedHandleValues[index]);
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&nativeHandle);
+        handles.Set(index, Napi::Buffer<uint8_t>::Copy(env, bytes, sizeof(nativeHandle)));
+    }
+    result.Set("sharedHandles", handles);
+    const uintptr_t controlHandle = static_cast<uintptr_t>(
+        descriptor.controlMappingHandleValue);
+    result.Set(
+        "controlMappingHandle",
+        Napi::Buffer<uint8_t>::Copy(
+            env,
+            reinterpret_cast<const uint8_t*>(&controlHandle),
+            sizeof(controlHandle)));
+    return result;
+}
+
+static Napi::Value EngineSetProgramExportEnabled(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsBigInt() || !info[1].IsBoolean()) {
+        Napi::TypeError::New(env, "Expected (BigInt, Boolean)")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool lossless = false;
+    const uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&lossless);
+    if (!lossless) {
+        Napi::TypeError::New(env, "Invalid engine handle").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    const IlyResult result = IlyEngineSetProgramExportEnabled(
+        Uint64ToResourceHandle(engineVal), info[1].As<Napi::Boolean>().Value());
+    return Napi::Number::New(env, static_cast<double>(result));
+}
+
+// engineDuplicateProgramExportHandles(engine, targetPid, generation,
+// slotCount) -> { textureHandles: BigInt[2], controlHandle: BigInt, ... }.
+// The caller must authenticate and strictly validate targetPid. The target
+// process owns and closes the results.
+static Napi::Value EngineDuplicateProgramExportHandles(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 4 || !info[0].IsBigInt() || !info[1].IsNumber() ||
+        !info[2].IsBigInt() || !info[3].IsNumber()) {
+        Napi::TypeError::New(
+            env, "Expected (BigInt, Number, BigInt, Number)")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    bool engineLossless = false;
+    bool generationLossless = false;
+    const uint64_t engineVal = info[0].As<Napi::BigInt>().Uint64Value(&engineLossless);
+    const uint32_t targetPid = info[1].As<Napi::Number>().Uint32Value();
+    const uint64_t generation = info[2].As<Napi::BigInt>().Uint64Value(&generationLossless);
+    const uint32_t slotCount = info[3].As<Napi::Number>().Uint32Value();
+    if (!engineLossless || !generationLossless || targetPid == 0 ||
+        slotCount != ILY_PROGRAM_EXPORT_SLOT_COUNT) {
+        Napi::TypeError::New(env, "Invalid Program export duplication request")
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    IlyProgramExportDuplicatedHandles handles{};
+    const IlyResult res = IlyEngineDuplicateProgramExportHandles(
+        Uint64ToResourceHandle(engineVal),
+        targetPid,
+        generation,
+        slotCount,
+        &handles);
+    if (res != ILY_SUCCESS) {
+        Napi::Error::New(
+            env, "Program export handle duplication failed, code: " + std::to_string(res))
+            .ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("structSize", Napi::Number::New(env, handles.structSize));
+    result.Set("version", Napi::Number::New(env, handles.version));
+    result.Set("generation", Napi::BigInt::New(env, handles.generation));
+    result.Set("slotCount", Napi::Number::New(env, handles.slotCount));
+    Napi::Array textures = Napi::Array::New(env, ILY_PROGRAM_EXPORT_SLOT_COUNT);
+    for (uint32_t index = 0; index < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++index) {
+        textures.Set(index, Napi::BigInt::New(env, handles.textureHandleValues[index]));
+    }
+    result.Set("textureHandles", textures);
+    result.Set("controlHandle", Napi::BigInt::New(env, handles.controlHandleValue));
+    return result;
+}
+
 static Napi::Value EngineGetOutputColorConfig(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1 || !info[0].IsBigInt()) {
@@ -996,6 +1131,9 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("engineCreateOutput", Napi::Function::New(env, EngineCreateOutput));
     exports.Set("engineDestroyOutput", Napi::Function::New(env, EngineDestroyOutput));
     exports.Set("engineGetSharedOutputTexture", Napi::Function::New(env, EngineGetSharedOutputTexture));
+    exports.Set("engineGetProgramExportDescriptor", Napi::Function::New(env, EngineGetProgramExportDescriptor));
+    exports.Set("engineSetProgramExportEnabled", Napi::Function::New(env, EngineSetProgramExportEnabled));
+    exports.Set("engineDuplicateProgramExportHandles", Napi::Function::New(env, EngineDuplicateProgramExportHandles));
     exports.Set("engineGetOutputColorConfig", Napi::Function::New(env, EngineGetOutputColorConfig));
     exports.Set("engineReadPixels", Napi::Function::New(env, EngineReadPixels));
     return exports;

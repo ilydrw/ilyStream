@@ -24,6 +24,7 @@ import type { OverlayRuntimeStatus } from '../../../shared/overlay'
 import { applyAppAppearance } from '../../lib/app-appearance'
 import { Metric, OBSStatusBadge, SettingRow, StatusBadge, TextInput } from './components/SettingsShared'
 import { OBSRemoteSection } from './components/OBSRemoteSection'
+import { OBSWorkspaceSection } from './components/OBSWorkspaceSection'
 import { OverlayHubSection } from './components/OverlayHubSection'
 import { AutomationSection } from './components/AutomationSection'
 import { PersonalizationSection } from './components/PersonalizationSection'
@@ -213,6 +214,7 @@ export default function SettingsPage() {
                 onUpdate={updateSetting}
                 onConnect={handleOBSConnect}
               />
+              <OBSWorkspaceSection />
               <OverlayHubSection
                 settings={settings}
                 overlayStatus={overlayStatus}

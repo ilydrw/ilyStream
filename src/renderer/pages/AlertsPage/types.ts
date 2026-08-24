@@ -28,6 +28,12 @@ export type EventSoundSettingKey =
   | 'alertTop'
   | 'alertLeft'
   | 'alertSoundLocalMonitoring'
+  | 'eventLikeMilestoneEnabled'
+  | 'eventLikeMilestoneRepeatEnabled'
+  | 'eventLikeMilestoneTemplate'
+  | 'eventLikeMilestoneFallbackSoundId'
+  | 'eventLikeMilestoneFallbackVolume'
+  | 'eventLikeMilestoneDurationMs'
 
 export type EventSoundSettings = Pick<AppSettings, EventSoundSettingKey>
 
@@ -56,7 +62,13 @@ export const EVENT_SOUND_SETTING_KEYS: EventSoundSettingKey[] = [
   ] as EventSoundSettingKey[]),
   'alertTop',
   'alertLeft',
-  'alertSoundLocalMonitoring'
+  'alertSoundLocalMonitoring',
+  'eventLikeMilestoneEnabled',
+  'eventLikeMilestoneRepeatEnabled',
+  'eventLikeMilestoneTemplate',
+  'eventLikeMilestoneFallbackSoundId',
+  'eventLikeMilestoneFallbackVolume',
+  'eventLikeMilestoneDurationMs'
 ]
 
 export function pickEventSoundSettings(settings: AppSettings): EventSoundSettings {

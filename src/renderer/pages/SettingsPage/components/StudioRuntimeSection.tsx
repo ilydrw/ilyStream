@@ -1,7 +1,7 @@
 import {IconDatabase, IconMessage2, IconPlugConnected, IconRadio} from '@tabler/icons-react'
 import { Toggle } from '../../../components/ui/Inputs'
 import type { RelayTagMode } from '../../../../shared/chat-relay'
-import type { AppSettings } from '../../../../shared/app-settings'
+import { CHAT_MESSAGE_RETENTION_LIMIT, type AppSettings } from '../../../../shared/app-settings'
 import { NumberInput, SettingRow } from './SettingsShared'
 
 interface StudioRuntimeSectionProps {
@@ -38,7 +38,7 @@ export function StudioRuntimeSection({ settings, onUpdate }: StudioRuntimeSectio
               value={settings.chat?.maxMessages}
               onChange={(value) => onUpdate('chatMaxMessages', value)}
               min={100}
-              max={5000}
+              max={CHAT_MESSAGE_RETENTION_LIMIT}
             />
           </SettingRow>
 

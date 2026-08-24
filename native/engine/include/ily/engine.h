@@ -162,6 +162,35 @@ ILY_API IlyResult IlyEngineReadPixelsForOutput(ResourceHandle engineHandle, uint
 ILY_API IlyResult IlyEngineGetSharedOutputTextureForOutput(ResourceHandle engineHandle, uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight);
 
 /**
+ * @brief Describe the dedicated two-slot Program video export for output 0.
+ *
+ * The returned handle values belong to the engine process and are useful for
+ * same-process diagnostics only. A consumer in another process must receive
+ * handles created by IlyEngineDuplicateProgramExportHandles instead.
+ */
+ILY_API IlyResult IlyEngineGetProgramExportDescriptor(ResourceHandle engineHandle, IlyProgramExportDescriptor* outDescriptor);
+
+/** Enable or disable demand-driven Program export publication. Disabled by default. */
+ILY_API IlyResult IlyEngineSetProgramExportEnabled(ResourceHandle engineHandle, bool enabled);
+
+/**
+ * @brief Duplicate Program export handles into an authenticated consumer.
+ *
+ * The caller must authenticate and strictly validate @p targetProcessId before
+ * invoking this function.
+ * @p expectedGeneration and @p expectedSlotCount make resource replacement
+ * fail closed. On success the target process owns every returned handle and
+ * must CloseHandle them when the generation is replaced or the connection
+ * closes. No handle is duplicated when validation fails.
+ */
+ILY_API IlyResult IlyEngineDuplicateProgramExportHandles(
+    ResourceHandle engineHandle,
+    uint32_t targetProcessId,
+    uint64_t expectedGeneration,
+    uint32_t expectedSlotCount,
+    IlyProgramExportDuplicatedHandles* outHandles);
+
+/**
  * @brief Create a Windows Media Foundation camera capture session.
  *
  * deviceIdentity accepts a Media Foundation symbolic link, a browser camera

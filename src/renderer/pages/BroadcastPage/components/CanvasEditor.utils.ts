@@ -4,10 +4,11 @@ import type { BrowserFrameSurface, CachedMediaFrame, Crop, HandleDir } from './C
 export const BROWSER_SOURCE_CAPTURE_MAX_EDGE = 1920
 export const BROWSER_SOURCE_CAPTURE_MAX_PIXELS = 1920 * 1080
 export const BROWSER_SOURCE_CAPTURE_MAX_FPS = 60
-// 30fps default: each frame is a full BGRA bitmap copied main → renderer →
-// worker, so capture rate directly drives allocation churn. Layers that need
-// 60 can still set it explicitly via config.fps.
+// Arbitrary web pages stay conservative because every CPU fallback frame is a
+// full BGRA bitmap. First-party widgets are lightweight, animation-led sources
+// and default to the full compositor cadence instead.
 export const BROWSER_SOURCE_CAPTURE_DEFAULT_FPS = 30
+export const WIDGET_SOURCE_CAPTURE_DEFAULT_FPS = 60
 const LIKES_TRACKER_CAPTURE_MIN_WIDTH = 400
 const LIKES_TRACKER_CAPTURE_MIN_HEIGHT = 280
 const LEADERBOARD_CAPTURE_MIN_WIDTH = 440
@@ -403,6 +404,7 @@ export function getBrowserFrameSurface(
   const existing = cache[id]
   if (existing && existing.width === width && existing.height === height) return existing
 
+  try { existing?.bitmap?.close() } catch {}
   const surface = { width, height }
   cache[id] = surface
   return surface
@@ -419,7 +421,10 @@ export function resolveBrowserCaptureSettings(layer: StudioLayer, width: number,
   return {
     width: Math.max(16, Math.round(sourceWidth * scale)),
     height: Math.max(16, Math.round(sourceHeight * scale)),
-    fps: clampBrowserSourceFps(layer.config?.fps)
+    fps: clampBrowserSourceFps(
+      layer.config?.fps,
+      layer.type === 'widget' ? WIDGET_SOURCE_CAPTURE_DEFAULT_FPS : BROWSER_SOURCE_CAPTURE_DEFAULT_FPS
+    )
   }
 }
 
@@ -474,9 +479,9 @@ function isLeaderboardWidgetLayer(layer: StudioLayer): boolean {
   )
 }
 
-export function clampBrowserSourceFps(value: unknown): number {
+export function clampBrowserSourceFps(value: unknown, fallback = BROWSER_SOURCE_CAPTURE_DEFAULT_FPS): number {
   const fps = Number(value)
-  if (!Number.isFinite(fps)) return BROWSER_SOURCE_CAPTURE_DEFAULT_FPS
+  if (!Number.isFinite(fps)) return fallback
   return Math.max(1, Math.min(BROWSER_SOURCE_CAPTURE_MAX_FPS, Math.round(fps)))
 }
 

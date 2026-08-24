@@ -13,6 +13,34 @@ describe('app theme definitions', () => {
     expect(getAppThemeLabel('custom')).toBe('Custom')
   })
 
+  it('includes editor-inspired dark and light theme families', () => {
+    expect(
+      APP_THEME_DEFINITIONS.filter((theme) =>
+        [
+          'solarized-dark',
+          'solarized-light',
+          'catppuccin-mocha',
+          'catppuccin-latte',
+          'dracula',
+          'nord',
+          'tokyo-night',
+          'gruvbox-dark',
+          'one-dark'
+        ].includes(theme.id)
+      ).map((theme) => theme.label)
+    ).toEqual([
+      'Solarized Dark',
+      'Solarized Light',
+      'Catppuccin Mocha',
+      'Catppuccin Latte',
+      'Dracula',
+      'Nord',
+      'Tokyo Night',
+      'Gruvbox Dark',
+      'One Dark'
+    ])
+  })
+
   it('defines distinct workbench segments for every built-in theme', () => {
     const ids = APP_THEME_DEFINITIONS.map((theme) => theme.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -47,5 +75,42 @@ describe('app theme definitions', () => {
     expect(custom.canvas).toBe('#f0f0f0')
     expect(custom.accent).toBe('#123456')
     expect(custom.secondary).toBe('#654321')
+  })
+
+  it('honors a forced color scheme instead of inferring it from the background', () => {
+    const forcedDark = resolveAppThemePalette({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'custom',
+      customBackground: '#f0f0f0', // light background...
+      customColorScheme: 'dark' // ...but the user forced dark
+    })
+
+    expect(forcedDark.colorScheme).toBe('dark')
+    // Dark scheme uses light text even on a light canvas.
+    expect(forcedDark.text).toBe('#f5f8ff')
+  })
+
+  it('applies per-token overrides on top of the derived palette', () => {
+    const custom = resolveAppThemePalette({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'custom',
+      customBackground: '#101010',
+      customPalette: { surface: '#abcdef', text: '#00ff00' }
+    })
+
+    expect(custom.surface).toBe('#abcdef')
+    expect(custom.text).toBe('#00ff00')
+    // Untouched tokens stay derived from the background.
+    expect(custom.canvas).toBe('#101010')
+  })
+
+  it('ignores overrides for built-in themes', () => {
+    const cyber = resolveAppThemePalette({
+      ...DEFAULT_APP_SETTINGS.ui,
+      theme: 'dark',
+      customPalette: { surface: '#abcdef' }
+    })
+
+    expect(cyber.surface).toBe(getAppThemeDefinition('dark')!.palette.surface)
   })
 })

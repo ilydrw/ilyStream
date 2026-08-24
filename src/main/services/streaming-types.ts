@@ -49,7 +49,7 @@ export interface RecordingConfig {
 }
 
 
-export type StreamOutputState = 'live' | 'reconnecting' | 'error'
+export type StreamOutputState = 'starting' | 'live' | 'reconnecting' | 'error'
 
 /** Runtime status of one multistream destination (one ffmpeg session). */
 export interface StreamOutputStatus {
@@ -69,6 +69,29 @@ export interface StreamOutputStatus {
   lastError?: string
 }
 
+export type StreamIncidentKind = 'started' | 'reconnecting' | 'recovered' | 'failed' | 'stopped'
+
+/** Secret-free lifecycle event retained for operator diagnostics. */
+export interface StreamIncident {
+  id: string
+  outputId: string
+  outputName: string
+  kind: StreamIncidentKind
+  at: number
+  message: string
+  retry?: number
+}
+
+export interface StreamingPreflightStatus {
+  checkedAt: number
+  ffmpegAvailable: boolean
+  encoder: RecordingVideoEncoder | null
+  encoderKind: 'hardware' | 'software' | null
+  recordingWritable: boolean
+  recordingFreeBytes: number | null
+  error?: string
+}
+
 export interface VideoFramePayload {
   outputId?: string
   data: Uint8Array
@@ -83,4 +106,6 @@ export interface VideoFramePayload {
 export interface AudioFramePayload {
   data: Uint8Array
   timestamp?: number
+  sampleRate?: number
+  channels?: number
 }

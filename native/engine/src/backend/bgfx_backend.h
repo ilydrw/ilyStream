@@ -36,6 +36,13 @@ public:
     uint32_t OutputCount() const override;
     IlyResult ReadPixelsFromOutput(uint32_t outputIndex, void* dst, uint32_t dstSize, uint32_t* outWidth, uint32_t* outHeight) override;
     IlyResult GetSharedOutputTextureForOutput(uint32_t outputIndex, void** outHandle, uint32_t* outWidth, uint32_t* outHeight) override;
+    IlyResult GetProgramExportDescriptor(IlyProgramExportDescriptor* outDescriptor) override;
+    IlyResult SetProgramExportEnabled(bool enabled) override;
+    IlyResult DuplicateProgramExportHandles(
+        uint32_t targetProcessId,
+        uint64_t expectedGeneration,
+        uint32_t expectedSlotCount,
+        IlyProgramExportDuplicatedHandles* outHandles) override;
     
     RendererCapabilities capabilities() const override;
     IlyRendererCapabilities GetCapabilities() const override;

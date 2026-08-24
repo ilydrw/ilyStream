@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { SoundPlaybackQueue } from '../lib/sound-playback-queue'
 import { audioEngine } from '../utils/audio-engine'
 
 interface SoundPlayAction {
@@ -8,6 +9,7 @@ interface SoundPlayAction {
   fileUrl?: string
   mimeType?: string
   volume?: number
+  playbackMode?: 'queued' | 'overlap'
 }
 
 const activeSounds = new Set<HTMLAudioElement>()
@@ -57,45 +59,71 @@ export function useSoundPlayback() {
       settingsRef.current = newSettings
     })
 
-    const removeListener = window.api.on('action:play-sound', async (action: SoundPlayAction) => {
-      const sources = resolveAudioSources(action)
-      if (sources.length === 0) {
-        console.error('[sound] Failed to play: no source', action)
-        return
-      }
+    const playbackQueue = new SoundPlaybackQueue<SoundPlayAction>(
+      (action, signal) => playSoundAction(action, settingsRef.current, signal),
+      (error, action) => console.error('[sound] Queued playback failed:', action, error)
+    )
 
-      let lastError: unknown = null
-      for (const source of sources) {
-        try {
-          await playAudioSource(source, action.volume, settingsRef.current)
-          return
-        } catch (error) {
-          lastError = error
-          console.warn('[sound] Source failed, trying fallback:', summarizeSource(source), error)
-        }
+    const removeListener = window.api.on('action:play-sound', (action: SoundPlayAction) => {
+      if (action.playbackMode === 'overlap') {
+        playbackQueue.playImmediately(action)
+      } else {
+        playbackQueue.enqueue(action)
       }
-
-      console.error('[sound] Playback failed for every source:', action, lastError)
     })
 
     // Panic stop — fired by the Car Thing footer's Stop button (and anywhere
     // else that calls soundboardService.stopAll()). Halts every <audio> we
     // currently have spinning and clears the active set.
     const removeStopListener = window.api.on('action:stop-all-sounds', () => {
+      playbackQueue.clear()
       stopActiveSounds()
-      console.log('[sound] Stopped all active sounds')
+      console.log('[sound] Stopped active sounds and cleared queued sounds')
     })
 
     return () => {
       removeListener()
       removeStopListener()
       unsubscribeSettings()
+      playbackQueue.dispose()
       stopActiveSounds()
     }
   }, [])
 }
 
-async function playAudioSource(source: string, volume: unknown, settings: any): Promise<void> {
+async function playSoundAction(action: SoundPlayAction, settings: any, signal: AbortSignal): Promise<void> {
+  const sources = resolveAudioSources(action)
+  if (sources.length === 0) {
+    console.error('[sound] Failed to play: no source', action)
+    return
+  }
+
+  let lastError: unknown = null
+  for (const source of sources) {
+    if (signal.aborted) return
+
+    try {
+      await playAudioSource(source, action.volume, settings, signal)
+      return
+    } catch (error) {
+      lastError = error
+      console.warn('[sound] Source failed, trying fallback:', summarizeSource(source), error)
+    }
+  }
+
+  if (!signal.aborted) {
+    console.error('[sound] Playback failed for every source:', action, lastError)
+  }
+}
+
+async function playAudioSource(
+  source: string,
+  volume: unknown,
+  settings: any,
+  signal: AbortSignal
+): Promise<void> {
+  if (signal.aborted) return
+
   const audio = new Audio(source)
   let sourceNode: MediaElementAudioSourceNode | null = null
   audio.crossOrigin = 'anonymous' // Prevent CORS issues when capturing stream
@@ -139,6 +167,12 @@ async function playAudioSource(source: string, volume: unknown, settings: any): 
     }
   }
 
+  if (signal.aborted) {
+    audio.removeAttribute('src')
+    audio.load()
+    return
+  }
+
   activeSounds.add(audio)
 
   return new Promise((resolve, reject) => {
@@ -148,15 +182,24 @@ async function playAudioSource(source: string, volume: unknown, settings: any): 
     const releaseAudio = () => {
       activeSounds.delete(audio)
       activeSoundCleanups.delete(audio)
+      signal.removeEventListener('abort', cancelPlayback)
+      audio.removeEventListener('ended', resolveOnce)
+      audio.removeEventListener('error', handleError)
       try { sourceNode?.disconnect() } catch {}
       sourceNode = null
       audio.onplay = null
-      audio.onerror = null
-      audio.removeAttribute('src')
-      audio.load()
+      try {
+        audio.removeAttribute('src')
+        audio.load()
+      } catch {}
     }
 
-    activeSoundCleanups.set(audio, releaseAudio)
+    const resolveOnce = () => {
+      if (settled) return
+      settled = true
+      releaseAudio()
+      resolve()
+    }
 
     const rejectOnce = (error: unknown) => {
       if (settled) return
@@ -165,39 +208,43 @@ async function playAudioSource(source: string, volume: unknown, settings: any): 
       reject(error)
     }
 
-    audio.addEventListener('ended', releaseAudio, { once: true })
-    audio.addEventListener(
-      'error',
-      () => {
-        const error = audio.error
-          ? new Error(`Audio error ${audio.error.code}: ${audio.error.message || 'unknown media failure'}`)
-          : new Error('Unknown audio media failure')
-
-        if (!started) {
-          rejectOnce(error)
-        } else {
-          releaseAudio()
-          console.error('[sound] Audio failed after playback started:', error)
-        }
-      },
-      { once: true }
-    )
-
-    audio.onerror = (e) => {
-      console.error('[sound] Audio error:', e, audio.error)
-      rejectOnce(new Error(`Audio error: ${audio.error?.message || 'Unknown'}`))
+    function cancelPlayback() {
+      try {
+        audio.pause()
+        audio.currentTime = 0
+      } catch {}
+      resolveOnce()
     }
+
+    function handleError() {
+      const error = audio.error
+        ? new Error(`Audio error ${audio.error.code}: ${audio.error.message || 'unknown media failure'}`)
+        : new Error('Unknown audio media failure')
+      const playbackStarted = started || !audio.paused || audio.currentTime > 0
+
+      if (!playbackStarted) {
+        rejectOnce(error)
+        return
+      }
+
+      console.error('[sound] Audio failed after playback started:', error)
+      resolveOnce()
+    }
+
+    activeSoundCleanups.set(audio, cancelPlayback)
+    signal.addEventListener('abort', cancelPlayback, { once: true })
+    audio.addEventListener('ended', resolveOnce, { once: true })
+    audio.addEventListener('error', handleError, { once: true })
 
     audio.play()
       .then(() => {
-        const context = audioEngine.getContext()
-        if (context.state === 'suspended') {
-          void context.resume()
+        if (settled) return
+        const activeContext = audioEngine.getContext()
+        if (activeContext?.state === 'suspended') {
+          void activeContext.resume()
         }
         started = true
-        settled = true
         console.log('[sound] Playing (stream-routed):', summarizeSource(source))
-        resolve()
       })
       .catch((err) => {
         console.error('[sound] Play promise rejected:', err)

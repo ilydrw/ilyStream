@@ -1,7 +1,13 @@
-import type { AppSettings, AppTheme, KokoroQuality, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
+import type { AppSettings, AppTheme, CustomColorScheme, CustomPaletteOverrides, KokoroQuality, SavedCustomTheme, TTSUserVoiceOverride, ViewerJoinSound, VoiceModifiers } from './types'
+import { CUSTOM_PALETTE_TOKENS } from './types'
 import { DEFAULT_APP_SETTINGS } from './defaults'
-import { DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE, DEFAULT_TTS_COMMAND_PREFIXES } from './types'
+import {
+  DEFAULT_KOKORO_QUALITY,
+  DEFAULT_TTS_CHAT_MESSAGE_TEMPLATE,
+  DEFAULT_TTS_COMMAND_PREFIXES
+} from './types'
 import type { RelayPlatformParticipation } from '../chat-relay'
+import { normalizeChatMessageRetention } from './chat-retention'
 
 const MAX_SETTING_KEY_LENGTH = 96
 const MAX_SETTING_VALUE_BYTES = 256 * 1024
@@ -16,6 +22,10 @@ const KNOWN_FLAT_SETTING_KEYS = new Set([
   'uiScale',
   'customThemeBackground',
   'customThemeSecondary',
+  'customColorScheme',
+  'customPalette',
+  'customThemes',
+  'activeCustomThemeId',
   'recordingsFolder',
   'chatMaxMessages',
   'chatAutoRelayEnabled',
@@ -161,6 +171,7 @@ function coerceNumberForKey(key: string, value: unknown): number {
   const fallback = Number(DEFAULT_APP_SETTINGS[key] ?? 0)
   const finite = Number.isFinite(numeric) ? numeric : (Number.isFinite(fallback) ? fallback : 0)
 
+  if (key === 'chatMaxMessages') return normalizeChatMessageRetention(finite)
   if (/(Port)$/.test(key)) return clampNumber(Math.round(finite), 1, 65535)
   if (/(Scale)$/.test(key)) return clampNumber(finite, 0.8, 1.3)
   if (/(Volume)$/.test(key)) return clampNumber(finite, 0, 1)
@@ -266,7 +277,7 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
   }
 
   const normalizeKokoroQuality = (value: unknown): KokoroQuality => {
-    return value === 'q8' ? 'q8' : 'fp32'
+    return value === 'fp32' || value === 'q8' ? value : DEFAULT_KOKORO_QUALITY
   }
 
   const normalizeSoundId = (id: string): string => {
@@ -289,10 +300,74 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     return color.toLowerCase()
   }
 
-  const APP_THEME_VALUES = new Set<AppTheme>(['dark', 'midnight', 'aurora', 'ember', 'light', 'gob', 'synthwave', 'graphite', 'custom'])
+  const APP_THEME_VALUES = new Set<AppTheme>([
+    'dark',
+    'midnight',
+    'aurora',
+    'ember',
+    'light',
+    'gob',
+    'synthwave',
+    'graphite',
+    'solarized-dark',
+    'solarized-light',
+    'catppuccin-mocha',
+    'catppuccin-latte',
+    'dracula',
+    'nord',
+    'tokyo-night',
+    'gruvbox-dark',
+    'one-dark',
+    'custom'
+  ])
   const normalizeTheme = (value: unknown, fallback: AppTheme): AppTheme => {
     if (value === 'joker') return 'gob' // legacy id — re-skinned as Gob the Stopper
     return APP_THEME_VALUES.has(value as AppTheme) ? (value as AppTheme) : fallback
+  }
+
+  const normalizeColorScheme = (value: unknown): CustomColorScheme => {
+    return value === 'dark' || value === 'light' ? value : 'auto'
+  }
+
+  // Keep only recognized tokens that carry a valid hex value; everything else
+  // falls back to the derived palette at render time.
+  const normalizePaletteOverrides = (value: unknown): CustomPaletteOverrides => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const source = value as Record<string, unknown>
+    const overrides: CustomPaletteOverrides = {}
+    for (const token of CUSTOM_PALETTE_TOKENS) {
+      const raw = source[token]
+      if (typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw)) {
+        overrides[token] = raw.toLowerCase()
+      }
+    }
+    return overrides
+  }
+
+  const MAX_CUSTOM_THEMES = 50
+  const normalizeCustomThemes = (entries: any[] = []): SavedCustomTheme[] => {
+    if (!Array.isArray(entries)) return []
+    const seen = new Set<string>()
+    return entries
+      .filter((entry) => entry && typeof entry === 'object')
+      .slice(0, MAX_CUSTOM_THEMES)
+      .map((entry: any, index: number) => {
+        const rawId = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : `custom-theme-${index + 1}`
+        const id = seen.has(rawId) ? `${rawId}-${index + 1}` : rawId
+        seen.add(id)
+        const name = typeof entry.name === 'string' && entry.name.trim()
+          ? entry.name.trim().slice(0, 60)
+          : `Custom ${index + 1}`
+        return {
+          id,
+          name,
+          background: normalizeColor(String(entry.background ?? ''), s.ui.customBackground),
+          secondary: normalizeColor(String(entry.secondary ?? ''), s.ui.customSecondary),
+          accent: normalizeColor(String(entry.accent ?? ''), s.ui.accentColor),
+          colorScheme: normalizeColorScheme(entry.colorScheme),
+          overrides: normalizePaletteOverrides(entry.overrides)
+        }
+      })
   }
 
   const normalizeViewerJoinSounds = (entries: any[] = []): ViewerJoinSound[] => {
@@ -312,6 +387,18 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
       }))
   }
 
+  const normalizeLikeMilestoneTemplate = (value: unknown): string => {
+    if (typeof value !== 'string') return s.alerts.likeMilestone.template
+    const trimmed = value.trim()
+    return trimmed ? trimmed.slice(0, 500) : s.alerts.likeMilestone.template
+  }
+
+  const customThemes = normalizeCustomThemes(get('customThemes', flatValues.ui?.customThemes ?? s.ui.customThemes))
+  const requestedActiveThemeId = get('activeCustomThemeId', flatValues.ui?.activeCustomThemeId ?? s.ui.activeCustomThemeId)
+  const activeCustomThemeId = typeof requestedActiveThemeId === 'string' && customThemes.some((theme) => theme.id === requestedActiveThemeId)
+    ? requestedActiveThemeId
+    : ''
+
   const nested: any = {
     ui: {
       theme: normalizeTheme(get('theme', flatValues.ui?.theme ?? s.ui.theme), s.ui.theme),
@@ -320,10 +407,14 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
       reducedMotion: get('reducedMotion', flatValues.ui?.reducedMotion ?? s.ui.reducedMotion),
       uiScale: get('uiScale', flatValues.ui?.uiScale ?? s.ui.uiScale),
       customBackground: normalizeColor(get('customThemeBackground', flatValues.ui?.customBackground ?? s.ui.customBackground), s.ui.customBackground),
-      customSecondary: normalizeColor(get('customThemeSecondary', flatValues.ui?.customSecondary ?? s.ui.customSecondary), s.ui.customSecondary)
+      customSecondary: normalizeColor(get('customThemeSecondary', flatValues.ui?.customSecondary ?? s.ui.customSecondary), s.ui.customSecondary),
+      customColorScheme: normalizeColorScheme(get('customColorScheme', flatValues.ui?.customColorScheme ?? s.ui.customColorScheme)),
+      customPalette: normalizePaletteOverrides(get('customPalette', flatValues.ui?.customPalette ?? s.ui.customPalette)),
+      customThemes,
+      activeCustomThemeId
     },
     chat: {
-      maxMessages: get('chatMaxMessages', flatValues.chat?.maxMessages ?? s.chat.maxMessages),
+      maxMessages: normalizeChatMessageRetention(get('chatMaxMessages', flatValues.chat?.maxMessages ?? s.chat.maxMessages)),
       autoRelayEnabled: get('chatAutoRelayEnabled', flatValues.chat?.autoRelayEnabled ?? s.chat.autoRelayEnabled),
       hostResponsesEnabled: get('chatHostResponsesEnabled', flatValues.chat?.hostResponsesEnabled ?? s.chat.hostResponsesEnabled),
       relayTagMode: get('chatRelayTagMode', flatValues.chat?.relayTagMode ?? s.chat.relayTagMode),
@@ -471,6 +562,14 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
         soundId: normalizeSoundId(get('eventSoundSuperfanSoundId', flatValues.alerts?.superfan?.soundId ?? s.alerts.superfan.soundId)),
         soundVolume: Math.max(0, Math.min(1, get('eventSoundSuperfanVolume', flatValues.alerts?.superfan?.soundVolume ?? s.alerts.superfan.soundVolume)))
       },
+      likeMilestone: {
+        enabled: coerceBoolean(get('eventLikeMilestoneEnabled', flatValues.alerts?.likeMilestone?.enabled ?? s.alerts.likeMilestone.enabled)),
+        repeatEveryMilestone: coerceBoolean(get('eventLikeMilestoneRepeatEnabled', flatValues.alerts?.likeMilestone?.repeatEveryMilestone ?? s.alerts.likeMilestone.repeatEveryMilestone)),
+        template: normalizeLikeMilestoneTemplate(get('eventLikeMilestoneTemplate', flatValues.alerts?.likeMilestone?.template ?? s.alerts.likeMilestone.template)),
+        fallbackSoundId: normalizeSoundId(get('eventLikeMilestoneFallbackSoundId', flatValues.alerts?.likeMilestone?.fallbackSoundId ?? s.alerts.likeMilestone.fallbackSoundId)),
+        fallbackSoundVolume: Math.max(0, Math.min(1, Number(get('eventLikeMilestoneFallbackVolume', flatValues.alerts?.likeMilestone?.fallbackSoundVolume ?? s.alerts.likeMilestone.fallbackSoundVolume)) || 0)),
+        durationMs: Math.max(1000, Math.min(30000, Math.round(Number(get('eventLikeMilestoneDurationMs', flatValues.alerts?.likeMilestone?.durationMs ?? s.alerts.likeMilestone.durationMs)) || s.alerts.likeMilestone.durationMs)))
+      },
       top: get('alertTop', flatValues.alerts?.top ?? s.alerts.top),
       left: get('alertLeft', flatValues.alerts?.left ?? s.alerts.left)
     },
@@ -550,6 +649,10 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     uiScale: nested.ui.uiScale,
     customThemeBackground: nested.ui.customBackground,
     customThemeSecondary: nested.ui.customSecondary,
+    customColorScheme: nested.ui.customColorScheme,
+    customPalette: nested.ui.customPalette,
+    customThemes: nested.ui.customThemes,
+    activeCustomThemeId: nested.ui.activeCustomThemeId,
     chatMaxMessages: nested.chat.maxMessages,
     chatAutoRelayEnabled: nested.chat.autoRelayEnabled,
     chatHostResponsesEnabled: nested.chat.hostResponsesEnabled,
@@ -653,6 +756,12 @@ export function resolveAppSettings(flatValues: Record<string, any> = {}): AppSet
     eventAlertSuperfanDurationMs: nested.alerts.superfan.durationMs,
     eventAlertSuperfanImageTop: nested.alerts.superfan.imageTop,
     eventAlertSuperfanImageLeft: nested.alerts.superfan.imageLeft,
+    eventLikeMilestoneEnabled: nested.alerts.likeMilestone.enabled,
+    eventLikeMilestoneRepeatEnabled: nested.alerts.likeMilestone.repeatEveryMilestone,
+    eventLikeMilestoneTemplate: nested.alerts.likeMilestone.template,
+    eventLikeMilestoneFallbackSoundId: nested.alerts.likeMilestone.fallbackSoundId,
+    eventLikeMilestoneFallbackVolume: nested.alerts.likeMilestone.fallbackSoundVolume,
+    eventLikeMilestoneDurationMs: nested.alerts.likeMilestone.durationMs,
     spotifyClientId: nested.spotify.clientId,
     spotifyAccessToken: nested.spotify.accessToken,
     spotifyRefreshToken: nested.spotify.refreshToken,

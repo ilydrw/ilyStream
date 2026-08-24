@@ -5,25 +5,6 @@ const EXPLICIT_SONG_REQUEST_COMMANDS = new Set(['!sr', '!songrequest'])
 const AMBIGUOUS_PLAY_COMMANDS = new Set(['!play', '.play', '/play'])
 const SKIP_COMMANDS = new Set(['!skip', '!voteskip', '.skip', '/skip'])
 
-const AI_LITERAL_OPENERS = new Set([
-  'is',
-  'are',
-  'am',
-  'was',
-  'were',
-  'be',
-  'being',
-  'been',
-  'looks',
-  'look',
-  'seems',
-  'seem',
-  'sounds',
-  'sound',
-  'feels',
-  'feel'
-])
-
 export type AiCommandIntent =
   | { kind: 'ai'; executable: true; command: string; prompt: string }
   | { kind: 'literal' | 'none'; executable: false; command?: string; reason?: string }
@@ -48,10 +29,10 @@ export function classifyAiCommand(
   const allowedPrefixes = normalizeCommandPrefixes(prefixes, DEFAULT_AI_COMMAND_PREFIXES)
   if (!allowedPrefixes.includes(parsed.command)) return { kind: 'none', executable: false }
   if (!parsed.argument) return { kind: 'literal', executable: false, command: parsed.command, reason: 'missing-prompt' }
-  if (looksLikeLiteralAiSentence(parsed.argument)) {
-    return { kind: 'literal', executable: false, command: parsed.command, reason: 'declarative-sentence' }
-  }
 
+  // An exact configured prefix is an explicit command. Do not reinterpret
+  // prompts such as "!ai is Ren cool" as ordinary chat just because the first
+  // prompt word is declarative.
   return {
     kind: 'ai',
     executable: true,
@@ -132,19 +113,6 @@ function normalizeCommandPrefixes(prefixes: string[], fallback: string[]): strin
     .filter(Boolean)
 
   return normalized.length > 0 ? normalized : fallback
-}
-
-function firstWord(value: string): string {
-  return value
-    .trim()
-    .split(/\s+/)[0]
-    ?.replace(/^[("'`]+|[.,!?;:)"'`]+$/g, '')
-    .toLowerCase() || ''
-}
-
-function looksLikeLiteralAiSentence(argument: string): boolean {
-  if (argument.includes('?')) return false
-  return AI_LITERAL_OPENERS.has(firstWord(argument))
 }
 
 function looksLikeIntentionalSongRequest(argument: string): boolean {

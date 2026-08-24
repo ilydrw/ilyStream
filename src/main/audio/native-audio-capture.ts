@@ -64,7 +64,21 @@ interface AudioAddon {
   startCapture(options: CaptureOptions, onFrame: (frame: CaptureFrame) => void): CaptureSession
   stopCapture(): { framesCaptured: number; framesDropped: number }
   getStatus(): CaptureStatus
+  startProgramAudioTransport(options: ProgramAudioTransportOptions): ProgramAudioTransportSession
+  pushProgramAudio(pcm: Buffer, timestampNs: bigint): boolean
+  stopProgramAudioTransport(): void
 }
+
+export interface ProgramAudioTransportOptions {
+  ringName: string
+  generation: bigint
+  sampleRate: 48_000
+  channels: 2
+  capacityFrames: number
+  blockFrames: number
+}
+
+export interface ProgramAudioTransportSession extends ProgramAudioTransportOptions {}
 
 /** Candidate locations for the built addon, dev and packaged. */
 function addonCandidates(): string[] {
@@ -132,4 +146,20 @@ export function getCaptureStatus(): CaptureStatus {
     return { running: false, framesCaptured: 0, framesDropped: 0, sampleRate: 0, channels: 0 }
   }
   return addon.getStatus()
+}
+
+export function startProgramAudioTransport(
+  options: ProgramAudioTransportOptions
+): ProgramAudioTransportSession {
+  return loadAddon().startProgramAudioTransport(options)
+}
+
+export function pushProgramAudio(pcm: Uint8Array, timestampNs: bigint): boolean {
+  const bytes = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength)
+  return loadAddon().pushProgramAudio(bytes, timestampNs)
+}
+
+export function stopProgramAudioTransport(): void {
+  if (!addon) return
+  addon.stopProgramAudioTransport()
 }

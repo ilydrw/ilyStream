@@ -12,6 +12,9 @@ import { TikTokConnector } from './tiktok/tiktok-connector'
 import { TwitchConnector } from './twitch/twitch-connector'
 import { YouTubeConnector } from './youtube/youtube-connector'
 import { KickConnector } from './kick/kick-connector'
+import { DiscordConnector } from './discord/discord-connector'
+import { resolveDiscordCallProfiles } from './discord/discord-profile-resolution'
+import type { DiscordCallState } from '../../shared/discord-call'
 import { Database } from '../db/database'
 import { TikTokChatSender } from './tiktok/tiktok-chat-sender'
 import { resolveAppSettings } from '../../shared/app-settings'
@@ -20,17 +23,22 @@ import { LIKE_LOG_VERBOSE } from '../../shared/debug-flags'
 export class PlatformManager extends EventEmitter {
   private connectors: Map<Platform, BaseConnector> = new Map()
   private viewerCounts: Partial<Record<Platform, number>> = {}
+  private discordConnector: DiscordConnector
+  private resolvedDiscordCallState: DiscordCallState | null = null
 
   constructor(private db: Database, private tiktokChatSender: TikTokChatSender) {
     super()
     this.setMaxListeners(100)
+
+    this.discordConnector = new DiscordConnector()
 
     // Initialize all connectors
     const platforms: BaseConnector[] = [
       new TikTokConnector(this.db, this.tiktokChatSender),
       new TwitchConnector(this.db),
       new YouTubeConnector(),
-      new KickConnector()
+      new KickConnector({ db: this.db }),
+      this.discordConnector
     ]
 
     const autoReconnect = resolvePlatformAutoReconnect(this.db.getAllSettings?.() || {})
@@ -65,16 +73,39 @@ export class PlatformManager extends EventEmitter {
         this.emit('token-refresh', data)
       })
 
+      connector.on('token-invalidated', (data: unknown) => {
+        this.clearPersistedPlatformAccessToken(data)
+        this.emit('token-invalidated', data)
+      })
+
       connector.on('reconnecting', (data: unknown) => {
         this.emit('reconnecting', data)
       })
+
+      connector.on('profile-health', (data: unknown) => {
+        this.emit('profile-health', data)
+      })
     }
+
+    this.discordConnector.on('call-state', () => {
+      this.resolvedDiscordCallState = null
+      this.emit('discord-call-state', this.getDiscordCallState())
+    })
   }
 
   setAutoReconnect(enabled: boolean): void {
     for (const connector of this.connectors.values()) {
       connector.setAutoReconnect(enabled)
     }
+  }
+
+  async retryWaitingConnections(): Promise<Platform[]> {
+    const results = await Promise.all(
+      Array.from(this.connectors.entries()).map(async ([platform, connector]) => {
+        return await connector.retryWaitingNow() ? platform : null
+      })
+    )
+    return results.filter((platform): platform is Platform => platform !== null)
   }
 
   async connect(config: AnyPlatformConfig): Promise<void> {
@@ -96,7 +127,31 @@ export class PlatformManager extends EventEmitter {
       platform?: Platform
       accessToken?: unknown
       refreshToken?: unknown
+      userAccessToken?: unknown
+      userRefreshToken?: unknown
+      userTokenExpiresAt?: unknown
+      userScopes?: unknown
     }
+
+    if (token.platform === 'kick' && typeof token.userAccessToken === 'string' && token.userAccessToken.trim()) {
+      const existing = this.db.getPlatformConfig('kick')
+      if (!existing) return
+      this.db.savePlatformConfig({
+        ...existing,
+        userAccessToken: token.userAccessToken,
+        userRefreshToken: typeof token.userRefreshToken === 'string' && token.userRefreshToken.trim()
+          ? token.userRefreshToken
+          : (existing as any).userRefreshToken,
+        userTokenExpiresAt: typeof token.userTokenExpiresAt === 'number'
+          ? token.userTokenExpiresAt
+          : (existing as any).userTokenExpiresAt,
+        userScopes: typeof token.userScopes === 'string' && token.userScopes.trim()
+          ? token.userScopes
+          : (existing as any).userScopes
+      } as AnyPlatformConfig)
+      return
+    }
+
     if (!token.platform || typeof token.accessToken !== 'string' || token.accessToken.trim().length === 0) {
       return
     }
@@ -113,6 +168,20 @@ export class PlatformManager extends EventEmitter {
       nextConfig.refreshToken = token.refreshToken
     }
 
+    this.db.savePlatformConfig(nextConfig)
+  }
+
+  private clearPersistedPlatformAccessToken(data: unknown): void {
+    if (!data || typeof data !== 'object') return
+
+    const platform = (data as { platform?: Platform }).platform
+    if (platform !== 'discord') return
+
+    const existing = this.db.getPlatformConfig(platform)
+    if (!existing || !('accessToken' in existing)) return
+
+    const nextConfig = { ...existing }
+    delete nextConfig.accessToken
     this.db.savePlatformConfig(nextConfig)
   }
 
@@ -195,6 +264,23 @@ export class PlatformManager extends EventEmitter {
 
   getViewerCounts(): Record<Platform, number> {
     return { ...this.viewerCounts } as Record<Platform, number>
+  }
+
+  getDiscordCallState(): DiscordCallState {
+    if (!this.resolvedDiscordCallState) {
+      this.resolvedDiscordCallState = resolveDiscordCallProfiles(this.discordConnector.getCallState(), this.db)
+    }
+    return {
+      ...this.resolvedDiscordCallState,
+      participants: this.resolvedDiscordCallState.participants.map((participant) => ({ ...participant }))
+    }
+  }
+
+  refreshDiscordCallProfiles(): DiscordCallState {
+    this.resolvedDiscordCallState = null
+    const state = this.getDiscordCallState()
+    this.emit('discord-call-state', state)
+    return state
   }
 }
 

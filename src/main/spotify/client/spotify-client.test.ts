@@ -169,4 +169,37 @@ describe('SpotifyClient', () => {
       retryAfterMs: 17_000
     } satisfies Partial<SpotifyApiError>)
   })
+
+  it('aborts API requests that do not settle within eight seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      let requestSignal: AbortSignal | null = null
+      vi.spyOn(globalThis, 'fetch').mockImplementation((_url, options) => {
+        requestSignal = options?.signal ?? null
+        return new Promise((_resolve, reject) => {
+          requestSignal?.addEventListener('abort', () => {
+            const error = new Error('aborted')
+            error.name = 'AbortError'
+            reject(error)
+          }, { once: true })
+        })
+      })
+
+      const client = new SpotifyClient()
+      client.setAccessToken('access-token')
+
+      const request = client.getPlaybackState()
+      const expectation = expect(request).rejects.toMatchObject({
+        name: 'SpotifyApiError',
+        message: 'Spotify API request timed out after 8 seconds.',
+        status: 408
+      } satisfies Partial<SpotifyApiError>)
+
+      await vi.advanceTimersByTimeAsync(8_000)
+      await expectation
+      expect((requestSignal as unknown as AbortSignal).aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

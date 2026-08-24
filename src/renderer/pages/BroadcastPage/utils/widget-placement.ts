@@ -33,7 +33,7 @@ function panelBox(
 }
 
 export function resolveWidgetStudioPreset(
-  widget?: { type?: WidgetType },
+  widget?: { type?: WidgetType; config?: unknown },
   config: Record<string, any> = {},
   canvasWidth = 1920,
   canvasHeight = 1080
@@ -41,8 +41,13 @@ export function resolveWidgetStudioPreset(
   const widgetType = widget?.type || config.widgetType || config.type
   const portraitWidth = PORTRAIT_STAGE.width
   const portraitHeight = PORTRAIT_STAGE.height
+  const widgetConfig = widget?.config && typeof widget.config === 'object'
+    ? widget.config as Record<string, unknown>
+    : {}
+  const textWidth = clampDimension(widgetConfig.canvasWidth, 240, 1920, 800)
+  const textHeight = clampDimension(widgetConfig.canvasHeight, 80, 1080, 240)
 
-  if (widgetType === 'screen-border') {
+  if (widgetType === 'screen-border' || widgetType === 'brb-screen') {
     return {
       x: 0,
       y: 0,
@@ -95,6 +100,10 @@ export function resolveWidgetStudioPreset(
       landscape: panelBox(canvasWidth, canvasHeight, 460, 620, 'bottom-right'),
       portrait: panelBox(portraitWidth, portraitHeight, 500, 760, 'bottom-left', 48)
     },
+    'camera-frame': {
+      landscape: panelBox(canvasWidth, canvasHeight, 640, 360, 'bottom-right'),
+      portrait: panelBox(portraitWidth, portraitHeight, 520, 292, 'bottom-left', 48)
+    },
     'chat-unified': {
       landscape: panelBox(canvasWidth, canvasHeight, 360, 640, 'top-left'),
       portrait: panelBox(portraitWidth, portraitHeight, portraitWidth, portraitHeight, 'top-left', 0)
@@ -111,6 +120,10 @@ export function resolveWidgetStudioPreset(
       landscape: panelBox(canvasWidth, canvasHeight, 420, 130, 'top-right'),
       portrait: panelBox(portraitWidth, portraitHeight, 460, 140, 'top-left', 48)
     },
+    text: {
+      landscape: centeredBox(canvasWidth, canvasHeight, Math.min(canvasWidth, textWidth), Math.min(canvasHeight, textHeight)),
+      portrait: centeredBox(portraitWidth, portraitHeight, Math.min(portraitWidth - 96, textWidth), Math.min(portraitHeight, textHeight))
+    },
     goal: {
       landscape: panelBox(canvasWidth, canvasHeight, 420, 130, 'top-right'),
       portrait: panelBox(portraitWidth, portraitHeight, 460, 140, 'top-left', 48)
@@ -118,6 +131,10 @@ export function resolveWidgetStudioPreset(
     'discord-promo': {
       landscape: panelBox(canvasWidth, canvasHeight, 480, 180, 'bottom-left'),
       portrait: panelBox(portraitWidth, portraitHeight, 500, 190, 'bottom-left', 48)
+    },
+    'discord-call': {
+      landscape: panelBox(canvasWidth, canvasHeight, 480, 360, 'bottom-left'),
+      portrait: panelBox(portraitWidth, portraitHeight, 480, 360, 'bottom-left', 48)
     },
     'latest-gifter': {
       landscape: panelBox(canvasWidth, canvasHeight, 440, 150, 'top-right'),
@@ -161,4 +178,9 @@ export function resolveWidgetStudioPreset(
     portraitHeight: fallbackPortrait.height,
     portraitLocked: false
   }
+}
+
+function clampDimension(value: unknown, min: number, max: number, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.round(Math.min(max, Math.max(min, parsed))) : fallback
 }

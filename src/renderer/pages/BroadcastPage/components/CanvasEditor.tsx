@@ -59,9 +59,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     activeScene, isStreaming, isRecording, captureInputFormat,
     outputFps, outputBitrateKbps, videoRefs, devices, streamReady, outputCodec,
     streamOutputs = [], previewMode = 'single', selectionContext = '16:9',
-    dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false,
+    dualVerticalOverlayEnabled = false, isVisible = true, isPreview = false, readOnly = false,
     forceVerticalCanvas = false, forceHorizontalCanvas = false,
-    browserFramesNeeded,
+    browserFramesNeeded, browserFrameCacheRef, browserSourceLayers,
+    manageBrowserSources = true, prewarmScene,
     onContextMenu, onSelectionContextChange, onLayerDoubleClick
   } = props
 
@@ -86,9 +87,21 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const imageCache = useRef<Record<string, HTMLImageElement>>({})
   const directImageSourcesRef = useRef<Record<string, string>>({})
   const mediaFrameCache = useRef<Record<string, CachedMediaFrame>>({})
-  const browserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
+  const localBrowserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
+  const browserFrameCache = browserFrameCacheRef ?? localBrowserFrameCache
+  const cacheLayers = useMemo(() => {
+    const layers = [...activeScene.layers]
+    const knownIds = new Set(layers.map(layer => layer.id))
+    for (const layer of prewarmScene?.layers ?? []) {
+      if (knownIds.has(layer.id)) continue
+      knownIds.add(layer.id)
+      layers.push(layer)
+    }
+    return layers
+  }, [activeScene.layers, prewarmScene?.layers])
   const hasRoutedStreamOutputs = streamOutputs.some(output => output.active)
   const outputActive = isRecording || (isStreaming && !hasRoutedStreamOutputs)
+  const [obsProgramConsumers, setObsProgramConsumers] = useState(0)
   const secondaryAspectRatio: '16:9' | '9:16' = aspectRatio === '16:9' ? '9:16' : '16:9'
   const [activeGuides, setActiveGuides] = useState<{ type: 'v' | 'h', pos: number, targetId?: string }[]>([])
   const gridSize = useStudioStore(s => s.gridSize)
@@ -98,6 +111,27 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const studioMode = useStudioStore(s => s.studioMode)
   const transitionActive = useStudioStore(s => s.transitionState.isActive)
   const isSelectedScene = isPreview ? (activeScene.id === previewSceneId) : (activeScene.id === activeSceneId)
+
+  useEffect(() => {
+    if (isPreview || !window.api?.obsWorkspace || !window.api?.on) {
+      setObsProgramConsumers(0)
+      return
+    }
+
+    let disposed = false
+    void window.api.obsWorkspace.getAccess()
+      .then(access => {
+        if (!disposed) setObsProgramConsumers(Math.max(0, access.nativeBridge.programConsumers ?? 0))
+      })
+      .catch(() => {})
+    const unsubscribe = window.api.on('obs:program-consumers-changed', (payload: { count?: number }) => {
+      setObsProgramConsumers(Math.max(0, Math.floor(Number(payload?.count) || 0)))
+    })
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [isPreview])
 
   // IconVideo Encoders
   const { workerRef: encoderWorkerRef } = useVideoEncoder(!isPreview && outputActive, {
@@ -120,9 +154,10 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }, () => { if (virtualCameraOutput?.active) void window.api?.virtualCamera?.stop?.() })
 
   const nativeHorizontalOutputRequested = !isPreview && Boolean(horizontalOutput?.active)
-  const nativeProgramPreviewRequested = shouldPresentNativeProgramPreview(isPreview, isVisible, aspectRatio)
+  const nativeProgramPreviewRequested = shouldPresentNativeProgramPreview(isPreview, isVisible, aspectRatio, outputActive)
+  const nativeOBSProgramRequested = !isPreview && obsProgramConsumers > 0
   const nativeDisplayOutput = useNativeDisplayOutput({
-    enabled: nativeHorizontalOutputRequested || nativeProgramPreviewRequested,
+    enabled: nativeHorizontalOutputRequested || nativeProgramPreviewRequested || nativeOBSProgramRequested,
     presentCanvasId: nativeProgramPreviewRequested ? nativeProgramCanvasId : undefined,
     encodeFrames: nativeHorizontalOutputRequested,
     scene: activeScene,
@@ -219,7 +254,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   const deliverFramesToRenderer = rendererPreviewNeedsFrames || canvasOutputActive
   const browserCaptureFramesNeeded =
     browserFramesNeeded ??
-    (isVisible || canvasOutputActive || nativeHorizontalOutputRequested || nativeProgramPreviewRequested)
+    (isVisible || canvasOutputActive || nativeHorizontalOutputRequested || nativeProgramPreviewRequested || nativeOBSProgramRequested)
 
   // Adaptive bitrate: main watches per-output drop counters and asks the
   // matching layout encoder to step its bitrate down/up. Reconfigure is live
@@ -239,11 +274,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }, [isPreview])
 
   // Audio Engine
-  useBroadcastAudio(!isPreview && (isStreaming || isRecording), videoRefs, streamReady, !isPreview)
+  useBroadcastAudio(
+    !isPreview && (isStreaming || isRecording || nativeOBSProgramRequested),
+    videoRefs,
+    streamReady,
+    !isPreview
+  )
 
   // Browser Sources
   useBrowserSources({
-    layers: activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache,
+    enabled: manageBrowserSources,
+    layers: browserSourceLayers ?? activeScene.layers, aspectRatio, overlayPort: 8899, browserFrameCache,
     framesNeeded: browserCaptureFramesNeeded,
     deliverFramesToRenderer,
     manageRendererDelivery: !isPreview
@@ -252,7 +293,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   useEffect(() => {
     const activeImageIds = new Set<string>()
     const activeMediaIds = new Set<string>()
-    for (const layer of activeScene.layers) {
+    for (const layer of cacheLayers) {
       if (layer.type === 'camera' || layer.type === 'display') activeMediaIds.add(layer.id)
       if (layer.type !== 'image' || !layer.config.assetPath) continue
       const source = resolveImageSource(layer.config.assetPath)
@@ -279,7 +320,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       surface.canvas.height = 0
       delete mediaFrameCache.current[layerId]
     }
-  }, [activeScene.layers])
+  }, [cacheLayers])
 
   // Render Loop
   const { fps, horizontalCanvasRef, verticalCanvasRef } = useRenderLoop({
@@ -287,7 +328,8 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
     videoRefs, mediaFrameCache, browserFrameCache, imageCache, encoderWorkerRef,
     horizontalEncoderWorkerRef, verticalEncoderWorkerRef, virtualCameraEncoderWorkerRef, streamOutputs, canvasWidth, canvasHeight,
     captureInputFormat, outputCodec, outputBitrateKbps, dualVerticalOverlayEnabled, isVisible,
-    forceVerticalCanvas, forceHorizontalCanvas, nativeHorizontalOutputActive, nativeProgramPreviewActive
+    forceVerticalCanvas, forceHorizontalCanvas, nativeHorizontalOutputActive, nativeVerticalOutputActive,
+    nativeVirtualCameraActive, nativeProgramPreviewActive, renderTransitions: !isPreview
   })
 
   useImperativeHandle(ref, () => ({
@@ -439,6 +481,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
       setIsPanning(true)
       return
     }
+    if (readOnly) return
     if (e.button !== 0) return
     onSelectionContextChange?.(interactionAspectRatio)
     const layout = resolveLayerLayout(layer, interactionAspectRatio)
@@ -448,6 +491,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }
 
   const handleResizeStart = (e: React.MouseEvent, layer: StudioLayer, handle: HandleDir, interactionAspectRatio: '16:9' | '9:16') => {
+    if (readOnly) return
     e.stopPropagation()
     onSelectionContextChange?.(interactionAspectRatio)
     const layout = resolveLayerLayout(layer, interactionAspectRatio)
@@ -457,6 +501,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }
 
   const handleRotateStart = (e: React.MouseEvent, layer: StudioLayer, interactionAspectRatio: '16:9' | '9:16') => {
+    if (readOnly) return
     e.stopPropagation()
     onSelectionContextChange?.(interactionAspectRatio)
     setSelectedLayer(layer.id); saveHistory()
@@ -504,7 +549,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   }, [queueZoomAtClientPoint])
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0 && !e.altKey) {
+    if (!readOnly && e.button === 0 && !e.altKey) {
       setSelectedLayer(null)
     }
     if (e.button === 1 || e.altKey) {
@@ -519,6 +564,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
   ) => {
     e.preventDefault()
     e.stopPropagation()
+    if (readOnly) return
     onSelectionContextChange?.(interactionAspectRatio)
     onContextMenu?.(e, layer, interactionAspectRatio)
   }
@@ -826,15 +872,17 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                 />
                 {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
                 <PerformanceHUD fps={fps} targetFps={outputFps} format={captureInputFormat} codec={outputCodec} />
-                <InteractionLayer
-                  layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null}
-                  aspectRatio={aspectRatio} canvasWidth={canvasWidth}
-                  highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
-                  resolve={(l) => resolveLayerLayout(l, aspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
-                  onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
-                  onContextMenu={handleEditorContextMenu}
-                  onDoubleClick={onLayerDoubleClick}
-                />
+                {!readOnly && (
+                  <InteractionLayer
+                    layers={activeScene.layers} selectedLayerId={selectionContext === aspectRatio ? selectedLayerId : null}
+                    aspectRatio={aspectRatio} canvasWidth={canvasWidth}
+                    highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
+                    resolve={(l) => resolveLayerLayout(l, aspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
+                    onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
+                    onContextMenu={handleEditorContextMenu}
+                    onDoubleClick={onLayerDoubleClick}
+                  />
+                )}
 
                 {/* Static Center Guides while interacting */}
                 {(dragRef.current || resizeRef.current) && selectionContext === aspectRatio && (
@@ -865,7 +913,7 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
 
 
                 <div className="absolute -top-6 left-0 text-xs font-medium tracking-normal text-white/20">
-                  {isPreview ? 'Preview' : 'Program'}: {aspectRatio}
+                  {isPreview ? 'Preview' : 'Program'}: {aspectRatio}{readOnly ? ' · Locked' : ''}
                 </div>
               </div>
 
@@ -881,14 +929,16 @@ export const CanvasEditor = forwardRef<CanvasEditorHandle, CanvasEditorProps>((p
                     className="h-full w-auto object-contain bg-[#0a0a0c] rounded-lg shadow-2xl transition-all group-hover: border border-white/5"
                   />
                   {snapToGrid && <CanvasGridOverlay gridSize={safeGridSize} />}
-                  <InteractionLayer
-                    layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
-                    aspectRatio={secondaryPreviewAspectRatio} canvasWidth={secondaryNativeW}
-                    highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
-                    resolve={(l) => resolveLayerLayout(l, secondaryPreviewAspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
-                    onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
-                    onContextMenu={handleEditorContextMenu}
-                  />
+                  {!readOnly && (
+                    <InteractionLayer
+                      layers={activeScene.layers} selectedLayerId={selectionContext === secondaryPreviewAspectRatio ? selectedLayerId : null}
+                      aspectRatio={secondaryPreviewAspectRatio} canvasWidth={secondaryNativeW}
+                      highlightedLayerId={activeGuides.find(g => g.targetId)?.targetId}
+                      resolve={(l) => resolveLayerLayout(l, secondaryPreviewAspectRatio)} onMouseDown={handleMouseDown} onRotateStart={handleRotateStart}
+                      onResizeStart={handleResizeStart} onAutoCrop={() => {}} isCropping={(id) => resizeRef.current?.id === id && !!resizeRef.current?.isCropping}
+                      onContextMenu={handleEditorContextMenu}
+                    />
+                  )}
 
                   {/* Static Center Guides while interacting */}
                   {(dragRef.current || resizeRef.current) && selectionContext === secondaryPreviewAspectRatio && (

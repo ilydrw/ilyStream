@@ -325,7 +325,7 @@ export class DeviceApi {
     }
 
     const volume = typeof body.volume === 'number' ? body.volume : 1
-    this.soundboardService.playSound(id, volume)
+    this.soundboardService.playSound(id, volume, 'overlap')
 
     // Surface a visual confirmation on every connected device. We look up the
     // catalog row so the device can show the human-readable name + emoji.

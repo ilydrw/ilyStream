@@ -7,10 +7,12 @@ describe('LikesTracker', () => {
   it('caps attributed user likes to cumulative platform movement', () => {
     const { tracker } = createTracker()
 
-    tracker.updateState(makeLikeEvent({ id: 'like-1', username: 'alice', displayName: 'Alice', likeCount: 10, totalLikes: 100 }), makeFeedItem('Alice', 10))
-    tracker.updateState(makeLikeEvent({ id: 'like-2', username: 'bob', displayName: 'Bob', likeCount: 50, totalLikes: 105 }), makeFeedItem('Bob', 50))
+    const aliceProgress = tracker.updateState(makeLikeEvent({ id: 'like-1', username: 'alice', displayName: 'Alice', likeCount: 10, totalLikes: 100 }), makeFeedItem('Alice', 10))
+    const bobProgress = tracker.updateState(makeLikeEvent({ id: 'like-2', username: 'bob', displayName: 'Bob', likeCount: 50, totalLikes: 105 }), makeFeedItem('Bob', 50))
 
     const snapshot = tracker.getSnapshot()
+    expect(aliceProgress).toEqual(expect.objectContaining({ acceptedAmount: 10, viewerTotal: 10 }))
+    expect(bobProgress).toEqual(expect.objectContaining({ acceptedAmount: 5, viewerTotal: 5 }))
     expect(snapshot.totalLikes).toBe(15)
     expect(snapshot.users).toEqual([
       expect.objectContaining({ displayName: 'Alice', count: 10 }),

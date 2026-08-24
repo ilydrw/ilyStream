@@ -303,6 +303,14 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
     return { success: true }
   })
 
+  // Renderer acknowledgement bounds full-frame IPC to one in-flight bitmap per
+  // source. If the renderer is busy, paint continues for native consumers while
+  // stale preview frames are dropped at the producer instead of queuing in V8.
+  ipcMain.on('studio:browser-source:frame-consumed', (event, id: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (owner) browserSourceService.rendererFrameConsumed(owner, id)
+  })
+
   // Persistence — routine and frequent, so no logging here.
   ipcMain.handle('studio:save-state', (_event, state) => {
     db.setSetting('studio_state_v1', state)

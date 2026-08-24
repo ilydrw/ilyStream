@@ -1,0 +1,1 @@
+const { app, desktopCapturer } = require('electron'); app.whenReady().then(() => { desktopCapturer.getSources({ types: ['screen'] }).then(s => { console.log(JSON.stringify(s.map(x => ({ id: x.id, name: x.name, display_id: x.display_id })), null, 2)); app.quit(); }); });

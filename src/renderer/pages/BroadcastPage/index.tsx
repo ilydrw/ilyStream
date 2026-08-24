@@ -6,11 +6,13 @@ import { useStudioStore } from '../../stores/studio-store'
 import { audioEngine } from '../../utils/audio-engine'
 import { resolveLayerLayout, type LayerType, type StudioLayer } from '../../../shared/studio'
 import { CanvasEditor } from './components/CanvasEditor'
-import type { CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceOption } from './components/CanvasEditor.types'
+import type { BrowserFrameSurface, CanvasEditorHandle, CanvasStreamOutput, VirtualCameraFeedConfig, VirtualCameraSourceOption } from './components/CanvasEditor.types'
 import { ContextMenu } from '../../components/ui/ContextMenu'
 import { AddSourceModal } from './components/AddSourceModal'
 import { getOptimizedCaptureInputFormat, pickAvcCodecString, type BroadcastLayoutId, type BroadcastLayoutMode, buildStreamPlatforms } from './utils/streaming-config'
 import { resolveWidgetStudioPreset } from './utils/widget-placement'
+import { createBroadcastOperationLock, resolveBroadcastHotkey, resolveBroadcastSessionStatus } from './utils/broadcast-controls'
+import { hasAudibleCaptureSource } from './components/AudioMixer/audio-route-policy'
 
 // Modular Components & Hooks
 import { BroadcastHeader } from './components/BroadcastHeader'
@@ -155,6 +157,18 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
     const scene = store.scenes.find(s => s.id === store.previewSceneId) || store.scenes[0]
     return scene
   }, [store.scenes, store.previewSceneId])
+  const retainedBrowserLayers = useMemo(() => {
+    const layers = [...activeScene.layers]
+    if (!store.studioMode || previewScene.id === activeScene.id) return layers
+    const knownIds = new Set(layers.map(layer => layer.id))
+    for (const layer of previewScene.layers) {
+      if (knownIds.has(layer.id)) continue
+      knownIds.add(layer.id)
+      layers.push(layer)
+    }
+    return layers
+  }, [activeScene.layers, previewScene.id, previewScene.layers, store.studioMode])
+  const sharedBrowserFrameCache = useRef<Record<string, BrowserFrameSurface>>({})
   const enhancingLayer = useMemo(() => {
     // Try to find in active scene, then in preview scene if studio mode is on
     const layerId = store.enhancingLayerId
@@ -178,10 +192,19 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const canvasRef = useRef<CanvasEditorHandle>(null)
   const nativeTikTokLiveActiveRef = useRef(false)
+  const broadcastOperationLockRef = useRef(createBroadcastOperationLock())
   const activeLayoutAssignments = useMemo(() => broadcastLayoutMode === 'horizontal' ? { horizontal: layoutAssignments.horizontal, vertical: [] } : broadcastLayoutMode === 'vertical' ? { horizontal: [], vertical: layoutAssignments.vertical } : layoutAssignments, [broadcastLayoutMode, layoutAssignments])
   const [showStingerConfig, setShowStingerConfig] = useState(false)
   const [showHotkeys, setShowHotkeys] = useState(false)
   const [showRecordingSettings, setShowRecordingSettings] = useState(false)
+  const studioModeLocked = isStreaming || isRecording
+  const toggleStudioModeSafely = useCallback(() => {
+    if (studioModeLocked) {
+      toast.error('Stop streaming and recording before changing Studio Mode.')
+      return
+    }
+    store.toggleStudioMode()
+  }, [studioModeLocked, store.toggleStudioMode])
   const visibleScenes = useMemo(() => {
     return store.scenes.filter(s => {
       if (!s.layoutMode) return true
@@ -287,8 +310,9 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
   }, [broadcastLayoutMode, activeMirrorAspects])
 
   const { streamReady, mediaStatuses, forceRefreshMedia } = useMediaManagement({
-    activeScene, devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
-    updateLayer: store.updateLayer, scenes: store.scenes, addAudioSource: store.updateAudioSource,
+    activeScene, previewScene, retainPreviewScene: store.studioMode,
+    devices, canvasWidth: store.canvasWidth, canvasHeight: store.canvasHeight, videoRefs,
+    updateLayer: store.updateLayer, addAudioSource: store.updateAudioSource,
     removeAudioSource: store.removeAudioSource, audioSources: store.audioSources,
     activeAspectRatios: activeMediaAspectRatios, mediaDeviceRevision
   })
@@ -334,13 +358,10 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
         name: layer.name || layer.type,
         status: mediaStatuses[layer.id]
       }))
-    const hasConfiguredAudio =
-      store.audioSources.some(source => !source.muted && source.volume > 0) ||
-      activeLayers.some(layer =>
-        layer.type === 'audio' ||
-        (layer.type === 'camera' && layer.config.audioDeviceId !== 'none') ||
-        (layer.type === 'display' && layer.config.captureAudio === true)
-      )
+    const hasConfiguredAudio = hasAudibleCaptureSource(
+      store.audioSources,
+      new Set(activeLayers.map(layer => layer.id))
+    )
     const audioContextState = audioEngine.getContextState()
 
     return {
@@ -780,11 +801,14 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
       .catch(() => {})
 
     return window.api.on('streaming:status-changed', (next: any) => {
-      setIsStreaming(Boolean(next.streaming))
-      setIsRecording(Boolean(next.recording))
+      const nextStreaming = Boolean(next.streaming)
+      const nextRecording = Boolean(next.recording)
+      const nextOutputs = Array.isArray(next.outputs) ? next.outputs : []
+      setIsStreaming(nextStreaming)
+      setIsRecording(nextRecording)
       setRecordingStartedAt(prev => next.recording ? (prev ?? Date.now()) : null)
-      setStatus(next.streaming ? 'Live' : next.recording ? 'Recording' : 'Offline')
-      if (Array.isArray(next.outputs)) setOutputHealth(next.outputs)
+      setStatus(resolveBroadcastSessionStatus(nextStreaming, nextRecording, nextOutputs))
+      if (Array.isArray(next.outputs)) setOutputHealth(nextOutputs)
       if (Array.isArray(next.incidents)) setStreamIncidents(next.incidents)
       const newestIncident = Array.isArray(next.incidents) ? next.incidents[next.incidents.length - 1] : null
       if (next.state === 'error' && newestIncident?.kind !== 'failed') {
@@ -821,61 +845,55 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
     return () => window.clearInterval(timer)
   }, [isRecording, recordingStartedAt])
 
-  // Keyboard Shortcuts (Undo/Redo)
+  // Broadcast Studio keyboard shortcuts. Output start/stop deliberately has
+  // no bare-key binding; those lifecycle actions require the visible controls.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts if user is typing in an input, textarea, or contentEditable
-      const target = e.target as HTMLElement
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
-        target.closest('.no-hotkeys')
-      ) return
+      const action = resolveBroadcastHotkey(e, isRouteActive)
+      if (!action) return
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) store.redo()
-        else store.undo()
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        store.redo()
-      }
-
-      // Production Hotkeys
-      if (e.key === ' ' || e.key === 'Enter') {
-        if (store.studioMode) store.transition('fade')
-      } else if (e.key.toLowerCase() === 'f') {
-        if (store.studioMode) store.transition('fade')
-      } else if (e.key.toLowerCase() === 'c') {
-        if (store.studioMode) store.transition('cut')
-      } else if (e.key.toLowerCase() === 't') {
-        if (store.studioMode && store.stingerSettings.path) store.transition('stinger')
-      } else if (e.key.toLowerCase() === 's') {
-        store.toggleStudioMode()
-      } else if (e.key.toLowerCase() === 'r') {
-        if (isRecording) stopRecording()
-        else startRecording()
-      } else if (e.key.toLowerCase() === 'b') {
-        if (isStreaming) stopBroadcast()
-        else startBroadcast()
-      } else if (e.key.toLowerCase() === 'm') {
-        setShowMultiView(!showMultiView)
-      } else if (/^[1-9]$/.test(e.key)) {
-        const index = parseInt(e.key) - 1
-        if (store.scenes[index]) {
-          if (store.studioMode) store.setPreviewScene(store.scenes[index].id)
-          else store.setActiveScene(store.scenes[index].id)
+      let handled = true
+      switch (action.type) {
+        case 'undo': store.undo(); break
+        case 'redo': store.redo(); break
+        case 'fade':
+          if (store.studioMode) store.transition('fade')
+          else handled = false
+          break
+        case 'cut':
+          if (store.studioMode) store.transition('cut')
+          else handled = false
+          break
+        case 'stinger':
+          if (store.studioMode && store.stingerSettings.path) store.transition('stinger')
+          else handled = false
+          break
+        case 'toggle-studio-mode': toggleStudioModeSafely(); break
+        case 'toggle-multiview': setShowMultiView(current => !current); break
+        case 'select-scene': {
+          const scene = store.scenes[action.index]
+          if (!scene) {
+            handled = false
+            break
+          }
+          if (store.studioMode) store.setPreviewScene(scene.id)
+          else store.setActiveScene(scene.id)
+          break
         }
-      } else if (e.key === 'Escape') {
-        setShowSourceModal(false)
-        setShowMultiView(false)
-        setShowStingerConfig(false)
-        setShowHotkeys(false)
-        setShowRecordingSettings(false)
+        case 'close-overlays':
+          setShowSourceModal(false)
+          setShowMultiView(false)
+          setShowStingerConfig(false)
+          setShowHotkeys(false)
+          setShowRecordingSettings(false)
+          break
       }
+
+      if (handled) e.preventDefault()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [store, isRecording, isStreaming, showMultiView])
+  }, [isRouteActive, store, toggleStudioModeSafely])
 
   const addSource = useCallback((type: LayerType, config: Record<string, any>, sourceName?: string) => {
     const targetScene = store.studioMode ? previewScene : activeScene
@@ -1028,7 +1046,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
     }
   }
 
-  const startBroadcast = async () => {
+  const startBroadcastOperation = async () => {
     setStreamError(null)
     const freshSystemReadiness = await refreshLiveReadiness()
     const freshReadinessReport = buildLiveReadinessReport({
@@ -1136,32 +1154,39 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
     const context = audioEngine.getContext()
     if (context.state === 'suspended') await context.resume()
 
+    setStatus('Starting')
     try {
       const res = await Promise.all(destinations.map(d => window.api.streaming.start({ outputId: `${d.layout}:${d.platform.id}`, outputName: d.platform.name, rtmpUrl: d.platform.url, streamKey: d.platform.key, width: d.layout === 'vertical' ? 1080 : 1920, height: d.layout === 'vertical' ? 1920 : 1080, fps, bitrateKbps, inputFormat: d.layout === 'vertical' ? vIn : hIn, audioFormat: 'f32le', audioSampleRate: context.sampleRate })))
       if (res.every(r => r.success)) {
         setIsStreaming(true)
-        setStatus('Live')
+        setStatus('Starting')
       } else {
+        await window.api.streaming.stop().catch(() => {})
         await completeNativeTikTokLive()
+        setIsStreaming(false)
+        setStatus(isRecording ? 'Recording' : 'Offline')
         const failures = res
           .filter(r => !r.success)
           .map(r => formatIpcError(r.error || 'Unknown output startup failure'))
         setStreamError(failures.join('; ') || 'Failed to start one or more outputs')
       }
     } catch (err) {
+      await window.api.streaming.stop().catch(() => {})
       await completeNativeTikTokLive()
+      setIsStreaming(false)
+      setStatus(isRecording ? 'Recording' : 'Offline')
       setStreamError(err instanceof Error ? err.message : 'Failed to start one or more outputs')
     }
   }
 
-  const stopBroadcast = async () => {
+  const stopBroadcastOperation = async () => {
     await window.api.streaming.stop()
     await completeNativeTikTokLive()
     setIsStreaming(false)
     setStatus(isRecording ? 'Recording' : 'Offline')
   }
 
-  const startRecording = async () => {
+  const startRecordingOperation = async () => {
     setStreamError(null)
     const fps = Math.max(1, Math.min(60, Math.round(outputConfig.fps || 30)))
     const bitrateKbps = store.recordingSettings.bitrateKbps || 12000
@@ -1192,7 +1217,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
   }
 
 
-  const stopRecording = async () => {
+  const stopRecordingOperation = async () => {
     const result = await window.api.streaming.stopRecording()
     if (result?.success !== false) {
       setIsRecording(false)
@@ -1202,6 +1227,27 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
       setStreamError(result?.error || 'Failed to stop recording')
     }
   }
+
+  const startBroadcast = () => broadcastOperationLockRef.current.run(
+    'broadcast',
+    'start',
+    startBroadcastOperation
+  )
+  const stopBroadcast = () => broadcastOperationLockRef.current.run(
+    'broadcast',
+    'stop',
+    stopBroadcastOperation
+  )
+  const startRecording = () => broadcastOperationLockRef.current.run(
+    'recording',
+    'start',
+    startRecordingOperation
+  )
+  const stopRecording = () => broadcastOperationLockRef.current.run(
+    'recording',
+    'stop',
+    stopRecordingOperation
+  )
 
   const toggleVirtualCamera = async () => {
     if (!virtualCameraInfo) return
@@ -1307,7 +1353,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
         undo={store.undo} redo={store.redo} canUndo={store.past.length > 0} canRedo={store.future.length > 0}
         onTakeScreenshot={() => canvasRef.current?.takeScreenshot()} onStartRecording={startRecording} onStopRecording={stopRecording}
         onForceRefreshMedia={forceRefreshMedia} monitors={monitors} selectedMonitorId={selectedMonitorId} onSetSelectedMonitorId={setSelectedMonitorId}
-        studioMode={store.studioMode} onToggleStudioMode={store.toggleStudioMode}
+        studioMode={store.studioMode} studioModeToggleDisabled={studioModeLocked} onToggleStudioMode={toggleStudioModeSafely}
         onToggleHotkeys={() => setShowHotkeys(!showHotkeys)} showHotkeys={showHotkeys}
         onOpenRecordingSettings={() => setShowRecordingSettings(true)}
         onOpenProjector={() => {
@@ -1411,6 +1457,8 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
                   outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
                   devices={devices}
                   isVisible={isPageVisible} isPreview={true}
+                  browserFrameCacheRef={sharedBrowserFrameCache}
+                  manageBrowserSources={false}
                   streamReady={streamReady} streamOutputs={[]}
                   previewMode="single" selectionContext={selectionContext}
                   onSelectionContextChange={changeSelectionContext}
@@ -1426,6 +1474,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
                 <div className="broadcast-transition-group">
                   <button
                     onClick={() => store.transition('fade')}
+                    disabled={store.transitionState.isActive}
                     className="broadcast-transition-button is-primary group"
                   >
                     <IconArrowsMove size={24} className="group-hover:rotate-180 transition-transform duration-500" />
@@ -1434,8 +1483,10 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
                   <div className="broadcast-transition-duration">
                     <input
                       type="number"
+                      min={1}
                       value={store.transitionDuration}
                       onChange={(e) => store.setTransitionDuration(Number(e.target.value))}
+                      disabled={store.transitionState.isActive}
                       className="broadcast-transition-duration-input"
                       title="Transition Duration (ms)"
                     />
@@ -1447,6 +1498,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
 
                 <button
                   onClick={() => store.transition('cut')}
+                  disabled={store.transitionState.isActive}
                   className="broadcast-transition-button is-secondary"
                 >
                   Cut
@@ -1460,6 +1512,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
                       if (!store.stingerSettings.path) setShowStingerConfig(true)
                       else store.transition('stinger')
                     }}
+                    disabled={store.transitionState.isActive}
                     className={`broadcast-transition-button is-stinger group ${store.stingerSettings.path ? 'is-configured' : ''}`}
                   >
                     <IconVideo size={24} />
@@ -1477,13 +1530,19 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
 
               {/* Program Canvas (Right) */}
               <div className="broadcast-studio-program-pane flex-1 flex flex-col min-w-0 rounded-md overflow-hidden relative group">
-                <div className="broadcast-studio-canvas-label is-live animate-pulse">Live</div>
+                <div className={`broadcast-studio-canvas-label ${isStreaming ? 'is-live animate-pulse' : ''}`}>
+                  {isStreaming ? 'Live Program' : 'Program'}
+                </div>
                 <CanvasEditor
                   activeScene={activeScene} isStreaming={isStreaming} isRecording={isRecording}
                   captureInputFormat={captureInputFormat} outputFps={outputConfig.fps}
                   outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
                   devices={devices}
                   isVisible={isPageVisible}
+                  readOnly
+                  browserFrameCacheRef={sharedBrowserFrameCache}
+                  browserSourceLayers={retainedBrowserLayers}
+                  prewarmScene={previewScene}
                   streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                   previewMode="single" selectionContext={selectionContext}
                   dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
@@ -1506,6 +1565,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
                 outputBitrateKbps={outputConfig.bitrateKbps} videoRefs={videoRefs}
                 devices={devices}
                 isVisible={isPageVisible}
+                browserFrameCacheRef={sharedBrowserFrameCache}
                 streamReady={streamReady} streamOutputs={activeCanvasStreamOutputs}
                 previewMode={broadcastLayoutMode} selectionContext={selectionContext}
                 dualVerticalOverlayEnabled={effectiveDualVerticalOverlay}
@@ -1546,7 +1606,7 @@ export default function BroadcastPage({ isRouteActive = true }: { isRouteActive?
         )}
       </div>
 
-      <MixerContainer isCollapsed={isMixerCollapsed} onToggleCollapse={() => setIsMixerCollapsed(!isMixerCollapsed)} mixerHeight={mixerHeight} onResizeStart={() => setIsResizingMixer(true)} activeScene={activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
+      <MixerContainer isCollapsed={isMixerCollapsed} onToggleCollapse={() => setIsMixerCollapsed(!isMixerCollapsed)} mixerHeight={mixerHeight} onResizeStart={() => setIsResizingMixer(true)} activeScene={store.studioMode ? previewScene : activeScene} videoRefs={videoRefs} devices={devices} streamReady={streamReady} />
       <AddSourceModal open={showSourceModal} onClose={() => setShowSourceModal(false)} onAdd={addSource} widgets={widgets} devices={devices} />
       <EnhancementModal
         open={store.showEnhancementModal}

@@ -2,6 +2,7 @@ import React from 'react'
 import { IconActivity, IconAdjustmentsHorizontal, IconHeadphones, IconRoute, IconSparkles, IconVolume, IconVolumeOff, IconWaveSine } from '@tabler/icons-react'
 import { IconPlus, IconTrash } from '../../../../components/ui/icons'
 import type { AudioSource } from '../../../../../shared/studio'
+import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import {
   formatPan,
   getStatusClasses,
@@ -42,6 +43,8 @@ export function MixerInspector({
   removeFx: (source: AudioSource, fxId: string) => void
   updateFxParam: (source: AudioSource, fxId: string, key: string, value: number) => void
 }) {
+  const monitoringMode = normalizeAudioMonitoringMode(selectedSource.monitoringMode, selectedSource.monitoring)
+
   return (
     <>
       {/* Horizontal Resize Handle */}
@@ -89,10 +92,12 @@ export function MixerInspector({
               onClick={() => updateSource(selectedSource.id, { muted: !selectedSource.muted })}
             />
             <InspectorToggle
-              active={selectedSource.monitoring}
+              active={monitoringMode !== 'off'}
               label="Monitor"
               icon={IconHeadphones}
-              onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
+              onClick={() => updateSource(selectedSource.id, {
+                monitoringMode: monitoringMode === 'off' ? 'monitorAndOutput' : 'off'
+              })}
             />
             <InspectorToggle
               active={(selectedSource.filters || []).some((fx: any) => fx.enabled)}
@@ -218,12 +223,27 @@ export function MixerInspector({
               <span className="text-2xs font-semibold tracking-normal text-white/22">Headphones</span>
             </div>
             <div className="grid gap-3">
-              <InspectorToggle
-                active={selectedSource.monitoring}
-                label="Monitor"
-                icon={IconHeadphones}
-                onClick={() => updateSource(selectedSource.id, { monitoring: !selectedSource.monitoring })}
-              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/[0.025] p-1 ring-1 ring-white/[0.06]">
+                {([
+                  ['off', 'Off'],
+                  ['monitorOnly', 'Monitor Only'],
+                  ['monitorAndOutput', 'Monitor + Output']
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => updateSource(selectedSource.id, { monitoringMode: value })}
+                    className={`min-h-10 rounded-lg px-2 text-[10px] font-semibold leading-tight transition-all ${monitoringMode === value ? 'bg-accent text-white' : 'text-white/28 hover:bg-white/[0.035] hover:text-white/55'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {selectedSource.type === 'system' && monitoringMode !== 'off' && (
+                <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] leading-relaxed text-amber-200/70">
+                  Monitoring desktop audio can feed the monitor output back into its own capture. Keep this off unless your monitor device is excluded from desktop capture.
+                </p>
+              )}
               <Knob
                 label="Pan"
                 value={selectedSource.pan || 0}

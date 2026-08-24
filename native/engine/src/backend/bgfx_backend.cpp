@@ -2,9 +2,12 @@
 #include "ily/resource_manager.h"
 #include "ily/resources.h"
 #include "renderer/shader_loader.h"
+#include "program-video-control.hpp"
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
 #include <bx/bx.h>
+#include <array>
+#include <chrono>
 #include <mutex>
 #include <cstdint>
 #include <cstring>
@@ -199,6 +202,289 @@ struct BgfxBackend::Impl {
     HWND m_dummyHwnd = nullptr;
     std::unordered_map<ResourceHandle, ID3D11Texture2D*> m_importedSharedTextures;
 
+    struct ProgramExportSlot {
+        ID3D11Texture2D* texture = nullptr;
+        IDXGIKeyedMutex* keyedMutex = nullptr;
+        HANDLE sharedHandle = nullptr;
+    };
+
+    std::array<ProgramExportSlot, ILY_PROGRAM_EXPORT_SLOT_COUNT> m_programExportSlots{};
+    ID3D11DeviceContext* m_programExportContext = nullptr;
+    HANDLE m_programExportControlMapping = nullptr;
+    ilystream::program_transport::ProgramVideoControlHeader* m_programExportControl = nullptr;
+    uint64_t m_programExportGeneration = 0;
+    uint64_t m_programExportFrameSequence = 0;
+    uint32_t m_programExportLatestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+    uint32_t m_programExportNextSlot = 0;
+    uint32_t m_programExportWidth = 0;
+    uint32_t m_programExportHeight = 0;
+    bool m_programExportEnabled = false;
+    bool m_programExportAvailable = false;
+
+    static void ReleaseProgramExportSlot(ProgramExportSlot& slot) {
+        if (slot.sharedHandle) {
+            CloseHandle(slot.sharedHandle);
+            slot.sharedHandle = nullptr;
+        }
+        if (slot.keyedMutex) {
+            slot.keyedMutex->Release();
+            slot.keyedMutex = nullptr;
+        }
+        if (slot.texture) {
+            slot.texture->Release();
+            slot.texture = nullptr;
+        }
+    }
+
+    void ReleaseProgramExportPool() {
+        for (auto& slot : m_programExportSlots) {
+            ReleaseProgramExportSlot(slot);
+        }
+        if (m_programExportContext) {
+            m_programExportContext->Release();
+            m_programExportContext = nullptr;
+        }
+        if (m_programExportControl) {
+            UnmapViewOfFile(m_programExportControl);
+            m_programExportControl = nullptr;
+        }
+        if (m_programExportControlMapping) {
+            CloseHandle(m_programExportControlMapping);
+            m_programExportControlMapping = nullptr;
+        }
+        m_programExportFrameSequence = 0;
+        m_programExportLatestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+        m_programExportNextSlot = 0;
+        m_programExportWidth = 0;
+        m_programExportHeight = 0;
+        m_programExportAvailable = false;
+    }
+
+    bool CreateProgramExportPool(uint32_t width, uint32_t height) {
+        if (bgfx::getRendererType() != bgfx::RendererType::Direct3D11) {
+            ReleaseProgramExportPool();
+            return false;
+        }
+
+        const bgfx::InternalData* internalData = bgfx::getInternalData();
+        if (!internalData || !internalData->context) {
+            ReleaseProgramExportPool();
+            return false;
+        }
+
+        ID3D11Device* device = static_cast<ID3D11Device*>(internalData->context);
+        std::array<ProgramExportSlot, ILY_PROGRAM_EXPORT_SLOT_COUNT> replacement{};
+        ID3D11DeviceContext* replacementContext = nullptr;
+        device->GetImmediateContext(&replacementContext);
+        if (!replacementContext) {
+            ReleaseProgramExportPool();
+            return false;
+        }
+
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = width;
+        desc.Height = height;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+                         D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+
+        bool complete = true;
+        for (auto& slot : replacement) {
+            HRESULT hr = device->CreateTexture2D(&desc, nullptr, &slot.texture);
+            if (FAILED(hr) || !slot.texture) {
+                complete = false;
+                break;
+            }
+
+            hr = slot.texture->QueryInterface(
+                __uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(&slot.keyedMutex));
+            if (FAILED(hr) || !slot.keyedMutex) {
+                complete = false;
+                break;
+            }
+
+            IDXGIResource1* resource = nullptr;
+            hr = slot.texture->QueryInterface(
+                __uuidof(IDXGIResource1), reinterpret_cast<void**>(&resource));
+            if (FAILED(hr) || !resource) {
+                complete = false;
+                break;
+            }
+            hr = resource->CreateSharedHandle(
+                nullptr,
+                DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+                nullptr,
+                &slot.sharedHandle);
+            resource->Release();
+            if (FAILED(hr) || !slot.sharedHandle) {
+                complete = false;
+                break;
+            }
+        }
+
+        HANDLE replacementControlMapping = nullptr;
+        ilystream::program_transport::ProgramVideoControlHeader* replacementControl = nullptr;
+        if (complete) {
+            replacementControlMapping = CreateFileMappingW(
+                INVALID_HANDLE_VALUE,
+                nullptr,
+                PAGE_READWRITE,
+                0,
+                static_cast<DWORD>(ilystream::program_transport::kProgramVideoControlBytes),
+                nullptr);
+            if (replacementControlMapping) {
+                replacementControl = static_cast<ilystream::program_transport::ProgramVideoControlHeader*>(
+                    MapViewOfFile(
+                        replacementControlMapping,
+                        FILE_MAP_ALL_ACCESS,
+                        0,
+                        0,
+                        ilystream::program_transport::kProgramVideoControlBytes));
+            }
+            if (!replacementControlMapping || !replacementControl) {
+                complete = false;
+            }
+        }
+
+        if (!complete) {
+            for (auto& slot : replacement) ReleaseProgramExportSlot(slot);
+            replacementContext->Release();
+            if (replacementControl) UnmapViewOfFile(replacementControl);
+            if (replacementControlMapping) CloseHandle(replacementControlMapping);
+            ReleaseProgramExportPool();
+            std::cerr << "[ily-engine] Program export pool creation failed" << std::endl;
+            return false;
+        }
+
+        uint64_t nextGeneration = m_programExportGeneration + 1;
+        if (nextGeneration == 0) nextGeneration = 1;
+        std::memset(replacementControl, 0, sizeof(*replacementControl));
+        replacementControl->magic = ilystream::program_transport::kProgramVideoControlMagic;
+        replacementControl->version = ilystream::program_transport::kProgramVideoControlVersion;
+        replacementControl->headerBytes = static_cast<uint16_t>(
+            ilystream::program_transport::kProgramVideoControlBytes);
+        replacementControl->slotCount = ILY_PROGRAM_EXPORT_SLOT_COUNT;
+        replacementControl->generation = nextGeneration;
+        replacementControl->latestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+
+        ReleaseProgramExportPool();
+        m_programExportSlots = replacement;
+        m_programExportContext = replacementContext;
+        m_programExportControlMapping = replacementControlMapping;
+        m_programExportControl = replacementControl;
+        m_programExportGeneration = nextGeneration;
+        m_programExportWidth = width;
+        m_programExportHeight = height;
+        m_programExportAvailable = true;
+        return true;
+    }
+
+    static uint64_t MonotonicTimestampNs() {
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    }
+
+    void BeginProgramControlWrite() {
+        InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(
+            &m_programExportControl->publishSequence));
+        MemoryBarrier();
+    }
+
+    void EndProgramControlWrite() {
+        MemoryBarrier();
+        InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(
+            &m_programExportControl->publishSequence));
+    }
+
+    void RecordProgramExportDrop() {
+        if (!m_programExportControl) return;
+        BeginProgramControlWrite();
+        m_programExportControl->droppedFrameCount += 1;
+        EndProgramControlWrite();
+    }
+
+    void RetireProgramExportGeneration() {
+        if (!m_programExportControl) return;
+        BeginProgramControlWrite();
+        m_programExportControl->flags |=
+            ilystream::program_transport::kProgramVideoControlFlagRetired;
+        m_programExportControl->latestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+        EndProgramControlWrite();
+        m_programExportLatestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+        m_programExportAvailable = false;
+    }
+
+    void PublishProgramExportFrame() {
+        if (!m_programExportEnabled || !m_programExportAvailable ||
+            !m_programExportContext || !m_programExportControl ||
+            m_outputs.empty() || !m_outputs[0].valid ||
+            !m_outputs[0].sharedOutputTexture) {
+            return;
+        }
+
+        // The descriptor publishes only the newest slot. A consumer can miss
+        // an older publication when two frames land between polls, leaving the
+        // superseded slot at key 1 forever. Reclaim only NON-latest slots, and
+        // only with a zero-timeout acquire. If the consumer already owns one,
+        // AcquireSync fails and we leave it alone until the consumer releases
+        // key 0 normally.
+        for (uint32_t index = 0; index < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++index) {
+            if (index == m_programExportLatestSlot) continue;
+            ProgramExportSlot& stale = m_programExportSlots[index];
+            if (stale.keyedMutex && stale.keyedMutex->AcquireSync(1, 0) == S_OK) {
+                stale.keyedMutex->ReleaseSync(0);
+            }
+        }
+
+        for (uint32_t attempt = 0; attempt < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++attempt) {
+            const uint32_t slotIndex =
+                (m_programExportNextSlot + attempt) % ILY_PROGRAM_EXPORT_SLOT_COUNT;
+            ProgramExportSlot& slot = m_programExportSlots[slotIndex];
+            if (!slot.texture || !slot.keyedMutex ||
+                slot.keyedMutex->AcquireSync(0, 0) != S_OK) {
+                continue;
+            }
+
+            m_programExportContext->CopyResource(
+                slot.texture, m_outputs[0].sharedOutputTexture);
+            m_programExportContext->Flush();
+            uint64_t nextFrameSequence = m_programExportFrameSequence + 1;
+            if (nextFrameSequence == 0) nextFrameSequence = 1;
+
+            // Publish while key 0 is still held. A consumer that started from
+            // an older control snapshot must recheck after acquiring key 1;
+            // it will then observe this newer sequence before accepting pixels.
+            BeginProgramControlWrite();
+            m_programExportControl->frameSequence = nextFrameSequence;
+            m_programExportControl->slotFrameSequence[slotIndex] = nextFrameSequence;
+            m_programExportControl->latestSlot = slotIndex;
+            m_programExportControl->monotonicTimestampNs = MonotonicTimestampNs();
+            EndProgramControlWrite();
+
+            if (slot.keyedMutex->ReleaseSync(1) != S_OK) {
+                // Control may already have been observed, so this generation
+                // cannot be repaired in place. Permanently retire it and make
+                // the descriptor unavailable until demand recreates the pool.
+                RetireProgramExportGeneration();
+                return;
+            }
+
+            m_programExportFrameSequence = nextFrameSequence;
+            m_programExportLatestSlot = slotIndex;
+            m_programExportNextSlot =
+                (slotIndex + 1) % ILY_PROGRAM_EXPORT_SLOT_COUNT;
+            return;
+        }
+        // Both slots are consumer-owned. Dropping this publication is
+        // intentional: the renderer must never wait behind an external client.
+        RecordProgramExportDrop();
+    }
+
     void ReleaseSharedOutputTexture() {
         for (auto& target : m_outputs) {
             if (target.sharedOutputHandle) {
@@ -319,7 +605,7 @@ struct BgfxBackend::Impl {
 
     // (Re)create the offscreen and readback targets at the given size and point
     // view 0 at the offscreen framebuffer. Caller must hold m_mutex.
-    void CreateOffscreenTargets(OutputTarget& target, uint32_t width, uint32_t height) {
+    void CreateOffscreenTargets(OutputTarget& target, uint32_t width, uint32_t height, bool programOutput) {
         const bgfx::TextureHandle previousComposite = target.compositeColorTex;
         const bgfx::FrameBufferHandle previousCompositeFramebuffer = target.compositeFb;
         const bgfx::TextureHandle previousColor = target.offscreenColorTex;
@@ -339,6 +625,14 @@ struct BgfxBackend::Impl {
         target.sharedOutputTexture = nullptr;
         target.sharedOutputHandle = nullptr;
         CreateSharedOutputTexture(target, width, height);
+        if (programOutput && m_programExportEnabled) {
+            // Broadcast export is a separate keyed-mutex pool. Electron keeps
+            // using target.sharedOutputHandle with its existing stable-handle
+            // semantics.
+            CreateProgramExportPool(width, height);
+        } else if (programOutput) {
+            ReleaseProgramExportPool();
+        }
 #endif
 
         // Preserve the normal offscreen target as a portable fallback when the
@@ -507,7 +801,7 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
         bgfx::setViewRect(m_impl->Out().viewOutput, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         bgfx::setDebug(m_impl->m_debugStats ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
         // Offscreen targets are sized to the surface, so recreate them on resize.
-        m_impl->CreateOffscreenTargets(m_impl->Out(), width, height);
+        m_impl->CreateOffscreenTargets(m_impl->Out(), width, height, true);
         return bgfx::isValid(m_impl->Out().compositeFb) && bgfx::isValid(m_impl->Out().offscreenFb)
             ? ILY_SUCCESS
             : ILY_ERROR_RENDER_FAILED;
@@ -608,7 +902,7 @@ IlyResult BgfxBackend::Initialize(const IlyEngineConfig& config) {
 
     // Render offscreen; the composite view targets this framebuffer instead of
     // the window.
-    m_impl->CreateOffscreenTargets(m_impl->Out(), width, height);
+    m_impl->CreateOffscreenTargets(m_impl->Out(), width, height, true);
     return bgfx::isValid(m_impl->Out().compositeFb) && bgfx::isValid(m_impl->Out().offscreenFb)
         ? ILY_SUCCESS
         : ILY_ERROR_RENDER_FAILED;
@@ -710,6 +1004,9 @@ void BgfxBackend::Shutdown() {
 
     m_impl->m_resourceManager.Clear();
 
+#ifdef _WIN32
+    m_impl->ReleaseProgramExportPool();
+#endif
     bgfx::shutdown();
     m_impl->m_initialized = false;
 
@@ -773,6 +1070,12 @@ IlyResult BgfxBackend::EndFrame() {
     m_impl->EvictStaleBlurTargets();
     m_impl->m_frameIndex += 1;
     bgfx::frame();
+#ifdef _WIN32
+    // bgfx is configured without its own render thread, so the Program
+    // presentation texture is complete here. Publish to at most one available
+    // keyed-mutex slot without ever waiting for the external consumer.
+    m_impl->PublishProgramExportFrame();
+#endif
     return result;
 }
 
@@ -844,7 +1147,7 @@ int32_t BgfxBackend::CreateOutput(uint32_t width, uint32_t height) {
     target.AssignViews(index);
     bgfx::setViewClear(target.viewComposite, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 1.0f, 0, 0);
     bgfx::setViewClear(target.viewOutput, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
-    m_impl->CreateOffscreenTargets(target, width, height);
+    m_impl->CreateOffscreenTargets(target, width, height, false);
     if (!bgfx::isValid(target.compositeFb) || !bgfx::isValid(target.offscreenFb)) {
         target.valid = false;
         return -1;
@@ -1683,6 +1986,185 @@ IlyResult BgfxBackend::GetSharedOutputTextureForOutput(uint32_t outputIndex, voi
 #else
     (void)outWidth;
     (void)outHeight;
+    return ILY_ERROR_NOT_SUPPORTED;
+#endif
+}
+
+IlyResult BgfxBackend::GetProgramExportDescriptor(IlyProgramExportDescriptor* outDescriptor) {
+    ILY_PROFILE_SCOPE("BgfxBackend::GetProgramExportDescriptor");
+    if (!outDescriptor) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+    std::memset(outDescriptor, 0, sizeof(*outDescriptor));
+    outDescriptor->structSize = sizeof(*outDescriptor);
+    outDescriptor->version = ILY_PROGRAM_EXPORT_DESCRIPTOR_VERSION;
+    outDescriptor->latestSlot = ILY_PROGRAM_EXPORT_NO_SLOT;
+
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_initialized) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+
+#ifdef _WIN32
+    if (!m_impl->m_programExportAvailable || !m_impl->m_adapterLuidValid) {
+        return ILY_ERROR_NOT_SUPPORTED;
+    }
+
+    outDescriptor->generation = m_impl->m_programExportGeneration;
+    outDescriptor->frameSequence = m_impl->m_programExportFrameSequence;
+    outDescriptor->adapterLuid = m_impl->m_adapterLuid;
+    outDescriptor->width = m_impl->m_programExportWidth;
+    outDescriptor->height = m_impl->m_programExportHeight;
+    outDescriptor->format = ILY_PIXEL_FORMAT_RGBA8;
+    outDescriptor->slotCount = ILY_PROGRAM_EXPORT_SLOT_COUNT;
+    outDescriptor->latestSlot = m_impl->m_programExportLatestSlot;
+    outDescriptor->producerAcquireKey = 0;
+    outDescriptor->consumerAcquireKey = 1;
+    for (uint32_t index = 0; index < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++index) {
+        outDescriptor->sharedHandleValues[index] = static_cast<uint64_t>(
+            reinterpret_cast<uintptr_t>(m_impl->m_programExportSlots[index].sharedHandle));
+    }
+    outDescriptor->controlBlockVersion =
+        ilystream::program_transport::kProgramVideoControlVersion;
+    outDescriptor->controlBlockSize = static_cast<uint32_t>(
+        ilystream::program_transport::kProgramVideoControlBytes);
+    outDescriptor->controlMappingHandleValue = static_cast<uint64_t>(
+        reinterpret_cast<uintptr_t>(m_impl->m_programExportControlMapping));
+    return ILY_SUCCESS;
+#else
+    return ILY_ERROR_NOT_SUPPORTED;
+#endif
+}
+
+IlyResult BgfxBackend::SetProgramExportEnabled(bool enabled) {
+    ILY_PROFILE_SCOPE("BgfxBackend::SetProgramExportEnabled");
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_initialized) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+
+#ifdef _WIN32
+    if (!enabled) {
+        m_impl->m_programExportEnabled = false;
+        m_impl->ReleaseProgramExportPool();
+        return ILY_SUCCESS;
+    }
+    if (m_impl->m_programExportEnabled && m_impl->m_programExportAvailable) {
+        return ILY_SUCCESS;
+    }
+    m_impl->m_programExportEnabled = true;
+    if (m_impl->m_outputs.empty() || !m_impl->m_outputs[0].valid ||
+        !m_impl->CreateProgramExportPool(
+            m_impl->m_outputs[0].width, m_impl->m_outputs[0].height)) {
+        m_impl->m_programExportEnabled = false;
+        return ILY_ERROR_RENDER_FAILED;
+    }
+    return ILY_SUCCESS;
+#else
+    (void)enabled;
+    return ILY_ERROR_NOT_SUPPORTED;
+#endif
+}
+
+IlyResult BgfxBackend::DuplicateProgramExportHandles(
+    uint32_t targetProcessId,
+    uint64_t expectedGeneration,
+    uint32_t expectedSlotCount,
+    IlyProgramExportDuplicatedHandles* outHandles) {
+    ILY_PROFILE_SCOPE("BgfxBackend::DuplicateProgramExportHandles");
+    if (outHandles) {
+        std::memset(outHandles, 0, sizeof(*outHandles));
+        outHandles->structSize = sizeof(*outHandles);
+        outHandles->version = ILY_PROGRAM_EXPORT_DUPLICATED_HANDLES_VERSION;
+    }
+    if (targetProcessId == 0 || !outHandles ||
+        expectedSlotCount != ILY_PROGRAM_EXPORT_SLOT_COUNT) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    std::lock_guard<std::mutex> lock(m_impl->m_mutex);
+    if (!m_impl->m_initialized) {
+        return ILY_ERROR_INITIALIZATION_FAILED;
+    }
+
+#ifdef _WIN32
+    if (!m_impl->m_programExportAvailable || expectedGeneration == 0 ||
+        expectedGeneration != m_impl->m_programExportGeneration) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    HANDLE targetProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, targetProcessId);
+    if (!targetProcess) {
+        return ILY_ERROR_NOT_FOUND;
+    }
+
+    std::array<HANDLE, ILY_PROGRAM_EXPORT_SLOT_COUNT> duplicatedTextures{};
+    HANDLE duplicatedControl = nullptr;
+    bool complete = true;
+    for (uint32_t index = 0; index < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++index) {
+        HANDLE sourceHandle = m_impl->m_programExportSlots[index].sharedHandle;
+        if (!sourceHandle || !DuplicateHandle(
+                GetCurrentProcess(),
+                sourceHandle,
+                targetProcess,
+                &duplicatedTextures[index],
+                0,
+                FALSE,
+                DUPLICATE_SAME_ACCESS)) {
+            complete = false;
+            break;
+        }
+    }
+    if (complete && (!m_impl->m_programExportControlMapping || !DuplicateHandle(
+            GetCurrentProcess(),
+            m_impl->m_programExportControlMapping,
+            targetProcess,
+            &duplicatedControl,
+            FILE_MAP_READ,
+            FALSE,
+            0))) {
+        complete = false;
+    }
+
+    if (!complete) {
+        // A partial duplicate must not leak in the consumer. Move each remote
+        // handle back into this process while atomically closing its target-side
+        // instance, then close the temporary local duplicate.
+        auto closeUndeliveredRemote = [targetProcess](HANDLE remoteHandle) {
+            if (!remoteHandle) return;
+            HANDLE cleanupHandle = nullptr;
+            if (DuplicateHandle(
+                    targetProcess,
+                    remoteHandle,
+                    GetCurrentProcess(),
+                    &cleanupHandle,
+                    0,
+                    FALSE,
+                    DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE) &&
+                cleanupHandle) {
+                CloseHandle(cleanupHandle);
+            }
+        };
+        for (HANDLE remoteHandle : duplicatedTextures) {
+            closeUndeliveredRemote(remoteHandle);
+        }
+        closeUndeliveredRemote(duplicatedControl);
+        CloseHandle(targetProcess);
+        return ILY_ERROR_UNKNOWN;
+    }
+
+    for (uint32_t index = 0; index < ILY_PROGRAM_EXPORT_SLOT_COUNT; ++index) {
+        outHandles->textureHandleValues[index] = static_cast<uint64_t>(
+            reinterpret_cast<uintptr_t>(duplicatedTextures[index]));
+    }
+    outHandles->generation = m_impl->m_programExportGeneration;
+    outHandles->slotCount = ILY_PROGRAM_EXPORT_SLOT_COUNT;
+    outHandles->controlHandleValue = static_cast<uint64_t>(
+        reinterpret_cast<uintptr_t>(duplicatedControl));
+    CloseHandle(targetProcess);
+    return ILY_SUCCESS;
+#else
+    (void)expectedGeneration;
     return ILY_ERROR_NOT_SUPPORTED;
 #endif
 }

@@ -9,7 +9,12 @@ import type { SpotifySongRequest, SpotifyStatus, SpotifyTrack } from '../../shar
 import { EMPTY_NOW_PLAYING, type NowPlayingPayload } from '../../shared/widgets'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { classifySpotifyCommand } from '../../shared/chat-command-intent'
-import { initiateSpotifyAuth, refreshSpotifyTokens, DEFAULT_SPOTIFY_CLIENT_ID } from './spotify-auth'
+import {
+  initiateSpotifyAuth,
+  refreshSpotifyTokens,
+  DEFAULT_SPOTIFY_CLIENT_ID,
+  type SpotifyTokens
+} from './spotify-auth'
 import { SpotifyApiError, SpotifyClient, type SpotifyUserProfile } from './client/spotify-client'
 import { SpotifyMapper } from './mappers/spotify-mapper'
 import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
@@ -17,6 +22,7 @@ import type { AnyStreamEvent, ChatEvent } from '../platforms/types'
 const RESTORE_RETRY_DELAY_MS = 30_000
 const POLL_INTERVAL_MS = 5_000
 const QUEUE_REFRESH_INTERVAL_MS = 15_000
+const TOKEN_REFRESH_SKEW_MS = 60_000
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 30_000
 const MAX_RATE_LIMIT_BACKOFF_MS = 5 * 60_000
 
@@ -43,6 +49,8 @@ export class SpotifyService extends EventEmitter {
   private mapper = new SpotifyMapper()
   private accessToken: string | null = null
   private refreshToken: string | null = null
+  private accessTokenExpiresAt = 0
+  private accessTokenRefreshInFlight: Promise<void> | null = null
   private lastError: string | null = null
   private restoreRetryTimer: NodeJS.Timeout | null = null
   private currentRequestId: string | null = null
@@ -53,6 +61,10 @@ export class SpotifyService extends EventEmitter {
   private pollInFlight = false
   private cachedQueueSnapshot: any | null = null
   private nextQueueFetchAt = 0
+  private playbackGeneration = 0
+  private queueRefreshGeneration = 0
+  private queueRefreshInFlight: Promise<void> | null = null
+  private queueRefreshPending = false
 
   constructor(private db: Database, private platformManager: PlatformManager) {
     super()
@@ -90,6 +102,7 @@ export class SpotifyService extends EventEmitter {
       this.db.setSetting('spotifyClientId', clientId)
       this.db.setSetting('spotifyAccessToken', null)
       this.db.setSetting('spotifyRefreshToken', null)
+      this.db.setSetting('spotifyTokenExpiresAt', 0)
     }
 
     this.lastError = null
@@ -98,21 +111,19 @@ export class SpotifyService extends EventEmitter {
     if (!token) {
       try {
         const tokens = await initiateSpotifyAuth(clientId)
-        this.accessToken = tokens.accessToken
-        this.refreshToken = tokens.refreshToken
-        this.db.setSetting('spotifyAccessToken', tokens.accessToken)
-        this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
-        this.client.setAccessToken(tokens.accessToken)
+        this.applyTokens(tokens)
       } catch (e: any) {
         throw e
       }
     } else {
       this.accessToken = token
       this.refreshToken = settings.spotifyRefreshToken || null
+      this.accessTokenExpiresAt = Number(settings.spotifyTokenExpiresAt) || 0
       this.client.setAccessToken(token)
     }
 
     try {
+      await this.ensureFreshAccessToken()
       this.profile = await this.client.getProfile()
       this.connected = true
       this.startPolling()
@@ -143,14 +154,12 @@ export class SpotifyService extends EventEmitter {
       // Clear invalid tokens and try fresh auth
       this.db.setSetting('spotifyAccessToken', null)
       this.db.setSetting('spotifyRefreshToken', null)
+      this.db.setSetting('spotifyTokenExpiresAt', 0)
+      this.accessTokenExpiresAt = 0
 
       try {
         const tokens = await initiateSpotifyAuth(clientId)
-        this.accessToken = tokens.accessToken
-        this.refreshToken = tokens.refreshToken
-        this.db.setSetting('spotifyAccessToken', tokens.accessToken)
-        this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
-        this.client.setAccessToken(tokens.accessToken)
+        this.applyTokens(tokens)
 
         this.profile = await this.client.getProfile()
         this.connected = true
@@ -170,12 +179,14 @@ export class SpotifyService extends EventEmitter {
     this.connected = false
     this.accessToken = null
     this.refreshToken = null
+    this.accessTokenExpiresAt = 0
     this.profile = null
     if (this.pollTimer) clearInterval(this.pollTimer)
     this.pollTimer = null
 
     this.db.setSetting('spotifyAccessToken', null)
     this.db.setSetting('spotifyRefreshToken', null)
+    this.db.setSetting('spotifyTokenExpiresAt', 0)
     this.lastError = null
     this.emit('status', this.getStatus())
   }
@@ -214,6 +225,7 @@ export class SpotifyService extends EventEmitter {
     try {
       const settings = resolveAppSettings(this.db.getAllSettings())
       if (!settings.spotifySongRequestsEnabled || !settings.spotifyPlayEnabled) return null
+      await this.ensureFreshAccessToken()
 
       const queuedRequests = this.requestQueue.filter(r => r.status === 'queued')
       if (settings.spotifyMaxQueueLength > 0 && queuedRequests.length >= settings.spotifyMaxQueueLength) return null
@@ -243,8 +255,8 @@ export class SpotifyService extends EventEmitter {
       this.requestQueue.push(request)
       this.saveQueueCache()
       this.emit('queue-update', this.getQueue())
-      const queueSnapshot = await this.fetchSpotifyQueueSnapshot(true)
-      this.emitNowPlaying(this.buildOverlayQueue(queueSnapshot, this.currentNowPlaying.trackId))
+      this.emitNowPlaying(this.buildOverlayQueue(this.cachedQueueSnapshot, this.currentNowPlaying.trackId))
+      this.scheduleSpotifyQueueRefresh(this.playbackGeneration, this.currentNowPlaying.trackId, true)
       this.emit('song-requested', request)
       return request
     } catch (e) {
@@ -284,6 +296,7 @@ export class SpotifyService extends EventEmitter {
 
   async skip(): Promise<void> {
     try {
+      await this.ensureFreshAccessToken()
       await this.client.skip()
       this.skipVotes.clear()
       this.skipVoteTrackId = null
@@ -318,15 +331,18 @@ export class SpotifyService extends EventEmitter {
   }
 
   async pause(): Promise<void> {
+    await this.ensureFreshAccessToken()
     await this.client.pause()
   }
 
   async resume(): Promise<void> {
+    await this.ensureFreshAccessToken()
     await this.client.play()
   }
 
   async likeCurrent(): Promise<void> {
     if (this.currentNowPlaying.trackId) {
+      await this.ensureFreshAccessToken()
       await this.client.saveTrack(this.currentNowPlaying.trackId)
     }
   }
@@ -347,21 +363,25 @@ export class SpotifyService extends EventEmitter {
     }
 
     try {
+      await this.ensureFreshAccessToken()
       const raw = await this.client.getPlaybackState()
       const state = this.mapper.mapPlaybackState(raw)
       const nowPlaying = this.mapper.mapNowPlaying(state)
+      if (nowPlaying.trackId !== this.currentNowPlaying.trackId) {
+        this.playbackGeneration += 1
+      }
       const currentRequest = this.resolveCurrentRequest(nowPlaying.trackId)
       this.markRequestsPlayedThrough(nowPlaying.trackId)
-      const queueSnapshot = await this.fetchSpotifyQueueSnapshot()
       this.currentNowPlaying = {
         ...nowPlaying,
         requestedBy: currentRequest?.displayName || currentRequest?.requestedBy || null,
         requesterPlatform: currentRequest?.platform || null,
-        queue: this.buildOverlayQueue(queueSnapshot, nowPlaying.trackId)
+        queue: this.buildOverlayQueue(this.cachedQueueSnapshot, nowPlaying.trackId)
       }
       this.emitNowPlaying(this.currentNowPlaying.queue)
       this.pollBackoffUntil = 0
       this.pollRateLimitBackoffMs = DEFAULT_RATE_LIMIT_BACKOFF_MS
+      this.scheduleSpotifyQueueRefresh(this.playbackGeneration, nowPlaying.trackId)
     } catch (e: any) {
       const message = e instanceof Error ? e.message : String(e)
 
@@ -422,7 +442,14 @@ export class SpotifyService extends EventEmitter {
   }
 
   private async ensureReadyForCommand(): Promise<boolean> {
-    if (this.connected) return true
+    if (this.connected) {
+      try {
+        await this.ensureFreshAccessToken()
+      } catch {
+        return false
+      }
+      return this.connected
+    }
 
     const settings = resolveAppSettings(this.db.getAllSettings())
     this.accessToken = this.accessToken || settings.spotifyAccessToken || null
@@ -519,6 +546,56 @@ export class SpotifyService extends EventEmitter {
       }
       return this.cachedQueueSnapshot
     }
+  }
+
+  private scheduleSpotifyQueueRefresh(
+    playbackGeneration: number,
+    currentTrackId: string | null,
+    force = false
+  ): void {
+    if (force) this.nextQueueFetchAt = 0
+
+    if (this.queueRefreshInFlight) {
+      if (force || playbackGeneration !== this.queueRefreshGeneration) {
+        this.queueRefreshPending = true
+      }
+      return
+    }
+
+    if (!force && Date.now() < this.nextQueueFetchAt) return
+
+    this.queueRefreshGeneration = playbackGeneration
+    const refreshPromise = this.fetchSpotifyQueueSnapshot(force)
+      .then((snapshot) => {
+        if (
+          playbackGeneration !== this.playbackGeneration ||
+          currentTrackId !== this.currentNowPlaying.trackId
+        ) {
+          this.queueRefreshPending = true
+          return
+        }
+
+        this.emitNowPlaying(this.buildOverlayQueue(snapshot, currentTrackId))
+      })
+      .catch((error) => {
+        log.warn('[Spotify] Queue refresh failed:', this.getErrorMessage(error))
+      })
+
+    this.queueRefreshInFlight = refreshPromise
+    void refreshPromise.then(() => {
+      if (this.queueRefreshInFlight !== refreshPromise) return
+
+      this.queueRefreshInFlight = null
+      if (!this.queueRefreshPending) return
+
+      this.queueRefreshPending = false
+      this.nextQueueFetchAt = 0
+      this.scheduleSpotifyQueueRefresh(
+        this.playbackGeneration,
+        this.currentNowPlaying.trackId,
+        true
+      )
+    })
   }
 
   private buildOverlayQueue(queueSnapshot: any | null, currentTrackId: string | null): SpotifySongRequest[] {
@@ -635,6 +712,7 @@ export class SpotifyService extends EventEmitter {
     const settings = resolveAppSettings(this.db.getAllSettings())
     this.accessToken = settings.spotifyAccessToken || null
     this.refreshToken = settings.spotifyRefreshToken || null
+    this.accessTokenExpiresAt = Number(settings.spotifyTokenExpiresAt) || 0
 
     if (this.refreshToken) {
       if (!(settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID).trim()) {
@@ -664,7 +742,53 @@ export class SpotifyService extends EventEmitter {
     }
   }
 
+  private applyTokens(tokens: SpotifyTokens): void {
+    const expiresInSeconds = Number(tokens.expiresIn)
+    const expiresAt = Date.now() + (
+      Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+        ? expiresInSeconds
+        : 3600
+    ) * 1000
+
+    this.accessToken = tokens.accessToken
+    this.refreshToken = tokens.refreshToken
+    this.accessTokenExpiresAt = expiresAt
+    this.db.setSetting('spotifyAccessToken', tokens.accessToken)
+    this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
+    this.db.setSetting('spotifyTokenExpiresAt', expiresAt)
+    this.client.setAccessToken(tokens.accessToken)
+  }
+
+  private async ensureFreshAccessToken(): Promise<void> {
+    if (
+      !this.refreshToken ||
+      (this.accessTokenExpiresAt > 0 && Date.now() + TOKEN_REFRESH_SKEW_MS < this.accessTokenExpiresAt)
+    ) {
+      return
+    }
+
+    await this.refreshAccessToken()
+  }
+
   private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken) return
+
+    if (this.accessTokenRefreshInFlight) {
+      return this.accessTokenRefreshInFlight
+    }
+
+    const refreshPromise = this.performAccessTokenRefresh()
+    this.accessTokenRefreshInFlight = refreshPromise
+    try {
+      await refreshPromise
+    } finally {
+      if (this.accessTokenRefreshInFlight === refreshPromise) {
+        this.accessTokenRefreshInFlight = null
+      }
+    }
+  }
+
+  private async performAccessTokenRefresh(): Promise<void> {
     if (!this.refreshToken) return
     const settings = resolveAppSettings(this.db.getAllSettings())
     const clientId = (settings.spotifyClientId || DEFAULT_SPOTIFY_CLIENT_ID).trim()
@@ -677,11 +801,7 @@ export class SpotifyService extends EventEmitter {
 
     try {
       const tokens = await refreshSpotifyTokens(clientId, this.refreshToken)
-      this.accessToken = tokens.accessToken
-      this.refreshToken = tokens.refreshToken
-      this.db.setSetting('spotifyAccessToken', tokens.accessToken)
-      this.db.setSetting('spotifyRefreshToken', tokens.refreshToken)
-      this.client.setAccessToken(tokens.accessToken)
+      this.applyTokens(tokens)
       this.lastError = null
       log.info('[Spotify] Access token refreshed')
     } catch (err: any) {
@@ -695,6 +815,7 @@ export class SpotifyService extends EventEmitter {
     if (this.pollTimer) clearInterval(this.pollTimer)
     this.clearRestoreRetry()
     this.accessToken = null
+    this.accessTokenExpiresAt = 0
   }
 
   private scheduleRestoreRetry(error: unknown): void {

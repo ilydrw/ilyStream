@@ -18,8 +18,8 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     }
   })
 
-  ipcMain.handle('streaming:stop', () => {
-    streamingService.stopStream()
+  ipcMain.handle('streaming:stop', async () => {
+    await streamingService.stopStream()
     return { success: true }
   })
 
@@ -39,8 +39,8 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     return streamingService.getRecentIncidents()
   })
 
-  ipcMain.handle('streaming:stop-output', (_event, outputId: string) => {
-    streamingService.stopStreamOutput(outputId)
+  ipcMain.handle('streaming:stop-output', async (_event, outputId: string) => {
+    await streamingService.stopStreamOutput(outputId)
     return { success: true }
   })
 
@@ -54,9 +54,13 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     }
   })
 
-  ipcMain.handle('streaming:stop-recording', () => {
-    streamingService.stopRecording()
-    return { success: true }
+  ipcMain.handle('streaming:stop-recording', async () => {
+    try {
+      await streamingService.stopRecording()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   ipcMain.handle('streaming:get-recording-status', () => {

@@ -206,7 +206,7 @@ export class VirtualCameraService extends EventEmitter {
       }
 
       // Use the specific output session stopping method
-      this.streamingService.stopStreamOutput(this.outputId)
+      await this.streamingService.stopStreamOutput(this.outputId)
       this.setState('inactive')
     } catch (err: any) {
       this.setState('error', err.message)

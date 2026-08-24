@@ -237,6 +237,8 @@ describe('FFmpegArgsBuilder.buildStreamArgs', () => {
     expect(joined).toContain('-reconnect_at_eof 1')
     expect(joined).toContain('-reconnect_streamed 1')
     expect(joined).toContain('-reconnect_delay_max 4')
+    expect(joined).toContain('-progress pipe:2')
+    expect(joined).toContain('-stats_period 1')
 
     // The destination URL is always the very last arg.
     expect(args[args.length - 1]).toBe(url)
@@ -262,6 +264,7 @@ describe('FFmpegArgsBuilder.buildStreamArgs', () => {
       expect(joined).not.toContain('-rtmp_buffer')
       expect(joined).not.toContain('-reconnect')
       expect(joined).not.toContain('-tcp_nodelay')
+      expect(joined).not.toContain('-progress')
 
       expect(args[args.length - 1]).toBe(url)
     } finally {

@@ -21,7 +21,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
   const bgOpacity = cfg.backgroundOpacity
 
   const accentRgb = hexToRgb(cfg.accentColor)
-  const configJson = JSON.stringify(cfg)
+  const configJson = JSON.stringify(cfg).replace(/</g, '\\u003c')
   // Rules for all positions are emitted up-front so the live-config hook can
   // switch position by flipping a single attribute. The default in the
   // original template was top-right; preserve that for unknown values.
@@ -234,7 +234,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         animation: border-flow 12s linear infinite;
       }
       .card.chroma-border {
-        --gradient-border: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #0000ff, #ff0000);
+        --gradient-border: linear-gradient(90deg, #ff3b30, #ffd60a, #34d399, #00e5ff, #3b82f6, #d946ef, #ff3b30);
       }
       .card.cyberneon-border {
         --gradient-border: linear-gradient(90deg, #D035F1, #19C8FF, #D035F1, #19C8FF, #D035F1);
@@ -539,11 +539,12 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         glassIntensity: 1
       };
       var FG_HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+      window.__ilystreamLastConfig = ${configJson};
       function fgHandlesAccent(value) {
         return typeof value === 'string' && FG_HEX_RE.test(String(value).replace('#', ''));
       }
       window.__ilystreamApplyConfig = function(cfg) {
-        if (!cfg) return;
+        if (!cfg) return true;
         var root = document.documentElement;
         var shell = document.querySelector('.shell');
         var prev = window.__ilystreamLastConfig || null;
@@ -558,12 +559,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
             } else if (FG_LIVE_FIELDS[k]) {
               continue;
             }
-            try {
-              window.parent && window.parent.postMessage(
-                { type: 'ilystream:preview-needs-html' }, '*'
-              );
-            } catch (e) {}
-            return;
+            return false;
           }
         }
         function hexToRgb(hex) {
@@ -600,6 +596,7 @@ export function buildFollowerGoalHtml(widget?: any, isPreview = false): string {
         // immediately (otherwise the user would wait for the next SSE event).
         try { update(displayedCount); } catch (e) {}
         window.__ilystreamLastConfig = cfg;
+        return true;
       };
     </script>
   </body>

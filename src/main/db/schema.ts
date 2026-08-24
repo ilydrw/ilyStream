@@ -74,6 +74,54 @@ export const SCHEMA_SQL = `
     PRIMARY KEY (username, platform)
   );
 
+  CREATE TABLE IF NOT EXISTS economy_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    delta INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    reference_id TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS economy_redemptions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    cost INTEGER NOT NULL,
+    min_level INTEGER NOT NULL DEFAULT 1,
+    cooldown_seconds INTEGER NOT NULL DEFAULT 30,
+    action_json TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS economy_redemption_uses (
+    id TEXT PRIMARY KEY,
+    redemption_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    cost INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (redemption_id) REFERENCES economy_redemptions(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS economy_daily_claims (
+    username TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    claim_date TEXT NOT NULL,
+    streak INTEGER NOT NULL DEFAULT 1,
+    reward INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (username, platform, claim_date)
+  );
+
   CREATE TABLE IF NOT EXISTS stream_state (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
@@ -208,10 +256,23 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_user_stats_last_seen ON user_stats(last_seen_at DESC);
   CREATE INDEX IF NOT EXISTS idx_user_stats_profile_id ON user_stats(profile_id);
   CREATE INDEX IF NOT EXISTS idx_user_stats_platform_user_id ON user_stats(platform, platform_user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_stats_owner_nocase ON user_stats(platform, username COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_viewer_accounts_profile_id ON viewer_accounts(profile_id);
   CREATE INDEX IF NOT EXISTS idx_viewer_accounts_platform_user_id ON viewer_accounts(platform, platform_user_id);
   CREATE INDEX IF NOT EXISTS idx_follower_snapshots_platform_time
     ON follower_snapshots(platform, captured_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_economy_users_owner_nocase
+    ON economy_users(platform, username COLLATE NOCASE);
+  CREATE INDEX IF NOT EXISTS idx_economy_transactions_user_time
+    ON economy_transactions(platform, username, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_economy_transactions_time
+    ON economy_transactions(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_economy_redemption_uses_cooldown
+    ON economy_redemption_uses(redemption_id, platform, username, status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_economy_redemption_uses_owner_nocase
+    ON economy_redemption_uses(redemption_id, platform, username COLLATE NOCASE, status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_economy_daily_claims_owner_nocase
+    ON economy_daily_claims(platform, username COLLATE NOCASE, claim_date DESC);
 `
 
 export function ensureColumn(db: BetterSqlite3.Database, table: string, column: string, definition: string): void {

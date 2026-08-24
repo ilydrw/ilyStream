@@ -13,6 +13,10 @@ export type PlatformHealthTone = 'ready' | 'warning' | 'blocked' | 'idle'
 export type PlatformConfigState = 'ready' | 'partial' | 'missing'
 export type PlatformTrafficState = 'receiving' | 'stale' | 'quiet'
 
+export function isRealPlatformEventDiagnostic(event: PlatformEventDiagnostic): boolean {
+  return event.simulated === false
+}
+
 export interface PlatformIssueExplanation {
   title: string
   detail: string
@@ -162,7 +166,7 @@ export function buildPlatformHealthRows(input: BuildPlatformHealthInput): Platfo
     const error = input.errors?.[platform] ?? null
     const config = input.configs?.[platform]
     const configState = getPlatformConfigState(platform, config)
-    const lastEvent = getMostRecentEvent(input.recentEvents, platform)
+    const lastEvent = getMostRecentRealEvent(input.recentEvents, platform)
     const trafficState = getTrafficState(lastEvent, now)
     const capability = input.capabilities?.[platform]
     const issue = explainPlatformIssue(platform, error)
@@ -203,7 +207,9 @@ export function buildPlatformHealthRows(input: BuildPlatformHealthInput): Platfo
       actionPath,
       viewerCount,
       lastEventAt: lastEvent?.timestamp ?? null,
-      lastEventLabel: lastEvent ? `${lastEvent.type} ${formatRelativeAge(lastEvent.timestamp.getTime(), now)}` : 'No events this session',
+      lastEventLabel: lastEvent
+        ? `${lastEvent.type} ${formatRelativeAge(lastEvent.timestamp.getTime(), now)}`
+        : 'No real platform events this session',
       canSendChat,
       chatCapabilityReason,
       trustLabel: getTrustLabel(status, trafficState, configState),
@@ -238,7 +244,8 @@ export function createHealthDiagnosticReport(input: BuildPlatformHealthInput): s
       platform: event.platform,
       type: event.type,
       summary: event.summary,
-      timestamp: event.timestamp.toISOString()
+      timestamp: event.timestamp.toISOString(),
+      simulated: event.simulated
     }))
   }
 
@@ -267,11 +274,13 @@ function getPlatformConfigState(
   }
 }
 
-function getMostRecentEvent(
+function getMostRecentRealEvent(
   events: PlatformEventDiagnostic[] | undefined,
   platform: HealthPlatform
 ): PlatformEventDiagnostic | null {
-  const event = (events ?? []).find((entry) => entry.platform === platform)
+  const event = (events ?? []).find(
+    (entry) => entry.platform === platform && isRealPlatformEventDiagnostic(entry)
+  )
   return event ?? null
 }
 
@@ -353,7 +362,9 @@ function getNextAction(
   if (issue) return issue.nextAction
   if (configState === 'missing') return 'Open setup and add credentials.'
   if (configState === 'partial') return 'Finish the missing setup fields, then reconnect.'
-  if (status === 'connected') return 'Send a test event from Event Testing if you want to verify overlays and stats.'
+  if (status === 'connected') {
+    return 'Use a local path test for overlays, or wait for a real platform event to verify inbound traffic.'
+  }
   return 'Reconnect this platform before going live.'
 }
 

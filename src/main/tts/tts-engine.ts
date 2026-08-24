@@ -13,6 +13,7 @@ import {
 } from '../../shared/app-settings'
 import { shouldSuppressChatTtsForCommand } from '../../shared/chat-command-intent'
 import { DEFAULT_KOKORO_VOICE, ELEVENLABS_DEFAULT_VOICE_ID } from '../../shared/tts-providers'
+import { isStaleLiveTts } from '../../shared/tts-freshness'
 
 export interface TTSRequest {
   text: string
@@ -149,6 +150,7 @@ export class TTSEngine extends EventEmitter {
       enqueuedAt: Date.now()
     }
 
+    this.dropStaleQueuedItems()
     const added = this.queue.add(item)
     if (added) {
       this.emit('queue-update', this.queue.getAll())
@@ -269,6 +271,15 @@ export class TTSEngine extends EventEmitter {
     return this.queue.getAll()
   }
 
+  getRuntimeState(): { enabled: boolean; paused: boolean; playing: boolean; queueLength: number } {
+    return {
+      enabled: this.enabled,
+      paused: this.isPaused,
+      playing: this.isPlaying,
+      queueLength: this.queue.getAll().length
+    }
+  }
+
   /** Get voice profiles manager */
   getVoiceProfiles(): VoiceProfileManager {
     return this.voiceProfiles
@@ -289,7 +300,12 @@ export class TTSEngine extends EventEmitter {
   }
 
   /** Called by renderer when speech finishes */
-  onSpeechComplete(): void {
+  onSpeechComplete(id?: string): void {
+    if (id && this.currentItem?.id !== id) {
+      console.warn(`[TTS] Ignoring stale speech completion for ${id}; current item is ${this.currentItem?.id || 'none'}.`)
+      return
+    }
+
     this.clearPlaybackWatchdog()
     this.currentItem = null
     this.isPlaying = false
@@ -308,15 +324,15 @@ export class TTSEngine extends EventEmitter {
     this.processNext()
   }
 
-  private armPlaybackWatchdog(text: string): void {
+  private armPlaybackWatchdog(item: TTSQueueItem): void {
     this.clearPlaybackWatchdog()
     // Generous ceiling: synth + playback for even a long line finishes well
     // within this, so it only fires when something actually broke.
-    const maxMs = Math.min(90_000, 12_000 + text.length * 150)
+    const maxMs = Math.min(90_000, 12_000 + item.text.length * 150)
     this.playbackWatchdog = setTimeout(() => {
       this.playbackWatchdog = null
       console.warn('[TTS] Playback watchdog fired — no completion from renderer; advancing queue.')
-      this.onSpeechComplete()
+      this.onSpeechComplete(item.id)
     }, maxMs)
   }
 
@@ -330,6 +346,7 @@ export class TTSEngine extends EventEmitter {
   private processNext(): void {
     if (this.isPlaying || this.isPaused) return
 
+    this.dropStaleQueuedItems()
     const next = this.queue.next()
     if (!next) return
 
@@ -345,9 +362,11 @@ export class TTSEngine extends EventEmitter {
       id: next.id,
       text: next.text,
       username: next.username,
-      voice: finalProfile
+      voice: finalProfile,
+      eventType: next.eventType,
+      enqueuedAt: next.enqueuedAt
     })
-    this.armPlaybackWatchdog(next.text)
+    this.armPlaybackWatchdog(next)
 
     this.emitPrefetchForNext()
 
@@ -359,6 +378,7 @@ export class TTSEngine extends EventEmitter {
     // while the current item plays. This also runs when a new first-in-line item
     // arrives during active speech, so queued chat is already rendered by the
     // time the current sentence finishes.
+    this.dropStaleQueuedItems()
     const upcoming = this.queue.peek()
     if (!upcoming) return
 
@@ -368,8 +388,23 @@ export class TTSEngine extends EventEmitter {
     this.emit('tts:prefetch', {
       id: upcoming.id,
       text: upcoming.text,
-      voice: finalUpcomingProfile
+      voice: finalUpcomingProfile,
+      eventType: upcoming.eventType,
+      enqueuedAt: upcoming.enqueuedAt
     })
+  }
+
+  private dropStaleQueuedItems(now = Date.now()): number {
+    const staleItems = this.queue.getAll().filter((item) => isStaleLiveTts(item, now))
+    if (staleItems.length === 0) return 0
+
+    for (const item of staleItems) {
+      this.queue.remove(item.id)
+      const ageSeconds = Math.max(0, Math.round((now - item.enqueuedAt) / 1000))
+      console.warn(`[TTS] Dropping stale queued ${item.eventType} from ${item.username} after ${ageSeconds}s.`)
+    }
+    this.emit('queue-update', this.queue.getAll())
+    return staleItems.length
   }
 
   private resolveProfile(voiceProfileId?: string): VoiceProfile | undefined {
@@ -432,9 +467,16 @@ export class TTSEngine extends EventEmitter {
     normalizedUsername: string,
     viewerProfileId: string | null
   ): boolean {
-    if (viewerProfileId) {
-      if (override.viewerProfileId && override.viewerProfileId === viewerProfileId) return true
+    // A profile-scoped voice belongs only to that saved ilyStream profile.
+    // Never fall through to username matching: copied display names, stale
+    // usernames, or impersonator accounts must not inherit a profile voice.
+    if (override.viewerProfileId) {
+      return viewerProfileId === override.viewerProfileId
+    }
 
+    if (viewerProfileId) {
+      // Legacy username-only overrides still follow accounts that the user
+      // explicitly linked into one viewer profile.
       const overrideProfileId = this.resolveViewerProfileId(override.platform, override.username)
       if (overrideProfileId && overrideProfileId === viewerProfileId) return true
     }

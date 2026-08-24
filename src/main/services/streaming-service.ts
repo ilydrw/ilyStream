@@ -56,6 +56,8 @@ interface OutputRuntime {
   // Fires after the session has been live long enough to be considered healthy;
   // resets `retries` so past blips don't count against future reconnects.
   stableTimer: ReturnType<typeof setTimeout> | null
+  /** Distinguishes initial connection from a confirmed reconnect. */
+  everConnected: boolean
 }
 
 export class StreamingService extends EventEmitter {
@@ -71,6 +73,8 @@ export class StreamingService extends EventEmitter {
   private recordingManager = new FFmpegProcessManager('recording')
   private pumper = new MediaPumper()
   private streamOutputs = new Map<string, OutputRuntime>()
+  private streamStopPromise: Promise<void> | null = null
+  private outputStopPromises = new Map<string, Promise<void>>()
   private encoderResolver = new StreamingEncoderResolver(resolvedFfmpegPath)
   private argsBuilder = new FFmpegArgsBuilder(this.encoderResolver)
 
@@ -153,7 +157,12 @@ export class StreamingService extends EventEmitter {
       this.ensureRecordingDirectory()
       const args = await this.argsBuilder.buildRecordArgs({ ...config, outputPath }, bestEncoder)
       this.activeRecordingPath = outputPath
-      this.recordingManager.start(resolvedFfmpegPath, args, this.recordingAudioEnabled)
+      this.recordingManager.start(
+        resolvedFfmpegPath,
+        args,
+        this.recordingAudioEnabled,
+        config.inputFormat || 'mjpeg'
+      )
       if (!this.isStreaming) {
         this.pumper.startWatchdog('recording', () => this.recordingManager.getStats())
       }
@@ -232,6 +241,9 @@ export class StreamingService extends EventEmitter {
     // Every destination is its own StreamSession. Callers all pass an
     // explicit outputId today; the fallback keeps the API total.
     const outputId = config.outputId || 'primary'
+    if (this.streamStopPromise) await this.streamStopPromise
+    const pendingOutputStop = this.outputStopPromises.get(outputId)
+    if (pendingOutputStop) await pendingOutputStop
     try {
       return await this.startStreamOutput(outputId, config)
     } catch (error) {
@@ -248,10 +260,31 @@ export class StreamingService extends EventEmitter {
     }
   }
 
-  public stopStream(): void {
-    if (this.streamOutputs.size > 0) {
-      for (const id of [...this.streamOutputs.keys()]) this.stopStreamOutput(id)
+  public stopStream(): Promise<void> {
+    if (this.streamStopPromise) return this.streamStopPromise
+
+    let tracked: Promise<void>
+    tracked = this.stopAllStreamOutputs().finally(() => {
+      if (this.streamStopPromise === tracked) this.streamStopPromise = null
+    })
+    this.streamStopPromise = tracked
+    return tracked
+  }
+
+  private async stopAllStreamOutputs(): Promise<void> {
+    const waiters = [...this.outputStopPromises.values()]
+
+    for (const [id, runtime] of [...this.streamOutputs.entries()]) {
+      if (runtime.retryTimer) clearTimeout(runtime.retryTimer)
+      runtime.retryTimer = null
+      const session = runtime.session
+      runtime.session = null
+      this.recordOutputIncident(runtime, 'stopped', 'Output stopped')
+      this.removeStreamOutput(id)
+      if (session) waiters.push(session.stopAndWait())
     }
+
+    await Promise.allSettled(waiters)
     this.updateStreamingState()
     this.stopSilentClockIfIdle()
     this.checkPowerSave()
@@ -279,7 +312,7 @@ export class StreamingService extends EventEmitter {
     this.recordingAudioEnabled = config.audioFormat === 'f32le'
     this.activeRecordingPath = outputPath
 
-    this.recordingManager.start(resolvedFfmpegPath, args, this.recordingAudioEnabled)
+    this.recordingManager.start(resolvedFfmpegPath, args, this.recordingAudioEnabled, inputFormat)
 
     if (inputFormat === 'mjpeg') {
       this.pumper.startVideoPump(config.fps, (frame) => {
@@ -302,7 +335,7 @@ export class StreamingService extends EventEmitter {
     this.emitStatusChanged('recording-started')
   }
 
-  public stopRecording(): void {
+  public async stopRecording(): Promise<void> {
     if (!this.isRecording) return
     // Mark as intentional so an in-flight restart timer / close event doesn't
     // respawn a new recording after the user asked to stop.
@@ -313,7 +346,8 @@ export class StreamingService extends EventEmitter {
     }
     this.recordingConfig = null
     this.recordingRetries = 0
-    this.recordingManager.stop()
+    this.emitStatusChanged('recording-stopping')
+    await this.recordingManager.stopAndWait()
     this.isRecording = false
     this.recordingAudioEnabled = false
     this.activeRecordingPath = null
@@ -338,16 +372,20 @@ export class StreamingService extends EventEmitter {
 
     this.pumper.setLatestFrame(frame.data)
     if (this.activeInputFormat === 'h264' && this.isRecording) {
-      this.recordingManager.writeVideo(frame.data)
+      this.recordingManager.writeVideo(frame)
     }
   }
 
   public feedAudioFrame(audioData: Uint8Array | AudioFramePayload): void {
+    const frame = normalizeAudioFramePayload(audioData)
+    // The renderer feed is the policy-controlled Program mix. OBS consumes the
+    // same blocks independently of FFmpeg state, including when native device
+    // capture owns the encoder input.
+    this.emit('program-audio', frame)
     // Native capture owns the encoder's audio input while it runs. The renderer
     // keeps its worklet alive regardless (it still drives meters), so dropping
     // its frames here is what prevents a doubled feed.
     if (this.nativeAudio.active) return
-    const frame = normalizeAudioFramePayload(audioData)
     this.writeAudioFrame(frame.data)
   }
 
@@ -481,6 +519,9 @@ export class StreamingService extends EventEmitter {
 
     const waiters: Promise<void>[] = []
 
+    if (this.streamStopPromise) waiters.push(this.streamStopPromise)
+    waiters.push(...this.outputStopPromises.values())
+
     for (const runtime of this.streamOutputs.values()) {
       if (runtime.retryTimer) {
         clearTimeout(runtime.retryTimer)
@@ -530,7 +571,7 @@ export class StreamingService extends EventEmitter {
   // --- PRIVATE HELPERS ---
 
   private async startStreamOutput(id: string, config: StreamConfig): Promise<void> {
-    if (this.streamOutputs.has(id)) this.stopStreamOutput(id)
+    if (this.streamOutputs.has(id)) await this.stopStreamOutput(id)
     if (!resolvedFfmpegPath) throw new Error('FFmpeg binary not found')
 
     this.ensurePowerSave()
@@ -559,20 +600,20 @@ export class StreamingService extends EventEmitter {
       },
       session: null,
       bitrateKbps: config.bitrateKbps,
-      state: 'live',
+      state: 'starting',
       startedAt: Date.now(),
       retries: 0,
       retryTimer: null,
-      stableTimer: null
+      stableTimer: null,
+      everConnected: false
     }
 
     this.streamOutputs.set(id, runtime)
     this.spawnOutputSession(runtime)
-    this.recordOutputIncident(runtime, 'started', 'Output process started')
     this.updateStreamingState()
     this.syncOutputsHeartbeat()
     this.emit('started')
-    this.emitStatusChanged('started')
+    this.emitStatusChanged('output-starting')
   }
 
   /** Keep a low-rate status heartbeat running exactly while outputs exist. */
@@ -630,20 +671,33 @@ export class StreamingService extends EventEmitter {
     const id = runtime.sessionConfig.id
     const session = new StreamSession(runtime.sessionConfig)
     runtime.session = session
-    runtime.state = 'live'
+    runtime.state = runtime.everConnected ? 'reconnecting' : 'starting'
 
-    // Once this (re)connected session has stayed live long enough, consider the
-    // link healthy again and forget prior failures — so a handful of blips over
-    // a multi-hour stream never exhaust the give-up cap.
-    if (runtime.stableTimer) clearTimeout(runtime.stableTimer)
-    runtime.stableTimer = setTimeout(() => {
-      runtime.stableTimer = null
-      if (runtime.retries > 0) {
-        console.log(`[Streaming:${id}] Stable for ${OUTPUT_STABILITY_RESET_MS / 1000}s — resetting reconnect counter`)
-        runtime.retries = 0
+    session.once('connected', () => {
+      if (runtime.session !== session || !this.streamOutputs.has(id)) return
+      const recovered = runtime.everConnected
+      runtime.everConnected = true
+      runtime.state = 'live'
+      runtime.lastError = undefined
+
+      if (runtime.stableTimer) clearTimeout(runtime.stableTimer)
+      runtime.stableTimer = setTimeout(() => {
+        runtime.stableTimer = null
+        if (runtime.retries > 0) {
+          console.log(`[Streaming:${id}] Stable for ${OUTPUT_STABILITY_RESET_MS / 1000}s — resetting reconnect counter`)
+          runtime.retries = 0
+        }
+      }, OUTPUT_STABILITY_RESET_MS)
+      ;(runtime.stableTimer as any)?.unref?.()
+
+      if (recovered) {
+        this.recordOutputIncident(runtime, 'recovered', 'Output packets resumed', runtime.retries)
+        this.emitStatusChanged('output-recovered')
+      } else {
+        this.recordOutputIncident(runtime, 'started', 'Output packets confirmed')
+        this.emitStatusChanged('output-live')
       }
-    }, OUTPUT_STABILITY_RESET_MS)
-    ;(runtime.stableTimer as any)?.unref?.()
+    })
 
     session.on('error', (err) => {
       session.stop()
@@ -719,22 +773,35 @@ export class StreamingService extends EventEmitter {
       // The user may have stopped the stream while we were waiting.
       if (!this.streamOutputs.has(id)) return
       this.spawnOutputSession(runtime)
-      this.recordOutputIncident(runtime, 'recovered', 'Output process restarted', runtime.retries)
-      this.emitStatusChanged('output-recovered')
+      this.emitStatusChanged('output-restarting')
     }, delay)
     ;(runtime.retryTimer as any)?.unref?.()
   }
 
-  public stopStreamOutput(id: string) {
+  public stopStreamOutput(id: string): Promise<void> {
+    const pending = this.outputStopPromises.get(id)
+    if (pending) return pending
+
     const runtime = this.streamOutputs.get(id)
-    if (runtime) {
-      if (runtime.retryTimer) clearTimeout(runtime.retryTimer)
-      runtime.retryTimer = null
-      runtime.session?.stop()
-      this.recordOutputIncident(runtime, 'stopped', 'Output stopped')
-      this.removeStreamOutput(id)
-      this.emitStatusChanged(this.isStreaming ? 'output-stopped' : 'stopped')
-    }
+    if (!runtime) return Promise.resolve()
+
+    if (runtime.retryTimer) clearTimeout(runtime.retryTimer)
+    runtime.retryTimer = null
+    const session = runtime.session
+    runtime.session = null
+    this.recordOutputIncident(runtime, 'stopped', 'Output stopped')
+    this.removeStreamOutput(id)
+
+    let tracked: Promise<void>
+    tracked = (session ? session.stopAndWait() : Promise.resolve())
+      .then(() => {
+        this.emitStatusChanged(this.isStreaming ? 'output-stopped' : 'stopped')
+      })
+      .finally(() => {
+        if (this.outputStopPromises.get(id) === tracked) this.outputStopPromises.delete(id)
+      })
+    this.outputStopPromises.set(id, tracked)
+    return tracked
   }
 
   private removeStreamOutput(id: string) {

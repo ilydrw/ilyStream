@@ -3,7 +3,8 @@ import { PlatformManager } from '../../platforms/platform-manager'
 import { Database } from '../../db/database'
 import { ChatRelayService } from '../../chat/chat-relay-service'
 import { restorePlatformConnectionsOnce } from '../../platforms/platform-persistence'
-import { AnyPlatformConfig, Emote, Platform } from '../../platforms/types'
+import { AnyPlatformConfig, DiscordConfig, Emote, Platform } from '../../platforms/types'
+import { prepareDiscordConfigForSave } from '../../platforms/discord/discord-config'
 import { randomUUID } from 'crypto'
 import { AnyStreamEvent, UserInfo } from '../../platforms/types'
 import type { EventLabSimulationPayload } from '../../../shared/event-lab'
@@ -49,17 +50,18 @@ export function registerPlatformHandlers(
   tiktokChatSender: TikTokChatSender
 ) {
   ipcMain.handle('platform:connect', async (_event, config: AnyPlatformConfig) => {
-    db.savePlatformConfig(config)
+    const preparedConfig = preparePlatformConfigForSave(db, config)
+    db.savePlatformConfig(preparedConfig)
     try {
-      await platformManager.connect(config)
+      await platformManager.connect(preparedConfig)
     } catch (err) {
-      db.setPlatformEnabled(config.platform, false)
+      db.setPlatformEnabled(preparedConfig.platform, false)
       throw err
     }
   })
 
   ipcMain.handle('platform:save-config', (_event, config: AnyPlatformConfig) => {
-    db.savePlatformConfig(config)
+    db.savePlatformConfig(preparePlatformConfigForSave(db, config))
   })
 
   ipcMain.handle('platform:disconnect', async (_event, platform: Platform) => {
@@ -81,6 +83,10 @@ export function registerPlatformHandlers(
 
   ipcMain.handle('platform:get-chat-capabilities', () => {
     return platformManager.getChatCapabilities()
+  })
+
+  ipcMain.handle('discord:get-call-state', () => {
+    return platformManager.getDiscordCallState()
   })
 
   ipcMain.handle(
@@ -344,7 +350,8 @@ export function registerPlatformHandlers(
   })
 
   ipcMain.handle('tiktok:open-sender', async () => {
-    await tiktokChatSender.openWindow()
+    const config = db.getPlatformConfig('tiktok') as TikTokConfig | null
+    await tiktokChatSender.openWindow(config?.username)
   })
 
   ipcMain.handle('tiktok:close-sender', () => {
@@ -427,6 +434,16 @@ export function registerPlatformHandlers(
     if (!storageKey) return
     db.setSetting(storageKey, payload.value === true)
   })
+}
+
+function preparePlatformConfigForSave(
+  db: Database,
+  config: AnyPlatformConfig
+): AnyPlatformConfig {
+  if (config.platform !== 'discord') return config
+
+  const existing = db.getPlatformConfig('discord') as DiscordConfig | null
+  return prepareDiscordConfigForSave(existing, config)
 }
 
 // Maps renderer-facing automation names to their DB setting keys.

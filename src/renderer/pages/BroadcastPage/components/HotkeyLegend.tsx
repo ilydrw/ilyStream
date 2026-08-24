@@ -9,8 +9,6 @@ const PRODUCTION_SHORTCUTS = [
   { key: 'C', label: 'Cut Transition', desc: 'Hard cut switch' },
   { key: 'T', label: 'Stinger Transition', desc: 'Professional video overlay' },
   { key: 'M', label: 'Toggle Multi-View', desc: 'Browse all scenes' },
-  { key: 'R', label: 'Start/Stop Recording', desc: 'Local capture' },
-  { key: 'B', label: 'Start/Stop Broadcast', desc: 'Live output' },
   { key: '1-9', label: 'Select Scene', desc: 'Direct scene jumping' },
   { key: 'Ctrl+Z', label: 'Undo Action', desc: 'Revert last change' },
   { key: 'Ctrl+Y', label: 'Redo Action', desc: 'Apply reverted action' },

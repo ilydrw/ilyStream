@@ -1,32 +1,31 @@
 import type { VoiceProfile } from '../../main/tts/voice-profiles'
-import { DEFAULT_KOKORO_VOICE, KOKORO_MODEL_ID, isKokoroVoiceId } from '../../shared/tts-providers'
+import { DEFAULT_KOKORO_VOICE, isKokoroVoiceId } from '../../shared/tts-providers'
+import type { KokoroSynthesisResult } from '../../shared/kokoro-worker'
 import { applyVoiceEffects, getDynamicPitchAndRate, getEnabledProfileEffectId } from './audio-effects'
 import { resolveAppSettings } from '../../shared/app-settings'
 import { audioEngine } from '../utils/audio-engine'
-import ortWasmMjsUrl from '../../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs?url'
-import ortWasmBinaryUrl from '../../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm?url'
 
-type KokoroModule = typeof import('kokoro-js')
-type KokoroInstance = Awaited<ReturnType<KokoroModule['KokoroTTS']['from_pretrained']>>
-type RawAudio = Awaited<ReturnType<KokoroInstance['generate']>>
 type RenderedAudio = {
   samples: Float32Array
   sampleRate: number
   text?: string
 }
 
-const KOKORO_AUDIO_CACHE_VERSION = 'web-audio-single-voice-v2'
-const KOKORO_WASM_PATHS = {
-  mjs: new URL(ortWasmMjsUrl, import.meta.url).href,
-  wasm: new URL(ortWasmBinaryUrl, import.meta.url).href
-}
+const KOKORO_AUDIO_CACHE_VERSION = 'native-worker-v3'
+const KOKORO_AUDIO_CACHE_MAX_ENTRIES = 32
+const KOKORO_AUDIO_CACHE_MAX_BYTES = 24 * 1024 * 1024
 
 // ─── LRU Cache ────────────────────────────────────────────────────────────────
 
 class LruCache<V> {
   private readonly map = new Map<string, V>()
+  private retainedBytes = 0
 
-  constructor(private readonly maxSize: number) {}
+  constructor(
+    private readonly maxSize: number,
+    private readonly maxBytes: number,
+    private readonly sizeOf: (value: V) => number
+  ) {}
 
   has(key: string): boolean {
     return this.map.has(key)
@@ -42,82 +41,43 @@ class LruCache<V> {
   }
 
   set(key: string, val: V): void {
-    if (this.map.has(key)) {
+    const existing = this.map.get(key)
+    if (existing !== undefined) {
       this.map.delete(key)
-    } else if (this.map.size >= this.maxSize) {
-      const oldest = this.map.keys().next().value
-      if (oldest !== undefined) this.map.delete(oldest)
+      this.retainedBytes -= this.sizeOf(existing)
     }
+
+    const valueBytes = this.sizeOf(val)
+    if (valueBytes > this.maxBytes) return
+
+    while (
+      this.map.size >= this.maxSize
+      || (this.map.size > 0 && this.retainedBytes + valueBytes > this.maxBytes)
+    ) {
+      const oldest = this.map.keys().next().value
+      if (oldest === undefined) break
+      const removed = this.map.get(oldest)
+      this.map.delete(oldest)
+      if (removed !== undefined) this.retainedBytes -= this.sizeOf(removed)
+    }
+
     this.map.set(key, val)
+    this.retainedBytes += valueBytes
   }
 }
-
-// ─── Model singleton ──────────────────────────────────────────────────────────
-
-let modelPromise: Promise<KokoroInstance> | null = null
 
 /**
- * Eagerly begin loading the Kokoro model at app startup.
- * Eliminates cold-start latency on the first TTS request.
- * Safe to call multiple times — loads only once.
+ * Eagerly prepare the isolated native Kokoro worker. Its model memory lives
+ * outside the renderer and the utility process exits after an idle period.
  */
 export function preloadKokoroModel(): void {
-  void loadKokoroModel()
-}
-
-async function resolveConfiguredKokoroDtype(): Promise<'fp32' | 'q8'> {
-  try {
-    const settingsRaw = await window.api.settings.getAll()
-    const settings = resolveAppSettings(settingsRaw || {})
-    return settings.tts.kokoroQuality === 'q8' ? 'q8' : 'fp32'
-  } catch {
-    return 'fp32'
-  }
-}
-
-function loadKokoroModel(): Promise<KokoroInstance> {
-  if (modelPromise) return modelPromise
-
-  modelPromise = (async () => {
-    try {
-      const { KokoroTTS, env: kokoroEnv } = await import('kokoro-js')
-      kokoroEnv.wasmPaths = KOKORO_WASM_PATHS
-
-      // Audio quality beats speed for stream TTS. WebGPU can be faster, but on
-      // some Windows GPU/driver combos it produces buzzy/revving artifacts.
-      // fp32 holds ~330MB of weights in WASM memory (which never shrinks);
-      // q8 is ~90MB, so the dtype is user-configurable.
-      const dtype = await resolveConfiguredKokoroDtype()
-
-      if (dtype === 'fp32') {
-        try {
-          console.info('[kokoro] Attempting to load fp32 model...')
-          const model = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-            dtype: 'fp32',
-            device: 'wasm'
-          })
-          console.info('[kokoro] Model loaded successfully (fp32)')
-          return model
-        } catch (error) {
-          console.warn('[kokoro] WASM fp32 failed, falling back to WASM q8:', error)
-        }
-      }
-
-      console.info('[kokoro] Attempting to load q8 model...')
-      const fallback = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-        dtype: 'q8',
-        device: 'wasm'
-      })
-      console.info('[kokoro] Model loaded successfully (q8)')
-      return fallback
-    } catch (error) {
-      console.error('[kokoro] Critical failure loading model:', error)
-      modelPromise = null // Clear for retry
-      throw error
-    }
-  })()
-
-  return modelPromise
+  const preload = window.api?.tts?.preloadKokoro
+  if (!preload) return
+  void preload().catch((error) => {
+    // Do not load the large renderer fallback merely because a background
+    // preload failed. Actual speech will retry and fall back if necessary.
+    console.warn('[kokoro] Native worker preload failed:', error)
+  })
 }
 
 export function warmKokoroProfile(profile: VoiceProfile, text = 'ready'): void {
@@ -146,9 +106,9 @@ let activeRequestId = 0
 /**
  * Pending background generations keyed by TTSQueueItem.id.
  *
- * The ONNX runtime runs on a Web Worker; audio playback runs in the browser
- * audio thread. Both can proceed concurrently, so generation of item N+1
- * runs while item N is playing — ideally finishing before N ends.
+ * ONNX inference runs in an isolated utility process while playback runs in
+ * the browser audio thread. Generation of item N+1 can therefore proceed
+ * while item N is playing.
  */
 const prefetchMap = new Map<string, Promise<RenderedAudio>>()
 
@@ -170,6 +130,14 @@ export function prefetchKokoroSpeech(id: string, text: string, profile: VoicePro
   prefetchMap.set(id, promise)
 }
 
+/** Release generated lookahead audio for items the main queue discarded. */
+export function pruneKokoroPrefetches(validIds: Iterable<string>): void {
+  const keep = new Set(validIds)
+  for (const id of prefetchMap.keys()) {
+    if (!keep.has(id)) prefetchMap.delete(id)
+  }
+}
+
 // ─── Audio phrase cache ───────────────────────────────────────────────────────
 
 /**
@@ -177,7 +145,11 @@ export function prefetchKokoroSpeech(id: string, text: string, profile: VoicePro
  * ("W", "gg", gift announcements, sub templates, etc.).
  * Keyed by normalizedText::voiceId::rate.
  */
-const audioCache = new LruCache<RenderedAudio>(80)
+const audioCache = new LruCache<RenderedAudio>(
+  KOKORO_AUDIO_CACHE_MAX_ENTRIES,
+  KOKORO_AUDIO_CACHE_MAX_BYTES,
+  (audio) => audio.samples.byteLength
+)
 
 function audioCacheKey(normalizedText: string, profile: VoiceProfile): string {
   return [
@@ -233,7 +205,6 @@ async function generateKokoroAudio(
   normalized: string,
   profile: VoiceProfile
 ): Promise<RenderedAudio> {
-  const tts = await loadKokoroModel()
   const voice = resolveKokoroVoiceString(profile)
 
   // Inject natural pauses for better flow
@@ -241,12 +212,34 @@ async function generateKokoroAudio(
     .replace(/([.?!])\s+/g, '$1  ') // Double space after sentence ends for longer pauses
     .replace(/([,;:])\s+/g, '$1 ')   // Normal space after commas
 
-  const rawAudio = await (tts as any).generate(pacedText, {
+  const request = {
+    text: pacedText,
     voice,
     speed: resolveKokoroGenerationSpeed(profile)
-  })
+  }
 
-  const rendered = toRenderedAudio(rawAudio)
+  let result: KokoroSynthesisResult
+  try {
+    const generate = window.api?.tts?.generateKokoro
+    if (!generate) throw new Error('Native Kokoro worker API is unavailable')
+    result = await generate(request)
+  } catch (error) {
+    console.warn('[kokoro] Native worker failed; using renderer WASM fallback:', error)
+    const { generateKokoroWasm } = await import('./kokoro-wasm-fallback')
+    result = await generateKokoroWasm(request.text, request.voice, request.speed)
+  }
+
+  const samples = result.samples instanceof Float32Array
+    ? result.samples
+    : new Float32Array(result.samples)
+  if (!samples.length || !Number.isFinite(result.sampleRate) || result.sampleRate <= 0) {
+    throw new Error('Kokoro returned invalid audio')
+  }
+
+  const rendered: RenderedAudio = {
+    samples,
+    sampleRate: result.sampleRate
+  }
   rendered.text = normalized
   return rendered
 }
@@ -460,13 +453,6 @@ async function getAudioContext(): Promise<AudioContext> {
   }
 
   return context
-}
-
-function toRenderedAudio(rawAudio: RawAudio): RenderedAudio {
-  return {
-    samples: rawAudio.audio,
-    sampleRate: rawAudio.sampling_rate
-  }
 }
 
 async function resampleToContextRate(

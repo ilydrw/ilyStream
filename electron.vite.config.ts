@@ -10,7 +10,9 @@ export default defineConfig({
       outDir: 'out/main',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/main/index.ts')
+          index: resolve(__dirname, 'src/main/index.ts'),
+          kokoroWorker: resolve(__dirname, 'src/main/tts/kokoro-worker.ts'),
+          segmentationWorker: resolve(__dirname, 'src/main/segmentation/segmentation-worker.ts')
         }
       }
     }

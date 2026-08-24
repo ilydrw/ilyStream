@@ -243,28 +243,35 @@ export class HueService extends EventEmitter implements LightProvider {
       return
     }
 
-    await this.setLightState(id, restoreState)
+    // Restore immediately. Hue's default 400ms transition can otherwise leave
+    // verification racing an in-progress color change.
+    await this.setLightState(id, { ...restoreState, transitiontime: 0 })
   }
 
   /** True when the light's live state matches its pre-effect snapshot (within bridge rounding). */
   private snapshotRestored(expected: HueLightSnapshot, current: HueLightSnapshot): boolean {
-    if (typeof expected.on === 'boolean' && current.on !== expected.on) return false
+    const expectedState = this.buildRestoreState(expected)
+
+    if (typeof expectedState.on === 'boolean' && current.on !== expectedState.on) return false
     // An off light is fully restored once it's off — its color memory was
     // re-taught by restoreSingleLight and isn't reliably readable while off.
-    if (expected.on === false) return true
+    if (expectedState.on === false) return true
 
-    if (typeof expected.bri === 'number' && typeof current.bri === 'number' &&
-        Math.abs(current.bri - expected.bri) > 3) return false
+    if (typeof expectedState.bri === 'number' &&
+        (typeof current.bri !== 'number' || Math.abs(current.bri - expectedState.bri) > 3)) return false
 
-    if (expected.colormode === 'xy' && isHueXy(expected.xy) && isHueXy(current.xy)) {
-      if (Math.abs(current.xy[0] - expected.xy[0]) > 0.02) return false
-      if (Math.abs(current.xy[1] - expected.xy[1]) > 0.02) return false
-    } else if (expected.colormode === 'ct' && typeof expected.ct === 'number' && typeof current.ct === 'number') {
-      if (Math.abs(current.ct - expected.ct) > 5) return false
-    } else if (expected.colormode === 'hs' && typeof expected.hue === 'number' && typeof current.hue === 'number') {
-      if (Math.abs(current.hue - expected.hue) > 600) return false
-      if (typeof expected.sat === 'number' && typeof current.sat === 'number' &&
-          Math.abs(current.sat - expected.sat) > 5) return false
+    if (isHueXy(expectedState.xy)) {
+      if (current.colormode !== 'xy' || !isHueXy(current.xy)) return false
+      if (Math.abs(current.xy[0] - expectedState.xy[0]) > 0.02) return false
+      if (Math.abs(current.xy[1] - expectedState.xy[1]) > 0.02) return false
+    } else if (typeof expectedState.ct === 'number') {
+      if (current.colormode !== 'ct' || typeof current.ct !== 'number') return false
+      if (Math.abs(current.ct - expectedState.ct) > 5) return false
+    } else if (typeof expectedState.hue === 'number' && typeof expectedState.sat === 'number') {
+      if (current.colormode !== 'hs' || typeof current.hue !== 'number' || typeof current.sat !== 'number') return false
+      const hueDifference = Math.abs(current.hue - expectedState.hue)
+      if (Math.min(hueDifference, 65536 - hueDifference) > 600) return false
+      if (Math.abs(current.sat - expectedState.sat) > 5) return false
     }
 
     return true

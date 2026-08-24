@@ -8,6 +8,7 @@ import {
   DEFAULT_CAMERA_CAPTURE_PRESET
 } from '../utils/camera-capture'
 import { getDeviceDisplayName } from '../utils/device-labels'
+import { BROWSER_SOURCE_CAPTURE_DEFAULT_FPS, WIDGET_SOURCE_CAPTURE_DEFAULT_FPS } from './CanvasEditor.utils'
 
 interface Props {
   open: boolean
@@ -69,6 +70,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
         setConfig(prev => ({
           ...prev,
           deviceId: defaultVideoDevice.deviceId,
+          deviceLabel: defaultVideoDevice.label,
           audioDeviceId: matchedAudioDevice?.deviceId || 'match'
         }))
         if (!name) setName(getDeviceDisplayName(defaultVideoDevice, 'Camera'))
@@ -94,6 +96,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
     setConfig({
       camera: {
         deviceId: defaultVideoDevice?.deviceId || '',
+        deviceLabel: defaultVideoDevice?.label || '',
         audioDeviceId: matchedAudioDevice?.deviceId || 'match',
         capturePreset: DEFAULT_CAMERA_CAPTURE_PRESET,
         captureWidth: defaultCameraPreset.width,
@@ -104,8 +107,8 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
       },
       display: { captureAudio: true, desktopSourceId: '', desktopSourceName: '', fitMode: 'contain' },
       audio: { captureMode: 'mic', deviceId: devices.find(d => d.kind === 'audioinput')?.deviceId || '', desktopSourceId: '', desktopSourceName: '' },
-      widget: { widgetId: widgets[0]?.id || '', fps: 30 },
-      browser: { url: '', fps: 8, fitMode: 'contain' },
+      widget: { widgetId: widgets[0]?.id || '', fps: WIDGET_SOURCE_CAPTURE_DEFAULT_FPS },
+      browser: { url: '', fps: BROWSER_SOURCE_CAPTURE_DEFAULT_FPS, fitMode: 'contain' },
       text: { text: 'New Text', color: '#ffffff', fontSize: 48 },
       image: { assetPath: '', fitMode: 'contain' }
     }[type])
@@ -261,6 +264,7 @@ export function AddSourceModal({ open, onClose, onAdd, widgets, devices, deviceA
                     setConfig({
                       ...config,
                       deviceId: e.target.value,
+                      deviceLabel: videoDevice?.label || '',
                       audioDeviceId: keepAudioDisabled ? 'none' : matchedAudioDevice?.deviceId || config.audioDeviceId || 'match',
                       audioMixerHidden: keepAudioDisabled
                     })

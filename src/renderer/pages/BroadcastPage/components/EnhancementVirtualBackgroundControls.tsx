@@ -55,15 +55,23 @@ export function VirtualBackgroundControls({ enhancements, setEnhancements }: Enh
             <div className="space-y-3">
               <button
                 onClick={async () => {
-                  const path = await (window as any).api.studio.selectFile({ filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] })
-                  if (path) setEnhancements({ ...enhancements, virtualBackground: { ...enhancements.virtualBackground, value: path } })
+                  // Import the picked file into the managed asset store and
+                  // reference it via asset:// — the same flow layer images use.
+                  // Raw file:// paths are blocked in the renderer, so the image
+                  // must live in the asset store to load in the preview/engine.
+                  const filePath = await window.api.assets.images.pickFile()
+                  if (!filePath) return
+                  const uploaded = await window.api.assets.images.upload(filePath)
+                  if (uploaded?.id) {
+                    setEnhancements({ ...enhancements, virtualBackground: { ...enhancements.virtualBackground, value: `asset://${uploaded.id}` } })
+                  }
                 }}
                 className="w-full h-24 rounded-md border-2 border-dashed border-white/10 hover:border-accent/40 bg-white/5 hover:bg-white/10 transition-all flex flex-col items-center justify-center gap-2 group"
               >
                 {enhancements.virtualBackground?.value ? (
                   <div className="text-center px-4">
                     <IconCheck size={20} className="text-accent mx-auto mb-1" />
-                    <p className="text-[9px] font-mono text-white/40 truncate w-full">{enhancements.virtualBackground?.value.split(/[\\/]/).pop()}</p>
+                    <p className="text-[10px] font-semibold tracking-tight text-white/40">Background selected — click to change</p>
                   </div>
                 ) : (
                   <>

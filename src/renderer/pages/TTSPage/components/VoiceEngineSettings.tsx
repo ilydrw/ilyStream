@@ -266,17 +266,17 @@ export function VoiceEngineSettings({ settings, onUpdate }: VoiceEngineSettingsP
               />
             </EngineRow>
 
-            <EngineRow label="Local Voice Quality" hint="Highest holds ~330MB of model weights in memory; Standard sounds nearly identical at ~90MB. Applies after restarting the app.">
+            <EngineRow label="Local Voice Quality" hint="The model runs in an isolated native process and exits after 90 seconds idle. Lightweight q8 is recommended; fp32 has a much higher peak RAM cost.">
               <select
                 value={settings.tts.kokoroQuality}
                 onChange={(event) => {
                   void onUpdate('ttsKokoroQuality', event.target.value as AppSettings['ttsKokoroQuality'])
-                  toast.info('Local voice quality updates after the app restarts')
+                  toast.info('Local voice quality will update on the next spoken line')
                 }}
                 className="h-10 w-44 rounded-lg border border-white/10 bg-black/40 px-3 text-sm font-medium transition-all hover:bg-black/60 focus:border-accent focus:outline-none"
               >
-                <option value="fp32">Highest (fp32)</option>
-                <option value="q8">Standard (q8)</option>
+                <option value="q8">Lightweight (q8, recommended)</option>
+                <option value="fp32">Highest (fp32, more RAM)</option>
               </select>
             </EngineRow>
 
