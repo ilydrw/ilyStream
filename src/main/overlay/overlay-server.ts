@@ -730,28 +730,3 @@ function writeBoundaryJson(
   response.end(json)
 }
 
-function listen(server: Server, port: number, host: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onError = (error: Error) => reject(error)
-    server.once('error', onError)
-    server.listen(port, host, () => {
-      server.off('error', onError)
-      resolve()
-    })
-  })
-}
-
-function writeBoundaryJson(
-  response: ServerResponse<IncomingMessage>,
-  statusCode: number,
-  payload: Record<string, unknown>
-): void {
-  if (response.writableEnded) return
-  const json = JSON.stringify(payload)
-  response.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(json),
-    'Cache-Control': 'no-store'
-  })
-  response.end(json)
-}
