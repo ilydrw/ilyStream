@@ -1,7 +1,7 @@
 param(
   [ValidateSet('Debug', 'Release')]
   [string] $Configuration = 'Release',
-  [switch] $RunTests = $true
+  [switch] $SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +35,30 @@ if (-not $cmakePath) {
   throw "CMake executable was not found. Please install CMake or Visual Studio with C++ desktop development workload."
 }
 
-# 2. Configure CMake
+# 2. Locate vcpkg toolchain
+$vcpkgToolchain = $null
+$candidates = @(
+  $env:VCPKG_ROOT,
+  $env:VCPKG_INSTALLATION_ROOT,
+  "C:\vcpkg",
+  (Join-Path $env:USERPROFILE 'vcpkg'),
+  "C:\Users\Drew\vcpkg"
+)
+if (Get-Command vcpkg -ErrorAction SilentlyContinue) {
+  $candidates += (Split-Path -Parent (Get-Command vcpkg).Source)
+}
+foreach ($cand in $candidates) {
+  if ($cand -and (Test-Path (Join-Path $cand 'scripts\buildsystems\vcpkg.cmake'))) {
+    $vcpkgToolchain = (Join-Path $cand 'scripts\buildsystems\vcpkg.cmake').Replace('\', '/')
+    break
+  }
+}
+if (-not $vcpkgToolchain) {
+  throw "vcpkg.cmake toolchain file was not found. Please install vcpkg or set VCPKG_INSTALLATION_ROOT."
+}
+Write-Host "Using vcpkg toolchain: $vcpkgToolchain" -ForegroundColor Green
+
+# 3. Configure CMake
 Write-Host "Configuring CMake project..." -ForegroundColor Cyan
 if (-not (Test-Path $buildDir)) {
   New-Item -ItemType Directory -Path $buildDir | Out-Null
@@ -43,12 +66,12 @@ if (-not (Test-Path $buildDir)) {
   Remove-Item -Path (Join-Path $buildDir "CMakeCache.txt") -Force -ErrorAction SilentlyContinue
 }
 
-& $cmakePath -B $buildDir -S $engineRoot "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_TOOLCHAIN_FILE=C:/Users/Drew/vcpkg/scripts/buildsystems/vcpkg.cmake" "-DILY_USE_BGFX=ON"
+& $cmakePath -B $buildDir -S $engineRoot "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain" "-DILY_USE_BGFX=ON"
 if ($LASTEXITCODE -ne 0) {
   throw "CMake configure failed (exit code $LASTEXITCODE)."
 }
 
-# 3. Build project
+# 4. Build project
 Write-Host "Compiling Native Engine..." -ForegroundColor Cyan
 & $cmakePath --build $buildDir --config $Configuration
 if ($LASTEXITCODE -ne 0) {
@@ -84,8 +107,8 @@ function Invoke-EngineTest {
   Write-Host "$Name passed." -ForegroundColor Green
 }
 
-# 4. Run tests
-if ($RunTests) {
+# 5. Run tests
+if (-not $SkipTests) {
   Invoke-EngineTest -Name "Engine unit tests"     -ExePath (Join-Path $buildDir "$Configuration\engine_tests.exe")
   Invoke-EngineTest -Name "Texture pipeline tests" -ExePath (Join-Path $buildDir "$Configuration\texture_pipeline_test.exe")
   Invoke-EngineTest -Name "Renderer stress tests"  -ExePath (Join-Path $buildDir "$Configuration\renderer_stress_test.exe") -TimeoutSeconds 240
