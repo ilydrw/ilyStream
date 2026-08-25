@@ -48,6 +48,27 @@ function Invoke-CMake {
     }
 }
 
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $hashBytes = $sha256.ComputeHash($stream)
+            return ([System.BitConverter]::ToString($hashBytes) -replace '-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Get-VerifiedDownload {
     param(
         [Parameter(Mandatory)][string]$Uri,
@@ -55,20 +76,24 @@ function Get-VerifiedDownload {
         [Parameter(Mandatory)][string]$ExpectedHash
     )
 
+    $expectedHashNormalized = $ExpectedHash.ToLowerInvariant()
+
     if (Test-Path -LiteralPath $Destination -PathType Leaf) {
-        $actualHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -eq $ExpectedHash.ToLowerInvariant()) {
+        $actualHash = Get-Sha256Hash -Path $Destination
+        if ($actualHash -eq $expectedHashNormalized) {
             Write-Host "Using verified download: $Destination"
             return
         }
 
+        Write-Host "Cached download failed SHA-256 verification; downloading a fresh copy."
         Remove-Item -LiteralPath $Destination -Force
     }
 
     Write-Host "Downloading $Uri"
     Invoke-WebRequest -Uri $Uri -OutFile $Destination
-    $actualHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualHash -ne $ExpectedHash.ToLowerInvariant()) {
+
+    $actualHash = Get-Sha256Hash -Path $Destination
+    if ($actualHash -ne $expectedHashNormalized) {
         Remove-Item -LiteralPath $Destination -Force
         throw "SHA-256 mismatch for $Uri. Expected $ExpectedHash, received $actualHash."
     }
