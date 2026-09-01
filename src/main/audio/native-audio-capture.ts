@@ -67,6 +67,15 @@ interface AudioAddon {
   startProgramAudioTransport(options: ProgramAudioTransportOptions): ProgramAudioTransportSession
   pushProgramAudio(pcm: Buffer, timestampNs: bigint): boolean
   stopProgramAudioTransport(): void
+  startSharedCaptureReader(
+    options: SharedCaptureTransport,
+    onFrame: (frame: CaptureFrame) => void
+  ): CaptureSession
+  stopSharedCaptureReader(): CaptureStatus
+  getSharedCaptureReaderStatus(): CaptureStatus
+  createSharedMixerSourceWriter(options: SharedMixerSourceTransport): boolean
+  pushSharedMixerSource(ringName: string, pcm: Buffer, timestampNs: bigint): boolean
+  closeSharedMixerSourceWriter(ringName: string): boolean
 }
 
 export interface ProgramAudioTransportOptions {
@@ -79,6 +88,24 @@ export interface ProgramAudioTransportOptions {
 }
 
 export interface ProgramAudioTransportSession extends ProgramAudioTransportOptions {}
+
+export interface SharedCaptureTransport extends CaptureSession {
+  transport: 'shared-memory-v1'
+  format: 'f32-interleaved'
+  ringName: string
+  generation: bigint
+  capacityFrames: number
+  blockFrames: number
+}
+
+export interface SharedMixerSourceTransport {
+  ringName: string
+  generation: bigint
+  sampleRate: 48_000
+  channels: 2
+  capacityFrames: number
+  blockFrames: number
+}
 
 /** Candidate locations for the built addon, dev and packaged. */
 function addonCandidates(): string[] {
@@ -162,4 +189,46 @@ export function pushProgramAudio(pcm: Uint8Array, timestampNs: bigint): boolean 
 export function stopProgramAudioTransport(): void {
   if (!addon) return
   addon.stopProgramAudioTransport()
+}
+
+export function startSharedCaptureReader(
+  transport: SharedCaptureTransport,
+  onFrame: (frame: CaptureFrame) => void
+): CaptureSession {
+  return loadAddon().startSharedCaptureReader(transport, onFrame)
+}
+
+export function stopSharedCaptureReader(): CaptureStatus {
+  if (!addon) {
+    return { running: false, framesCaptured: 0, framesDropped: 0, sampleRate: 0, channels: 0 }
+  }
+  return addon.stopSharedCaptureReader()
+}
+
+export function getSharedCaptureReaderStatus(): CaptureStatus {
+  if (!addon) {
+    return { running: false, framesCaptured: 0, framesDropped: 0, sampleRate: 0, channels: 0 }
+  }
+  return addon.getSharedCaptureReaderStatus()
+}
+
+export function createSharedMixerSourceWriter(options: SharedMixerSourceTransport): boolean {
+  return loadAddon().createSharedMixerSourceWriter(options)
+}
+
+export function pushSharedMixerSource(
+  ringName: string,
+  pcm: Uint8Array,
+  timestampNs: bigint
+): boolean {
+  return loadAddon().pushSharedMixerSource(
+    ringName,
+    Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength),
+    timestampNs
+  )
+}
+
+export function closeSharedMixerSourceWriter(ringName: string): boolean {
+  if (!addon) return false
+  return addon.closeSharedMixerSourceWriter(ringName)
 }

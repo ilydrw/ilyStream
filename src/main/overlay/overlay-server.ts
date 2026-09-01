@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { EventEmitter } from 'events'
+import { randomBytes } from 'crypto'
 import { networkInterfaces } from 'os'
 import type { AnyStreamEvent } from '../platforms/types'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
@@ -111,6 +112,7 @@ export class OverlayServer extends EventEmitter {
   private server: Server | null = null
   private deviceServer: Server | null = null
   private webSockets: OverlayWebSocketManager | null = null
+  private readonly webSocketCapability = randomBytes(32).toString('base64url')
   private devicePort: number | null = null
   private listenHost = DEFAULT_LISTEN_HOST
   private deviceLanEnabled = false
@@ -141,6 +143,7 @@ export class OverlayServer extends EventEmitter {
     alertsUrl: null,
     goalsUrl: null,
     healthUrl: null,
+    webSocketCapability: this.webSocketCapability,
     chatClientCount: 0,
     alertClientCount: 0,
     goalClientCount: 0
@@ -191,7 +194,8 @@ export class OverlayServer extends EventEmitter {
       (action) => this.emit('deck-action', action),
       () => this.statsService,
       () => this.economyService?.getLeaderboardSnapshot?.() || [],
-      () => this.platformManager?.getDiscordCallState?.() || null
+      () => this.platformManager?.getDiscordCallState?.() || null,
+      () => this.webSocketCapability
     )
   }
 
@@ -252,6 +256,7 @@ export class OverlayServer extends EventEmitter {
   getStatus(): OverlayRuntimeStatus {
     return {
       ...this.status,
+      webSocketCapability: this.webSocketCapability,
       chatClientCount: this.getOverlayClientCount('chat'),
       alertClientCount: this.getOverlayClientCount('alerts'),
       goalClientCount: this.getOverlayClientCount('goals'),
@@ -291,7 +296,7 @@ export class OverlayServer extends EventEmitter {
       settings: this.db?.getAllSettings() || {},
       boardSounds: this.soundboardService?.getAllSounds('board') || [],
       deckActions: this.db?.getAllDeckActions() || []
-    }, previewToken)
+    }, this.webSocketCapability)
   }
 
   start(port: number = DEFAULT_PORT, options?: { preferLan?: boolean }): Promise<OverlayRuntimeStatus> {
@@ -529,6 +534,7 @@ export class OverlayServer extends EventEmitter {
       this.webSockets = new OverlayWebSocketManager(
         this.server,
         (channel, options) => this.router.getEventReplay(channel, options),
+        this.webSocketCapability,
         (receipt) => this.emit('overlay-performance', receipt),
         () => this.updateClientCounts()
       )

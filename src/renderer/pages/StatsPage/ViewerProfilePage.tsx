@@ -35,6 +35,8 @@ import { ViewerPersonalizationSection } from './components/ViewerPersonalization
 import type { TTSUserVoiceOverride, ViewerJoinSound } from '../../../shared/app-settings'
 import { resolveAppSettings } from '../../../shared/app-settings'
 import { groupProfileAccounts, type ProfileConnection } from './profile-account-groups'
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard'
+import { UnsavedChangesModal } from '../../components/ui/UnsavedChangesModal'
 import './viewer-profile.css'
 
 function sortPlatformsByDisplayOrder(platforms: Platform[]): Platform[] {
@@ -303,6 +305,12 @@ export default function ViewerProfilePage() {
     isJoinSoundsChanged ? 'Join sound' : null
   ].filter((label): label is string => Boolean(label))
 
+  const guard = useUnsavedGuard({
+    isDirty: hasUnsavedChanges,
+    onSave: saveAllChanges,
+    onDiscard: discardAllChanges,
+  })
+
   return (
     <div className="viewer-profile-page custom-scrollbar">
       <header className="viewer-profile-topbar">
@@ -529,6 +537,13 @@ export default function ViewerProfilePage() {
           </div>
         </div>
       )}
+      <UnsavedChangesModal
+        isOpen={guard.isBlocked}
+        isSaving={guard.isSaving}
+        onSave={() => void guard.handleSave()}
+        onDiscard={guard.handleDiscard}
+        onStay={guard.handleStay}
+      />
     </div>
   )
 }

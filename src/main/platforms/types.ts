@@ -226,10 +226,14 @@ export interface TikTokConfig extends PlatformConfig {
 export interface TwitchConfig extends PlatformConfig {
   platform: 'twitch'
   clientId: string
-  clientSecret: string
+  /** Legacy confidential-client credential; never populated by the public device flow. */
+  clientSecret?: string
   channel: string
+  broadcasterUserId?: string
   accessToken?: string
   refreshToken?: string
+  tokenScopes?: string[]
+  accessTokenExpiresAt?: number
   streamKey?: string
 }
 

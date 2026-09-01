@@ -103,6 +103,8 @@ export interface OverlayRuntimeStatus {
   alertsUrl: string | null
   goalsUrl: string | null
   healthUrl: string | null
+  /** IPC-only secret used to opt trusted browser-source URLs into WebSocket transport. */
+  webSocketCapability?: string
   deckUrl?: string | null
   particlesUrl?: string | null
   dualVerticalUrl?: string | null

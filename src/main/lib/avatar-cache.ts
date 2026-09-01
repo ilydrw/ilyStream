@@ -3,8 +3,10 @@ import { createRequire } from 'module'
 import { join, resolve } from 'path'
 import { mkdir, readFile, stat, unlink, writeFile, rename } from 'fs/promises'
 import { avatarImageKey } from '../../shared/avatar-url'
-import { assertSafePublicHttpUrl, MAX_AVATAR_BYTES } from './ssrf-guard'
+import { fetchSafePublicHttp, MAX_AVATAR_BYTES } from './ssrf-guard'
 import { detectAvatarContentType, resolveAvatarContentType } from './avatar-content-type'
+
+const requireModule = createRequire(import.meta.url)
 
 /**
  * Shared avatar image cache for the `/avatar/<b64>` overlay route and the
@@ -27,8 +29,6 @@ import { detectAvatarContentType, resolveAvatarContentType } from './avatar-cont
  * signature is still valid, and the freshest signed URL seen per image is
  * remembered so an expired request can be retried with a live signature.
  */
-
-const requireModule = createRequire(import.meta.url)
 
 const MAX_TRACKED_IMAGES = 5000
 const WARM_RETRY_COOLDOWN_MS = 60_000
@@ -72,37 +72,16 @@ export interface LoadAvatarOptions {
   fetchTimeoutMs?: number
 }
 
-/**
- * Electron is resolved lazily so this module stays importable from plain-Node
- * test runs (where `require('electron')` yields the binary path string).
- */
-function getElectron(): any | null {
-  try {
-    const electron = requireModule('electron')
-    return electron && typeof electron === 'object' ? electron : null
-  } catch {
-    return null
-  }
-}
-
 export function defaultAvatarCacheDir(): string | null {
   try {
-    const app = getElectron()?.app
+    const electron = requireModule('electron')
+    const app = electron && typeof electron === 'object' ? electron.app : null
     if (typeof app?.getPath !== 'function') return null
     const userData = app.getPath('userData')
     return userData ? join(userData, 'avatar_cache') : null
   } catch {
     return null
   }
-}
-
-/** Prefer Chromium's network stack (`net.fetch`) — same as the renderer uses. */
-function resolveFetchImpl(): (input: string, init?: RequestInit) => Promise<Response> {
-  const net = getElectron()?.net
-  if (typeof net?.fetch === 'function') {
-    return (input, init) => net.fetch(input, init)
-  }
-  return (input, init) => fetch(input, init)
 }
 
 /** Cache file name keyed on the stable image identity, not the signed URL. */
@@ -208,45 +187,34 @@ export async function readCachedAvatar(cacheDir: string, url: string): Promise<C
 }
 
 async function fetchAvatarOnce(url: string, timeoutMs: number): Promise<CachedAvatar> {
-  try {
-    await assertSafePublicHttpUrl(url)
-  } catch (err) {
-    throw new AvatarFetchError(
-      `Blocked avatar URL: ${err instanceof Error ? err.message : String(err)}`,
-      400
-    )
-  }
-
-  const fetchImpl = resolveFetchImpl()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
 
   try {
-    const response = await fetchImpl(url, {
+    const response = await fetchSafePublicHttp(url, {
       signal: controller.signal,
+      maxBytes: MAX_AVATAR_BYTES,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         Referer: 'https://www.tiktok.com/'
       }
     })
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new AvatarFetchError(`Avatar fetch failed (HTTP ${response.status})`, response.status)
     }
 
-    const declaredLength = Number(response.headers.get('Content-Length'))
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_AVATAR_BYTES) {
-      throw new AvatarFetchError('Avatar too large', 413)
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer())
+    const buffer = response.data
     if (buffer.byteLength > MAX_AVATAR_BYTES) {
       throw new AvatarFetchError('Avatar too large', 413)
     }
 
     // Trust the bytes over the declared header: TikTok's CDN sometimes labels
     // real images `application/octet-stream`, which must not fail the request.
-    const contentType = resolveAvatarContentType(buffer, response.headers.get('Content-Type'))
+    const declaredContentType = Array.isArray(response.headers['content-type'])
+      ? response.headers['content-type'][0]
+      : response.headers['content-type']
+    const contentType = resolveAvatarContentType(buffer, declaredContentType || null)
     if (!contentType) {
       throw new AvatarFetchError('Not an image', 415)
     }
@@ -257,8 +225,15 @@ async function fetchAvatarOnce(url: string, timeoutMs: number): Promise<CachedAv
     if (controller.signal.aborted) {
       throw new AvatarFetchError('Avatar fetch timed out', 504)
     }
+    const message = err instanceof Error ? err.message : String(err)
+    if (/^(Invalid URL|Blocked |DNS resolution failed|Too many redirects)/.test(message)) {
+      throw new AvatarFetchError(`Blocked avatar URL: ${message}`, 400)
+    }
+    if (message === 'Response too large') {
+      throw new AvatarFetchError('Avatar too large', 413)
+    }
     throw new AvatarFetchError(
-      `Avatar fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+      `Avatar fetch failed: ${message}`,
       502
     )
   } finally {

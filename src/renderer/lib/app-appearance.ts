@@ -42,7 +42,8 @@ export function applyAppAppearance(settings: AppearanceSettings): void {
 
   root.dataset.theme = settings.theme
   root.dataset.density = settings.density
-  root.dataset.reducedMotion = String(settings.reducedMotion)
+  const operatingSystemReducesMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  root.dataset.reducedMotion = String(settings.reducedMotion || operatingSystemReducesMotion)
   root.style.colorScheme = palette.colorScheme
 
   const variables: Record<string, string> = {

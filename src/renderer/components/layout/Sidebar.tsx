@@ -5,6 +5,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { NavigationItem } from './navigation'
 import { navigationItems } from './navigation'
 import { useUIStore } from '../../stores/ui-store'
+import { getIntegration } from '../../../shared/integration-registry'
 
 type DrawerItem = NavigationItem & {
   drawerLabel?: string
@@ -100,7 +101,7 @@ const navigationGroups: NavigationGroup[] = [
 
 export function Sidebar() {
   const location = useLocation()
-  const { sidebarCollapsed, toggleSidebar, isPageDirty, setConsoleOpen } = useUIStore()
+  const { sidebarCollapsed, toggleSidebar, setConsoleOpen } = useUIStore()
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const activeGroup =
@@ -116,12 +117,6 @@ export function Sidebar() {
       e.preventDefault()
       setConsoleOpen(true)
       return
-    }
-
-    console.log('[nav] Click detected. isPageDirty:', isPageDirty);
-    if (isPageDirty) {
-      console.warn('[nav] Navigation blocked because page is dirty.');
-      e.preventDefault()
     }
   }
 
@@ -163,7 +158,8 @@ export function Sidebar() {
                 key={group.id}
                 to={targetPath}
                 onClick={(e) => handleNavClick(e, targetPath)}
-                className={`app-rail-item ${isActive ? 'is-active' : ''} ${isPageDirty ? 'cursor-not-allowed opacity-50' : ''}`}
+                className={`app-rail-item ${isActive ? 'is-active' : ''}`}
+                aria-label={group.label}
               >
                 <div className="app-rail-icon-wrapper">
                   <Icon size={18} />
@@ -184,6 +180,7 @@ export function Sidebar() {
             }}
             className="w-9 h-9 flex items-center justify-center rounded-md bg-transparent border border-white/[0.05] text-white/40 hover:text-white hover:bg-white/[0.03] hover:border-white/[0.12] transition-colors active:translate-y-px"
             title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {sidebarCollapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
           </button>
@@ -233,6 +230,9 @@ export function Sidebar() {
                           type="button"
                           onClick={() => toggleSection(headerLabel)}
                           className="ml-3 p-1 rounded-md hover:bg-white/5 text-white/30 hover:text-white/70 transition-colors active:translate-y-px"
+                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${headerLabel}`}
+                          aria-expanded={isExpanded}
+                          aria-controls={`sidebar-section-${headerLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                         >
                           <IconChevronDown
                             size={14}
@@ -243,7 +243,10 @@ export function Sidebar() {
                     </div>
                   )}
 
-                  <div className={`flex flex-col transition-all duration-200 ease-out ${ section.items.length > 6 ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[220px] overflow-y-auto custom-scrollbar-slim') : '' }`}>
+                  <div
+                    id={`sidebar-section-${headerLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                    className={`flex flex-col transition-all duration-200 ease-out ${ section.items.length > 6 ? (isExpanded ? 'max-h-[800px] overflow-y-visible' : 'max-h-[220px] overflow-y-auto custom-scrollbar-slim') : '' }`}
+                  >
                     {section.items.map((item) => {
                       const Icon = item.icon
                       return (
@@ -253,13 +256,18 @@ export function Sidebar() {
                           end={item.path === '/' || item.path === '/connections'}
                           onClick={(e) => handleNavClick(e, item.path)}
                           className={({ isActive }) =>
-                            `app-drawer-item ${isActive ? 'is-active' : ''} ${isPageDirty ? 'cursor-not-allowed opacity-50' : ''}`
+                            `app-drawer-item ${isActive ? 'is-active' : ''}`
                           }
                         >
                           <div className="app-drawer-icon-container">
                             <Icon size={16} />
                           </div>
                           <span className="truncate">{item.drawerLabel ?? item.label}</span>
+                          {getIntegration(item.path.split('/').pop() || '')?.status === 'planned' && (
+                            <span className="ml-auto rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-white/35">
+                              Planned
+                            </span>
+                          )}
                         </NavLink>
                       )
                     })}

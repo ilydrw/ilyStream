@@ -196,16 +196,52 @@ else()
     target_compile_definitions(ilystream_preview PRIVATE NAPI_CPP_EXCEPTIONS)
 endif()
 
-# Native audio capture addon. Independent of the render engine — it shares this
-# build only so there is one native toolchain to maintain, not two.
+# Native audio core. Capture and shared-ring behavior live here without any
+# Node/Electron headers so both the temporary addon and the standalone core host
+# call exactly the same implementation.
+add_library(ilystream_audio_core STATIC
+    ../audio/audio_capture_core.cpp
+    ../audio/program_mixer_core.cpp
+    ../audio/program_mixer_transport.cpp
+    ../audio/shared_audio_ring.cpp
+)
+target_include_directories(ilystream_audio_core PUBLIC ../audio)
+if(MSVC)
+    target_compile_definitions(ilystream_audio_core PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+if(WIN32)
+    target_link_libraries(ilystream_audio_core PRIVATE ole32 avrt advapi32)
+endif()
+
+# Temporary Node adapter. It can be removed once every caller uses the native
+# host, without changing capture behavior a second time.
 add_library(ilystream_audio MODULE ../audio/audio_capture.cpp src/win_delay_load_hook.cc)
 set_target_properties(ilystream_audio PROPERTIES
     PREFIX ""
     SUFFIX ".node"
 )
 target_include_directories(ilystream_audio PRIVATE ${NODE_ADDON_API_DIR} ../audio)
+target_link_libraries(ilystream_audio PRIVATE ilystream_audio_core)
 if(LATEST_NODE_INCLUDES)
     target_include_directories(ilystream_audio PRIVATE ${LATEST_NODE_INCLUDES})
+endif()
+
+# Standalone Windows native core host. Control stays on an authenticated,
+# current-user-only named pipe; high-rate media remains in shared memory/GPU
+# transports rather than being serialized into JSON.
+if(WIN32)
+    add_executable(ilystream_core_host
+        ../core-host/main.cpp
+        ../core-host/protocol.cpp
+    )
+    target_include_directories(ilystream_core_host PRIVATE ../core-host ../audio include)
+    target_link_libraries(ilystream_core_host PRIVATE
+        ilystream_engine
+        ilystream_audio_core
+        nlohmann_json::nlohmann_json
+        advapi32
+        bcrypt
+    )
 endif()
 if(WIN32 AND LATEST_NODE_LIB)
     target_link_libraries(ilystream_audio PRIVATE ${LATEST_NODE_LIB})
@@ -248,4 +284,35 @@ target_link_libraries(texture_pipeline_test PRIVATE
     Catch2::Catch2WithMain
     nlohmann_json::nlohmann_json
     bgfx::bgfx
+)
+
+add_executable(core_host_protocol_test
+    ../core-host/protocol_test.cpp
+    ../core-host/protocol.cpp
+)
+target_include_directories(core_host_protocol_test PRIVATE ../core-host)
+target_link_libraries(core_host_protocol_test PRIVATE
+    Catch2::Catch2WithMain
+    nlohmann_json::nlohmann_json
+)
+
+add_executable(audio_capture_core_test ../audio/audio_capture_core_test.cpp)
+target_include_directories(audio_capture_core_test PRIVATE ../audio)
+target_link_libraries(audio_capture_core_test PRIVATE
+    ilystream_audio_core
+    Catch2::Catch2WithMain
+)
+
+add_executable(program_mixer_core_test ../audio/program_mixer_core_test.cpp)
+target_include_directories(program_mixer_core_test PRIVATE ../audio)
+target_link_libraries(program_mixer_core_test PRIVATE
+    ilystream_audio_core
+    Catch2::Catch2WithMain
+)
+
+add_executable(program_mixer_transport_test ../audio/program_mixer_transport_test.cpp)
+target_include_directories(program_mixer_transport_test PRIVATE ../audio)
+target_link_libraries(program_mixer_transport_test PRIVATE
+    ilystream_audio_core
+    Catch2::Catch2WithMain
 )

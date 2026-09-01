@@ -19,6 +19,7 @@ import { useUIStore } from './stores/ui-store'
 import { ToastContainer } from './components/ui/Toast'
 import { GoveeBleRuntime } from './components/govee/GoveeBleRuntime'
 import { isRendererAssetLoadError } from './lib/renderer-asset-error'
+import { LoadingState } from './components/ui/LoadingState'
 
 function MountingDiagnostics() {
   useEffect(() => {
@@ -41,11 +42,13 @@ function MountingDiagnostics() {
 
 const SOUND_ROUTES = ['/tts', '/alerts', '/spotify']
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state: { error: Error | null } = { error: null }
+import { IconAlertTriangle, IconRefresh, IconCopy } from '@tabler/icons-react'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; incidentId: string | null }> {
+  state: { error: Error | null; incidentId: string | null } = { error: null, incidentId: null }
 
   static getDerivedStateFromError(error: Error) {
-    return { error }
+    return { error, incidentId: crypto.randomUUID().slice(0, 8).toUpperCase() }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -55,34 +58,61 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       const isAssetLoadError = isRendererAssetLoadError(this.state.error)
+      const { name, message } = this.state.error
+      const incidentId = this.state.incidentId || 'UNKNOWN'
 
       return (
-        <div style={{ padding: 40, color: '#ff5f56', fontFamily: 'monospace', fontSize: 14 }}>
-          <h2 style={{ color: '#fff', marginBottom: 12 }}>
-            {isAssetLoadError ? 'Reload required' : 'Something crashed'}
-          </h2>
-          <pre style={{ whiteSpace: 'pre-wrap', color: '#ff9999' }}>
-            {isAssetLoadError
-              ? 'ilyStream was rebuilt while this window was open. Reload the app to use the latest files.'
-              : this.state.error.message}
-          </pre>
-          {!isAssetLoadError && (
-            <pre style={{ whiteSpace: 'pre-wrap', color: '#666', marginTop: 8, fontSize: 11 }}>
-              {this.state.error.stack}
-            </pre>
-          )}
-          <button
-            onClick={() => {
-              if (isAssetLoadError) {
-                window.location.reload()
-                return
-              }
-              this.setState({ error: null })
-            }}
-            style={{ marginTop: 16, padding: '8px 16px', background: '#333', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-          >
-            {isAssetLoadError ? 'Reload App' : 'Try Again'}
-          </button>
+        <div className="w-full h-full min-h-screen flex items-center justify-center bg-[#0E0E12] p-8">
+          <div className="w-full max-w-md bg-white/[0.02] border border-white/10 rounded-2xl p-8 flex flex-col items-center gap-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-danger/10 flex items-center justify-center">
+              <IconAlertTriangle size={32} className="text-danger" />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-xl font-medium text-white">
+                {isAssetLoadError ? 'Reload required' : 'Something went wrong'}
+              </h2>
+              <p className="text-sm text-white/50 max-w-sm mx-auto">
+                {isAssetLoadError
+                  ? 'ilyStream was rebuilt while this window was open. Reload the app to use the latest files.'
+                  : 'This page hit an unexpected error. Your settings were not changed.'}
+              </p>
+              {!isAssetLoadError && <p className="text-xs font-mono text-white/30">Incident {incidentId}</p>}
+            </div>
+
+            <div className="flex flex-col w-full gap-3 mt-2">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => this.setState({ error: null, incidentId: null })}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white/80 hover:text-white transition-colors"
+                >
+                  <IconRefresh size={18} />
+                  Try Again
+                </button>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-accent hover:bg-accent/90 text-white transition-colors shadow-lg shadow-accent/20"
+                >
+                  Reload App
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    JSON.stringify(
+                      { incidentId, name, message, timestamp: new Date().toISOString() },
+                      null,
+                      2
+                    )
+                  )
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-xl text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors"
+              >
+                <IconCopy size={16} />
+                Copy Diagnostics
+              </button>
+            </div>
+          </div>
         </div>
       )
     }
@@ -175,11 +205,7 @@ export default function App() {
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="flex-1 flex flex-col min-h-0"
             >
-              <Suspense fallback={
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-                </div>
-              }>
+              <Suspense fallback={<LoadingState />}>
                 <Routes location={location}>
                   {routes.map((route: any) => (
                     <Route 

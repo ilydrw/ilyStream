@@ -41,6 +41,7 @@ import { StreamIntelligenceService } from '../ai/stream-intelligence-service'
 import { StreamerbotBridgeService } from './streamerbot-bridge-service'
 import { KokoroWorkerService } from './kokoro-worker-service'
 import { SegmentationWorkerService } from './segmentation-worker-service'
+import { NativeCoreHostService } from '../native-core/native-core-host-service'
 
 // Ignore TikTok connect/reconnect flaps within this window so we announce a
 // go-live at most once per ~stream, not on every brief reconnect.
@@ -87,6 +88,7 @@ export class ServiceRegistry {
   public recordingsService: RecordingsService
   public kokoroWorkerService: KokoroWorkerService
   public segmentationWorkerService: SegmentationWorkerService
+  public nativeCoreHostService: NativeCoreHostService
 
   private initialized = false
   private initializationPromise: Promise<void> | null = null
@@ -128,7 +130,8 @@ export class ServiceRegistry {
       ttsEngine: this.ttsEngine
     })
     this.obsIntegrationInstaller = new OBSIntegrationInstaller()
-    this.streamingService = new StreamingService()
+    this.nativeCoreHostService = new NativeCoreHostService()
+    this.streamingService = new StreamingService(this.nativeCoreHostService)
     this.browserSourceService = new BrowserSourceService()
     this.statsService = new StatsService(this.db)
     this.streamIntelligenceService = new StreamIntelligenceService()
@@ -146,8 +149,6 @@ export class ServiceRegistry {
     this.recordingsService = new RecordingsService()
     this.kokoroWorkerService = new KokoroWorkerService()
     this.segmentationWorkerService = new SegmentationWorkerService()
-
-
     // Register lighting providers
     this.lightingManager.registerProvider(this.hueService)
     this.lightingManager.registerProvider(this.goveeService)
@@ -335,6 +336,8 @@ export class ServiceRegistry {
     // Start other background services
     await Promise.allSettled([
 
+      this.nativeCoreHostService.initialize(),
+
       (async () => {
         console.log('[services] Applying OBS settings...')
         // Timeout OBS initialization to 5s to prevent startup hang
@@ -389,6 +392,10 @@ export class ServiceRegistry {
   }
 
   async dispose(): Promise<void> {
+    // Streaming owns the native audio reader, so it must release capture before
+    // the process hosting the shared mapping is shut down.
+    await this.streamingService.dispose()
+    await this.nativeCoreHostService.dispose()
     this.kokoroWorkerService.dispose()
     this.segmentationWorkerService.dispose()
     this.chatRelayService.dispose()
@@ -398,9 +405,6 @@ export class ServiceRegistry {
     await this.lightingManager.dispose()
     this.tiktokChatSender.closeWindow()
     await Promise.allSettled([
-      // Stop streaming/recording FIRST and let ffmpeg finalize — otherwise a
-      // recording in progress is left corrupt and ffmpeg children are orphaned.
-      this.streamingService.dispose(),
       this.obsWorkspaceService.stop(),
       this.overlayServer.stop(),
       Promise.resolve(this.browserSourceService.stopAll()),

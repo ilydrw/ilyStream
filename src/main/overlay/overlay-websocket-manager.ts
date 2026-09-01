@@ -1,4 +1,5 @@
 import type { IncomingMessage, Server } from 'http'
+import { timingSafeEqual } from 'crypto'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import { isOverlayChannel, SSE_EVENT_HISTORY_LIMIT, type OverlayChannel } from './types'
 
@@ -62,15 +63,18 @@ export class OverlayWebSocketManager {
   private readonly measuredBroadcasts = new Map<string, number>()
   private readonly channelBroadcastCounts = new Map<OverlayChannel, number>()
   private heartbeatTimer: NodeJS.Timeout | null = null
+  private readonly capability: string
 
   constructor(
     server: Server,
     getReplay: ReplayProvider,
+    capability: string,
     onReceipt?: (receipt: OverlayPaintReceipt) => void,
     onCountsChanged?: () => void
   ) {
     this.server = server
     this.getReplay = getReplay
+    this.capability = capability
     this.onReceipt = onReceipt
     this.onCountsChanged = onCountsChanged
     this.server.on('upgrade', this.handleUpgrade)
@@ -136,6 +140,11 @@ export class OverlayWebSocketManager {
       socket.destroy()
       return
     }
+    if (!this.isAuthorizedUpgrade(request)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+      socket.destroy()
+      return
+    }
     if (this.clients.size >= MAX_CLIENTS) {
       socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
       socket.destroy()
@@ -144,6 +153,26 @@ export class OverlayWebSocketManager {
     this.webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
       this.webSocketServer.emit('connection', webSocket, request)
     })
+  }
+
+  private isAuthorizedUpgrade(request: IncomingMessage): boolean {
+    const origin = request.headers.origin
+    const host = request.headers.host
+    if (!origin || !host) return false
+
+    try {
+      const parsedOrigin = new URL(origin)
+      if (parsedOrigin.protocol !== 'http:' && parsedOrigin.protocol !== 'https:') return false
+      if (parsedOrigin.host !== host || !isLoopbackHostname(parsedOrigin.hostname)) return false
+
+      const requestUrl = new URL(request.url || '/', `http://${host}`)
+      const supplied = requestUrl.searchParams.get('cap') || ''
+      const expected = Buffer.from(this.capability)
+      const candidate = Buffer.from(supplied)
+      return candidate.byteLength === expected.byteLength && timingSafeEqual(candidate, expected)
+    } catch {
+      return false
+    }
   }
 
   private handleConnection = (socket: WebSocket): void => {
@@ -311,6 +340,12 @@ export class OverlayWebSocketManager {
     if (!this.clients.delete(client)) return
     this.onCountsChanged?.()
   }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[/, '').replace(/\]$/, '').toLowerCase()
+  return normalized === 'localhost' || normalized === '::1' || normalized === '127.0.0.1' ||
+    normalized.startsWith('127.')
 }
 
 function normalizeSubscriptionId(value: unknown): string | null {

@@ -1,16 +1,17 @@
-import { ipcMain } from 'electron'
+import type { BrowserWindow } from 'electron'
 import { RemoteAuthService } from '../../services/remote-auth-service'
+import { secureHandle } from '../secure-handle'
 
-export function registerRemoteAuthHandlers(remoteAuthService: RemoteAuthService): void {
-  ipcMain.handle('remote:get-tokens', () => {
+export function registerRemoteAuthHandlers(window: BrowserWindow, remoteAuthService: RemoteAuthService): void {
+  secureHandle(window, 'remote:get-tokens', () => {
     return remoteAuthService.listTokenSummaries()
   })
 
-  ipcMain.handle('remote:generate-token', (_event, label: string) => {
+  secureHandle(window, 'remote:generate-token', (_event, label: string) => {
     return remoteAuthService.generateToken(label)
   })
 
-  ipcMain.handle('remote:revoke-token', (_event, id: string) => {
+  secureHandle(window, 'remote:revoke-token', (_event, id: string) => {
     remoteAuthService.revokeTokenByIdOrToken(id)
     return { success: true }
   })

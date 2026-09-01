@@ -28,6 +28,7 @@ import type { Platform } from '../../../main/platforms/types'
 import type { GlobalStats, UserIdentity } from '../../../shared/stats'
 import { EMPTY_GLOBAL_STATS } from '../../../shared/stats'
 import { sortPlatformsByDisplayOrder } from '../../lib/platform-order'
+import { GettingStartedChecklist } from '../../components/onboarding/GettingStartedChecklist'
 
 import { HealthRow, QuickLink, SpotifyMetricCard } from './components/DashboardShared'
 import './dashboard.css'
@@ -630,6 +631,12 @@ export default function DashboardPage() {
             </Link>
           </>
         }
+      />
+
+      <GettingStartedChecklist
+        connected={connectedCount > 0}
+        receivedEvent={recentEventTotal > 0}
+        live={totalViewers > 0}
       />
 
       <section className={`dashboard-command-panel app-section-card glass ${statusTone}`}>

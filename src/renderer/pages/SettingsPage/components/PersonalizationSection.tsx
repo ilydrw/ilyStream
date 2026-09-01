@@ -351,7 +351,6 @@ export function PersonalizationSection({ settings, onUpdate, onUpdateMany }: Per
           <div className="settings-theme-grid">
             {BUILTIN_THEME_OPTIONS.map((option) => {
               const active = settings.theme === option.value
-              const previewPalette = option.palette ?? customPreviewPalette
               return (
                 <div key={option.value} className="group relative">
                   <button

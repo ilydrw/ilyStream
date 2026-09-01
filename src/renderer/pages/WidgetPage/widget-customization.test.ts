@@ -84,6 +84,9 @@ describe('widget customization helpers', () => {
   it('uses the shared overlay URL format', () => {
     expect(buildWidgetOverlayUrl('chat-1', 4211)).toBe('http://127.0.0.1:4211/overlay/chat-1')
     expect(buildWidgetOverlayUrl('chat-1', 4211, '192.168.1.50:4211')).toBe('http://192.168.1.50:4211/overlay/chat-1')
+    expect(buildWidgetOverlayUrl('chat-1', 4211, null, 'secret+/=')).toBe(
+      'http://127.0.0.1:4211/overlay/chat-1?cap=secret%2B%2F%3D'
+    )
     expect(buildWidgetOverlayUrl('chat-1', null)).toBeNull()
   })
 

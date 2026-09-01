@@ -136,9 +136,11 @@ export function registerIpcHandlers(
   )
   registerSpotifyHandlers(window, spotifyService)
   registerHueHandlers(hueService, services.goveeService)
-  registerWindowHandlers(window)
+  registerWindowHandlers(window, {
+    getRecordingsFolder: () => services.streamingService.getRecordingsFolder()
+  })
   registerAIHandlers(aiService, services.streamIntelligenceService)
-  registerRemoteAuthHandlers(remoteAuthService)
+  registerRemoteAuthHandlers(window, remoteAuthService)
   registerStreamingHandlers(services.streamingService, services.virtualCameraService)
   registerStudioHandlers(db, overlayServer, services.browserSourceService)
   registerStatsHandlers(services.statsService, async () => {

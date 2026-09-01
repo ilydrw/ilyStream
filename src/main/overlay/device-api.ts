@@ -430,7 +430,7 @@ export class DeviceApi {
     const token =
       typeof header === 'string' && header.startsWith('Bearer ')
         ? header.slice('Bearer '.length).trim()
-        : getQueryToken(request)
+        : null
 
     return !!token && this.authService.verifyToken(token)
   }
@@ -504,15 +504,6 @@ function writeJson(
     'Access-Control-Max-Age': '86400'
   })
   response.end(json)
-}
-
-function getQueryToken(request: IncomingMessage): string | null {
-  try {
-    const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`)
-    return url.searchParams.get('token') || url.searchParams.get('access_token')
-  } catch {
-    return null
-  }
 }
 
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {

@@ -5,6 +5,7 @@ import { reconcileFxChain } from '../../../utils/audio-fx'
 import { audioEngine, createChannelModeStage, sanitizeChannelMode, type ChannelModeStage } from '../../../utils/audio-engine'
 import { buildLowLatencyAudioConstraints } from '../utils/media-init'
 import {
+  buildNativeMixerShadowSnapshot,
   getAudioRoutePolicy,
   getProgramSceneGain,
   hasEligibleSolo,
@@ -83,6 +84,7 @@ export function useBroadcastAudio(
   const retainedLayerIdsKey = [activeLayerIdsKey, previewLayerIdsKey].filter(Boolean).join('|')
   const transitionFromLayerIdsKey = (transitionFromScene?.layers || []).map(layer => layer.id).sort().join('|')
   const transitionToLayerIdsKey = (transitionToScene?.layers || []).map(layer => layer.id).sort().join('|')
+  const nativeMixerSourceIdsKey = audioSources.map(source => source.id).sort().join('|')
   const activeSceneRef2 = useRef(activeScene)
   activeSceneRef2.current = activeScene
   // Streams already warned about ("no live audio tracks") so a video-only
@@ -102,6 +104,8 @@ export function useBroadcastAudio(
   const programMonitorMixerRef = useRef<GainNode | null>(null)
   const mainMixMonitorGainRef = useRef<GainNode | null>(null)
   const processorRef = useRef<AudioWorkletNode | null>(null)
+  const nativeMixerTrackProcessorsRef = useRef<Map<string, AudioWorkletNode>>(new Map())
+  const nativeMixerReferenceProcessorRef = useRef<AudioWorkletNode | null>(null)
   // TTS + soundboard on their own tap. Native device capture in main cannot
   // pick up audio this graph synthesises, so when it drives the encoder these
   // two are shipped separately and mixed there. Harmless otherwise: main
@@ -109,6 +113,8 @@ export function useBroadcastAudio(
   const generatedTapRef = useRef<GainNode | null>(null)
   const generatedProcessorRef = useRef<AudioWorkletNode | null>(null)
   const sampleCountRef = useRef<number>(0)
+  const mixerShadowSequenceRef = useRef(0)
+  const lastMixerShadowAtRef = useRef(0)
   const tracksRef = useRef<Map<string, TrackNodes>>(new Map())
   const standaloneMicStreamsRef = useRef<Record<string, MediaStream>>({})
   const pendingStandaloneMicsRef = useRef<Set<string>>(new Set())
@@ -676,6 +682,25 @@ export function useBroadcastAudio(
         nodes.programMonitorSend.gain.setTargetAtTime(targetProgramMonitorGain, ctx.currentTime, 0.005)
       }
     }
+
+    // The renderer remains authoritative. At a bounded rate, send the exact
+    // policy inputs and expected decisions to the native host so parity can be
+    // proven before any live Program ownership is moved across the boundary.
+    const now = Date.now()
+    if (
+      window.api?.streaming?.feedMixerShadow &&
+      (!transitionState.isActive || now - lastMixerShadowAtRef.current >= 100)
+    ) {
+      lastMixerShadowAtRef.current = now
+      const sequence = ++mixerShadowSequenceRef.current
+      window.api.streaming.feedMixerShadow(buildNativeMixerShadowSnapshot(
+        audioSources,
+        activeLayerIds,
+        retainedLayerIds,
+        sceneTransition,
+        sequence
+      ))
+    }
   }, [
     audioSources,
     enabled,
@@ -690,4 +715,102 @@ export function useBroadcastAudio(
     transitionFromLayerIdsKey,
     transitionToLayerIdsKey
   ])
+
+  // Opt-in sample-parity shadow. Each post-fader, post-policy track is tapped
+  // independently, then the host sums those rings and compares its Program PCM
+  // with a pre-master renderer reference. Neither branch feeds the encoder.
+  useEffect(() => {
+    let disposed = false
+    const ctx = audioCtxRef.current
+    const masterInput = masterInputRef.current
+    const outputSilencer = outputSilencerRef.current
+
+    const disconnect = () => {
+      for (const [id, processor] of nativeMixerTrackProcessorsRef.current) {
+        const nodes = tracksRef.current.get(id)
+        try { nodes?.programGain.disconnect(processor) } catch {}
+        try { processor.disconnect() } catch {}
+      }
+      nativeMixerTrackProcessorsRef.current.clear()
+      const reference = nativeMixerReferenceProcessorRef.current
+      if (reference) {
+        try { masterInput?.disconnect(reference) } catch {}
+        try { reference.disconnect() } catch {}
+        nativeMixerReferenceProcessorRef.current = null
+      }
+    }
+
+    if (
+      !enabled || !outputActive || !ctx || !masterInput || !outputSilencer ||
+      ctx.state === 'closed' || ctx.sampleRate !== 48_000
+    ) {
+      disconnect()
+      void window.api?.streaming?.stopNativeMixerAudioShadow?.()
+      return
+    }
+
+    const sourceIds = audioSources
+      .map(source => source.id)
+      .filter(id => tracksRef.current.has(id))
+    if (sourceIds.length === 0) return
+
+    const setup = async () => {
+      try {
+        await ctx.audioWorklet.addModule(BroadcastProcessorUrl)
+        if (disposed) return
+        const status = await window.api.streaming.configureNativeMixerAudioShadow({ sourceIds })
+        if (disposed) {
+          await window.api.streaming.stopNativeMixerAudioShadow()
+          return
+        }
+        if (!status?.active) return
+
+        for (const sourceId of sourceIds) {
+          const nodes = tracksRef.current.get(sourceId)
+          if (!nodes) continue
+          const processor = new AudioWorkletNode(ctx, 'broadcast-processor')
+          processor.port.onmessage = event => {
+            const buffer = event.data
+            if (buffer instanceof ArrayBuffer) {
+              window.api.streaming.feedNativeMixerSource({
+                sourceId,
+                data: new Uint8Array(buffer),
+                sampleRate: 48_000,
+                channels: 2
+              })
+            }
+          }
+          nodes.programGain.connect(processor)
+          processor.connect(outputSilencer)
+          nativeMixerTrackProcessorsRef.current.set(sourceId, processor)
+        }
+
+        const reference = new AudioWorkletNode(ctx, 'broadcast-processor')
+        reference.port.onmessage = event => {
+          const buffer = event.data
+          if (buffer instanceof ArrayBuffer) {
+            window.api.streaming.feedNativeMixerReference({
+              data: new Uint8Array(buffer),
+              sampleRate: 48_000,
+              channels: 2
+            })
+          }
+        }
+        masterInput.connect(reference)
+        reference.connect(outputSilencer)
+        nativeMixerReferenceProcessorRef.current = reference
+      } catch (error) {
+        console.warn('[useBroadcastAudio] Native mixer audio shadow unavailable:', error)
+        disconnect()
+        await window.api.streaming.stopNativeMixerAudioShadow().catch(() => undefined)
+      }
+    }
+    void setup()
+
+    return () => {
+      disposed = true
+      disconnect()
+      void window.api.streaming.stopNativeMixerAudioShadow()
+    }
+  }, [enabled, nativeMixerSourceIdsKey, outputActive, retainedLayerIdsKey, streamReady])
 }

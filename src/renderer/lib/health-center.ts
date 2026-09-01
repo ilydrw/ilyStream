@@ -262,7 +262,11 @@ function getPlatformConfigState(
     case 'tiktok':
       return hasText((config as any).username) ? 'ready' : 'partial'
     case 'twitch':
-      return hasText((config as any).channel) && hasText((config as any).clientId) ? 'ready' : 'partial'
+      return hasText((config as any).channel)
+        && hasText((config as any).clientId)
+        && (hasText((config as any).accessToken) || hasText((config as any).refreshToken))
+        ? 'ready'
+        : 'partial'
     case 'youtube':
       return hasText((config as any).apiKey) || hasText((config as any).accessToken) || hasText((config as any).refreshToken)
         ? 'ready'

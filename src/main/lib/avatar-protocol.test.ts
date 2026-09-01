@@ -14,7 +14,15 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('./ssrf-guard', () => ({
-  assertSafePublicHttpUrl: vi.fn(async () => {}),
+  fetchSafePublicHttp: vi.fn(async (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => {
+    const response = await fetch(url, init)
+    return {
+      url: new URL(url),
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      data: Buffer.from(await response.arrayBuffer())
+    }
+  }),
   MAX_AVATAR_BYTES: 1024
 }))
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AudioSource } from '../../../../../shared/studio'
 import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
 import {
+  buildNativeMixerShadowSnapshot,
   getAudioRoutePolicy,
   getProgramSceneGain,
   hasAudibleCaptureSource,
@@ -162,5 +163,24 @@ describe('audio route policy', () => {
     expect(getProgramSceneGain(source({ id: 'incoming-solo', solo: true }), new Set(), transition)).toBe(0.5)
     expect(getProgramSceneGain(source({ id: 'incoming-peer' }), new Set(), transition)).toBe(0)
     expect(getProgramSceneGain(source({ id: 'incoming-peer' }), new Set(['incoming-peer']), undefined, true)).toBe(0)
+  })
+
+  it('builds a native shadow oracle from the same Program decisions', () => {
+    const active = source({ id: 'active-mic', type: 'mic', volume: 0.8, channelMode: 'mono' })
+    const monitorOnly = source({ id: 'camera-one', monitoringMode: 'monitorOnly' })
+    const snapshot = buildNativeMixerShadowSnapshot(
+      [active, monitorOnly],
+      new Set(['active-mic', 'camera-one']),
+      new Set(['active-mic', 'camera-one']),
+      undefined,
+      12
+    )
+
+    expect(snapshot.sequence).toBe(12)
+    expect(snapshot.sources[0]).toMatchObject({ id: 'active-mic', volume: 0.8, mono: true })
+    expect(snapshot.expected).toEqual([
+      { id: 'active-mic', eligible: true, output: true, sceneGain: 1, effectiveGain: 0.8 },
+      { id: 'camera-one', eligible: true, output: false, sceneGain: 1, effectiveGain: 0 }
+    ])
   })
 })

@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron'
+import { BrowserWindow, ipcMain, shell } from 'electron'
 import { PlatformManager } from '../../platforms/platform-manager'
 import { Database } from '../../db/database'
 import { ChatRelayService } from '../../chat/chat-relay-service'
@@ -20,7 +20,19 @@ import { ensureKickEventSubscriptions } from '../../platforms/kick/kick-api'
 import { initiateKickUserAuth, KICK_REDIRECT_URI, type KickUserTokens } from '../../platforms/kick/kick-user-auth'
 import { isKickUserConnected, searchKickCategories, updateKickStreamInfo } from '../../platforms/kick/kick-stream-info'
 import { searchTwitchCategories, updateTwitchStreamInfo } from '../../platforms/twitch/twitch-stream-info'
+import {
+  cancelTwitchAuth,
+  DEFAULT_TWITCH_CLIENT_ID,
+  initiateTwitchAuth
+} from '../../platforms/twitch/twitch-auth'
+import {
+  createAuthorizedTwitchConfig,
+  createDisconnectedTwitchConfig,
+  createTwitchAuthStatus
+} from '../../platforms/twitch/twitch-auth-config'
 import type { KickConfig, TikTokConfig, TwitchConfig } from '../../platforms/types'
+import type { TwitchAuthProgress, TwitchAuthResult } from '../../../shared/twitch-auth'
+import { sendToRenderer } from '../safe-send'
 import {
   normalizeBroadcastStreamInfo,
   normalizeStreamInfoPresets,
@@ -204,6 +216,75 @@ export function registerPlatformHandlers(
 
   ipcMain.handle('stream-info:set-presets', (_event, presets: StreamInfoPreset[]) => {
     db.setSetting('broadcastStreamInfoPresets', normalizeStreamInfoPresets(presets))
+  })
+
+  const getTwitchAuthStatus = () => {
+    const config = db.getPlatformConfig('twitch') as TwitchConfig | null
+    return createTwitchAuthStatus(config, platformManager.getStatus('twitch') === 'connected')
+  }
+
+  ipcMain.handle('twitch:get-auth-status', () => getTwitchAuthStatus())
+
+  ipcMain.handle('twitch:begin-auth', async (event): Promise<TwitchAuthResult> => {
+    const startedAt = Date.now()
+    const reportProgress = (progress: TwitchAuthProgress) => {
+      sendToRenderer(
+        BrowserWindow.fromWebContents(event.sender),
+        'twitch:auth-progress',
+        progress
+      )
+    }
+
+    try {
+      const auth = await initiateTwitchAuth({ onProgress: reportProgress })
+      reportProgress({
+        phase: 'connecting',
+        message: `Authorized as @${auth.login}. Connecting Twitch services…`,
+        startedAt
+      })
+
+      const existing = db.getPlatformConfig('twitch') as TwitchConfig | null
+      const config = createAuthorizedTwitchConfig(existing, auth)
+
+      // Saving this exact shape deliberately removes any legacy Client Secret.
+      db.savePlatformConfig(config)
+      try {
+        await platformManager.connect(config)
+      } catch (error) {
+        db.setPlatformEnabled('twitch', false)
+        throw error
+      }
+
+      reportProgress({
+        phase: 'connected',
+        message: `Connected as @${auth.login}`,
+        startedAt
+      })
+
+      return {
+        ...getTwitchAuthStatus(),
+        streamKeyError: auth.streamKeyError
+      }
+    } catch (error) {
+      reportProgress({
+        phase: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        startedAt
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('twitch:cancel-auth', () => {
+    cancelTwitchAuth()
+    return getTwitchAuthStatus()
+  })
+
+  ipcMain.handle('twitch:disconnect-auth', async () => {
+    cancelTwitchAuth()
+    await platformManager.disconnect('twitch')
+    db.savePlatformConfig(createDisconnectedTwitchConfig(DEFAULT_TWITCH_CLIENT_ID))
+    return getTwitchAuthStatus()
   })
 
   ipcMain.handle('twitch:search-categories', (_event, payload: { query: string }) => {

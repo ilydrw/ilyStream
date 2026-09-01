@@ -12,6 +12,7 @@ export const OVERLAY_SHARED_WORKER_SCRIPT = `
   function socketUrl(){
     var url = new URL('/overlay/ws', self.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('cap', new URL(self.location.href).searchParams.get('cap') || '');
     return url.href;
   }
 

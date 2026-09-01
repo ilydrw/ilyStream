@@ -5,6 +5,7 @@ import { createTikTokBridgeHandler } from './http-handler.js'
 import { PendingTikTokLiveProvider } from './live-provider.js'
 import { EncryptedFileTikTokSessionStore } from './session-store.js'
 import { OfficialTikTokOAuthClient } from './tiktok-oauth-client.js'
+import { OfficialKickOAuthClient } from './kick-oauth-client.js'
 
 const config = loadTikTokBridgeConfig()
 const sessionStore = new EncryptedFileTikTokSessionStore(
@@ -20,7 +21,14 @@ const bridge = new TikTokAuthBridge({
   sessionStore,
   liveProvider: new PendingTikTokLiveProvider()
 })
-const server = createServer(createTikTokBridgeHandler(bridge))
+const kickOAuth = config.kick
+  ? new OfficialKickOAuthClient(
+      config.kick.clientId,
+      config.kick.clientSecret,
+      config.kick.redirectUri
+    )
+  : undefined
+const server = createServer(createTikTokBridgeHandler(bridge, kickOAuth))
 
 server.listen(config.port, config.host, () => {
   console.log(`[tiktok-bridge] Listening on http://${config.host}:${config.port}`)

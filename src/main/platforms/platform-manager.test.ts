@@ -82,6 +82,40 @@ describe('PlatformManager', () => {
     })
   })
 
+  it('atomically persists a rotated Twitch token pair, scopes, and expiry', () => {
+    const existingConfig = {
+      platform: 'twitch',
+      enabled: true,
+      channel: 'ily2drw',
+      clientId: 'public-client-id',
+      accessToken: 'old-access-token',
+      refreshToken: 'old-refresh-token'
+    }
+    const db = {
+      getAllSettings: vi.fn().mockReturnValue({}),
+      getPlatformConfig: vi.fn().mockReturnValue(existingConfig),
+      savePlatformConfig: vi.fn()
+    } as any
+    const tiktokChatSender = { getStatus: vi.fn().mockReturnValue({ isChatReady: false }) } as any
+    const manager = new PlatformManager(db, tiktokChatSender)
+
+    ;(manager as any).persistRefreshedPlatformToken({
+      platform: 'twitch',
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      scopes: ['chat:read', 'chat:edit'],
+      accessTokenExpiresAt: 123_456
+    })
+
+    expect(db.savePlatformConfig).toHaveBeenCalledWith({
+      ...existingConfig,
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      tokenScopes: ['chat:read', 'chat:edit'],
+      accessTokenExpiresAt: 123_456
+    })
+  })
+
   it('removes only a Discord RPC token after Discord rejects its application binding', () => {
     const existingConfig = {
       platform: 'discord',

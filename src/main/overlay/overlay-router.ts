@@ -3,7 +3,7 @@ import { URL } from 'url'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { join, extname } from 'path'
-import { randomBytes } from 'crypto'
+import { randomBytes, timingSafeEqual } from 'crypto'
 import { createRequire } from 'module'
 import { app } from 'electron'
 import { resolveAppSettings } from '../../shared/app-settings'
@@ -84,7 +84,8 @@ export class OverlayRouter {
     private emitDeckAction: (action: { type: string; payload?: unknown }) => void,
     private getStatsService: () => any = () => null,
     private getLeaderboard: () => Array<{ username: string; score: number }> = () => [],
-    private getDiscordCallState: () => any = () => null
+    private getDiscordCallState: () => any = () => null,
+    private getWebSocketCapability: () => string = () => ''
   ) {}
 
   createWidgetPreviewSession(widgetId: string): string {
@@ -268,7 +269,9 @@ export class OverlayRouter {
     }
 
     if (pathname === '/overlay/health' || pathname === '/health') {
-      this.writeJson(response, pathname === '/health' ? 'OK' : this.getStatus(), 200, request)
+      const status = this.getStatus()
+      const { webSocketCapability: _webSocketCapability, ...publicStatus } = status
+      this.writeJson(response, pathname === '/health' ? 'OK' : publicStatus, 200, request)
       return
     }
 
@@ -705,10 +708,14 @@ export class OverlayRouter {
         deckActions: db?.getAllDeckActions() || []
       })
       if (html) {
+        const requestedCapability = url.searchParams.get('cap')
+        const webSocketCapability = this.matchesWebSocketCapability(requestedCapability)
+          ? this.getWebSocketCapability()
+          : ''
         const runtimeHtml = injectOverlayRuntimeBootstrap(html, {
           widget,
           sourceKind: isPreview ? 'preview' : typeFromAlias ? 'alias' : 'id'
-        })
+        }, webSocketCapability)
         // Browser sources and static card previews get the SSE-with-polling-
         // fallback runtime. Only a main-process-issued capability enables the
         // editor's executable postMessage bootstrap.
@@ -719,13 +726,21 @@ export class OverlayRouter {
             : runtimeHtml,
           200,
           request,
-          isPreview ? { 'Referrer-Policy': 'no-referrer' } : undefined
+          isPreview || webSocketCapability ? { 'Referrer-Policy': 'no-referrer' } : undefined
         )
         return true
       }
     }
     this.writeHtml(response, buildOverlayDirectoryHtml(widgetId), 404)
     return true
+  }
+
+  private matchesWebSocketCapability(candidate: string | null): boolean {
+    if (!candidate) return false
+    const expected = this.getWebSocketCapability()
+    const candidateBytes = Buffer.from(candidate)
+    const expectedBytes = Buffer.from(expected)
+    return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes)
   }
 
   private attachDualVerticalClient(request: IncomingMessage, response: ServerResponse): void {

@@ -127,6 +127,9 @@ export class PlatformManager extends EventEmitter {
       platform?: Platform
       accessToken?: unknown
       refreshToken?: unknown
+      scopes?: unknown
+      accessTokenExpiresAt?: unknown
+      expiresIn?: unknown
       userAccessToken?: unknown
       userRefreshToken?: unknown
       userTokenExpiresAt?: unknown
@@ -162,10 +165,20 @@ export class PlatformManager extends EventEmitter {
     const nextConfig = { ...existing } as AnyPlatformConfig & {
       accessToken?: string
       refreshToken?: string
+      tokenScopes?: string[]
+      accessTokenExpiresAt?: number
     }
     nextConfig.accessToken = token.accessToken
     if (typeof token.refreshToken === 'string' && token.refreshToken.trim().length > 0) {
       nextConfig.refreshToken = token.refreshToken
+    }
+    if (Array.isArray(token.scopes)) {
+      nextConfig.tokenScopes = token.scopes.filter((scope): scope is string => typeof scope === 'string')
+    }
+    if (typeof token.accessTokenExpiresAt === 'number' && Number.isFinite(token.accessTokenExpiresAt)) {
+      nextConfig.accessTokenExpiresAt = token.accessTokenExpiresAt
+    } else if (typeof token.expiresIn === 'number' && Number.isFinite(token.expiresIn) && token.expiresIn > 0) {
+      nextConfig.accessTokenExpiresAt = Date.now() + token.expiresIn * 1000
     }
 
     this.db.savePlatformConfig(nextConfig)

@@ -16,7 +16,15 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('../lib/ssrf-guard', () => ({
-  assertSafePublicHttpUrl: vi.fn(async (rawUrl: string) => new URL(rawUrl)),
+  fetchSafePublicHttp: vi.fn(async (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => {
+    const response = await fetch(url, init)
+    return {
+      url: new URL(url),
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      data: Buffer.from(await response.arrayBuffer())
+    }
+  }),
   MAX_AVATAR_BYTES: 8 * 1024 * 1024
 }))
 
@@ -437,6 +445,7 @@ describe('OverlayRouter local widget assets', () => {
     expect(response.headers['Content-Type']).toBe('text/javascript; charset=utf-8')
     expect(response.headers['Cache-Control']).toBe('public, max-age=31536000, immutable')
     expect(response.text()).toContain("new WebSocket(socketUrl())")
+    expect(response.text()).toContain("url.searchParams.set('cap',")
     expect(response.text()).toContain("type: 'subscribe'")
   })
 

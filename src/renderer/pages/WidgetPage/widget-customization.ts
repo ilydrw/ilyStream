@@ -68,10 +68,14 @@ export function createWidgetFromTemplate(template: WidgetTemplate, id: string = 
 export function buildWidgetOverlayUrl(
   widgetId: string,
   overlayPort: number | null,
-  overlayHost?: string | null
+  overlayHost?: string | null,
+  webSocketCapability?: string | null
 ): string | null {
   if (!overlayPort) return null
-  return `http://${normalizeOverlayHost(overlayHost, overlayPort)}/overlay/${widgetId}`
+  const baseUrl = `http://${normalizeOverlayHost(overlayHost, overlayPort)}/overlay/${widgetId}`
+  return webSocketCapability
+    ? `${baseUrl}?cap=${encodeURIComponent(webSocketCapability)}`
+    : baseUrl
 }
 
 /**

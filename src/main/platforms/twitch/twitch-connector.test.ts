@@ -192,6 +192,40 @@ describe('TwitchConnector follower enrichment', () => {
     expect(enriched.user.isFollower).toBe(true)
   })
 
+  it('updates the in-memory config before publishing a rotated token pair', () => {
+    const connector = new TwitchConnector()
+    const refreshed: unknown[] = []
+    ;(connector as any).currentConfig = {
+      platform: 'twitch',
+      enabled: true,
+      channel: 'streamfriend',
+      clientId: 'public-client-id',
+      accessToken: 'old-access-token',
+      refreshToken: 'old-refresh-token'
+    }
+    connector.on('token-refresh', (token) => refreshed.push(token))
+
+    ;(connector as any).handleRefreshedToken({
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      expiresIn: 14_400,
+      scopes: ['chat:read', 'chat:edit']
+    })
+
+    expect((connector as any).currentConfig).toMatchObject({
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      tokenScopes: ['chat:read', 'chat:edit']
+    })
+    expect(refreshed).toEqual([
+      expect.objectContaining({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+        scopes: ['chat:read', 'chat:edit']
+      })
+    ])
+  })
+
   it('emits chat even when Twitch profile enrichment hangs', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const connector = new TwitchConnector()

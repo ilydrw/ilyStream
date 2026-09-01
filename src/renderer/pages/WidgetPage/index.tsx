@@ -21,6 +21,7 @@ import './widget-library.css'
 interface OverlayStatusSnapshot {
   port: number | null
   running: boolean
+  webSocketCapability?: string
 }
 
 export default function WidgetPage() {
@@ -31,6 +32,7 @@ export default function WidgetPage() {
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [overlayPort, setOverlayPort] = useState<number | null>(null)
   const [overlayRunning, setOverlayRunning] = useState(false)
+  const [webSocketCapability, setWebSocketCapability] = useState<string | null>(null)
   const [query, setQuery] = useState('')
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function WidgetPage() {
       const status = (await window.api.overlay.getStatus()) as {
         port: number | null
         running: boolean
+        webSocketCapability?: string
       }
       applyOverlayStatus(status)
     } catch (error) {
@@ -71,6 +74,7 @@ export default function WidgetPage() {
   const applyOverlayStatus = (status: OverlayStatusSnapshot) => {
     setOverlayPort(status.port ?? null)
     setOverlayRunning(Boolean(status.running))
+    setWebSocketCapability(status.webSocketCapability || null)
   }
 
   const loadWidgets = async () => {
@@ -128,7 +132,7 @@ export default function WidgetPage() {
   }
 
   const overlayUrlFor = (id: string) => {
-    return buildWidgetOverlayUrl(id, overlayPort)
+    return buildWidgetOverlayUrl(id, overlayPort, undefined, webSocketCapability)
   }
 
   const copyUrl = async (id: string) => {
@@ -344,7 +348,7 @@ export default function WidgetPage() {
                   // Previews render inside the app, where CSP only allows framing
                   // loopback origins — never the LAN host we advertise for OBS /
                   // external devices. The local server answers on both.
-                  previewUrl={buildWidgetOverlayUrl(widget.id, overlayPort)}
+                  previewUrl={buildWidgetOverlayUrl(widget.id, overlayPort, undefined, webSocketCapability)}
                   copyState={copyingId === widget.id}
                   onCopyUrl={() => void copyUrl(widget.id)}
                   onConfigure={() => setEditingWidget(widget)}

@@ -1,6 +1,6 @@
 # ilyStream
 
-![ilyStream Widget Editor](file:///C:/Users/Drew/.gemini/antigravity/brain/c80eb271-ef93-4791-9ff8-41637c8cfdf6/ilystream_widget_editor_preview_1778781203103.png)
+![ilyStream dashboard](website/public/images/dashboard-overview.png)
 
 [![Website](https://img.shields.io/badge/website-ilydrw.github.io%2FilyStream-blue)](https://ilydrw.github.io/ilyStream/)
 [![Version](https://img.shields.io/badge/version-0.0.28-green)](https://github.com/ilydrw/ilyStream/releases/latest)

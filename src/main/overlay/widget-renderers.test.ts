@@ -120,7 +120,7 @@ describe('injectOverlayRuntimeBootstrap', () => {
   it('prefers a multiplexed WebSocket hub before the SSE recovery stack', () => {
     const html = injectOverlayRuntimeBootstrap('<html><head></head><body></body></html>')
 
-    expect(html).toContain("new SharedWorker('/overlay/runtime/shared-worker.js?v=2'")
+    expect(html).toContain("new SharedWorker('/overlay/runtime/shared-worker.js?v=3&cap='")
     expect(html).toContain("new WebSocket(socketUrl())")
     expect(html).toContain('this._startHub();')
     expect(html).toContain('this._startNative();')

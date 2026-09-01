@@ -80,6 +80,12 @@ const DashboardNavIcon = ({ size, className }: { size?: number; className?: stri
 )
 const BroadcastRoutePlaceholder = lazy(() => Promise.resolve({ default: () => null }))
 
+import { PlannedIntegrationPage } from './components/integrations/PlannedIntegrationPage'
+
+const plannedPage = (id: string) => lazy(() => Promise.resolve({
+  default: () => <PlannedIntegrationPage integrationId={id} />
+}))
+
 // --- Route Definition ---
 export interface AppRoute {
   path: string
@@ -273,7 +279,7 @@ export const routes: AppRoute[] = [
     description: 'Control your Stream Deck, Key Lights, and Prompter setup.',
     section: 'configure',
     icon: ElgatoIcon,
-    component: lazy(() => import('./pages/ElgatoPage'))
+    component: plannedPage('elgato')
   },
   {
     path: '/connections/govee',
@@ -297,7 +303,7 @@ export const routes: AppRoute[] = [
     description: 'Synchronize your Nanoleaf Shapes, Lines, and Canvas with your stream.',
     section: 'configure',
     icon: NanoleafIcon,
-    component: lazy(() => import('./pages/NanoleafPage'))
+    component: plannedPage('nanoleaf')
   },
   {
     path: '/connections/lifx',
@@ -305,7 +311,7 @@ export const routes: AppRoute[] = [
     description: 'Connect and control your high-performance LIFX bulbs and strips.',
     section: 'configure',
     icon: LifxIcon,
-    component: lazy(() => import('./pages/LifxPage'))
+    component: plannedPage('lifx')
   },
   {
     path: '/connections/loupedeck',
@@ -313,7 +319,7 @@ export const routes: AppRoute[] = [
     description: 'Map stream actions and volume dials to your Loupedeck Live or CT.',
     section: 'configure',
     icon: LoupedeckIcon,
-    component: lazy(() => import('./pages/LoupedeckPage'))
+    component: plannedPage('loupedeck')
   },
   {
     path: '/connections/razer',
@@ -329,7 +335,7 @@ export const routes: AppRoute[] = [
     description: 'Sync your Logitech G peripherals with stream highlights and interactions.',
     section: 'configure',
     icon: LogitechIcon,
-    component: lazy(() => import('./pages/LogitechPage'))
+    component: plannedPage('logitech')
   },
   {
     path: '/connections/yeelight',
@@ -337,7 +343,7 @@ export const routes: AppRoute[] = [
     description: 'Connect and control your Yeelight bulbs via LAN protocol.',
     section: 'configure',
     icon: YeelightIcon,
-    component: lazy(() => import('./pages/YeelightPage'))
+    component: plannedPage('yeelight')
   },
   {
     path: '/connections/wiz',
@@ -345,7 +351,7 @@ export const routes: AppRoute[] = [
     description: 'Connect and control your WiZ smart lights via UDP protocol.',
     section: 'configure',
     icon: WizIcon,
-    component: lazy(() => import('./pages/WizPage'))
+    component: plannedPage('wiz')
   },
   {
     path: '/connections/facebook',
@@ -353,7 +359,7 @@ export const routes: AppRoute[] = [
     description: 'Connect your Facebook Page or Gaming Creator profile.',
     section: 'configure',
     icon: FacebookIcon,
-    component: lazy(() => import('./pages/FacebookPage'))
+    component: plannedPage('facebook')
   },
   {
     path: '/connections/instagram',
@@ -361,7 +367,7 @@ export const routes: AppRoute[] = [
     description: 'Broadcast vertically and interact with your Instagram followers.',
     section: 'configure',
     icon: InstagramIcon,
-    component: lazy(() => import('./pages/InstagramPage'))
+    component: plannedPage('instagram')
   },
   {
     path: '/connections/restream',
@@ -369,7 +375,7 @@ export const routes: AppRoute[] = [
     description: 'Broadcast to multiple platforms simultaneously via ReStream hub.',
     section: 'configure',
     icon: RestreamIcon,
-    component: lazy(() => import('./pages/RestreamPage'))
+    component: plannedPage('restream')
   },
   {
     path: '/connections/linkedin',
@@ -377,7 +383,7 @@ export const routes: AppRoute[] = [
     description: 'Stream your professional workshops and coding sessions to LinkedIn.',
     section: 'configure',
     icon: LinkedinIcon,
-    component: lazy(() => import('./pages/LinkedinPage'))
+    component: plannedPage('linkedin')
   },
   {
     path: '/connections/telegram',
@@ -385,7 +391,7 @@ export const routes: AppRoute[] = [
     description: 'Stream to your Telegram Channels and Groups securely.',
     section: 'configure',
     icon: TelegramIcon,
-    component: lazy(() => import('./pages/TelegramPage'))
+    component: plannedPage('telegram')
   },
   {
     path: '/console',

@@ -91,6 +91,26 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     streamingService.feedAudioFrame(audioData)
   })
 
+  ipcMain.on('streaming:feed-mixer-shadow', (_event, snapshot: unknown) => {
+    streamingService.feedNativeMixerShadow(snapshot)
+  })
+
+  ipcMain.handle('streaming:configure-native-mixer-audio-shadow', (_event, config: unknown) => {
+    return streamingService.configureNativeMixerAudioShadow(config)
+  })
+
+  ipcMain.on('streaming:feed-native-mixer-source', (_event, frame: unknown) => {
+    streamingService.feedNativeMixerAudioShadowSource(frame)
+  })
+
+  ipcMain.on('streaming:feed-native-mixer-reference', (_event, frame: unknown) => {
+    streamingService.feedNativeMixerAudioShadowReference(frame)
+  })
+
+  ipcMain.handle('streaming:stop-native-mixer-audio-shadow', () => {
+    return streamingService.stopNativeMixerAudioShadow()
+  })
+
   // TTS + soundboard only, on their own bus. Native device capture cannot pick
   // up audio the renderer synthesises, so it is mixed in main instead.
   ipcMain.on('streaming:feed-generated-audio', (_event, audioData: Buffer | AudioFramePayload) => {

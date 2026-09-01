@@ -179,7 +179,19 @@ export function LayerProperties({ layer, sceneId, widgets, devices, broadcastLay
             <Icon size={20} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setEditingName(true)}>
+            <div
+              className="flex items-center gap-2 group cursor-pointer"
+              onClick={() => setEditingName(true)}
+              role={editingName ? undefined : 'button'}
+              tabIndex={editingName ? -1 : 0}
+              aria-label={editingName ? undefined : `Rename ${layer.name}`}
+              onKeyDown={(event) => {
+                if (!editingName && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault()
+                  setEditingName(true)
+                }
+              }}
+            >
               {editingName ? (
                 <input
                   value={nameValue}

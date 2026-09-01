@@ -23,7 +23,8 @@ export default defineConfig({
       outDir: 'out/preload',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/preload/index.ts')
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          projector: resolve(__dirname, 'src/preload/projector.ts')
         },
         output: {
           format: 'cjs',

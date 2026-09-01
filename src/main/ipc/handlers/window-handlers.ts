@@ -1,9 +1,10 @@
-import { ipcMain, BrowserWindow, shell, clipboard, app, dialog } from 'electron'
+import { BrowserWindow, shell, clipboard, app, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { cpus } from 'os'
 import { getWindowsSettingsUri, type WindowsSettingsTarget } from '../../system/windows-settings'
 import { installUpdate, checkForUpdatesNow } from '../../services/update-service'
+import { secureHandle } from '../secure-handle'
 
 export interface WindowHandlerOptions {
   /** Current recordings folder (honors the user override from Settings). */
@@ -11,22 +12,22 @@ export interface WindowHandlerOptions {
 }
 
 export function registerWindowHandlers(window: BrowserWindow, options: WindowHandlerOptions = {}) {
-  ipcMain.handle('window:minimize', () => window.minimize())
-  ipcMain.handle('window:maximize', () => {
+  secureHandle(window, 'window:minimize', () => window.minimize())
+  secureHandle(window, 'window:maximize', () => {
     if (window.isMaximized()) {
       window.unmaximize()
     } else {
       window.maximize()
     }
   })
-  ipcMain.handle('window:close', () => window.hide())
-  ipcMain.handle('system:install-update', () => installUpdate())
-  ipcMain.handle('system:check-for-updates', () => checkForUpdatesNow())
-  ipcMain.handle('system:copy-to-clipboard', (_event, text: string) => {
+  secureHandle(window, 'window:close', () => window.hide())
+  secureHandle(window, 'system:install-update', () => installUpdate())
+  secureHandle(window, 'system:check-for-updates', () => checkForUpdatesNow())
+  secureHandle(window, 'system:copy-to-clipboard', (_event, text: string) => {
     clipboard.writeText(String(text ?? ''))
     return true
   })
-  ipcMain.handle('system:open-windows-settings', async (_event, target: WindowsSettingsTarget) => {
+  secureHandle(window, 'system:open-windows-settings', async (_event, target: WindowsSettingsTarget) => {
     await shell.openExternal(getWindowsSettingsUri(target))
   })
 
@@ -36,7 +37,7 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
   // since the PREVIOUS getAppMetrics() call with 100 = one full core, so it
   // is normalized by core count to read as share of total CPU capacity
   // (matching how OBS / TikTok Live Studio present theirs).
-  ipcMain.handle('system:get-resource-usage', () => {
+  secureHandle(window, 'system:get-resource-usage', () => {
     const metrics = app.getAppMetrics()
     let rawCpuPercent = 0
     let memoryKB = 0
@@ -51,7 +52,7 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
     }
   })
 
-  ipcMain.handle('system:get-app-info', () => ({
+  secureHandle(window, 'system:get-app-info', () => ({
     version: app.getVersion(),
     electron: process.versions.electron,
     chrome: process.versions.chrome,
@@ -64,13 +65,13 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
     loginItemEnabled: app.getLoginItemSettings().openAtLogin
   }))
 
-  ipcMain.handle('system:set-login-item', (_event, enabled: boolean) => {
+  secureHandle(window, 'system:set-login-item', (_event, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: Boolean(enabled) })
     return app.getLoginItemSettings().openAtLogin
   })
 
   // Deliberately allowlisted — the renderer can only open app-owned folders.
-  ipcMain.handle('system:open-app-folder', async (_event, target: 'logs' | 'userData' | 'recordings') => {
+  secureHandle(window, 'system:open-app-folder', async (_event, target: 'logs' | 'userData' | 'recordings') => {
     const path =
       target === 'logs' ? app.getPath('logs') :
       target === 'userData' ? app.getPath('userData') :
@@ -80,7 +81,7 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
     return { success: !error, error: error || undefined, path }
   })
 
-  ipcMain.handle('system:choose-folder', async (_event, title?: string) => {
+  secureHandle(window, 'system:choose-folder', async (_event, title?: string) => {
     const result = await dialog.showOpenDialog(window, {
       title: title || 'Choose folder',
       properties: ['openDirectory', 'createDirectory']

@@ -23,6 +23,19 @@ afterEach(async () => {
 })
 
 describe('OverlayServer', () => {
+  it('rejects overlay WebSockets without a same-origin capability', async () => {
+    overlayServer = new OverlayServer()
+    const status = await overlayServer.start(0)
+    const socket = new WebSocket(`ws://127.0.0.1:${status.port}/overlay/ws`)
+    const statusCode = await new Promise<number>((resolve, reject) => {
+      socket.once('unexpected-response', (_request, response) => resolve(response.statusCode || 0))
+      socket.once('error', reject)
+    })
+
+    expect(statusCode).toBe(403)
+    socket.terminate()
+  })
+
   it('multiplexes replay and live overlay events over WebSocket', async () => {
     overlayServer = new OverlayServer()
     const receipts: any[] = []
@@ -30,7 +43,21 @@ describe('OverlayServer', () => {
     overlayServer.on('overlay-performance', (receipt) => receipts.push(receipt))
     overlayServer.on('overlay-broadcast', (broadcast) => broadcasts.push(broadcast))
     const status = await overlayServer.start(0)
-    const socket = new WebSocket(`ws://127.0.0.1:${status.port}/overlay/ws`)
+    const publicPage = await fetch(`http://127.0.0.1:${status.port}/overlay/chat`)
+    const publicHtml = await publicPage.text()
+    expect(publicHtml).not.toContain(status.webSocketCapability)
+    const health = await fetch(`http://127.0.0.1:${status.port}/overlay/health`).then((response) => response.json())
+    expect(health).not.toHaveProperty('webSocketCapability')
+    const page = await fetch(
+      `http://127.0.0.1:${status.port}/overlay/chat?cap=${encodeURIComponent(status.webSocketCapability!)}`
+    )
+    const html = await page.text()
+    const capability = html.match(/__ilystreamWsCapability=("[^"]+")/)?.[1]
+    expect(capability).toBeTruthy()
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${status.port}/overlay/ws?cap=${encodeURIComponent(JSON.parse(capability!))}`,
+      { origin: `http://127.0.0.1:${status.port}` }
+    )
     const messages: any[] = []
     socket.on('message', (data) => messages.push(JSON.parse(data.toString())))
 
@@ -658,8 +685,8 @@ describe('OverlayServer', () => {
     })
 
     const eventsController = new AbortController()
-    const eventsResponse = await fetch(`${deviceBase}/api/v1/events?token=${pairBody.token}`, {
-      headers: { Origin: origin },
+    const eventsResponse = await fetch(`${deviceBase}/api/v1/events`, {
+      headers: { Origin: origin, Authorization: `Bearer ${pairBody.token}` },
       signal: eventsController.signal
     })
 

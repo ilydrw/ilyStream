@@ -32,7 +32,8 @@ function twitchRow(recentEvents: PlatformEventDiagnostic[]) {
         enabled: true,
         channel: 'channel',
         clientId: 'client-id',
-        clientSecret: 'client-secret'
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token'
       }
     },
     capabilities: {

@@ -20,6 +20,13 @@ import type { NativeBroadcastScene, NativeLiveSourceFrame } from '../shared/nati
 import type { KokoroSynthesisRequest } from '../shared/kokoro-worker'
 import type { SegmentationFrame, SegmentationMask } from '../shared/segmentation-worker'
 import type { DiscordCallState } from '../shared/discord-call'
+import type { NativeMixerShadowSnapshot } from '../shared/native-mixer-shadow'
+import type {
+  NativeMixerAudioReferenceFrame,
+  NativeMixerAudioShadowConfig,
+  NativeMixerAudioShadowFrame
+} from '../shared/native-mixer-audio-shadow'
+import type { TwitchAuthResult, TwitchAuthStatus } from '../shared/twitch-auth'
 import type {
   OBSWorkspaceAccess,
   OBSWorkspaceSetupResult,
@@ -397,6 +404,14 @@ const api = {
         ipcRenderer.invoke('youtube:update-stream-info', payload) as Promise<{ broadcastId: string }>
     },
     twitch: {
+      getAuthStatus: () =>
+        ipcRenderer.invoke('twitch:get-auth-status') as Promise<TwitchAuthStatus>,
+      beginAuth: () =>
+        ipcRenderer.invoke('twitch:begin-auth') as Promise<TwitchAuthResult>,
+      cancelAuth: () =>
+        ipcRenderer.invoke('twitch:cancel-auth') as Promise<TwitchAuthStatus>,
+      disconnectAuth: () =>
+        ipcRenderer.invoke('twitch:disconnect-auth') as Promise<TwitchAuthStatus>,
       searchCategories: (query: string) =>
         ipcRenderer.invoke('twitch:search-categories', { query }) as Promise<TwitchCategory[]>,
       updateStreamInfo: (payload: { title?: string; categoryId?: string }) =>
@@ -658,6 +673,15 @@ const api = {
     takeScreenshot: (frameData: Uint8Array) => ipcRenderer.invoke('streaming:take-screenshot', frameData),
     feedFrame: (frameData: Uint8Array | VideoFramePayload) => ipcRenderer.send('streaming:feed-frame', frameData),
     feedAudio: (audioData: Uint8Array | AudioFramePayload) => ipcRenderer.send('streaming:feed-audio', audioData),
+    feedMixerShadow: (snapshot: NativeMixerShadowSnapshot) =>
+      ipcRenderer.send('streaming:feed-mixer-shadow', snapshot),
+    configureNativeMixerAudioShadow: (config: NativeMixerAudioShadowConfig) =>
+      ipcRenderer.invoke('streaming:configure-native-mixer-audio-shadow', config),
+    feedNativeMixerSource: (frame: NativeMixerAudioShadowFrame) =>
+      ipcRenderer.send('streaming:feed-native-mixer-source', frame),
+    feedNativeMixerReference: (frame: NativeMixerAudioReferenceFrame) =>
+      ipcRenderer.send('streaming:feed-native-mixer-reference', frame),
+    stopNativeMixerAudioShadow: () => ipcRenderer.invoke('streaming:stop-native-mixer-audio-shadow'),
     feedGeneratedAudio: (audioData: Uint8Array | AudioFramePayload) =>
       ipcRenderer.send('streaming:feed-generated-audio', audioData)
   },

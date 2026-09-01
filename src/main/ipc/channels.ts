@@ -52,6 +52,11 @@ import type {
 } from '../../shared/segmentation-worker'
 import type { SegmentationWorkerStatus } from '../services/segmentation-worker-service'
 import type { DiscordCallState } from '../../shared/discord-call'
+import type {
+  TwitchAuthProgress,
+  TwitchAuthResult,
+  TwitchAuthStatus
+} from '../../shared/twitch-auth'
 
 // --- Renderer -> Main (invoke/handle) ---
 
@@ -104,6 +109,10 @@ export interface IpcInvokeChannels {
     broadcasterUserId?: string | number
     channelName?: string
   }) => Promise<KickEventSubscriptionResult>
+  'twitch:get-auth-status': () => Promise<TwitchAuthStatus>
+  'twitch:begin-auth': () => Promise<TwitchAuthResult>
+  'twitch:cancel-auth': () => Promise<TwitchAuthStatus>
+  'twitch:disconnect-auth': () => Promise<TwitchAuthStatus>
   'twitch:search-categories': (payload: { query: string }) => Promise<TwitchCategory[]>
   'twitch:update-stream-info': (payload: {
     title?: string
@@ -232,6 +241,7 @@ export interface IpcEventChannels {
   'platform:reconnecting': { platform: Platform; attempt: number; maxAttempts: number; delayMs: number; reason?: string }
   'platform:profile-health': { platform: Platform; state: 'idle' | 'healthy' | 'degraded'; lastSuccessAt?: number; lastFailureAt?: number; retryAt?: number; error?: string }
   'tiktok:native-auth-progress': TikTokNativeAuthProgress
+  'twitch:auth-progress': TwitchAuthProgress
   'settings:changed': AppSettings
   'obs:status-changed': OBSRuntimeStatus
   'voice:changed': VoiceProfile[]

@@ -13,8 +13,10 @@ import {
   UserInfo
 } from '../types'
 import { TwitchMapper } from '../mappers/twitch-mapper'
+import { TwitchPublicAuthProvider } from './twitch-auth'
 
 const STREAM_POLL_INTERVAL_MS = 30_000
+const TOKEN_VALIDATION_INTERVAL_MS = 60 * 60 * 1000
 const PROFILE_ENRICHMENT_TIMEOUT_MS = 1_500
 const FOLLOW_EVENTSUB_SCOPE = 'moderator:read:followers'
 const MODERATORS_READ_SCOPE = 'moderator:read:moderators'
@@ -22,29 +24,13 @@ const CHATTERS_READ_SCOPE = 'moderator:read:chatters'
 const MAX_CHATTERS = 200
 const CHAT_READ_SCOPE = 'chat:read'
 const CHAT_EDIT_SCOPE = 'chat:edit'
-const OPTIONAL_TWITCH_SCOPES = [
-  CHAT_READ_SCOPE,
-  CHAT_EDIT_SCOPE,
-  FOLLOW_EVENTSUB_SCOPE,
-  'channel:read:subscriptions',
-  'bits:read',
-  'moderation:read',
-  MODERATORS_READ_SCOPE,
-  'moderator:read:chatters',
-  'channel:read:vips',
-  'channel:read:redemptions',
-  'channel:read:goals',
-  'channel:read:hype_train',
-  'channel:read:polls',
-  'channel:read:predictions',
-  // Lets the Broadcast page set the stream title/category at go-live time.
-  'channel:manage:broadcast'
-]
-
 type TwitchTokenInfo = {
   valid: boolean
   scopes: string[]
   expiresIn: number | null
+  clientId?: string
+  login?: string
+  userId?: string
   message?: string
 }
 
@@ -64,6 +50,8 @@ export class TwitchConnector extends BaseConnector {
   private eventSub: any = null
   private tokenScopes: string[] = []
   private streamPollTimer: ReturnType<typeof setInterval> | null = null
+  private tokenValidationTimer: ReturnType<typeof setInterval> | null = null
+  private authGeneration = 0
   private broadcasterId = ''
   private mapper = new TwitchMapper()
   private lastIsLive = false
@@ -82,8 +70,8 @@ export class TwitchConnector extends BaseConnector {
 
   protected async doConnect(config: PlatformConfig): Promise<void> {
     const twitchConfig = config as TwitchConfig
-    const channelName = normalizeTwitchChannelName(twitchConfig.channel)
     await this.cleanup()
+    const authGeneration = this.authGeneration
 
     const { RefreshingAuthProvider, StaticAuthProvider } = await import('@twurple/auth')
     const { ApiClient } = await import('@twurple/api')
@@ -91,14 +79,18 @@ export class TwitchConnector extends BaseConnector {
 
     const tokenInfo = await this.loadTokenInfo(twitchConfig.accessToken!)
     this.tokenScopes = tokenInfo.scopes
+    if (tokenInfo.valid && tokenInfo.clientId && tokenInfo.clientId !== twitchConfig.clientId) {
+      throw new Error('This Twitch token belongs to a different application. Select Connect with Twitch again.')
+    }
+    const channelName = normalizeTwitchChannelName(tokenInfo.login || twitchConfig.channel)
 
     if (twitchConfig.refreshToken && twitchConfig.clientSecret) {
       this.authProvider = new RefreshingAuthProvider({ clientId: twitchConfig.clientId, clientSecret: twitchConfig.clientSecret })
       this.authProvider.onRefresh((userId: string, newTokenData: any) => {
-        this.handleRefreshedToken(newTokenData)
+        if (this.authGeneration === authGeneration) this.handleRefreshedToken(newTokenData)
       })
       this.authProvider.onRefreshFailure((userId: string, error: Error) => {
-        this.handleError(error, 'token refresh', false)
+        if (this.authGeneration === authGeneration) this.handleError(error, 'token refresh', false)
       })
 
       // The third arg here is the user's *intents*, NOT OAuth scopes. The
@@ -121,13 +113,39 @@ export class TwitchConnector extends BaseConnector {
       try {
         await this.authProvider.addUserForToken(initialToken, ['chat'])
       } catch (err) {
-        throw new Error(`Twitch access token could not be refreshed. Re-authorize Twitch and paste the new access/refresh tokens. ${this.formatErrorDetail(err)}`)
+        throw new Error(`Twitch access token could not be refreshed. Select Connect with Twitch to authorize again. ${this.formatErrorDetail(err)}`)
       }
 
       this.assertChatReadScope(tokenInfo)
+    } else if (twitchConfig.refreshToken) {
+      this.authProvider = new TwitchPublicAuthProvider({
+        clientId: twitchConfig.clientId,
+        accessToken: twitchConfig.accessToken!,
+        refreshToken: twitchConfig.refreshToken,
+        userId: tokenInfo.userId || twitchConfig.broadcasterUserId || '',
+        scopes: tokenInfo.scopes,
+        expiresIn: tokenInfo.valid ? tokenInfo.expiresIn : 0,
+        obtainmentTimestamp: Date.now(),
+        lastValidatedAt: tokenInfo.valid ? Date.now() : 0,
+        onRefresh: (newTokenData) => {
+          if (this.authGeneration === authGeneration) this.handleRefreshedToken(newTokenData)
+        },
+        onRefreshFailure: (error) => {
+          if (this.authGeneration === authGeneration) this.handleError(error, 'token refresh', false)
+        }
+      })
+
+      try {
+        const initialToken = await this.authProvider.getAccessTokenForIntent('chat')
+        this.tokenScopes = initialToken.scope
+      } catch (err) {
+        throw new Error(`Twitch session could not be refreshed. Select Connect with Twitch to authorize again. ${this.formatErrorDetail(err)}`)
+      }
+
+      this.assertChatReadScope()
     } else {
       if (!tokenInfo.valid) {
-        throw new Error(`Twitch access token is expired or invalid and no refresh token is configured. Re-authorize Twitch or paste a fresh access token. ${tokenInfo.message || ''}`.trim())
+        throw new Error(`Twitch access token is expired or invalid and no refresh token is configured. Select Connect with Twitch to authorize again. ${tokenInfo.message || ''}`.trim())
       }
       this.assertChatReadScope(tokenInfo)
       this.authProvider = new StaticAuthProvider(twitchConfig.clientId, twitchConfig.accessToken!, this.tokenScopes)
@@ -214,6 +232,7 @@ export class TwitchConnector extends BaseConnector {
       void this.backfillModerators()
       void this.backfillMissingUserIds()
     }
+    this.startHourlyTokenValidation()
     console.log(`[twitch-connector] doConnect COMPLETED for channel: ${channelName}`)
   }
 
@@ -235,10 +254,28 @@ export class TwitchConnector extends BaseConnector {
   }
 
   private async cleanup(): Promise<void> {
+    this.authGeneration++
     if (this.streamPollTimer) clearInterval(this.streamPollTimer)
+    if (this.tokenValidationTimer) clearInterval(this.tokenValidationTimer)
     if (this.eventSub) try { this.eventSub.stop() } catch {}
     if (this.chatClient) try { this.chatClient.quit() } catch {}
+    this.streamPollTimer = null
+    this.tokenValidationTimer = null
     this.chatClient = null; this.apiClient = null; this.authProvider = null; this.eventSub = null;
+  }
+
+  private startHourlyTokenValidation(): void {
+    if (!(this.authProvider instanceof TwitchPublicAuthProvider)) return
+    const provider = this.authProvider
+    const generation = this.authGeneration
+
+    this.tokenValidationTimer = setInterval(() => {
+      void provider.validateNow().catch(async (error) => {
+        if (this.authGeneration !== generation || this.authProvider !== provider) return
+        await this.cleanup()
+        this.handleError(error, 'hourly token validation', false)
+      })
+    }, TOKEN_VALIDATION_INTERVAL_MS)
   }
 
   private async emitEnriched(event: AnyStreamEvent): Promise<void> {
@@ -485,19 +522,35 @@ export class TwitchConnector extends BaseConnector {
     if (this.hasTokenScope(CHAT_READ_SCOPE)) return
 
     if (tokenInfo && !tokenInfo.valid) {
-      throw new Error(`Twitch access token refreshed, but the refreshed token did not include chat:read. Re-authorize Twitch with chat:read enabled. ${tokenInfo.message || ''}`.trim())
+      throw new Error(`Twitch access token refreshed, but the refreshed token did not include chat:read. Select Connect with Twitch to authorize again. ${tokenInfo.message || ''}`.trim())
     }
 
     throw new Error('Twitch token is missing chat:read. Reconnect Twitch with chat:read so chat messages can reach Chat Hub and TTS.')
   }
 
   private handleRefreshedToken(newTokenData: any): void {
-    this.tokenScopes = this.normalizeScopes(newTokenData?.scope)
+    this.tokenScopes = this.normalizeScopes(newTokenData?.scope ?? newTokenData?.scopes)
+    const accessToken = typeof newTokenData?.accessToken === 'string' ? newTokenData.accessToken : ''
+    const refreshToken = typeof newTokenData?.refreshToken === 'string' ? newTokenData.refreshToken : ''
+    const expiresIn = typeof newTokenData?.expiresIn === 'number' ? newTokenData.expiresIn : 0
+
+    if (this.currentConfig?.platform === 'twitch') {
+      this.currentConfig = {
+        ...this.currentConfig,
+        ...(accessToken ? { accessToken } : {}),
+        ...(refreshToken ? { refreshToken } : {}),
+        tokenScopes: [...this.tokenScopes],
+        ...(expiresIn > 0 ? { accessTokenExpiresAt: Date.now() + expiresIn * 1000 } : {})
+      }
+    }
+
     this.emit('token-refresh', {
       platform: 'twitch',
-      accessToken: newTokenData?.accessToken,
-      refreshToken: newTokenData?.refreshToken,
-      expiresIn: newTokenData?.expiresIn
+      accessToken,
+      refreshToken,
+      expiresIn,
+      scopes: [...this.tokenScopes],
+      accessTokenExpiresAt: expiresIn > 0 ? Date.now() + expiresIn * 1000 : undefined
     })
   }
 
@@ -517,7 +570,10 @@ export class TwitchConnector extends BaseConnector {
       return {
         valid: true,
         scopes: this.normalizeScopes(data.scopes || data.scope),
-        expiresIn: typeof data.expires_in === 'number' ? data.expires_in : null
+        expiresIn: typeof data.expires_in === 'number' ? data.expires_in : null,
+        clientId: typeof data.client_id === 'string' ? data.client_id : undefined,
+        login: typeof data.login === 'string' ? data.login : undefined,
+        userId: typeof data.user_id === 'string' ? data.user_id : undefined
       }
     } catch (err) {
       console.error(`[twitch-connector] FAILED to load token info:`, err)

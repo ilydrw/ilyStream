@@ -414,6 +414,7 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
   if (window.__ilystreamOverlayRuntime) return;
   var NativeEventSource = window.EventSource;
   var WIDGET_META = window.__ilystreamWidgetRuntimeMeta || null;
+  var WS_CAPABILITY = String(window.__ilystreamWsCapability || '');
   var widgetReloadTimer = null;
   var ownedWidgetEventSource = null;
   function parseRuntimeMessage(data){
@@ -542,10 +543,11 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
       sequence += 1;
       return 'overlay-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + sequence;
     }
-    function socketUrl(){
-      var url = new URL('/overlay/ws', window.location.href);
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      return url.href;
+  function socketUrl(){
+    var url = new URL('/overlay/ws', window.location.href);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('cap', WS_CAPABILITY);
+    return url.href;
     }
     function dispatch(message){
       if (!message || typeof message !== 'object') return;
@@ -628,7 +630,7 @@ const OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT = `<script id="ilystream-overlay-runtime"
     }
     if (typeof SharedWorker === 'function') {
       try {
-        var worker = new SharedWorker('/overlay/runtime/shared-worker.js?v=2', 'ilystream-overlay-hub-v2');
+        var worker = new SharedWorker('/overlay/runtime/shared-worker.js?v=3&cap=' + encodeURIComponent(WS_CAPABILITY), 'ilystream-overlay-hub-v3');
         workerPort = worker.port;
         workerPort.onmessage = function(event){ dispatch(event && event.data); };
         workerPort.start();
@@ -1029,7 +1031,8 @@ export interface OverlayRuntimeWidgetContext {
 
 export function injectOverlayRuntimeBootstrap(
   html: string,
-  context?: OverlayRuntimeWidgetContext
+  context?: OverlayRuntimeWidgetContext,
+  webSocketCapability = ''
 ): string {
   if (!html || html.includes('id="ilystream-overlay-runtime"')) return html
   const definition = context
@@ -1046,7 +1049,8 @@ export function injectOverlayRuntimeBootstrap(
         revision: 0
       })};</script>`
     : ''
-  const bootstrap = metadata + OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT
+  const capability = `<script id="ilystream-ws-capability">window.__ilystreamWsCapability=${serializeInlineScriptData(webSocketCapability)};</script>`
+  const bootstrap = metadata + capability + OVERLAY_RUNTIME_BOOTSTRAP_SCRIPT
   const idx = html.toLowerCase().indexOf('</head>')
   if (idx === -1) return bootstrap + html
   return html.slice(0, idx) + bootstrap + html.slice(idx)
@@ -1059,9 +1063,10 @@ export function injectOverlayRuntimeBootstrap(
  */
 export function renderWidgetPreviewContent(
   widget: Widget,
-  context: OverlayRendererContext
+  context: OverlayRendererContext,
+  webSocketCapability = ''
 ): string | null {
   const html = generateOverlayHtml(widget, true, context)
   if (!html) return null
-  return injectOverlayRuntimeBootstrap(html, { widget, sourceKind: 'preview' })
+  return injectOverlayRuntimeBootstrap(html, { widget, sourceKind: 'preview' }, webSocketCapability)
 }

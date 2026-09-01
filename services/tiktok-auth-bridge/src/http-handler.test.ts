@@ -15,6 +15,28 @@ afterEach(async () => {
 })
 
 describe('TikTok bridge HTTP handler', () => {
+  it('rate limits OAuth attempts per client without throttling health checks', async () => {
+    const bridge = {} as TikTokAuthBridge
+    const { baseUrl } = await listen(createServer(createTikTokBridgeHandler(
+      bridge,
+      undefined,
+      { oauthRequestsPerWindow: 2 }
+    )))
+    const request = () => fetch(`${baseUrl}/v1/tiktok/oauth/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+
+    expect((await request()).status).not.toBe(429)
+    expect((await request()).status).not.toBe(429)
+    const limited = await request()
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('retry-after')).toBe('60')
+    await expect(limited.json()).resolves.toMatchObject({ error: 'rate_limited' })
+    expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
+  })
+
   it('exchanges OAuth grants and protects authenticated routes with opaque desktop tokens', async () => {
     const now = Date.UTC(2026, 6, 13)
     const oauthClient: TikTokOAuthClient = {

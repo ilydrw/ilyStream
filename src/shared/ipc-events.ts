@@ -9,6 +9,7 @@ export const RENDERER_EVENT_CHANNELS = [
   'platform:reconnecting',
   'platform:profile-health',
   'tiktok:native-auth-progress',
+  'twitch:auth-progress',
   'settings:changed',
   'obs:status-changed',
   'obs:program-consumers-changed',

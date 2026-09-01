@@ -219,7 +219,7 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
       frame: false,
       backgroundColor: '#000000',
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: join(__dirname, '../preload/projector.cjs'),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false
@@ -252,6 +252,11 @@ export function registerStudioHandlers(db: Database, overlayServer: OverlayServe
           url.search = query.slice(1)
           return url.toString()
         })()
+
+    projectorWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    projectorWindow.webContents.on('will-navigate', (navigationEvent, targetUrl) => {
+      if (targetUrl !== loadUrl) navigationEvent.preventDefault()
+    })
 
     console.log('[StudioHandlers] Loading Projector URL:', loadUrl)
     await projectorWindow.loadURL(loadUrl)

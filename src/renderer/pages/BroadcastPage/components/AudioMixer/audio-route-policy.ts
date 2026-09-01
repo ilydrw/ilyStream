@@ -1,5 +1,6 @@
 import type { AudioSource, AudioMonitoringMode } from '../../../../../shared/studio'
 import { normalizeAudioMonitoringMode } from '../../../../../shared/studio'
+import type { NativeMixerShadowSnapshot } from '../../../../../shared/native-mixer-shadow'
 
 const INTERNAL_GLOBAL_AUDIO_SOURCE_IDS = new Set(['soundboard', 'tts-audio'])
 
@@ -105,5 +106,53 @@ export function getAudioRoutePolicy(
     // whole-program monitor or it would be heard twice.
     programMonitor: output && monitoringMode !== 'monitorAndOutput',
     monitoringMode
+  }
+}
+
+/** Build a renderer-policy oracle for the dependency-free native mixer. */
+export function buildNativeMixerShadowSnapshot(
+  sources: readonly AudioSource[],
+  activeLayerIds: ReadonlySet<string>,
+  retainedLayerIds: ReadonlySet<string>,
+  transition: ProgramSceneTransition | undefined,
+  sequence: number
+): NativeMixerShadowSnapshot {
+  const activeSceneHasSolo = hasEligibleSolo(sources, activeLayerIds)
+  const nativeSources = sources.map(source => ({
+    id: source.id,
+    volume: source.volume,
+    pan: source.pan || 0,
+    muted: source.muted,
+    solo: source.solo === true,
+    global: isGlobalInternalAudioSource(source),
+    mono: source.channelMode === 'mono',
+    monitoringMode: normalizeAudioMonitoringMode(source.monitoringMode, source.monitoring)
+  }))
+  const expected = sources.map(source => {
+    const route = getAudioRoutePolicy(source, retainedLayerIds, false)
+    const sceneGain = getProgramSceneGain(source, activeLayerIds, transition, activeSceneHasSolo)
+    return {
+      id: source.id,
+      eligible: route.eligible,
+      output: route.output,
+      sceneGain,
+      effectiveGain: route.output ? source.volume * sceneGain : 0
+    }
+  })
+  return {
+    sequence,
+    sources: nativeSources,
+    activeLayerIds: [...activeLayerIds],
+    retainedLayerIds: [...retainedLayerIds],
+    ...(transition ? {
+      transition: {
+        active: transition.isActive,
+        type: transition.type,
+        progress: Math.min(1, Math.max(0, transition.progress)),
+        fromLayerIds: [...transition.fromLayerIds],
+        toLayerIds: [...transition.toLayerIds]
+      }
+    } : {}),
+    expected
   }
 }

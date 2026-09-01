@@ -15,7 +15,7 @@ export type { AudioFramePayload, RecordingConfig, StreamConfig, StreamIncident, 
 import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
 import { StreamSession, type StreamSessionConfig } from './streaming/stream-session'
 import { MediaPumper } from './streaming/media-pumper'
-import { NativeAudioSource } from '../audio/native-audio-source'
+import { NativeAudioSource, type NativeAudioHost } from '../audio/native-audio-source'
 import { FFmpegProcessManager } from './streaming/ffmpeg-process-manager'
 import { AdaptiveBitrateController, type EncoderHealthSample } from './streaming/adaptive-bitrate'
 import { StreamIncidentLog } from './streaming/stream-incident-log'
@@ -60,6 +60,14 @@ interface OutputRuntime {
   everConnected: boolean
 }
 
+interface NativeMixerShadowHost {
+  evaluateMixerShadow(value: unknown): void
+  configureMixerAudioShadow(value: unknown): Promise<{ active: boolean; error?: string }>
+  pushMixerAudioShadowSource(value: unknown): void
+  pushMixerAudioShadowReference(value: unknown): void
+  stopMixerAudioShadow(): Promise<void>
+}
+
 export class StreamingService extends EventEmitter {
   private isStreaming: boolean = false
   private isRecording: boolean = false
@@ -83,7 +91,8 @@ export class StreamingService extends EventEmitter {
   // Opt-in native device capture. When it runs it REPLACES the renderer's
   // AudioWorklet feed rather than adding to it — both feeding would double the
   // audio and desync the sample clock.
-  private nativeAudio = new NativeAudioSource()
+  private nativeAudio: NativeAudioSource
+  private nativeMixerShadowHost?: NativeMixerShadowHost
 
   // Recording auto-restart bookkeeping (see maybeRestartRecording).
   private recordingConfig: RecordingConfig | null = null
@@ -98,8 +107,10 @@ export class StreamingService extends EventEmitter {
   private adaptiveBitrate = new AdaptiveBitrateController()
   private streamIncidents = new StreamIncidentLog()
 
-  constructor() {
+  constructor(nativeAudioHost?: NativeAudioHost & NativeMixerShadowHost) {
     super()
+    this.nativeAudio = new NativeAudioSource(nativeAudioHost)
+    this.nativeMixerShadowHost = nativeAudioHost
     this.setupManagers()
     // Resolve the hardware encoder in the background now so the first go-live
     // doesn't pay for the GPU/ffmpeg probes (which used to block the main thread).
@@ -389,6 +400,26 @@ export class StreamingService extends EventEmitter {
     this.writeAudioFrame(frame.data)
   }
 
+  public feedNativeMixerShadow(value: unknown): void {
+    this.nativeMixerShadowHost?.evaluateMixerShadow(value)
+  }
+
+  public configureNativeMixerAudioShadow(value: unknown): Promise<{ active: boolean; error?: string }> {
+    return this.nativeMixerShadowHost?.configureMixerAudioShadow(value) ?? Promise.resolve({ active: false })
+  }
+
+  public feedNativeMixerAudioShadowSource(value: unknown): void {
+    this.nativeMixerShadowHost?.pushMixerAudioShadowSource(value)
+  }
+
+  public feedNativeMixerAudioShadowReference(value: unknown): void {
+    this.nativeMixerShadowHost?.pushMixerAudioShadowReference(value)
+  }
+
+  public stopNativeMixerAudioShadow(): Promise<void> {
+    return this.nativeMixerShadowHost?.stopMixerAudioShadow() ?? Promise.resolve()
+  }
+
   /**
    * Renderer-generated audio (TTS + soundboard) for the native mix.
    *
@@ -430,12 +461,12 @@ export class StreamingService extends EventEmitter {
       || (this.isRecording && this.recordingAudioEnabled)
 
     if (!wanted) {
-      this.nativeAudio.stop()
+      void this.nativeAudio.stop()
       return
     }
     if (this.nativeAudio.active) return
 
-    this.nativeAudio.start((pcm) => this.writeAudioFrame(pcm))
+    void this.nativeAudio.start((pcm) => this.writeAudioFrame(pcm))
   }
 
   public getNativeAudioStatus(): { active: boolean; framesCaptured: number; framesDropped: number } {
@@ -548,7 +579,7 @@ export class StreamingService extends EventEmitter {
     this.recordingAudioEnabled = false
     // Unconditional, not syncNativeAudio(): dispose must release the device
     // even if state bookkeeping is inconsistent.
-    this.nativeAudio.stop()
+    await this.nativeAudio.stop()
 
     if (this.powerSaveId !== null) {
       try { powerSaveBlocker.stop(this.powerSaveId) } catch {}
