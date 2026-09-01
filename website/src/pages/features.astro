@@ -64,6 +64,13 @@ const featureSections = [
     bullets: ['Horizontal and vertical scene composition', 'Scene list and output controls', 'Capture source visibility and ordering', 'Mixer meters for mic, TTS, music, and alerts'],
   },
   {
+    eyebrow: 'Native media core · development',
+    title: 'Move hot paths out of the desktop UI carefully.',
+    copy: 'Development builds are moving capture, audio policy, shared-memory transport, and Program-mix validation into an isolated C++ host. The current release keeps the established renderer output authoritative while parity and soak checks run.',
+    image: studioShot,
+    bullets: ['Isolated native host with a bounded protocol', 'Shared-memory audio transport instead of per-sample IPC', 'Shadow comparison before any encoder cutover', 'Strict descriptors, finite-sample checks, and lifecycle cleanup'],
+  },
+  {
     eyebrow: 'Alerts & widgets',
     title: 'Build overlays where they actually run.',
     copy: 'Widgets and overlay routes expose real browser-source URLs, live previews, and configuration surfaces for OBS or TikTok Studio.',
@@ -115,7 +122,7 @@ const featureSections = [
 <Layout
   active="features"
   title="ilyStream features"
-  description="Detailed feature breakdown of ilyStream: dashboard, health checks, platform setup, unified chat, audience profiles, studio, alerts, widgets, TTS, audio routing, and smart-light automation."
+  description="Detailed feature breakdown of ilyStream: dashboard, health checks, platform setup, unified chat, audience profiles, studio, native media architecture, alerts, widgets, TTS, audio routing, and smart-light automation."
   image="images/dashboard-overview.png"
 >
   <section class="page-hero">

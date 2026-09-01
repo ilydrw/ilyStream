@@ -1,4 +1,6 @@
-export const latestVersion = '0.0.28';
+import appPackage from '../../../package.json';
+
+export const latestVersion = appPackage.version;
 export const deskThingVersion = '0.0.28';
 
 export const repoUrl = 'https://github.com/ilydrw/ilyStream';

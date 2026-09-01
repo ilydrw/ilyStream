@@ -152,13 +152,14 @@ const downloads = [
 
   <section class="container section">
     <div class="install-help">
-      <h2>SmartScreen warning?</h2>
+      <h2>Unsigned Windows preview</h2>
       <p>
-        Windows shows a SmartScreen prompt for new code-signing certificates until they
-        accumulate enough reputation. Click <strong>More info</strong> &rarr; <strong>Run anyway</strong>
-        to continue, or build from source if you prefer.
+        The current Windows artifacts are not code-signed, so Windows may identify the publisher
+        as unknown or show a SmartScreen warning. Download only from the official ilyStream GitHub
+        release linked above. Choose <strong>More info</strong> &rarr; <strong>Run anyway</strong> only
+        after confirming that source, or build the app yourself if you prefer.
       </p>
-      <a class="link-arrow" href={withBase('docs/getting-started/')}>Getting started <span aria-hidden="true">&rarr;</span></a>
+      <a class="link-arrow" href={releaseUrl} rel="noopener">Open the official release <span aria-hidden="true">&rarr;</span></a>
     </div>
   </section>
 </Layout>
