@@ -156,8 +156,13 @@ function waitForSharedTextureRelease(released: Promise<void>): Promise<boolean> 
 }
 
 async function getMappedCaptureDisplays(): Promise<MappedCaptureDisplay[]> {
-  const nativeDisplays = NativeEngine.listScreenCaptureDisplays()
   const electronDisplays = screen.getAllDisplays()
+  let nativeDisplays: ReturnType<typeof NativeEngine.listScreenCaptureDisplays> = []
+  try {
+    nativeDisplays = NativeEngine.listScreenCaptureDisplays()
+  } catch (error) {
+    process.stderr.write(`[engine-preview] native display enumeration unavailable: ${(error as Error).message}\n`)
+  }
   let sources: Awaited<ReturnType<typeof desktopCapturer.getSources>> = []
   try {
     sources = await desktopCapturer.getSources({
@@ -185,6 +190,29 @@ async function getMappedCaptureDisplays(): Promise<MappedCaptureDisplay[]> {
       displayId: source?.display_id
     }
   })
+
+  // DXGI is intentionally Windows-only. Electron still provides stable
+  // display bounds and source IDs on macOS/Linux, so keep the picker useful
+  // while those platforms use the desktopCapturer fallback path.
+  if (mapped.length === 0) {
+    return electronDisplays.map<MappedCaptureDisplay>((display, index) => {
+      const source = sources.find((candidate) => candidate.display_id === String(display.id))
+      const bounds = display.bounds
+      return {
+        index,
+        deviceName: `DISPLAY${index + 1}`,
+        name: source?.name ?? display.label ?? `Display ${index + 1}`,
+        label: display.label ?? `Display ${index + 1}`,
+        sourceId: source?.id,
+        displayId: source?.display_id,
+        left: bounds.x,
+        top: bounds.y,
+        right: bounds.x + bounds.width,
+        bottom: bounds.y + bounds.height,
+        hdr: false
+      }
+    })
+  }
 
   return mapped.sort((left, right) => {
     const leftNumber = Number.parseInt(/(\d+)$/.exec(left.name)?.[1] ?? '', 10)
