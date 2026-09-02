@@ -36,6 +36,7 @@ struct CaptureSession {
     std::atomic<std::uint64_t> framesDropped{0};
     std::uint32_t channels = 2;
     std::uint32_t sampleRate = 48000;
+    std::string backend;
     CaptureFrameCallback callback;
     std::thread pump;
 };
@@ -74,7 +75,7 @@ CaptureStatus StatusOf(const CaptureSession* session) {
     return {session->running.load(std::memory_order_acquire),
         session->framesCaptured.load(std::memory_order_relaxed),
         session->framesDropped.load(std::memory_order_relaxed),
-        session->sampleRate, session->channels};
+        session->sampleRate, session->channels, session->backend};
 }
 
 void DataCallback(ma_device* device, void*, const void* input, ma_uint32 frameCount) {
@@ -181,8 +182,11 @@ bool ListCaptureDevices(std::vector<CaptureDevice>& devices, std::string& error)
         return false;
     }
     devices.reserve(count);
+    const char* backendName = ma_get_backend_name(context.backend);
+    const std::string backend = backendName ? backendName : "unknown";
     for (ma_uint32 i = 0; i < count; ++i) {
-        devices.push_back({DeviceIdToString(infos[i].id), infos[i].name, infos[i].isDefault != 0});
+        devices.push_back({DeviceIdToString(infos[i].id), infos[i].name,
+            infos[i].isDefault != 0, backend});
     }
     ma_context_uninit(&context);
     error.clear();
@@ -207,6 +211,9 @@ bool StartCapture(const CaptureOptions& options, CaptureFrameCallback callback,
         return false;
     }
     session->contextReady = true;
+    if (const char* backendName = ma_get_backend_name(session->context.backend)) {
+        session->backend = backendName;
+    }
     ma_device_config config = ma_device_config_init(ma_device_type_capture);
     config.capture.format = ma_format_f32;
     config.capture.channels = session->channels;
@@ -273,7 +280,7 @@ bool StartCapture(const CaptureOptions& options, CaptureFrameCallback callback,
     }
     CaptureSession* raw = session.get();
     session->pump = std::thread(PumpThread, raw);
-    info = {raw->sampleRate, raw->channels, usedExclusive, kChunkFrames};
+    info = {raw->sampleRate, raw->channels, usedExclusive, kChunkFrames, raw->backend};
     g_session = std::move(session);
     error.clear();
     return true;

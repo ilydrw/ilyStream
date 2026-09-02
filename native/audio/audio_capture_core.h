@@ -8,7 +8,12 @@
 
 namespace ily::audio {
 
-struct CaptureDevice { std::string id; std::string name; bool isDefault = false; };
+struct CaptureDevice {
+    std::string id;
+    std::string name;
+    bool isDefault = false;
+    std::string backend;
+};
 struct CaptureOptions {
     std::string deviceId;
     std::uint32_t sampleRate = 48000;
@@ -20,6 +25,7 @@ struct CaptureSessionInfo {
     std::uint32_t channels = 0;
     bool exclusive = false;
     std::uint32_t chunkFrames = 0;
+    std::string backend;
 };
 struct CaptureStatus {
     bool running = false;
@@ -27,6 +33,7 @@ struct CaptureStatus {
     std::uint64_t framesDropped = 0;
     std::uint32_t sampleRate = 0;
     std::uint32_t channels = 0;
+    std::string backend;
 };
 
 using CaptureFrameCallback = std::function<bool(

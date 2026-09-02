@@ -21,6 +21,7 @@ export interface CaptureDevice {
   id: string
   name: string
   isDefault: boolean
+  backend?: string
 }
 
 export interface CaptureOptions {
@@ -41,6 +42,7 @@ export interface CaptureSession {
   channels: number
   exclusive: boolean
   chunkFrames: number
+  backend?: string
 }
 
 export interface CaptureFrame {
@@ -57,6 +59,7 @@ export interface CaptureStatus {
   framesDropped: number
   sampleRate: number
   channels: number
+  backend?: string
 }
 
 interface AudioAddon {

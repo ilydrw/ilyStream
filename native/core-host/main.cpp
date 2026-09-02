@@ -337,7 +337,8 @@ ily::core_host::HostOperations BuildOperations() {
             if (!ily::audio::ListCaptureDevices(devices, error)) throw std::runtime_error(error);
             json result = json::array();
             for (const auto& device : devices) {
-                result.push_back({{"id", device.id}, {"name", device.name}, {"isDefault", device.isDefault}});
+                result.push_back({{"id", device.id}, {"name", device.name},
+                    {"isDefault", device.isDefault}, {"backend", device.backend}});
             }
             return result;
         },
@@ -345,7 +346,7 @@ ily::core_host::HostOperations BuildOperations() {
             const auto status = ily::audio::GetCaptureStatus();
             return json{{"running", status.running}, {"framesCaptured", status.framesCaptured},
                 {"framesDropped", status.framesDropped}, {"sampleRate", status.sampleRate},
-                {"channels", status.channels}};
+                {"channels", status.channels}, {"backend", status.backend}};
         },
         [](const json& params) {
             if (ily::audio::GetCaptureStatus().running) {
@@ -400,6 +401,7 @@ ily::core_host::HostOperations BuildOperations() {
             g_captureRing = ring;
             return json{{"sampleRate", info.sampleRate}, {"channels", info.channels},
                 {"exclusive", info.exclusive}, {"chunkFrames", info.chunkFrames},
+                {"backend", info.backend},
                 {"transport", "shared-memory-v1"}, {"format", "f32-interleaved"},
                 {"ringName", ringOptions.ringName}, {"generation", std::to_string(generation)},
                 {"capacityFrames", ringOptions.capacityFrames}, {"blockFrames", ringOptions.blockFrames}};

@@ -48,6 +48,7 @@ Napi::Object StatusObject(Napi::Env env, const ily::audio::CaptureStatus& status
     result.Set("framesDropped", static_cast<double>(status.framesDropped));
     result.Set("sampleRate", status.sampleRate);
     result.Set("channels", status.channels);
+    result.Set("backend", status.backend);
     return result;
 }
 
@@ -139,6 +140,7 @@ Napi::Value ListCaptureDevices(const Napi::CallbackInfo& info) {
         item.Set("id", devices[index].id);
         item.Set("name", devices[index].name);
         item.Set("isDefault", devices[index].isDefault);
+        item.Set("backend", devices[index].backend);
         result.Set(index, item);
     }
     return result;
@@ -191,6 +193,7 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
     result.Set("channels", sessionInfo.channels);
     result.Set("exclusive", sessionInfo.exclusive);
     result.Set("chunkFrames", sessionInfo.chunkFrames);
+    result.Set("backend", sessionInfo.backend);
     return result;
 }
 
