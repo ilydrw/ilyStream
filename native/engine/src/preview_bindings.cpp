@@ -1,9 +1,13 @@
 #include <napi.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <iostream>
 #include "ily/shared_ring_buffer.h"
 
 using namespace ily;
+
+#ifdef _WIN32
 
 class PreviewReader : public Napi::ObjectWrap<PreviewReader> {
 public:
@@ -164,5 +168,46 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     PreviewReader::Init(env, exports);
     return exports;
 }
+
+#else
+
+// SharedRingBuffer is backed by Windows named file mappings. Keep the addon
+// ABI available on Unix so the portable package can load its module graph,
+// while clearly reporting that this optional preview transport is unavailable
+// and letting the normal capturePage/CPU path provide previews instead.
+class PreviewReader : public Napi::ObjectWrap<PreviewReader> {
+public:
+    static Napi::Object Init(Napi::Env env, Napi::Object exports) {
+        const auto func = DefineClass(env, "PreviewReader", {
+            InstanceMethod("readLatestFrame", &PreviewReader::ReadLatestFrame),
+            InstanceMethod("close", &PreviewReader::Close)
+        });
+        exports.Set("PreviewReader", func);
+        return exports;
+    }
+
+    explicit PreviewReader(const Napi::CallbackInfo& info)
+        : Napi::ObjectWrap<PreviewReader>(info) {
+        if (info.Length() < 1 || !info[0].IsString()) {
+            Napi::TypeError::New(info.Env(), "String map name expected").ThrowAsJavaScriptException();
+        }
+    }
+
+private:
+    Napi::Value ReadLatestFrame(const Napi::CallbackInfo& info) {
+        return info.Env().Null();
+    }
+
+    Napi::Value Close(const Napi::CallbackInfo& info) {
+        return info.Env().Undefined();
+    }
+};
+
+static Napi::Object Init(Napi::Env env, Napi::Object exports) {
+    PreviewReader::Init(env, exports);
+    return exports;
+}
+
+#endif
 
 NODE_API_MODULE(ilystream_preview, Init)
