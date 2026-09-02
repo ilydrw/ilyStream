@@ -115,20 +115,33 @@ function portableConfig() {
 }
 
 try {
-  await runNpm('verify:native-abi')
-  if (platform === 'win32') await runNpm('build:virtual-camera')
-  await runNpm('build:engine', ['--', '-RequireExactElectronHeaders'])
-  if (platform === 'win32') await runNpm('build:obs-plugin')
-  await runNpm('build')
+  const stage = async (label, action) => {
+    console.log(`::group::${label}`)
+    try {
+      await action()
+    } finally {
+      console.log('::endgroup::')
+    }
+  }
+
+  await stage('Verify native ABI', () => runNpm('verify:native-abi'))
+  if (platform === 'win32') await stage('Build virtual camera', () => runNpm('build:virtual-camera'))
+  await stage('Build native engine', () => runNpm('build:engine', ['--', '-RequireExactElectronHeaders']))
+  if (platform === 'win32') await stage('Build OBS plugin', () => runNpm('build:obs-plugin'))
+  await stage('Build frontend', () => runNpm('build'))
 
   const config = platform === 'win32' ? packageJson.build : portableConfig()
-  await build({
+  await stage('Electron Builder packaging', () => build({
     config,
     publish: publish ? 'always' : 'never'
-  })
-  await runNode('scripts/verify-package-contents.mjs')
+  }))
+  await stage('Verify packaged contents', () => runNode('scripts/verify-package-contents.mjs'))
   console.log(`ilyStream ${platform} packaging completed successfully.`)
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
+  const message = error instanceof Error ? (error.stack || error.message) : String(error)
+  console.error(message)
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::error title=Packaging failed::${message.replace(/[\r\n]+/g, ' ').slice(0, 1000)}`)
+  }
   process.exitCode = 1
 }
