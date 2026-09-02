@@ -1,4 +1,5 @@
 #pragma once
+#ifdef _WIN32
 #include <stdint.h>
 #include <thread>
 #include <atomic>
@@ -87,3 +88,55 @@ private:
 };
 
 } // namespace ily
+
+#else
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "ily/types.h"
+
+namespace ily {
+
+class Renderer;
+
+struct DXGIDisplayInfo {
+    uint32_t index = 0;
+    std::string deviceName;
+    int32_t left = 0;
+    int32_t top = 0;
+    int32_t right = 0;
+    int32_t bottom = 0;
+    bool hdr = false;
+};
+
+// DXGI desktop duplication is Windows-only. Keep the ABI surface available
+// on other platforms so callers can return a clean "not supported" result.
+class DXGICapture {
+public:
+    DXGICapture(uint32_t, uint32_t, Renderer*) {}
+    ~DXGICapture() = default;
+
+    bool Initialize() { return false; }
+    void Shutdown() {}
+    ResourceHandle GetTexture() const { return ILY_INVALID_HANDLE; }
+    const std::string& GetSharedMemoryName() const { return m_sharedMapName; }
+    const IlyColorDescription& GetColorDescription() const { return m_colorDescription; }
+    IlyPixelFormat GetPixelFormat() const { return ILY_PIXEL_FORMAT_BGRA8; }
+    bool IsHdr() const { return false; }
+    uint32_t GetWidth() const { return 0; }
+    uint32_t GetHeight() const { return 0; }
+    float GetSdrWhiteNits() const { return 80.0f; }
+    float GetMaxLuminance() const { return 0.0f; }
+    float GetMaxFullFrameLuminance() const { return 0.0f; }
+    static std::vector<DXGIDisplayInfo> EnumerateDisplays() { return {}; }
+
+private:
+    std::string m_sharedMapName;
+    IlyColorDescription m_colorDescription = IlySrgbFullColor();
+};
+
+} // namespace ily
+
+#endif

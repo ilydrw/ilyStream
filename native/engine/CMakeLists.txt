@@ -34,9 +34,18 @@ set(ENGINE_SOURCES
     src/renderer/renderer.cpp
     src/renderer/shader_loader.cpp
     src/renderer/texture_producer.cpp
-    src/capture/dxgi_capture.cpp
-    src/capture/mf_camera_capture.cpp
 )
+
+# Desktop duplication and Media Foundation are Windows backends. Keep their
+# implementations out of Unix builds; the public engine API is still present
+# through the platform stubs in the capture headers and reports the feature as
+# unavailable instead of making the whole portable renderer fail to compile.
+if(WIN32)
+    list(APPEND ENGINE_SOURCES
+        src/capture/dxgi_capture.cpp
+        src/capture/mf_camera_capture.cpp
+    )
+endif()
 
 # Shared engine library
 add_library(ilystream_engine SHARED ${ENGINE_SOURCES})
@@ -114,14 +123,32 @@ if(EXISTS "${ELECTRON_PKG_JSON}")
 endif()
 
 set(LATEST_NODE_INCLUDES "")
-if(ELECTRON_VERSION AND EXISTS "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/include/node")
-    set(LATEST_NODE_INCLUDES "$ENV{USERPROFILE}/.electron-gyp/${ELECTRON_VERSION}/include/node")
+set(NODE_HEADER_ROOTS "")
+if(DEFINED ENV{USERPROFILE})
+    list(APPEND NODE_HEADER_ROOTS "$ENV{USERPROFILE}")
+endif()
+if(DEFINED ENV{HOME})
+    list(APPEND NODE_HEADER_ROOTS "$ENV{HOME}")
+endif()
+set(EXACT_HEADER_CANDIDATES "")
+set(FALLBACK_HEADER_CANDIDATES "")
+foreach(NODE_HOME IN LISTS NODE_HEADER_ROOTS)
+    if(ELECTRON_VERSION)
+        list(APPEND EXACT_HEADER_CANDIDATES "${NODE_HOME}/.electron-gyp/${ELECTRON_VERSION}/include/node")
+    endif()
+    list(APPEND FALLBACK_HEADER_CANDIDATES "${NODE_HOME}/.electron-gyp/*/include/node")
+    list(APPEND FALLBACK_HEADER_CANDIDATES "${NODE_HOME}/.node-gyp/*/include/node")
+endforeach()
+foreach(EXACT_HEADER IN LISTS EXACT_HEADER_CANDIDATES)
+    if(EXISTS "${EXACT_HEADER}")
+        set(LATEST_NODE_INCLUDES "${EXACT_HEADER}")
+        break()
+    endif()
+endforeach()
+if(LATEST_NODE_INCLUDES)
     message(STATUS "Using installed Electron ${ELECTRON_VERSION} headers: ${LATEST_NODE_INCLUDES}")
 else()
-    file(GLOB ELECTRON_GYP_INCLUDES
-        "$ENV{USERPROFILE}/.electron-gyp/*/include/node"
-        "$ENV{USERPROFILE}/.node-gyp/*/include/node"
-    )
+    file(GLOB ELECTRON_GYP_INCLUDES ${FALLBACK_HEADER_CANDIDATES})
     if(ELECTRON_GYP_INCLUDES)
         if(NOT ILY_ALLOW_ELECTRON_HEADER_FALLBACK)
             message(FATAL_ERROR

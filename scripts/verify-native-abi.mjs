@@ -11,12 +11,15 @@ const candidates = [
 ]
 const root = candidates.find(candidate => fs.existsSync(path.join(candidate, 'include', 'node', 'node.h')))
 const headers = root ? path.join(root, 'include', 'node') : null
-const libs = root
+const libs = process.platform === 'win32' && root
   ? [path.join(root, 'x64', 'node.lib'), path.join(root, 'win-x64', 'node.lib')]
   : []
 const nodeLib = libs.find(candidate => fs.existsSync(candidate))
 
-if (!root || !nodeLib) {
+// Windows links N-API modules through Electron's import library. Unix-like
+// platforms resolve the host symbols from the running Electron process and do
+// not ship a node.lib, so matching headers are the complete ABI requirement.
+if (!root || (process.platform === 'win32' && !nodeLib)) {
   console.error(`Exact Electron native ABI assets for ${version} were not found.`)
   console.error('Install matching headers/node.lib before packaging; do not use the development fallback.')
   console.error(`One supported setup path is: npx electron-rebuild --version ${version} --force`)
@@ -27,4 +30,4 @@ if (!root || !nodeLib) {
 
 console.log(`Electron ${version} native ABI verified.`)
 console.log(`Headers: ${headers}`)
-console.log(`node.lib: ${nodeLib}`)
+if (nodeLib) console.log(`node.lib: ${nodeLib}`)

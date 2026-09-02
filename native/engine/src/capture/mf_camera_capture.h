@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef _WIN32
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -111,3 +113,46 @@ private:
 };
 
 } // namespace ily
+
+#else
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "ily/types.h"
+
+namespace ily {
+
+class Renderer;
+
+struct MFCameraDeviceInfo {
+    std::string friendlyName;
+    std::string symbolicLink;
+};
+
+// Media Foundation camera capture is Windows-only. The portable build keeps
+// the API shape and reports unavailable capture without pulling in Win32 types.
+class MFCameraCapture {
+public:
+    MFCameraCapture(std::string, uint32_t, uint32_t, uint32_t, Renderer*) {}
+    ~MFCameraCapture() = default;
+
+    bool Initialize() { return false; }
+    void Shutdown() {}
+    ResourceHandle GetTexture() const { return ILY_INVALID_HANDLE; }
+    uint32_t GetWidth() const { return 0; }
+    uint32_t GetHeight() const { return 0; }
+    uint32_t GetFrameRateNumerator() const { return 0; }
+    uint32_t GetFrameRateDenominator() const { return 1; }
+    bool UsesGpuFrames() const { return false; }
+    const std::string& GetDeviceName() const { return m_deviceName; }
+    static std::vector<MFCameraDeviceInfo> EnumerateDevices() { return {}; }
+
+private:
+    std::string m_deviceName;
+};
+
+} // namespace ily
+
+#endif
