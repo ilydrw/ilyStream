@@ -7,6 +7,8 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "start": "electron .",
+    "launch:native-ui": "node scripts/launch-native-ui.mjs",
     "build:tiktok-bridge": "tsc -p services/tiktok-auth-bridge/tsconfig.build.json",
     "start:tiktok-bridge": "node services/tiktok-auth-bridge/dist/server.js",
     "build:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/build.ps1",
