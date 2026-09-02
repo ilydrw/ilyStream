@@ -754,6 +754,17 @@ const api = {
 
   // --- Native engine preview (bgfx compositor -> canvas) ---
   engine: {
+    getCapabilities: () => ipcRenderer.invoke('engine:capabilities') as Promise<{
+      version: number
+      flags: number
+      screenCapture: boolean
+      cameraCapture: boolean
+      sharedTextures: boolean
+      programExport: boolean
+      nativeAudio: boolean
+      virtualCamera: boolean
+      obsIntegration: boolean
+    } | null>,
     getCaptureDisplays: () => ipcRenderer.invoke('engine:preview:displays') as Promise<Array<{
       index: number
       deviceName: string

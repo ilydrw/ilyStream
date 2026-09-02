@@ -199,6 +199,30 @@ typedef struct IlyCameraCaptureDeviceInfo {
     char symbolicLink[1024];
 } IlyCameraCaptureDeviceInfo;
 
+/*
+ * Runtime capabilities exposed by the native platform layer.
+ *
+ * Keep this an integer bitset rather than a collection of bools: the struct
+ * crosses the C ABI and must have identical layout on MSVC, Clang and GCC.
+ * Callers must set structSize before invoking IlyGetPlatformCapabilities so
+ * the API can be extended without silently overrunning an older allocation.
+ */
+#define ILY_PLATFORM_CAPABILITIES_VERSION 1u
+#define ILY_PLATFORM_CAPABILITY_SCREEN_CAPTURE (1u << 0)
+#define ILY_PLATFORM_CAPABILITY_CAMERA_CAPTURE (1u << 1)
+#define ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES (1u << 2)
+#define ILY_PLATFORM_CAPABILITY_PROGRAM_EXPORT (1u << 3)
+#define ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO (1u << 4)
+#define ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA (1u << 5)
+#define ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION (1u << 6)
+
+typedef struct IlyPlatformCapabilities {
+    uint32_t structSize;
+    uint32_t version;
+    uint32_t flags;
+    uint32_t reserved;
+} IlyPlatformCapabilities;
+
 
 typedef struct ResourceHandle {
     uint32_t index;

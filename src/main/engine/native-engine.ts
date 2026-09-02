@@ -126,6 +126,19 @@ export interface CameraCaptureDevice {
   symbolicLink: string
 }
 
+/** Backends available in the native build on this host. */
+export interface PlatformCapabilities {
+  version: number
+  flags: number
+  screenCapture: boolean
+  cameraCapture: boolean
+  sharedTextures: boolean
+  programExport: boolean
+  nativeAudio: boolean
+  virtualCamera: boolean
+  obsIntegration: boolean
+}
+
 export const SRGB_FULL_COLOR: ColorDescription = {
   primaries: ColorPrimaries.BT709,
   transfer: TransferFunction.SRGB,
@@ -286,6 +299,7 @@ export interface ProgramExportDuplicatedHandles {
 interface NativeAddon {
   initializeSystem(): number
   shutdownSystem(): void
+  getPlatformCapabilities(): PlatformCapabilities
   createEngine(config: EngineConfig): bigint
   destroyEngine(engine: bigint): number
   engineLoadTexture(engine: bigint, filePath: string): bigint
@@ -378,6 +392,11 @@ export function shutdownEngineSystem(): void {
   systemInitialized = false
 }
 
+/** Query native backend support without creating an engine instance. */
+export function getPlatformCapabilities(): PlatformCapabilities {
+  return loadAddon().getPlatformCapabilities()
+}
+
 /**
  * A single engine instance that renders a retained list of layers offscreen.
  */
@@ -404,6 +423,10 @@ export class NativeEngine {
 
   static listScreenCaptureDisplays(): ScreenCaptureDisplay[] {
     return loadAddon().listScreenCaptureDisplays()
+  }
+
+  static getPlatformCapabilities(): PlatformCapabilities {
+    return getPlatformCapabilities()
   }
 
   static listCameraCaptureDevices(): CameraCaptureDevice[] {

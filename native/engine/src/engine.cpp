@@ -87,6 +87,34 @@ ILY_API void IlyShutdownSystem(void) {
     g_SystemInitialized = false;
 }
 
+ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabilities) {
+    if (!outCapabilities || outCapabilities->structSize < sizeof(IlyPlatformCapabilities)) {
+        return ILY_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint32_t flags = ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO;
+#if defined(_WIN32)
+    // These backends currently use Windows graphics/media APIs. Keeping the
+    // declaration explicit prevents callers from attempting a partial Unix
+    // implementation and gives the UI a deterministic fallback path.
+    flags |= ILY_PLATFORM_CAPABILITY_SCREEN_CAPTURE |
+             ILY_PLATFORM_CAPABILITY_CAMERA_CAPTURE |
+             ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES |
+             ILY_PLATFORM_CAPABILITY_PROGRAM_EXPORT |
+             ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA |
+             ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION;
+#else
+    // The cross-platform renderer still works on Unix, but capture and shared
+    // GPU-handle integrations are not wired to native backends yet.
+    flags &= ~ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO;
+#endif
+
+    outCapabilities->version = ILY_PLATFORM_CAPABILITIES_VERSION;
+    outCapabilities->flags = flags;
+    outCapabilities->reserved = 0;
+    return ILY_SUCCESS;
+}
+
 ILY_API IlyResult IlyCreateEngine(const IlyEngineConfig* config, ResourceHandle* outEngineHandle) {
     if (!config || !outEngineHandle) {
         return ILY_ERROR_INVALID_ARGUMENT;

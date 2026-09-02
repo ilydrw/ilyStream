@@ -25,6 +25,7 @@ import {
   shutdownEngineSystem,
   type Layer,
   type OutputColorConfig,
+  type PlatformCapabilities,
   type ScreenCaptureDescription
 } from '../../engine/native-engine'
 import {
@@ -1065,8 +1066,24 @@ function startDesktopCapturerFallback(
 
 export function registerEngineHandlers(window: BrowserWindow, browserSourceService?: BrowserSourceService): void {
   browserSourceServiceRef = browserSourceService ?? null
+  ipcMain.handle('engine:capabilities', (): PlatformCapabilities | null => {
+    try {
+      return NativeEngine.getPlatformCapabilities()
+    } catch (error) {
+      process.stderr.write(`[engine] native capabilities unavailable: ${(error as Error).message}\n`)
+      return null
+    }
+  })
   ipcMain.handle('engine:preview:displays', () => getMappedCaptureDisplays())
-  ipcMain.handle('engine:capture:cameras', () => NativeEngine.listCameraCaptureDevices())
+  ipcMain.handle('engine:capture:cameras', () => {
+    try {
+      const capabilities = NativeEngine.getPlatformCapabilities()
+      if (!capabilities.cameraCapture) return []
+    } catch {
+      // Preserve the existing fallback behavior when the addon is unavailable.
+    }
+    return NativeEngine.listCameraCaptureDevices()
+  })
 
   ipcMain.handle(
     'engine:preview:start',

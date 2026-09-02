@@ -6,6 +6,24 @@
 #include <vector>
 #include <string>
 
+TEST_CASE("Platform capabilities are versioned and ABI-safe", "[platform]") {
+    REQUIRE(IlyGetPlatformCapabilities(nullptr) == ILY_ERROR_INVALID_ARGUMENT);
+
+    IlyPlatformCapabilities capabilities{};
+    capabilities.structSize = sizeof(capabilities);
+    REQUIRE(IlyGetPlatformCapabilities(&capabilities) == ILY_SUCCESS);
+    REQUIRE(capabilities.version == ILY_PLATFORM_CAPABILITIES_VERSION);
+    REQUIRE(capabilities.reserved == 0);
+
+#if defined(_WIN32)
+    REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SCREEN_CAPTURE) != 0);
+    REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_CAMERA_CAPTURE) != 0);
+    REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES) != 0);
+#else
+    REQUIRE(capabilities.flags == 0);
+#endif
+}
+
 TEST_CASE("Engine LifeCycle", "[engine]") {
     IlyResult res = IlyInitializeSystem();
     REQUIRE(res == ILY_SUCCESS);

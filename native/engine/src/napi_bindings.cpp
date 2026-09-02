@@ -54,6 +54,30 @@ static Napi::Value ShutdownSystem(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+static Napi::Value GetPlatformCapabilities(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    IlyPlatformCapabilities capabilities{};
+    capabilities.structSize = sizeof(IlyPlatformCapabilities);
+    const IlyResult result = IlyGetPlatformCapabilities(&capabilities);
+    if (result != ILY_SUCCESS) {
+        Napi::Error::New(env, "Unable to query native platform capabilities").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    const uint32_t flags = capabilities.flags;
+    Napi::Object output = Napi::Object::New(env);
+    output.Set("version", Napi::Number::New(env, capabilities.version));
+    output.Set("flags", Napi::Number::New(env, flags));
+    output.Set("screenCapture", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_SCREEN_CAPTURE) != 0));
+    output.Set("cameraCapture", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_CAMERA_CAPTURE) != 0));
+    output.Set("sharedTextures", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES) != 0));
+    output.Set("programExport", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_PROGRAM_EXPORT) != 0));
+    output.Set("nativeAudio", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO) != 0));
+    output.Set("virtualCamera", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA) != 0));
+    output.Set("obsIntegration", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION) != 0));
+    return output;
+}
+
 static Napi::Value CreateEngine(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1 || !info[0].IsObject()) {
@@ -1102,6 +1126,7 @@ static Napi::Value EngineDestroyTexture(const Napi::CallbackInfo& info) {
 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("initializeSystem", Napi::Function::New(env, InitSystem));
     exports.Set("shutdownSystem", Napi::Function::New(env, ShutdownSystem));
+    exports.Set("getPlatformCapabilities", Napi::Function::New(env, GetPlatformCapabilities));
     exports.Set("createEngine", Napi::Function::New(env, CreateEngine));
     exports.Set("destroyEngine", Napi::Function::New(env, DestroyEngine));
     exports.Set("engineUpdate", Napi::Function::New(env, EngineUpdate));

@@ -17,6 +17,14 @@ ILY_API IlyResult IlyInitializeSystem(void);
 ILY_API void IlyShutdownSystem(void);
 
 /**
+ * @brief Query the platform backends compiled into this native build.
+ *
+ * Set outCapabilities->structSize to sizeof(IlyPlatformCapabilities) before
+ * calling. The function does not require the engine system to be initialized.
+ */
+ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabilities);
+
+/**
  * @brief Create an engine instance.
  * @param config Configuration options for the engine.
  * @param outEngineHandle Pointer to receive the created engine handle.
