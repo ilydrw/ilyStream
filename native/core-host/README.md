@@ -48,8 +48,8 @@ The v4 mixer transport accepts up to 64 authenticated, current-user-only source
 rings. Source zero drives the block clock; late secondary sources contribute
 silence and increment bounded underrun telemetry. The native worker applies
 gain, pan, and mono/stereo policy and publishes the result to a randomized,
-host-owned Program ring. This route remains a shadow transport until per-track
-AudioWorklet taps and master-DSP parity are complete.
+host-owned Program ring. Per-track AudioWorklet taps now feed this shadow
+transport; live-device soak validation and master-DSP parity remain pending.
 
 Set `ILYSTREAM_NATIVE_MIXER_AUDIO_SHADOW=1` together with
 `ILYSTREAM_NATIVE_CORE_HOST=1` to attach post-policy per-track AudioWorklet taps
@@ -58,6 +58,31 @@ native Program blocks using a bounded eight-block queue and `1e-4` sample
 tolerance. The encoder remains connected to the established renderer output.
 Audio shadow mode is disabled when `ILY_NATIVE_AUDIO=1` because both migration
 routes currently share the temporary single-reader N-API adapter.
+
+## Health Center and soak evidence
+
+Health Center's **Native mixer validation** panel reads a path-free, credential-free
+snapshot. Diagnostic calls are coalesced and cached for one second; each host
+health/transport request times out after two seconds. The page polls without
+overlapping requests and stops polling on unmount.
+
+The panel includes PCM comparisons, maximum sample error, rejected blocks/configs,
+dropped comparisons, source underruns, skipped source frames, and policy results.
+Audio counters reset for each new source configuration/session (not identical
+configuration requests); policy counters span the app lifetime. Unknown transport
+values display as unknown rather than zero. **Matching so far** is provisional:
+it requires recent comparison progress and a running transport, not merely zero
+mismatches. Copy report includes the diagnostic snapshot and collection timestamp.
+
+For a manual soak, use the two shadow flags above with `ILY_NATIVE_AUDIO` unset,
+start a local 48 kHz recording, and exercise source changes, mute/solo, scene
+transitions, and start/stop cycles. Check Health Center and copy reports throughout
+the run. A session with any gaps, rejections, mismatches, missing diagnostics, or
+stalled comparison progress is not clean evidence. Do not use a live audience
+for this test. A clean run does not approve encoder cutover: master DSP and limiter
+parity must still be implemented and verified.
+
+## Separate device-only capture experiment
 
 Device capture still bypasses scene mixer policy such as source faders, mute,
 solo, and effects. Testing the end-to-end route therefore requires all three

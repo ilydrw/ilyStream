@@ -2,6 +2,7 @@ import { Duplex } from 'stream'
 import { describe, expect, it, vi } from 'vitest'
 import {
   JsonLineRpcClient,
+  parseNativeMixerTransportStatus,
   parseNativeMixerProgramTransport,
   parseSharedCaptureTransport
 } from './native-core-host-client'
@@ -30,6 +31,26 @@ class FakeSocket extends Duplex {
 }
 
 describe('JsonLineRpcClient', () => {
+  it('expires diagnostic reads, ignores late responses, and clears completed timers', async () => {
+    vi.useFakeTimers()
+    const socket = new FakeSocket()
+    const client = new JsonLineRpcClient(socket as any)
+    try {
+      const pending = client.request('health', {}, {}, 2_000)
+      const rejected = expect(pending).rejects.toThrow('timed out')
+      await vi.advanceTimersByTimeAsync(2_000)
+      await rejected
+      socket.respond({ id: 1, ok: true, result: 'late' })
+      const fresh = client.request('health', {}, {}, 2_000)
+      socket.respond({ id: 2, ok: true, result: 'fresh' })
+      await expect(fresh).resolves.toBe('fresh')
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      client.destroy()
+      vi.useRealTimers()
+    }
+  })
+
   it('correlates split responses with their requests', async () => {
     const socket = new FakeSocket()
     const client = new JsonLineRpcClient(socket as any)
@@ -47,6 +68,17 @@ describe('JsonLineRpcClient', () => {
     socket.respond({ id: request.id, ok: false, error: 'denied' })
     await expect(pending).rejects.toThrow('denied')
     await expect(client.request('large', { value: 'x'.repeat(70_000) })).rejects.toThrow('too large')
+  })
+})
+
+describe('parseNativeMixerTransportStatus', () => {
+  const valid = { running: true, blocksMixed: 2, framesMixed: 2048, sourceUnderruns: 0, sourceFramesSkipped: 0 }
+  it('keeps only transport counters and rejects invalid telemetry', () => {
+    expect(parseNativeMixerTransportStatus({ ...valid, ringName: 'private' })).toEqual(valid)
+    for (const value of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '2']) {
+      expect(() => parseNativeMixerTransportStatus({ ...valid, sourceUnderruns: value })).toThrow('Invalid')
+    }
+    expect(() => parseNativeMixerTransportStatus({ ...valid, running: 'true' })).toThrow('Invalid')
   })
 })
 

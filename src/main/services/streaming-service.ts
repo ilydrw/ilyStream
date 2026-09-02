@@ -16,6 +16,7 @@ import { FFmpegArgsBuilder } from './streaming/ffmpeg-args'
 import { StreamSession, type StreamSessionConfig } from './streaming/stream-session'
 import { MediaPumper } from './streaming/media-pumper'
 import { NativeAudioSource, type NativeAudioHost } from '../audio/native-audio-source'
+import type { NativeCoreDiagnostics } from '../../shared/native-core-diagnostics'
 import { FFmpegProcessManager } from './streaming/ffmpeg-process-manager'
 import { AdaptiveBitrateController, type EncoderHealthSample } from './streaming/adaptive-bitrate'
 import { StreamIncidentLog } from './streaming/stream-incident-log'
@@ -61,6 +62,7 @@ interface OutputRuntime {
 }
 
 interface NativeMixerShadowHost {
+  getDiagnostics(): Promise<NativeCoreDiagnostics>
   evaluateMixerShadow(value: unknown): void
   configureMixerAudioShadow(value: unknown): Promise<{ active: boolean; error?: string }>
   pushMixerAudioShadowSource(value: unknown): void
@@ -418,6 +420,10 @@ export class StreamingService extends EventEmitter {
 
   public stopNativeMixerAudioShadow(): Promise<void> {
     return this.nativeMixerShadowHost?.stopMixerAudioShadow() ?? Promise.resolve()
+  }
+
+  public getNativeCoreDiagnostics(): Promise<NativeCoreDiagnostics | null> {
+    return this.nativeMixerShadowHost?.getDiagnostics() ?? Promise.resolve(null)
   }
 
   /**

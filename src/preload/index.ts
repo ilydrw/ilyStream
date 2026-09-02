@@ -21,6 +21,7 @@ import type { KokoroSynthesisRequest } from '../shared/kokoro-worker'
 import type { SegmentationFrame, SegmentationMask } from '../shared/segmentation-worker'
 import type { DiscordCallState } from '../shared/discord-call'
 import type { NativeMixerShadowSnapshot } from '../shared/native-mixer-shadow'
+import type { NativeCoreDiagnostics } from '../shared/native-core-diagnostics'
 import type {
   NativeMixerAudioReferenceFrame,
   NativeMixerAudioShadowConfig,
@@ -682,6 +683,8 @@ const api = {
     feedNativeMixerReference: (frame: NativeMixerAudioReferenceFrame) =>
       ipcRenderer.send('streaming:feed-native-mixer-reference', frame),
     stopNativeMixerAudioShadow: () => ipcRenderer.invoke('streaming:stop-native-mixer-audio-shadow'),
+    getNativeCoreDiagnostics: (): Promise<NativeCoreDiagnostics | null> =>
+      ipcRenderer.invoke('streaming:get-native-core-diagnostics'),
     feedGeneratedAudio: (audioData: Uint8Array | AudioFramePayload) =>
       ipcRenderer.send('streaming:feed-generated-audio', audioData)
   },

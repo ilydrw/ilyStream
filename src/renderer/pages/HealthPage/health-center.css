@@ -1,3 +1,12 @@
+.health-native-detail { color: var(--text-muted, #a1a1aa); font-size: 13px; line-height: 1.6; }
+.health-native-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin: 20px 0; }
+.health-native-metrics dt { color: var(--text-muted, #a1a1aa); font-size: 12px; }
+.health-native-metrics dd { margin: 4px 0 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.health-native-setup { margin-top: 16px; font-size: 13px; line-height: 1.6; }
+.health-native-setup summary { cursor: pointer; }
+.health-native-setup p { margin-top: 12px; }
+.health-native-setup pre { overflow-x: auto; padding: 12px; background: rgba(0, 0, 0, .2); border-radius: 8px; }
+
 .health-center-page {
   width: min(100%, 1340px) !important;
   max-width: 1340px !important;

@@ -32,6 +32,9 @@ import {
   type PlatformHealthTone
 } from '../../lib/health-center'
 import './health-center.css'
+import { NativeCoreHealth } from './NativeCoreHealth'
+import { pollNativeCoreDiagnostics } from '../../lib/native-core-health'
+import type { NativeCoreDiagnostics } from '../../../shared/native-core-diagnostics'
 
 const toneChipClass: Record<PlatformHealthTone, string> = {
   ready: 'is-good',
@@ -239,6 +242,7 @@ export default function HealthPage() {
   const [capabilities, setCapabilities] = useState<Partial<Record<Platform, PlatformChatCapability>>>({})
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState('')
+  const [nativeCore, setNativeCore] = useState<NativeCoreDiagnostics | null>(null)
   const [activeCheck, setActiveCheck] = useState<ActiveHealthCheck | null>(null)
 
   const refresh = async () => {
@@ -261,6 +265,10 @@ export default function HealthPage() {
   useEffect(() => {
     void refresh()
   }, [])
+
+  useEffect(() => pollNativeCoreDiagnostics(
+    () => window.api.streaming.getNativeCoreDiagnostics(), setNativeCore
+  ), [])
 
   const rows = useMemo(() => {
     return buildPlatformHealthRows({
@@ -326,7 +334,8 @@ export default function HealthPage() {
       viewerCounts,
       recentEvents,
       configs,
-      capabilities
+      capabilities,
+      nativeCore
     })
     await window.api.system.copyToClipboard(report)
     setNotice('Diagnostic report copied.')
@@ -518,6 +527,8 @@ export default function HealthPage() {
           {notice}
         </div>
       )}
+
+      <NativeCoreHealth snapshot={nativeCore} />
 
       <div className="health-workspace">
         <section className="app-section-card glass health-platform-section">

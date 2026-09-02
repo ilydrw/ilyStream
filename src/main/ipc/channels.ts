@@ -17,6 +17,7 @@ import { TriggerRule } from '../triggers/trigger-types'
 import { AppSettings, AppSettingKey } from '../../shared/app-settings'
 import type { WindowsSettingsTarget } from '../system/windows-settings'
 import type { OverlayRuntimeStatus } from '../../shared/overlay'
+import type { NativeCoreDiagnostics } from '../../shared/native-core-diagnostics'
 import type { OBSRuntimeStatus } from '../../shared/obs'
 import type {
   OBSWorkspaceAccess,
@@ -131,6 +132,7 @@ export interface IpcInvokeChannels {
   'stream-info:get-presets': () => Promise<StreamInfoPreset[]>
   'stream-info:set-presets': (presets: StreamInfoPreset[]) => Promise<void>
   'event:simulate': (payload: EventLabSimulationPayload) => Promise<AnyStreamEvent>
+  'streaming:get-native-core-diagnostics': () => Promise<NativeCoreDiagnostics | null>
 
   // TTS controls
   'tts:skip': () => void

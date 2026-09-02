@@ -25,6 +25,7 @@ interface RpcResponse {
 interface PendingRequest {
   resolve(value: unknown): void
   reject(error: Error): void
+  timer?: ReturnType<typeof setTimeout>
 }
 
 /** Newline-delimited request correlation shared by the host lifecycle and tests. */
@@ -40,7 +41,7 @@ export class JsonLineRpcClient {
     socket.on('error', (error: Error) => this.close(error))
   }
 
-  request(method: string, params: unknown = {}, metadata: Record<string, unknown> = {}): Promise<unknown> {
+  request(method: string, params: unknown = {}, metadata: Record<string, unknown> = {}, timeoutMs?: number): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('Native core host connection is closed'))
     const id = this.nextId++
     const payload = JSON.stringify({ id, method, params, ...metadata })
@@ -48,9 +49,17 @@ export class JsonLineRpcClient {
       return Promise.reject(new Error('Native core host request is too large'))
     }
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
+      const pending: PendingRequest = { resolve, reject }
+      if (timeoutMs !== undefined) {
+        pending.timer = setTimeout(() => {
+          this.pending.delete(id)
+          reject(new Error('Native core host request timed out'))
+        }, timeoutMs)
+      }
+      this.pending.set(id, pending)
       this.socket.write(`${payload}\n`, (error?: Error | null) => {
         if (!error) return
+        clearTimeout(pending.timer)
         this.pending.delete(id)
         reject(error)
       })
@@ -90,6 +99,7 @@ export class JsonLineRpcClient {
     const pending = this.pending.get(response.id!)
     if (!pending) return
     this.pending.delete(response.id!)
+    clearTimeout(pending.timer)
     if (response.ok) pending.resolve(response.result)
     else pending.reject(new Error(response.error || 'Native core host request failed'))
   }
@@ -97,7 +107,10 @@ export class JsonLineRpcClient {
   private close(error: Error): void {
     if (this.closed) return
     this.closed = true
-    for (const request of this.pending.values()) request.reject(error)
+    for (const request of this.pending.values()) {
+      clearTimeout(request.timer)
+      request.reject(error)
+    }
     this.pending.clear()
   }
 }
@@ -175,7 +188,7 @@ export class NativeCoreHostClient {
   }
 
   health(): Promise<NativeCoreHostHealth> {
-    return this.rpc.request('health') as Promise<NativeCoreHostHealth>
+    return this.rpc.request('health', {}, {}, 2_000) as Promise<NativeCoreHostHealth>
   }
 
   initializeEngine(): Promise<{ initialized: boolean }> {
@@ -213,8 +226,8 @@ export class NativeCoreHostClient {
     return parseNativeMixerProgramTransport(await this.rpc.request('mixer.startTransport', { sources }))
   }
 
-  mixerTransportStatus(): Promise<NativeMixerTransportStatus> {
-    return this.rpc.request('mixer.transportStatus') as Promise<NativeMixerTransportStatus>
+  async mixerTransportStatus(): Promise<NativeMixerTransportStatus> {
+    return parseNativeMixerTransportStatus(await this.rpc.request('mixer.transportStatus', {}, {}, 2_000))
   }
 
   stopMixerTransport(): Promise<NativeMixerTransportStatus> {
@@ -228,6 +241,22 @@ export class NativeCoreHostClient {
     this.rpc.destroy()
     await waitForExit(this.process, 2_000)
     if (this.process.exitCode === null) this.process.kill()
+  }
+}
+
+export function parseNativeMixerTransportStatus(value: unknown): NativeMixerTransportStatus {
+  if (!value || typeof value !== 'object') throw new Error('Invalid native mixer transport status')
+  const status = value as Record<string, unknown>
+  const counters = ['blocksMixed', 'framesMixed', 'sourceUnderruns', 'sourceFramesSkipped'] as const
+  if (typeof status.running !== 'boolean' || counters.some(key =>
+    !Number.isSafeInteger(status[key]) || (status[key] as number) < 0
+  )) throw new Error('Invalid native mixer transport status')
+  return {
+    running: status.running,
+    blocksMixed: status.blocksMixed as number,
+    framesMixed: status.framesMixed as number,
+    sourceUnderruns: status.sourceUnderruns as number,
+    sourceFramesSkipped: status.sourceFramesSkipped as number
   }
 }
 

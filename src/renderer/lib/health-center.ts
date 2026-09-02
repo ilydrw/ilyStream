@@ -5,6 +5,7 @@ import type {
   PlatformChatCapability
 } from '../../main/platforms/types'
 import type { PlatformEventDiagnostic, ReconnectInfo } from '../stores/connection-store'
+import type { NativeCoreDiagnostics } from '../../shared/native-core-diagnostics'
 
 export const HEALTH_PLATFORMS = ['tiktok', 'twitch', 'youtube', 'kick'] as const
 
@@ -45,6 +46,7 @@ export interface PlatformHealthRow {
 }
 
 export interface BuildPlatformHealthInput {
+  nativeCore?: NativeCoreDiagnostics | null
   statuses?: Partial<Record<Platform, ConnectionStatus>>
   errors?: Partial<Record<Platform, string | null>>
   reconnectInfo?: Partial<Record<Platform, ReconnectInfo | null>>
@@ -225,6 +227,7 @@ export function createHealthDiagnosticReport(input: BuildPlatformHealthInput): s
   const report = {
     generatedAt: new Date(now).toISOString(),
     app: 'ilyStream',
+    nativeCore: input.nativeCore ?? null,
     platforms: rows.map((row) => ({
       platform: row.platform,
       status: row.status,

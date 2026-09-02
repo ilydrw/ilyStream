@@ -27,6 +27,10 @@ export function registerStreamingHandlers(streamingService: StreamingService, vi
     return streamingService.getStreamStatus()
   })
 
+  ipcMain.handle('streaming:get-native-core-diagnostics', () => {
+    return streamingService.getNativeCoreDiagnostics()
+  })
+
   ipcMain.handle('streaming:get-outputs', () => {
     return streamingService.getOutputsStatus()
   })

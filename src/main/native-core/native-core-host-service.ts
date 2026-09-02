@@ -1,4 +1,5 @@
 import { NativeCoreHostClient, type NativeCoreHostHealth } from './native-core-host-client'
+import type { NativeCoreDiagnostics, NativeMixerTransportDiagnostics } from '../../shared/native-core-diagnostics'
 import {
   closeSharedMixerSourceWriter,
   createSharedMixerSourceWriter,
@@ -55,6 +56,8 @@ export interface NativeMixerAudioShadowTelemetry {
   droppedComparisons: number
   maxError: number
   lastError: string | null
+  startedAt: number | null
+  lastComparedAt: number | null
 }
 
 /** Opt-in lifecycle wrapper; the established N-API path remains authoritative. */
@@ -85,7 +88,9 @@ export class NativeCoreHostService {
       rejected: 0,
       droppedComparisons: 0,
       maxError: 0,
-      lastError: null
+      lastError: null,
+      startedAt: null,
+      lastComparedAt: null
     }
   }
   private mixerShadowInFlight = false
@@ -95,6 +100,9 @@ export class NativeCoreHostService {
   private expectedMixerBlocks: Float32Array[] = []
   private actualMixerBlocks: Float32Array[] = []
   private mixerAudioOperation: Promise<void> = Promise.resolve()
+  private mixerAudioEpoch = 0
+  private diagnosticsInFlight: Promise<NativeCoreDiagnostics> | null = null
+  private diagnosticsCache: NativeCoreDiagnostics | null = null
 
   async initialize(): Promise<NativeCoreHostStatus> {
     if (!this.status.enabled || this.client) return this.getStatus()
@@ -123,6 +131,73 @@ export class NativeCoreHostService {
 
   getStatus(): NativeCoreHostStatus {
     return structuredClone(this.status)
+  }
+
+  async getDiagnostics(): Promise<NativeCoreDiagnostics> {
+    // All windows share one bounded read; repeated IPC calls cannot flood the host.
+    if (this.diagnosticsInFlight) return structuredClone(await this.diagnosticsInFlight)
+    if (this.diagnosticsCache && Date.now() - this.diagnosticsCache.sampledAt < 1_000) {
+      return structuredClone(this.diagnosticsCache)
+    }
+    const operation = this.collectDiagnostics()
+    this.diagnosticsInFlight = operation
+    try {
+      this.diagnosticsCache = await operation
+      return structuredClone(this.diagnosticsCache)
+    } finally {
+      this.diagnosticsInFlight = null
+    }
+  }
+
+  private async collectDiagnostics(): Promise<NativeCoreDiagnostics> {
+    const client = this.client
+    const epoch = this.mixerAudioEpoch
+    let running = false
+    let transport: NativeMixerTransportDiagnostics | null = null
+    let collectionError: NativeCoreDiagnostics['collectionError'] = null
+    if (client && this.status.running) {
+      try {
+        await client.health()
+        running = true
+      } catch {
+        collectionError = 'host-unavailable'
+      }
+      if (running && this.status.mixerAudioShadow.active) {
+        try {
+          transport = await client.mixerTransportStatus()
+        } catch {
+          collectionError = 'transport-unavailable'
+        }
+      }
+    }
+    if (epoch !== this.mixerAudioEpoch || client !== this.client) {
+      collectionError = 'session-changed'
+      transport = null
+      running = client === this.client && running
+    }
+    const { mixerShadow: policy, mixerAudioShadow: audio } = this.status
+    return {
+      sampledAt: Date.now(),
+      mixerOutput: 'shadow-only',
+      host: { enabled: this.status.enabled, running, failed: !!this.status.lastError },
+      collectionError,
+      disabledReason: !this.status.enabled ? 'host-disabled'
+        : process.env.ILY_NATIVE_AUDIO === '1' ? 'capture-conflict'
+          : !audio.enabled ? 'audio-disabled' : null,
+      policy: {
+        evaluated: policy.evaluated, mismatches: policy.mismatches,
+        rejected: policy.rejected, coalesced: policy.coalesced
+      },
+      audio: {
+        enabled: audio.enabled, active: audio.active, failed: !!audio.lastError,
+        startedAt: audio.startedAt, lastComparedAt: audio.lastComparedAt,
+        sourceCount: audio.sourceCount, sourceFrames: audio.sourceFrames,
+        nativeFrames: audio.nativeFrames, comparedBlocks: audio.comparedBlocks,
+        mismatches: audio.mismatches, rejected: audio.rejected,
+        droppedComparisons: audio.droppedComparisons, maxError: audio.maxError
+      },
+      transport
+    }
   }
 
   get audioCaptureAvailable(): boolean {
@@ -210,9 +285,13 @@ export class NativeCoreHostService {
         chunkFrames: output.blockFrames
       }, frame => this.onNativeMixerAudio(frame.pcm))
       this.mixerAudioConfigKey = key
-      this.status.mixerAudioShadow.active = true
-      this.status.mixerAudioShadow.sourceCount = sources.length
-      this.status.mixerAudioShadow.lastError = null
+      this.status.mixerAudioShadow = {
+        enabled: true, active: true, sourceCount: sources.length,
+        sourceFrames: 0, nativeFrames: 0, comparedBlocks: 0, mismatches: 0,
+        rejected: 0, droppedComparisons: 0, maxError: 0, lastError: null,
+        startedAt: Date.now(), lastComparedAt: null
+      }
+      this.diagnosticsCache = null
       return { active: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -254,6 +333,8 @@ export class NativeCoreHostService {
   }
 
   private async stopMixerAudioShadowImpl(): Promise<void> {
+    this.mixerAudioEpoch++
+    this.diagnosticsCache = null
     if (this.status.mixerAudioShadow.active) stopSharedCaptureReader()
     await this.client?.stopMixerTransport().catch(() => undefined)
     for (const ringName of this.mixerSourceRings.values()) closeSharedMixerSourceWriter(ringName)
@@ -294,6 +375,7 @@ export class NativeCoreHostService {
         maxError = Math.max(maxError, Math.abs(expected[index] - actual[index]))
       }
       this.status.mixerAudioShadow.comparedBlocks++
+      this.status.mixerAudioShadow.lastComparedAt = Date.now()
       this.status.mixerAudioShadow.maxError = Math.max(this.status.mixerAudioShadow.maxError, maxError)
       if (maxError > 1e-4) {
         this.status.mixerAudioShadow.mismatches++
