@@ -6,7 +6,9 @@ import { build } from 'electron-builder'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const platform = process.env.ILY_PACKAGE_PLATFORM || process.platform
+// Packaging is intentionally native to the runner. Cross-compiling Electron
+// plus native capture backends from another OS is not supported by this flow.
+const platform = process.platform
 const publish = process.argv.includes('--publish')
 
 if (!['win32', 'darwin', 'linux'].includes(platform)) {
