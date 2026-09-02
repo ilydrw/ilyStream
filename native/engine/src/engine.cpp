@@ -111,7 +111,8 @@ ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabil
     flags |= ILY_PLATFORM_CAPABILITY_SECURE_STORE;
 #elif defined(__linux__)
     // Linux uses an optional runtime-loaded Secret Service backend. The N-API
-    // layer clears this bit when libsecret or a running keyring is unavailable.
+    // layer clears this bit when libsecret is unavailable; individual store
+    // operations still fall back safely if no keyring service is running.
     flags |= ILY_PLATFORM_CAPABILITY_SECURE_STORE;
 #else
     // Other Unix targets keep the portable renderer but have no native
