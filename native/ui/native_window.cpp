@@ -117,6 +117,9 @@ bool RunNativeWindow(const UiState&, std::string& error) {
 
     ShowWindow(window, SW_SHOW);
     UpdateWindow(window);
+    BringWindowToTop(window);
+    SetForegroundWindow(window);
+    SetFocus(window);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
         TranslateMessage(&message);

@@ -24,7 +24,7 @@ export function resolveNativeUiExecutable(): string | null {
 }
 
 /** Launch the standalone OS-native UI pilot, reusing an existing instance. */
-export function launchNativeUiPilot(): { launched: boolean; error?: string } {
+export async function launchNativeUiPilot(): Promise<{ launched: boolean; error?: string }> {
   if (nativeUiProcess && nativeUiProcess.exitCode === null && !nativeUiProcess.killed) {
     nativeUiProcess.unref()
     return { launched: true }
@@ -47,7 +47,25 @@ export function launchNativeUiPilot(): { launched: boolean; error?: string } {
     nativeUiProcess.once('error', () => {
       nativeUiProcess = null
     })
-    return { launched: true }
+    return await new Promise((resolve) => {
+      let settled = false
+      const finish = (result: { launched: boolean; error?: string }) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+      nativeUiProcess?.once('error', (error) => {
+        nativeUiProcess = null
+        finish({ launched: false, error: error.message })
+      })
+      nativeUiProcess?.once('exit', (code, signal) => {
+        nativeUiProcess = null
+        finish({ launched: false, error: `Native UI exited during startup (${code ?? signal ?? 'unknown'})` })
+      })
+      setTimeout(() => {
+        if (nativeUiProcess && nativeUiProcess.exitCode === null) finish({ launched: true })
+      }, 250)
+    })
   } catch (error) {
     nativeUiProcess = null
     return { launched: false, error: error instanceof Error ? error.message : String(error) }
