@@ -188,7 +188,12 @@ export interface IpcInvokeChannels {
   'window:minimize': () => void
   'window:maximize': () => void
   'window:close': () => void
-  'system:open-native-ui': () => Promise<{ launched: boolean; error?: string }>
+  'system:open-native-ui': (options?: {
+    connectedServices?: number
+    readyServices?: number
+    needsReview?: number
+    realTraffic?: number
+  }) => Promise<{ launched: boolean; error?: string }>
   'system:copy-to-clipboard': (text: string) => boolean
   'system:open-windows-settings': (target: WindowsSettingsTarget) => Promise<void>
   'system:get-resource-usage': () => Promise<{ cpuPercent: number; memoryMB: number; processCount: number }>

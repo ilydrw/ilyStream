@@ -22,7 +22,7 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
     }
   })
   secureHandle(window, 'window:close', () => window.hide())
-  secureHandle(window, 'system:open-native-ui', () => launchNativeUiPilot())
+  secureHandle(window, 'system:open-native-ui', (_event, options) => launchNativeUiPilot(options))
   secureHandle(window, 'system:install-update', () => installUpdate())
   secureHandle(window, 'system:check-for-updates', () => checkForUpdatesNow())
   secureHandle(window, 'system:copy-to-clipboard', (_event, text: string) => {

@@ -5,6 +5,13 @@ import { spawn, type ChildProcess } from 'child_process'
 
 let nativeUiProcess: ChildProcess | null = null
 
+export interface NativeUiLaunchOptions {
+  connectedServices?: number
+  readyServices?: number
+  needsReview?: number
+  realTraffic?: number
+}
+
 function nativeUiFileName(): string {
   return process.platform === 'win32' ? 'ilystream_native_ui.exe' : 'ilystream_native_ui'
 }
@@ -24,7 +31,9 @@ export function resolveNativeUiExecutable(): string | null {
 }
 
 /** Launch the standalone OS-native UI pilot, reusing an existing instance. */
-export async function launchNativeUiPilot(): Promise<{ launched: boolean; error?: string }> {
+export async function launchNativeUiPilot(
+  options: NativeUiLaunchOptions = {}
+): Promise<{ launched: boolean; error?: string }> {
   if (nativeUiProcess && nativeUiProcess.exitCode === null && !nativeUiProcess.killed) {
     nativeUiProcess.unref()
     return { launched: true }
@@ -36,7 +45,15 @@ export async function launchNativeUiPilot(): Promise<{ launched: boolean; error?
   }
 
   try {
-    nativeUiProcess = spawn(executable, [], {
+    const args = [
+      ['connected', options.connectedServices],
+      ['ready', options.readyServices],
+      ['review', options.needsReview],
+      ['traffic', options.realTraffic]
+    ]
+      .filter((entry): entry is [string, number] => Number.isFinite(entry[1]))
+      .map(([key, value]) => `--${key}=${Math.max(0, Math.min(1000, Math.floor(value)))}`)
+    nativeUiProcess = spawn(executable, args, {
       detached: false,
       stdio: 'ignore',
       windowsHide: true

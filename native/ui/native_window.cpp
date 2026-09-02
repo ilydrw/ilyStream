@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <string>
+#include <cwchar>
 
 namespace {
 
@@ -19,6 +20,8 @@ std::wstring Widen(const char* value) {
     MultiByteToWideChar(CP_UTF8, 0, value, -1, result.data(), length);
     return result;
 }
+
+const ily::ui::UiState* g_state = nullptr;
 
 void DrawHealthCenter(HWND window, HDC dc) {
     RECT bounds{};
@@ -51,11 +54,17 @@ void DrawHealthCenter(HWND window, HDC dc) {
 
     SetTextColor(dc, RGB(210, 215, 225));
     RECT details = {32, 205, bounds.right - 32, 300};
-    DrawTextW(dc,
-              L"Health Center rendering is now owned by C++ on Windows.\n"
-              L"The same UI state contract is shared with macOS and Linux.\n\n"
-              L"Close this window to return to the Electron renderer.",
-              -1, &details, DT_LEFT | DT_WORDBREAK);
+    wchar_t summary[256]{};
+    const auto* state = g_state;
+    swprintf_s(summary, L"Connected %u   Ready %u   Needs review %u   Real traffic %u\n\n"
+                        L"Health Center rendering is now owned by C++ on Windows.\n"
+                        L"The same UI state contract is shared with macOS and Linux.\n\n"
+                        L"Close this window to return to the Electron renderer.",
+                state ? state->connectedServices : 0,
+                state ? state->readyServices : 0,
+                state ? state->needsReview : 0,
+                state ? state->realTraffic : 0);
+    DrawTextW(dc, summary, -1, &details, DT_LEFT | DT_WORDBREAK);
 
     DeleteObject(titleFont);
     DeleteObject(bodyFont);
@@ -93,7 +102,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 namespace ily::ui {
 
-bool RunNativeWindow(const UiState&, std::string& error) {
+bool RunNativeWindow(const UiState& initialState, std::string& error) {
+    g_state = &initialState;
     const HINSTANCE instance = GetModuleHandleW(nullptr);
     WNDCLASSW windowClass{};
     windowClass.hInstance = instance;

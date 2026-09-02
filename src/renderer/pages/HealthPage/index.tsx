@@ -343,7 +343,12 @@ export default function HealthPage() {
   }
 
   const openNativeUi = async () => {
-    const result = await window.api.system.openNativeUi()
+    const result = await window.api.system.openNativeUi({
+      connectedServices: connectedCount,
+      readyServices: readyCount,
+      needsReview: warningCount + blockedCount,
+      realTraffic: liveEventCount
+    })
     setNotice(result.launched
       ? 'Native Health Center opened in a platform window.'
       : (result.error || 'Could not open the native Health Center.'))

@@ -561,7 +561,12 @@ const api = {
       ipcRenderer.invoke('system:copy-to-clipboard', text),
     installUpdate: () => ipcRenderer.invoke('system:install-update'),
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
-    openNativeUi: () => ipcRenderer.invoke('system:open-native-ui') as Promise<{
+    openNativeUi: (options?: {
+      connectedServices?: number
+      readyServices?: number
+      needsReview?: number
+      realTraffic?: number
+    }) => ipcRenderer.invoke('system:open-native-ui', options) as Promise<{
       launched: boolean
       error?: string
     }>,

@@ -29,6 +29,10 @@ struct UiState {
     bool refreshRequested = false;
     std::string audioBackend = "auto";
     std::string statusMessage;
+    std::uint32_t connectedServices = 0;
+    std::uint32_t readyServices = 0;
+    std::uint32_t needsReview = 0;
+    std::uint32_t realTraffic = 0;
     std::uint64_t revision = 0;
 };
 
