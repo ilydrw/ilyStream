@@ -44,6 +44,10 @@ renderer safety defaults (0.82 headroom and a -1 dB soft limiter). The
 transport leaves it disabled until parity evidence is complete; this keeps the
 renderer output authoritative while the native stage is exercised in tests and
 controlled soak runs.
+The `mixer.startTransport` request may include an optional `masterDsp` object
+for those runs. Its fields are strictly bounded, unknown fields are rejected,
+and the host only accepts the fixed 48 kHz transport rate. Omitting the object
+keeps the stage disabled.
 The Electron renderer remains the live Program producer for now; it sends
 policy snapshots at no more than 10 Hz during transitions and compares the
 native decisions in shadow mode. Snapshots are coalesced while a request is in

@@ -120,7 +120,11 @@ async function main() {
       gain: 0.5,
       pan: 0,
       mono: false
-    }]
+    }],
+    // Exercise the explicit native master stage without changing the
+    // renderer-authoritative production path. Ratio 1 keeps this assertion
+    // deterministic: source gain (0.5) * headroom (0.5) * input (0.25).
+    masterDsp: { headroom: 0.5, ratio: 1 }
   })
   const nativeMixedFrame = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timed out waiting for native mixed Program PCM')), 5000)
@@ -148,7 +152,7 @@ async function main() {
   addon.closeSharedMixerSourceWriter(sourceRing)
   if (
     !(mixedPayload.pcm instanceof Float32Array) || mixedPayload.pcm.length !== 2048 ||
-    Math.abs(mixedPayload.pcm[0] - 0.125) > 1e-5 || mixerTransportStatus.blocksMixed < 1
+    Math.abs(mixedPayload.pcm[0] - 0.0625) > 1e-5 || mixerTransportStatus.blocksMixed < 1
   ) throw new Error('Native mixer transport returned invalid Program PCM')
   const transport = await request(socket, 'audio.startCapture', {
     sampleRate: 48000,

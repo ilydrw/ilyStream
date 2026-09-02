@@ -129,6 +129,16 @@ export interface NativeMixerTransportSourceDescriptor {
   mono: boolean
 }
 
+export interface NativeMasterDspConfig {
+  headroom?: number
+  thresholdDb?: number
+  kneeDb?: number
+  ratio?: number
+  attackSeconds?: number
+  releaseSeconds?: number
+  sampleRate?: 48_000
+}
+
 export interface NativeMixerProgramTransport {
   transport: 'shared-memory-v1'
   format: 'f32-interleaved'
@@ -221,9 +231,13 @@ export class NativeCoreHostClient {
   }
 
   async startMixerTransport(
-    sources: NativeMixerTransportSourceDescriptor[]
+    sources: NativeMixerTransportSourceDescriptor[],
+    masterDsp?: NativeMasterDspConfig
   ): Promise<NativeMixerProgramTransport> {
-    return parseNativeMixerProgramTransport(await this.rpc.request('mixer.startTransport', { sources }))
+    return parseNativeMixerProgramTransport(await this.rpc.request('mixer.startTransport', {
+      sources,
+      ...(masterDsp ? { masterDsp } : {})
+    }))
   }
 
   async mixerTransportStatus(): Promise<NativeMixerTransportStatus> {
