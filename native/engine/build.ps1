@@ -115,6 +115,7 @@ if (-not $SkipTests) {
   Invoke-EngineTest -Name "Core host protocol tests" -ExePath (Join-Path $buildDir "$Configuration\core_host_protocol_test.exe")
   Invoke-EngineTest -Name "Audio core tests" -ExePath (Join-Path $buildDir "$Configuration\audio_capture_core_test.exe")
   Invoke-EngineTest -Name "Program mixer core tests" -ExePath (Join-Path $buildDir "$Configuration\program_mixer_core_test.exe")
+  Invoke-EngineTest -Name "Master DSP tests" -ExePath (Join-Path $buildDir "$Configuration\master_dsp_test.exe")
   Invoke-EngineTest -Name "Program mixer transport tests" -ExePath (Join-Path $buildDir "$Configuration\program_mixer_transport_test.exe")
 }
 

@@ -39,6 +39,11 @@ metadata. The host independently validates all IDs, enums, flags, and numeric
 ranges, then evaluates mute, monitoring, Solo, scene ownership, fade gain, and
 fader gain. The same dependency-free C++ mixer also implements bounded stereo
 mixing, pan, and mono/stereo channel policy, covered by native unit tests.
+The audio core also contains an opt-in master DSP stage that mirrors the
+renderer safety defaults (0.82 headroom and a -1 dB soft limiter). The
+transport leaves it disabled until parity evidence is complete; this keeps the
+renderer output authoritative while the native stage is exercised in tests and
+controlled soak runs.
 The Electron renderer remains the live Program producer for now; it sends
 policy snapshots at no more than 10 Hz during transitions and compares the
 native decisions in shadow mode. Snapshots are coalesced while a request is in

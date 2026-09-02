@@ -2,9 +2,11 @@
 
 #include "program_mixer_core.h"
 #include "shared_audio_ring.h"
+#include "master_dsp.h"
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +23,9 @@ struct ProgramMixerTransportSource {
 struct ProgramMixerTransportOptions {
     std::vector<ProgramMixerTransportSource> sources;
     SharedAudioRingOptions outputRing;
+    // Optional native master stage. Left unset while the renderer is the
+    // authoritative encoder input during parity validation.
+    std::optional<MasterDspConfig> masterDsp;
 };
 
 struct ProgramMixerTransportStatus {

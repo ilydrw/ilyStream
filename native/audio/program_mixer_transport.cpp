@@ -29,6 +29,7 @@ bool ValidOptions(const ProgramMixerTransportOptions& options) noexcept {
             !std::isfinite(source.gain) || source.gain < 0.0F || source.gain > 2.0F ||
             !std::isfinite(source.pan) || source.pan < -1.0F || source.pan > 1.0F) return false;
     }
+    if (options.masterDsp && !IsValidMasterDspConfig(*options.masterDsp)) return false;
     return true;
 }
 
@@ -44,6 +45,7 @@ struct ProgramMixerTransport::Impl {
 
     std::vector<SourceRuntime> sources;
     std::unique_ptr<SharedAudioRingWriter> output;
+    std::unique_ptr<MasterDsp> masterDsp;
     std::uint32_t blockFrames = 0;
     std::atomic<bool> running{true};
     std::atomic<std::uint64_t> blocksMixed{0};
@@ -96,6 +98,7 @@ struct ProgramMixerTransport::Impl {
                     source.config.pan, source.config.mono});
             }
             if (!MixStereoProgram(inputs, frames, outputSamples.data())) break;
+            if (masterDsp && !masterDsp->Process(outputSamples.data(), frames)) break;
             const std::uint64_t durationNs = static_cast<std::uint64_t>(frames) *
                 1000000000ULL / sources.front().config.ring.sampleRate;
             const std::uint64_t nowNs = MonotonicNowNs();
@@ -117,6 +120,7 @@ std::unique_ptr<ProgramMixerTransport> ProgramMixerTransport::Start(
     if (!ValidOptions(options)) { error = "Invalid Program mixer transport options"; return nullptr; }
     auto impl = std::make_unique<Impl>();
     impl->blockFrames = options.outputRing.blockFrames;
+    if (options.masterDsp) impl->masterDsp = std::make_unique<MasterDsp>(*options.masterDsp);
     for (const auto& source : options.sources) {
         std::string openError;
         auto reader = SharedAudioRingReader::Open(source.ring, openError);

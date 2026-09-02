@@ -203,6 +203,7 @@ add_library(ilystream_audio_core STATIC
     ../audio/audio_capture_core.cpp
     ../audio/program_mixer_core.cpp
     ../audio/program_mixer_transport.cpp
+    ../audio/master_dsp.cpp
     ../audio/shared_audio_ring.cpp
 )
 target_include_directories(ilystream_audio_core PUBLIC ../audio)
@@ -313,6 +314,13 @@ target_link_libraries(program_mixer_core_test PRIVATE
 add_executable(program_mixer_transport_test ../audio/program_mixer_transport_test.cpp)
 target_include_directories(program_mixer_transport_test PRIVATE ../audio)
 target_link_libraries(program_mixer_transport_test PRIVATE
+    ilystream_audio_core
+    Catch2::Catch2WithMain
+)
+
+add_executable(master_dsp_test ../audio/master_dsp_test.cpp)
+target_include_directories(master_dsp_test PRIVATE ../audio)
+target_link_libraries(master_dsp_test PRIVATE
     ilystream_audio_core
     Catch2::Catch2WithMain
 )

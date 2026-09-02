@@ -72,3 +72,39 @@ TEST_CASE("native Program mixer transports multiple source rings to one output r
     CHECK(status.framesMixed == 1024);
     CHECK(status.sourceUnderruns == 0);
 }
+
+TEST_CASE("native Program mixer transport keeps master DSP explicitly opt-in") {
+    const auto sourceOptions = Ring("Local\\ilyStream.Mixer.Source." + UniqueSuffix("dsp"), 201);
+    const auto outputOptions = Ring("Local\\ilyStream.Program.Audio." + UniqueSuffix("dsp"), 202);
+    std::string error;
+    auto source = ily::audio::SharedAudioRingWriter::Create(sourceOptions, error);
+    REQUIRE(source);
+
+    ily::audio::ProgramMixerTransportOptions options;
+    options.sources = {{"source", sourceOptions, 1.0F, 0.0F, false}};
+    options.outputRing = outputOptions;
+    ily::audio::MasterDspConfig dspConfig;
+    dspConfig.headroom = 0.5F;
+    dspConfig.ratio = 1.0F;
+    options.masterDsp = dspConfig;
+    auto mixer = ily::audio::ProgramMixerTransport::Start(options, error);
+    REQUIRE(mixer);
+    auto output = ily::audio::SharedAudioRingReader::Open(outputOptions, error);
+    REQUIRE(output);
+
+    std::vector<float> input(2048, 0.4F);
+    REQUIRE(source->Publish(input.data(), input.size(), 1));
+    std::vector<float> mixed;
+    ily::audio::SharedAudioReadStatus readStatus;
+    auto result = ily::audio::SharedAudioReadResult::noData;
+    for (int attempt = 0; attempt < 200 && result == ily::audio::SharedAudioReadResult::noData; ++attempt) {
+        result = output->Read(1024, mixed, readStatus);
+        if (result == ily::audio::SharedAudioReadResult::noData) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    REQUIRE(result == ily::audio::SharedAudioReadResult::data);
+    REQUIRE(mixed.size() == 2048);
+    for (const float sample : mixed) CHECK(std::abs(sample - 0.2F) < 0.00001F);
+    CHECK(mixer->Stop().framesMixed == 1024);
+}
