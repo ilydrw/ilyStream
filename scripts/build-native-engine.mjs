@@ -34,7 +34,7 @@ function run(command, args, options = {}) {
     child.on('error', reject)
     child.on('exit', (code, signal) => {
       if (code === 0) return resolvePromise()
-      const tail = output.join('').slice(-6000).trim()
+      const tail = output.join('').slice(-16000).trim()
       reject(new Error(`${command} exited with ${code ?? `signal ${signal}`}${tail ? `\n${tail}` : ''}`))
     })
   })
@@ -111,7 +111,7 @@ try {
   const message = error instanceof Error ? (error.stack || error.message) : String(error)
   console.error(message)
   if (process.env.GITHUB_ACTIONS === 'true') {
-    console.log(`::error title=Native engine build failed::${message.replace(/[\r\n]+/g, ' ').slice(0, 1000)}`)
+    console.log(`::error title=Native engine build failed::${message.replace(/[\r\n]+/g, ' ').slice(0, 8000)}`)
   }
   process.exitCode = 1
 }
