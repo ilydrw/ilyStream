@@ -100,7 +100,7 @@ bool MasterDsp::Process(float* interleavedStereo, std::size_t frameCount) noexce
         if (std::abs(left) >= 1.0F || std::abs(right) >= 1.0F) {
             m_clippedFrames.fetch_add(1, std::memory_order_relaxed);
         }
-        const float inputPeak = peak;
+        const float inputPeak = std::min(peak, 1'000'000.0F);
         const float outputPeak = std::max(std::abs(left), std::abs(right));
         float previous = m_maxInputPeak.load(std::memory_order_relaxed);
         while (previous < inputPeak && !m_maxInputPeak.compare_exchange_weak(
@@ -108,7 +108,7 @@ bool MasterDsp::Process(float* interleavedStereo, std::size_t frameCount) noexce
         previous = m_maxOutputPeak.load(std::memory_order_relaxed);
         while (previous < outputPeak && !m_maxOutputPeak.compare_exchange_weak(
             previous, outputPeak, std::memory_order_relaxed)) {}
-        const float reduction = std::max(0.0F, -gainDb);
+        const float reduction = std::min(std::max(0.0F, -gainDb), 120.0F);
         previous = m_maxGainReductionDb.load(std::memory_order_relaxed);
         while (previous < reduction && !m_maxGainReductionDb.compare_exchange_weak(
             previous, reduction, std::memory_order_relaxed)) {}

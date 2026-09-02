@@ -90,6 +90,12 @@ describe('parseNativeMixerTransportStatus', () => {
     expect(() => parseNativeMixerTransportStatus({ ...valid, masterDsp: {
       ...masterDsp, maxOutputPeak: -1
     } })).toThrow('Invalid')
+    expect(() => parseNativeMixerTransportStatus({ ...valid, masterDsp: {
+      ...masterDsp, processedFrames: 2, clippedFrames: 3
+    } })).toThrow('Invalid')
+    expect(() => parseNativeMixerTransportStatus({ ...valid, masterDsp: {
+      ...masterDsp, maxGainReductionDb: 121
+    } })).toThrow('Invalid')
   })
 })
 

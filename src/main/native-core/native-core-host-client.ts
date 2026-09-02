@@ -279,7 +279,9 @@ export function parseNativeMixerTransportStatus(value: unknown): NativeMixerTran
       ['processedFrames', 'clippedFrames'].some(key =>
         !Number.isSafeInteger((dsp as any)[key]) || (dsp as any)[key] < 0) ||
       ['maxInputPeak', 'maxOutputPeak', 'maxGainReductionDb'].some(key =>
-        typeof (dsp as any)[key] !== 'number' || !Number.isFinite((dsp as any)[key]) || (dsp as any)[key] < 0)) {
+        typeof (dsp as any)[key] !== 'number' || !Number.isFinite((dsp as any)[key]) ||
+        (dsp as any)[key] < 0 || (dsp as any)[key] > (key === 'maxGainReductionDb' ? 120 : 1_000_000)) ||
+      (dsp as any).clippedFrames > (dsp as any).processedFrames) {
       throw new Error('Invalid native mixer transport status')
     }
   }

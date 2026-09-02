@@ -48,6 +48,8 @@ The `mixer.startTransport` request may include an optional `masterDsp` object
 for those runs. Its fields are strictly bounded, unknown fields are rejected,
 and the host only accepts the fixed 48 kHz transport rate. Omitting the object
 keeps the stage disabled.
+Telemetry is bounded as well: clipped frames cannot exceed processed frames,
+peaks are capped at 1,000,000, and reported gain reduction is capped at 120 dB.
 The Electron renderer remains the live Program producer for now; it sends
 policy snapshots at no more than 10 Hz during transitions and compares the
 native decisions in shadow mode. Snapshots are coalesced while a request is in
