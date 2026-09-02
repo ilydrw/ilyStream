@@ -49,7 +49,11 @@ function programDataState(overrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('isManagedPluginInstalled', () => {
+// OBS integration is intentionally Windows-only; these fixtures use Windows
+// absolute paths and are exercised by the Windows matrix job.
+const describeWindows = process.platform === 'win32' ? describe : describe.skip
+
+describeWindows('isManagedPluginInstalled', () => {
   it('requires both active state and the managed ProgramData DLL', () => {
     const present = vi.fn(() => true)
     expect(isManagedPluginInstalled(programDataState(), present)).toBe(true)
@@ -81,7 +85,7 @@ describe('isManagedPluginInstalled', () => {
   })
 })
 
-describe('validated OBS target status discovery', () => {
+describeWindows('validated OBS target status discovery', () => {
   const defaultConfigRoot = 'C:\\Users\\Drew\\AppData\\Roaming\\obs-studio'
   const stagePath = `C:\\Stages\\ilystream-obs-0.1.0-${bundleSha256.slice(0, 12)}`
 

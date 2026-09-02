@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 
 const fsMocks = vi.hoisted(() => ({
   mkdirSync: vi.fn(),
@@ -52,12 +53,12 @@ describe('crash log bounds', () => {
     writeCrashLog('fatal', new Error('boom'))
 
     expect(fsMocks.rmSync).toHaveBeenCalledWith(
-      'C:\\ilyStream-test\\logs\\main-crash.log.old',
+      join('C:\\ilyStream-test', 'logs', 'main-crash.log.old'),
       { force: true }
     )
     expect(fsMocks.renameSync).toHaveBeenCalledWith(
-      'C:\\ilyStream-test\\logs\\main-crash.log',
-      'C:\\ilyStream-test\\logs\\main-crash.log.old'
+      join('C:\\ilyStream-test', 'logs', 'main-crash.log'),
+      join('C:\\ilyStream-test', 'logs', 'main-crash.log.old')
     )
     expect(fsMocks.appendFileSync).toHaveBeenCalledTimes(1)
   })

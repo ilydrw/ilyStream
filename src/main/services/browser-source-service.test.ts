@@ -245,7 +245,12 @@ describe('BrowserSourceService trailing frame delivery', () => {
  * The GPU path: `paint` carries a shared-texture handle and an empty image, so
  * the engine imports the handle and the renderer is served by a separate poll.
  */
-describe('BrowserSourceService shared texture capture', () => {
+// Electron exposes OffscreenSharedTexture only on the Windows backend used by
+// this service. Keep the CPU-path tests portable, while running the GPU
+// contract suite on the platform that can actually create shared textures.
+const describeSharedTexture = process.platform === 'win32' ? describe : describe.skip
+
+describeSharedTexture('BrowserSourceService shared texture capture', () => {
   beforeEach(() => {
     electronMocks.windows.length = 0
     vi.stubEnv('ILY_DISABLE_SHARED_TEXTURE', '')
