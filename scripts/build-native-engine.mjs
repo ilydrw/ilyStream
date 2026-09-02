@@ -17,11 +17,25 @@ const configuration = configurationIndex >= 0 && forwarded[configurationIndex + 
 
 function run(command, args, options = {}) {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: 'inherit', shell: false, ...options })
+    const output = []
+    const child = spawn(command, args, {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+      ...options
+    })
+    const forward = (stream, chunk) => {
+      const text = chunk.toString()
+      output.push(text)
+      stream.write(chunk)
+    }
+    child.stdout?.on('data', (chunk) => forward(process.stdout, chunk))
+    child.stderr?.on('data', (chunk) => forward(process.stderr, chunk))
     child.on('error', reject)
     child.on('exit', (code, signal) => {
       if (code === 0) return resolvePromise()
-      reject(new Error(`${command} exited with ${code ?? `signal ${signal}`}`))
+      const tail = output.join('').slice(-6000).trim()
+      reject(new Error(`${command} exited with ${code ?? `signal ${signal}`}${tail ? `\n${tail}` : ''}`))
     })
   })
 }
@@ -94,6 +108,10 @@ try {
   else await buildUnix()
   console.log('Native Engine Build completed successfully!')
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
+  const message = error instanceof Error ? (error.stack || error.message) : String(error)
+  console.error(message)
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::error title=Native engine build failed::${message.replace(/[\r\n]+/g, ' ').slice(0, 1000)}`)
+  }
   process.exitCode = 1
 }
