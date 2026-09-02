@@ -288,6 +288,35 @@ target_link_libraries(ui_model_test PRIVATE
     Catch2::Catch2WithMain
 )
 
+# Standalone OS-native UI pilot. The executable is intentionally separate from
+# Electron so each platform can evolve its window implementation without
+# changing the renderer process. It is opt-in during the migration.
+set(ILY_NATIVE_UI_SOURCES
+    ../ui/native_ui_main.cpp
+    ../ui/native_window.cpp
+)
+if(APPLE)
+    enable_language(OBJCXX)
+    list(APPEND ILY_NATIVE_UI_SOURCES ../ui/native_window_mac.mm)
+endif()
+add_executable(ilystream_native_ui ${ILY_NATIVE_UI_SOURCES})
+target_include_directories(ilystream_native_ui PRIVATE ../ui)
+target_link_libraries(ilystream_native_ui PRIVATE ilystream_ui_core)
+if(WIN32)
+    target_link_libraries(ilystream_native_ui PRIVATE user32 gdi32)
+elseif(APPLE)
+    target_link_libraries(ilystream_native_ui PRIVATE "-framework Cocoa")
+elseif(UNIX)
+    find_package(X11 QUIET)
+    if(X11_FOUND)
+        target_compile_definitions(ilystream_native_ui PRIVATE ILY_NATIVE_UI_HAS_X11=1)
+        target_include_directories(ilystream_native_ui PRIVATE ${X11_INCLUDE_DIR})
+        target_link_libraries(ilystream_native_ui PRIVATE ${X11_LIBRARIES})
+    else()
+        message(STATUS "X11 not found; Linux native UI pilot will be unavailable")
+    endif()
+endif()
+
 # Temporary Node adapter. It can be removed once every caller uses the native
 # host, without changing capture behavior a second time.
 add_library(ilystream_audio MODULE ../audio/audio_capture.cpp src/win_delay_load_hook.cc)

@@ -91,6 +91,7 @@ async function buildUnix() {
     'master_dsp_protocol_test',
     'audio_capture_core_test',
     'ui_model_test',
+    'ilystream_native_ui',
     'program_mixer_core_test',
     'master_dsp_test',
     'program_mixer_transport_test'
