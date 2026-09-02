@@ -306,6 +306,16 @@ else()
     target_compile_definitions(ilystream_audio PRIVATE NAPI_CPP_EXCEPTIONS)
 endif()
 
+# Node/Electron provides the N-API symbols at runtime. ELF loaders generally
+# permit unresolved symbols in addon modules, while Apple's linker rejects them
+# unless dynamic lookup is explicitly requested. Keep all portable MODULE
+# targets loadable by the host without hard-linking to a particular Node ABI.
+if(APPLE)
+    target_link_options(ilystream_napi PRIVATE "-undefined" "dynamic_lookup")
+    target_link_options(ilystream_preview PRIVATE "-undefined" "dynamic_lookup")
+    target_link_options(ilystream_audio PRIVATE "-undefined" "dynamic_lookup")
+endif()
+
 # Unit tests executable target
 add_executable(engine_tests tests/test_main.cpp)
 target_link_libraries(engine_tests PRIVATE 
