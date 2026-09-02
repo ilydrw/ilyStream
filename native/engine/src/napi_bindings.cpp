@@ -2,6 +2,8 @@
 #include "ily/engine.h"
 #include <cmath>
 #include <cstring>
+#include <array>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -11,6 +13,8 @@
 #elif defined(__APPLE__)
 #include <Security/Security.h>
 #include <CoreFoundation/CoreFoundation.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
 #endif
 
 static constexpr size_t kMaxSecureStoreBytes = 1024 * 1024;
@@ -30,6 +34,105 @@ static std::string HexEncode(const uint8_t* bytes, size_t length) {
 static CFStringRef MacSecureStoreService() {
     return CFStringCreateWithCString(
         kCFAllocatorDefault, "com.ilystream.secure-store", kCFStringEncodingUTF8);
+}
+#endif
+
+#if defined(__linux__)
+// Keep libsecret optional at build time. These declarations mirror the small
+// synchronous subset we call, while the implementation is resolved with
+// dlopen so minimal Linux distributions can still use Electron safeStorage.
+struct SecretSchemaAttribute {
+    const char* name;
+    int type;
+};
+
+struct SecretSchema {
+    const char* name;
+    int flags;
+    SecretSchemaAttribute attributes[32];
+};
+
+struct LinuxSecretStore {
+    void* library = nullptr;
+    void* glibLibrary = nullptr;
+    char* (*lookup)(const SecretSchema*, void*, void**, ...) = nullptr;
+    int (*store)(const SecretSchema*, void*, const char*, const char*, void*, void**, ...) = nullptr;
+    void (*freePassword)(char*) = nullptr;
+    void (*freeError)(void*) = nullptr;
+
+    bool load() {
+        if (library) return lookup && store && freePassword && freeError;
+        library = dlopen("libsecret-1.so.0", RTLD_LAZY | RTLD_LOCAL);
+        if (!library) library = dlopen("libsecret-1.so", RTLD_LAZY | RTLD_LOCAL);
+        if (!library) return false;
+        glibLibrary = dlopen("libglib-2.0.so.0", RTLD_LAZY | RTLD_LOCAL);
+        if (!glibLibrary) glibLibrary = dlopen("libglib-2.0.so", RTLD_LAZY | RTLD_LOCAL);
+        lookup = reinterpret_cast<decltype(lookup)>(dlsym(library, "secret_password_lookup_sync"));
+        store = reinterpret_cast<decltype(store)>(dlsym(library, "secret_password_store_sync"));
+        freePassword = reinterpret_cast<decltype(freePassword)>(dlsym(library, "secret_password_free"));
+        freeError = glibLibrary
+            ? reinterpret_cast<decltype(freeError)>(dlsym(glibLibrary, "g_error_free"))
+            : nullptr;
+        if (!lookup || !store || !freePassword || !freeError) {
+            dlclose(library);
+            if (glibLibrary) dlclose(glibLibrary);
+            library = nullptr;
+            glibLibrary = nullptr;
+            lookup = nullptr;
+            store = nullptr;
+            freePassword = nullptr;
+            freeError = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+    ~LinuxSecretStore() {
+        if (library) dlclose(library);
+        if (glibLibrary) dlclose(glibLibrary);
+    }
+};
+
+static LinuxSecretStore& GetLinuxSecretStore() {
+    static LinuxSecretStore store;
+    return store;
+}
+
+static const SecretSchema& LinuxSecretSchema() {
+    static const SecretSchema schema = {
+        "com.ilystream.NativeCredential",
+        0,
+        { { "id", 0 } }
+    };
+    return schema;
+}
+
+static bool LinuxAccountIsValid(const Napi::Buffer<uint8_t>& account) {
+    if (account.Length() != 32) return false;
+    for (size_t index = 0; index < account.Length(); ++index) {
+        const uint8_t value = account[index];
+        if (!((value >= '0' && value <= '9') ||
+              (value >= 'a' && value <= 'f'))) return false;
+    }
+    return true;
+}
+
+static std::string LinuxRandomAccount() {
+    std::array<uint8_t, 16> bytes{};
+    try {
+        std::random_device random;
+        for (auto& byte : bytes) byte = static_cast<uint8_t>(random());
+    } catch (...) {
+        return {};
+    }
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string account;
+    account.reserve(bytes.size() * 2);
+    for (const uint8_t byte : bytes) {
+        account.push_back(kHex[(byte >> 4) & 0x0F]);
+        account.push_back(kHex[byte & 0x0F]);
+    }
+    return account;
 }
 #endif
 
@@ -82,6 +185,16 @@ static Napi::Value ShutdownSystem(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+static bool NativeSecureStoreAvailable() {
+#if defined(_WIN32) || defined(__APPLE__)
+    return true;
+#elif defined(__linux__)
+    return GetLinuxSecretStore().load();
+#else
+    return false;
+#endif
+}
+
 static Napi::Value GetPlatformCapabilities(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     IlyPlatformCapabilities capabilities{};
@@ -92,7 +205,8 @@ static Napi::Value GetPlatformCapabilities(const Napi::CallbackInfo& info) {
         return env.Null();
     }
 
-    const uint32_t flags = capabilities.flags;
+    uint32_t flags = capabilities.flags;
+    if (!NativeSecureStoreAvailable()) flags &= ~ILY_PLATFORM_CAPABILITY_SECURE_STORE;
     Napi::Object output = Napi::Object::New(env);
     output.Set("version", Napi::Number::New(env, capabilities.version));
     output.Set("flags", Napi::Number::New(env, flags));
@@ -109,11 +223,7 @@ static Napi::Value GetPlatformCapabilities(const Napi::CallbackInfo& info) {
 
 static Napi::Value SecureStoreIsAvailable(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-#if defined(_WIN32) || defined(__APPLE__)
-    return Napi::Boolean::New(env, true);
-#else
-    return Napi::Boolean::New(env, false);
-#endif
+    return Napi::Boolean::New(env, NativeSecureStoreAvailable());
 }
 
 static Napi::Value SecureStoreEncrypt(const Napi::CallbackInfo& info) {
@@ -160,6 +270,22 @@ static Napi::Value SecureStoreEncrypt(const Napi::CallbackInfo& info) {
     CFRelease(accountRef);
     CFRelease(service);
     if (status != errSecSuccess) return env.Null();
+    return Napi::Buffer<uint8_t>::Copy(
+        env, reinterpret_cast<const uint8_t*>(account.data()), account.size());
+#elif defined(__linux__)
+    auto& store = GetLinuxSecretStore();
+    if (!store.load()) return env.Null();
+    const std::string account = LinuxRandomAccount();
+    if (account.empty()) return env.Null();
+    void* error = nullptr;
+    const int stored = store.store(
+        &LinuxSecretSchema(), nullptr, "ilyStream credential", value.c_str(), nullptr,
+        &error, "id", account.c_str(), nullptr);
+    if (error) {
+        store.freeError(error);
+        return env.Null();
+    }
+    if (!stored) return env.Null();
     return Napi::Buffer<uint8_t>::Copy(
         env, reinterpret_cast<const uint8_t*>(account.data()), account.size());
 #else
@@ -218,6 +344,20 @@ static Napi::Value SecureStoreDecrypt(const Napi::CallbackInfo& info) {
     Napi::String output = Napi::String::New(
         env, reinterpret_cast<const char*>(bytes), static_cast<size_t>(length));
     CFRelease(resultRef);
+    return output;
+#elif defined(__linux__)
+    if (!LinuxAccountIsValid(encrypted)) return env.Null();
+    auto& store = GetLinuxSecretStore();
+    if (!store.load()) return env.Null();
+    const std::string account(
+        reinterpret_cast<const char*>(encrypted.Data()), encrypted.Length());
+    void* error = nullptr;
+    char* password = store.lookup(
+        &LinuxSecretSchema(), nullptr, &error, "id", account.c_str(), nullptr);
+    if (error) store.freeError(error);
+    if (error || !password) return env.Null();
+    Napi::String output = Napi::String::New(env, password);
+    store.freePassword(password);
     return output;
 #else
     return env.Null();

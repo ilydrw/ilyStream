@@ -182,6 +182,10 @@ if(WIN32)
 elseif(APPLE)
     # Generic-password items back the native secure-store adapter on macOS.
     target_link_libraries(ilystream_napi PRIVATE "-framework Security" "-framework CoreFoundation")
+elseif(UNIX)
+    # libsecret is resolved dynamically at runtime; only dlopen is required at
+    # link time, so headless/minimal Linux builds remain installable.
+    target_link_libraries(ilystream_napi PRIVATE dl)
 endif()
 
 # On Windows, link against node.lib for the SAME Electron version as the headers

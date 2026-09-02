@@ -109,9 +109,13 @@ ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabil
     // macOS uses the login Keychain for native credential storage. Capture
     // and shared-handle backends remain on the portable fallback path.
     flags |= ILY_PLATFORM_CAPABILITY_SECURE_STORE;
+#elif defined(__linux__)
+    // Linux uses an optional runtime-loaded Secret Service backend. The N-API
+    // layer clears this bit when libsecret or a running keyring is unavailable.
+    flags |= ILY_PLATFORM_CAPABILITY_SECURE_STORE;
 #else
-    // The cross-platform renderer still works on Linux, but native capture,
-    // shared GPU handles, and Secret Service integration are not wired yet.
+    // Other Unix targets keep the portable renderer but have no native
+    // credential backend until one is explicitly implemented.
 #endif
 
     outCapabilities->version = ILY_PLATFORM_CAPABILITIES_VERSION;
