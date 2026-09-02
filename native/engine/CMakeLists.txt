@@ -51,6 +51,12 @@ endif()
 add_library(ilystream_engine SHARED ${ENGINE_SOURCES})
 target_compile_definitions(ilystream_engine PRIVATE ILY_ENGINE_BUILD_DLL)
 target_link_libraries(ilystream_engine PRIVATE nlohmann_json::nlohmann_json)
+set_target_properties(ilystream_engine PROPERTIES OUTPUT_NAME "ilystream_engine")
+if(APPLE)
+    set_target_properties(ilystream_engine PROPERTIES INSTALL_RPATH "@loader_path")
+elseif(UNIX)
+    set_target_properties(ilystream_engine PROPERTIES INSTALL_RPATH "$ORIGIN")
+endif()
 if(WIN32)
     target_link_libraries(ilystream_engine PRIVATE
         d3d11

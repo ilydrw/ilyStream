@@ -10,7 +10,7 @@
     "build:tiktok-bridge": "tsc -p services/tiktok-auth-bridge/tsconfig.build.json",
     "start:tiktok-bridge": "node services/tiktok-auth-bridge/dist/server.js",
     "build:virtual-camera": "powershell -ExecutionPolicy Bypass -File native/virtual-camera/build.ps1",
-    "build:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File native/engine/build.ps1",
+    "build:engine": "node scripts/build-native-engine.mjs",
     "smoke:native-audio-host": "set ELECTRON_RUN_AS_NODE=1&& electron scripts/smoke-native-audio-host.cjs",
     "build:obs-plugin": "powershell -NoProfile -ExecutionPolicy Bypass -File native/obs-plugin/scripts/build.ps1",
     "validate:obs-integration": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/obs-integration/Test-IlyStreamObsIntegration.ps1",
