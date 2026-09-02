@@ -22,6 +22,20 @@ TEST_CASE("audio core starts idle and rejects invalid capture options") {
     CHECK_FALSE(ily::audio::GetCaptureStatus().running);
 }
 
+TEST_CASE("enumerated device IDs are portable and round-trip safe") {
+    std::vector<ily::audio::CaptureDevice> devices;
+    std::string error;
+    if (!ily::audio::ListCaptureDevices(devices, error)) {
+        SKIP("audio device enumeration unavailable: " + error);
+    }
+    for (const auto& device : devices) {
+        // IDs cross JSON, IPC, and environment boundaries. Embedded NULs (the
+        // old raw-union representation) silently truncated selected devices.
+        CHECK(device.id.find('\0') == std::string::npos);
+        CHECK(device.id.size() <= 512);
+    }
+}
+
 TEST_CASE("audio core rejects invalid shared-ring configuration") {
     ily::audio::ProgramAudioTransportOptions options;
     options.ringName = "attacker-selected";

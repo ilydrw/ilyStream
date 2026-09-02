@@ -54,8 +54,18 @@ std::string DeviceIdToString(const ma_device_id& id) {
     return WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(),
         static_cast<int>(wide.size()), result.data(), length, nullptr, nullptr) == length
         ? result : std::string{};
-#else
-    return std::string(reinterpret_cast<const char*>(&id), sizeof(id));
+#elif defined(__APPLE__)
+    // CoreAudio IDs are stable string identifiers. Do not stringify the whole
+    // union: its unused bytes contain embedded NULs and cannot round-trip from
+    // the renderer or an environment variable.
+    return std::string(id.coreaudio);
+#elif defined(__linux__)
+    // Depending on the selected miniaudio backend, Linux exposes either a
+    // PulseAudio or ALSA name in the union. Prefix it to avoid collisions when
+    // both APIs enumerate the same machine. JACK uses the default device only.
+    if (id.pulse[0] != '\0') return std::string("pulse:") + id.pulse;
+    if (id.alsa[0] != '\0') return std::string("alsa:") + id.alsa;
+    return id.jack != 0 ? std::string("jack:") + std::to_string(id.jack) : std::string("default");
 #endif
 }
 
@@ -213,7 +223,14 @@ bool StartCapture(const CaptureOptions& options, CaptureFrameCallback callback,
         ma_uint32 count = 0;
         if (ma_context_get_devices(&session->context, nullptr, nullptr, &infos, &count) == MA_SUCCESS) {
             for (ma_uint32 i = 0; i < count; ++i) {
-                if (DeviceIdToString(infos[i].id) == options.deviceId) {
+                const std::string enumeratedId = DeviceIdToString(infos[i].id);
+                if (enumeratedId == options.deviceId ||
+                    // Accept the unprefixed name used by older builds so
+                    // existing saved device selections keep working.
+                    (enumeratedId.rfind("pulse:", 0) == 0 &&
+                     options.deviceId == enumeratedId.substr(6)) ||
+                    (enumeratedId.rfind("alsa:", 0) == 0 &&
+                     options.deviceId == enumeratedId.substr(5))) {
                     deviceId = infos[i].id;
                     haveDeviceId = true;
                     break;
