@@ -104,6 +104,8 @@ target_include_directories(ilystream_napi PRIVATE ${NODE_ADDON_API_DIR})
 # against matching headers + node.lib. A version mismatch produces a .node that
 # crashes on load in the app's Electron, so prefer the installed version and
 # only fall back to globbing whatever .electron-gyp happens to contain.
+option(ILY_ALLOW_ELECTRON_HEADER_FALLBACK
+    "Allow development builds to use mismatched Electron headers" ON)
 set(ELECTRON_VERSION "")
 set(ELECTRON_PKG_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../node_modules/electron/package.json")
 if(EXISTS "${ELECTRON_PKG_JSON}")
@@ -121,6 +123,12 @@ else()
         "$ENV{USERPROFILE}/.node-gyp/*/include/node"
     )
     if(ELECTRON_GYP_INCLUDES)
+        if(NOT ILY_ALLOW_ELECTRON_HEADER_FALLBACK)
+            message(FATAL_ERROR
+                "Exact Electron ${ELECTRON_VERSION} headers were not found. "
+                "Install matching headers before producing a release artifact, "
+                "or enable ILY_ALLOW_ELECTRON_HEADER_FALLBACK only for development.")
+        endif()
         list(GET ELECTRON_GYP_INCLUDES 0 LATEST_NODE_INCLUDES)
         message(WARNING "Installed Electron headers not found for '${ELECTRON_VERSION}'; falling back to ${LATEST_NODE_INCLUDES}. The addon may crash on load if versions differ.")
     endif()
@@ -150,6 +158,12 @@ if(WIN32)
             "$ENV{USERPROFILE}/.node-gyp/*/win-x64/node.lib"
         )
         if(NODE_LIBS)
+            if(NOT ILY_ALLOW_ELECTRON_HEADER_FALLBACK)
+                message(FATAL_ERROR
+                    "Exact Electron ${ELECTRON_VERSION} node.lib was not found. "
+                    "Install matching headers before producing a release artifact, "
+                    "or enable ILY_ALLOW_ELECTRON_HEADER_FALLBACK only for development.")
+            endif()
             list(GET NODE_LIBS 0 LATEST_NODE_LIB)
             message(WARNING "Using fallback node.lib: ${LATEST_NODE_LIB}")
         endif()

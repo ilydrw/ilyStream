@@ -1,7 +1,8 @@
 param(
   [ValidateSet('Debug', 'Release')]
   [string] $Configuration = 'Release',
-  [switch] $SkipTests
+  [switch] $SkipTests,
+  [switch] $RequireExactElectronHeaders
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,13 @@ Write-Host "ilyStream Native Engine Build Runner" -ForegroundColor Cyan
 Write-Host "Engine root: $engineRoot"
 Write-Host "Project root: $projectRoot"
 Write-Host "Configuration: $Configuration"
+if ($RequireExactElectronHeaders) {
+  Write-Host "Exact Electron native ABI headers: required" -ForegroundColor Yellow
+  $electronHeaderFallback = 'OFF'
+} else {
+  Write-Host "Exact Electron native ABI headers: development fallback allowed" -ForegroundColor Yellow
+  $electronHeaderFallback = 'ON'
+}
 
 # 1. Locate CMake
 $cmakePath = $null
@@ -66,7 +74,7 @@ if (-not (Test-Path $buildDir)) {
   Remove-Item -Path (Join-Path $buildDir "CMakeCache.txt") -Force -ErrorAction SilentlyContinue
 }
 
-& $cmakePath -B $buildDir -S $engineRoot "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain" "-DILY_USE_BGFX=ON"
+& $cmakePath -B $buildDir -S $engineRoot "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain" "-DILY_USE_BGFX=ON" "-DILY_ALLOW_ELECTRON_HEADER_FALLBACK=$electronHeaderFallback"
 if ($LASTEXITCODE -ne 0) {
   throw "CMake configure failed (exit code $LASTEXITCODE)."
 }

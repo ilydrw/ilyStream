@@ -10,6 +10,11 @@ the established N-API runtime. The app authenticates a versioned JSON-lines
 control session and logs the host PID. Media is not sent over JSON: shared GPU
 textures and bounded shared-memory audio rings remain the transport boundary.
 
+Native addon builds require headers and `node.lib` matching the Electron version
+in `package.json` when packaging or releasing. Developer `build:engine` runs may
+use the compatibility fallback for local iteration, but `package` and `release`
+run `verify:native-abi` and fail closed if exact assets are missing.
+
 ## Security boundary
 
 - Windows named pipe restricted to SYSTEM, administrators, and the current user.

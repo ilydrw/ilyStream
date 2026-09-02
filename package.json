@@ -19,9 +19,10 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "package": "npm run build:virtual-camera && npm run build:engine && npm run build:obs-plugin && npm run build && electron-builder --win --publish never",
+    "package": "npm run verify:native-abi && npm run build:virtual-camera && npm run build:engine -- -RequireExactElectronHeaders && npm run build:obs-plugin && npm run build && electron-builder --win --publish never",
     "verify:package-contents": "node scripts/verify-package-contents.mjs",
-    "release": "npm run build:virtual-camera && npm run build:engine && npm run build:obs-plugin && npm run build && electron-builder --win --publish always",
+    "release": "npm run verify:native-abi && npm run build:virtual-camera && npm run build:engine -- -RequireExactElectronHeaders && npm run build:obs-plugin && npm run build && electron-builder --win --publish always",
+    "verify:native-abi": "node scripts/verify-native-abi.mjs",
     "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p services/tiktok-auth-bridge/tsconfig.json",
     "test": "vitest run"
   },
