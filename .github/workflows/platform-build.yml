@@ -1,0 +1,77 @@
+name: Platform builds
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-2022
+            experimental: false
+          - name: macOS x64
+            os: macos-13
+            experimental: true
+          - name: Linux x64
+            os: ubuntu-24.04
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          & (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') -disableMetrics
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup vcpkg (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          vcpkg_root="$RUNNER_TEMP/vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Provision Electron native headers
+        run: npx electron-rebuild --version 41.10.7 --force
+
+      - name: Run JavaScript tests
+        run: npm test
+
+      - name: Build and package for host platform
+        run: npm run package
+
+      - name: Upload platform artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ilyStream-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: ignore
