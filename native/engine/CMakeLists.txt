@@ -273,6 +273,21 @@ if(WIN32)
     target_link_libraries(ilystream_audio_core PRIVATE ole32 avrt advapi32)
 endif()
 
+# Dependency-free UI state model. Platform window implementations will render
+# this contract separately on Win32, Cocoa, and X11/Wayland without coupling
+# the app to a cross-platform widget toolkit.
+add_library(ilystream_ui_core STATIC
+    ../ui/ui_model.cpp
+)
+target_include_directories(ilystream_ui_core PUBLIC ../ui)
+
+add_executable(ui_model_test ../ui/ui_model_test.cpp)
+target_include_directories(ui_model_test PRIVATE ../ui)
+target_link_libraries(ui_model_test PRIVATE
+    ilystream_ui_core
+    Catch2::Catch2WithMain
+)
+
 # Temporary Node adapter. It can be removed once every caller uses the native
 # host, without changing capture behavior a second time.
 add_library(ilystream_audio MODULE ../audio/audio_capture.cpp src/win_delay_load_hook.cc)

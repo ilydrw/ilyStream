@@ -90,6 +90,7 @@ async function buildUnix() {
     'core_host_protocol_test',
     'master_dsp_protocol_test',
     'audio_capture_core_test',
+    'ui_model_test',
     'program_mixer_core_test',
     'master_dsp_test',
     'program_mixer_transport_test'
