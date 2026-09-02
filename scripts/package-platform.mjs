@@ -42,6 +42,21 @@ function runNpm(script, args = []) {
   })
 }
 
+function runNode(script, args = []) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [join(root, script), ...args], {
+      cwd: root,
+      stdio: 'inherit',
+      shell: false
+    })
+    child.on('error', reject)
+    child.on('exit', (code, signal) => {
+      if (code === 0) return resolvePromise()
+      reject(new Error(`${script} exited with ${code ?? `signal ${signal}`}`))
+    })
+  })
+}
+
 function findFile(directory, predicate) {
   if (!existsSync(directory)) return null
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -110,6 +125,7 @@ try {
     config,
     publish: publish ? 'always' : 'never'
   })
+  await runNode('scripts/verify-package-contents.mjs')
   console.log(`ilyStream ${platform} packaging completed successfully.`)
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)

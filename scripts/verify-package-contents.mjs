@@ -1,8 +1,25 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { listPackage } from '@electron/asar'
 
-const packagePath = resolve(process.argv[2] || join('dist', 'win-unpacked', 'resources', 'app.asar'))
+function findAppAsar(directory) {
+  if (!existsSync(directory)) return null
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const candidate = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      const nested = findAppAsar(candidate)
+      if (nested) return nested
+    } else if (entry.name === 'app.asar') {
+      return candidate
+    }
+  }
+  return null
+}
+
+const packagePath = resolve(
+  process.argv[2] || process.env.ILY_PACKAGE_ASAR ||
+  findAppAsar(resolve('dist')) || join('dist', 'win-unpacked', 'resources', 'app.asar')
+)
 if (!existsSync(packagePath)) {
   console.error(`[package-check] app.asar was not found: ${packagePath}`)
   process.exit(1)
