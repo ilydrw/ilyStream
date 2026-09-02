@@ -147,4 +147,8 @@ describe('resolveNativeAudioOptions', () => {
   it('leaves exclusive off unless explicitly requested', () => {
     expect(resolveNativeAudioOptions({ ILY_NATIVE_AUDIO_EXCLUSIVE: 'true' }).exclusive).toBe(false)
   })
+
+  it('passes an explicit platform backend selector through to native capture', () => {
+    expect(resolveNativeAudioOptions({ ILY_NATIVE_AUDIO_BACKEND: 'coreaudio' }).backend).toBe('coreaudio')
+  })
 })

@@ -78,6 +78,19 @@ CaptureStatus StatusOf(const CaptureSession* session) {
         session->sampleRate, session->channels, session->backend};
 }
 
+bool ParseBackend(const std::string& requested, ma_backend& backend) {
+    if (requested.empty() || requested == "auto") return false;
+    if (requested == "wasapi") { backend = ma_backend_wasapi; return true; }
+    if (requested == "coreaudio") { backend = ma_backend_coreaudio; return true; }
+    if (requested == "pulse" || requested == "pulseaudio") {
+        backend = ma_backend_pulseaudio;
+        return true;
+    }
+    if (requested == "alsa") { backend = ma_backend_alsa; return true; }
+    if (requested == "jack") { backend = ma_backend_jack; return true; }
+    return false;
+}
+
 void DataCallback(ma_device* device, void*, const void* input, ma_uint32 frameCount) {
     auto* session = static_cast<CaptureSession*>(device->pUserData);
     if (!session || !input || frameCount == 0) return;
@@ -206,8 +219,18 @@ bool StartCapture(const CaptureOptions& options, CaptureFrameCallback callback,
     session->channels = options.channels;
     session->callback = std::move(callback);
     session->queue = std::make_unique<SpscQueue<float>>(kQueueSamples);
-    if (ma_context_init(nullptr, 0, nullptr, &session->context) != MA_SUCCESS) {
-        error = "Failed to initialize audio context";
+    ma_backend requestedBackend = ma_backend_null;
+    const bool backendRequested = ParseBackend(options.backend, requestedBackend);
+    if (!backendRequested && options.backend != "" && options.backend != "auto") {
+        error = "Unknown audio backend: " + options.backend;
+        return false;
+    }
+    const ma_backend* backendList = backendRequested ? &requestedBackend : nullptr;
+    const ma_uint32 backendCount = backendRequested ? 1 : 0;
+    if (ma_context_init(backendList, backendCount, nullptr, &session->context) != MA_SUCCESS) {
+        error = backendRequested
+            ? "Requested audio backend is unavailable: " + options.backend
+            : "Failed to initialize audio context";
         return false;
     }
     session->contextReady = true;

@@ -16,6 +16,7 @@ struct CaptureDevice {
 };
 struct CaptureOptions {
     std::string deviceId;
+    std::string backend = "auto";
     std::uint32_t sampleRate = 48000;
     std::uint32_t channels = 2;
     bool exclusive = false;

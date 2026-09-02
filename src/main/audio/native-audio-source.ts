@@ -22,6 +22,7 @@ import { GeneratedAudioBuffer } from './generated-audio-buffer'
 
 export interface NativeAudioSourceOptions {
   deviceId?: string
+  backend?: 'auto' | 'wasapi' | 'coreaudio' | 'pulse' | 'alsa' | 'jack'
   sampleRate?: number
   channels?: number
   exclusive?: boolean
@@ -65,7 +66,10 @@ export function resolveNativeAudioOptions(
     deviceId: env.ILY_NATIVE_AUDIO_DEVICE || undefined,
     sampleRate: Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : 48000,
     channels: Number.isFinite(channels) && channels > 0 ? channels : 2,
-    exclusive: env.ILY_NATIVE_AUDIO_EXCLUSIVE === '1'
+    exclusive: env.ILY_NATIVE_AUDIO_EXCLUSIVE === '1',
+    ...(env.ILY_NATIVE_AUDIO_BACKEND ? {
+      backend: env.ILY_NATIVE_AUDIO_BACKEND as NativeAudioSourceOptions['backend']
+    } : {})
   }
 }
 

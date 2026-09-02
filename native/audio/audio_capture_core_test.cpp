@@ -22,6 +22,15 @@ TEST_CASE("audio core starts idle and rejects invalid capture options") {
     CHECK_FALSE(ily::audio::GetCaptureStatus().running);
 }
 
+TEST_CASE("audio core rejects unknown backend selectors") {
+    ily::audio::CaptureOptions options;
+    options.backend = "not-a-real-backend";
+    ily::audio::CaptureSessionInfo session;
+    std::string error;
+    CHECK_FALSE(ily::audio::StartCapture(options, {}, session, error));
+    CHECK(error == "Unknown audio backend: not-a-real-backend");
+}
+
 TEST_CASE("enumerated device IDs are portable and round-trip safe") {
     std::vector<ily::audio::CaptureDevice> devices;
     std::string error;

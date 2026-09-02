@@ -354,6 +354,7 @@ ily::core_host::HostOperations BuildOperations() {
             }
             ily::audio::CaptureOptions options;
             options.deviceId = params.value("deviceId", "");
+            options.backend = params.value("backend", "auto");
             options.sampleRate = params.value("sampleRate", 48000U);
             options.channels = params.value("channels", 2U);
             options.exclusive = params.value("exclusive", false);

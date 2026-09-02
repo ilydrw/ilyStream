@@ -26,6 +26,8 @@ export interface CaptureDevice {
 
 export interface CaptureOptions {
   deviceId?: string
+  /** Native backend selector. `auto` (the default) uses the platform priority. */
+  backend?: 'auto' | 'wasapi' | 'coreaudio' | 'pulse' | 'alsa' | 'jack'
   sampleRate?: number
   channels?: number
   /**

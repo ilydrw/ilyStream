@@ -157,6 +157,9 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
     if (input.Has("deviceId") && input.Get("deviceId").IsString()) {
         options.deviceId = input.Get("deviceId").As<Napi::String>().Utf8Value();
     }
+    if (input.Has("backend") && input.Get("backend").IsString()) {
+        options.backend = input.Get("backend").As<Napi::String>().Utf8Value();
+    }
     if (input.Has("sampleRate")) options.sampleRate = input.Get("sampleRate").As<Napi::Number>().Uint32Value();
     if (input.Has("channels")) options.channels = input.Get("channels").As<Napi::Number>().Uint32Value();
     if (input.Has("exclusive")) options.exclusive = input.Get("exclusive").ToBoolean().Value();
