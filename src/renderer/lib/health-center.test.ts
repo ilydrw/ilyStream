@@ -3,7 +3,8 @@ import type { PlatformEventDiagnostic } from '../stores/connection-store'
 import {
   buildPlatformHealthRows,
   createHealthDiagnosticReport,
-  isRealPlatformEventDiagnostic
+  isRealPlatformEventDiagnostic,
+  sanitizeDiagnosticError
 } from './health-center'
 
 const NOW = Date.parse('2026-08-22T16:00:00.000Z')
@@ -95,5 +96,31 @@ describe('Health Center event trust', () => {
     expect(report.recentEvents).toEqual([
       expect.objectContaining({ platform: 'twitch', type: 'chat', simulated: true })
     ])
+  })
+})
+
+describe('Health Center error redaction', () => {
+  it('removes credential-bearing URLs, bearer tokens, and key-value secrets', () => {
+    const sanitized = sanitizeDiagnosticError(
+      'Bearer abc.def.ghi https://user:password@example.test/live?access_token=secret123 token: inline-secret'
+    )
+    expect(sanitized).toBe(
+      'Bearer [redacted] https://[redacted]@example.test/live?access_token=[redacted] token: [redacted]'
+    )
+  })
+
+  it('bounds copied errors even when a connector returns a huge payload', () => {
+    const sanitized = sanitizeDiagnosticError(`failure ${'x'.repeat(2_000)}`)
+    expect(sanitized).toHaveLength(500)
+    expect(sanitized?.endsWith('...')).toBe(true)
+  })
+
+  it('stores sanitized errors in copied reports', () => {
+    const report = JSON.parse(createHealthDiagnosticReport({
+      now: NOW,
+      errors: { twitch: 'authorization=super-secret' }
+    }))
+    const twitch = report.platforms.find((platform: { platform: string }) => platform.platform === 'twitch')
+    expect(twitch.error).toBe('authorization=[redacted]')
   })
 })

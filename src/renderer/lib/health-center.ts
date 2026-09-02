@@ -57,6 +57,22 @@ export interface BuildPlatformHealthInput {
   now?: number
 }
 
+const MAX_DIAGNOSTIC_ERROR_LENGTH = 500
+
+/** Keep connector failures useful without copying credentials into reports. */
+export function sanitizeDiagnosticError(rawError: unknown): string | null {
+  const value = String(rawError ?? '').replace(/\0/g, '').trim()
+  if (!value) return null
+  const redacted = value
+    .replace(/(https?:\/\/)([^/\s:@]+):([^@\s]+)@/gi, '$1[redacted]@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/([?&\s](?:access_token|refresh_token|token|secret|api[_-]?key|apikey|cookie|authorization|client_secret|password)=)[^&\s,;}]+/gi, '$1[redacted]')
+    .replace(/(\b(?:access_token|refresh_token|token|secret|api[_-]?key|apikey|cookie|authorization|client_secret|password)\b\s*[:=]\s*)([^\s,;}]+)/gi, '$1[redacted]')
+  return redacted.length > MAX_DIAGNOSTIC_ERROR_LENGTH
+    ? `${redacted.slice(0, MAX_DIAGNOSTIC_ERROR_LENGTH - 3)}...`
+    : redacted
+}
+
 const PLATFORM_LABELS: Record<HealthPlatform, string> = {
   tiktok: 'TikTok',
   twitch: 'Twitch',
@@ -68,7 +84,7 @@ export function explainPlatformIssue(
   platform: Platform,
   rawError: string | null | undefined
 ): PlatformIssueExplanation | null {
-  const error = String(rawError ?? '').trim()
+  const error = sanitizeDiagnosticError(rawError) ?? ''
   if (!error) return null
 
   const normalized = error.toLowerCase()
@@ -240,7 +256,7 @@ export function createHealthDiagnosticReport(input: BuildPlatformHealthInput): s
       chatCapabilityReason: row.chatCapabilityReason,
       viewerCount: row.viewerCount,
       lastEventAt: row.lastEventAt?.toISOString() ?? null,
-      error: input.errors?.[row.platform] ?? null,
+      error: sanitizeDiagnosticError(input.errors?.[row.platform]),
       configPreview: redactConfig(input.configs?.[row.platform])
     })),
     recentEvents: (input.recentEvents ?? []).slice(0, 20).map((event) => ({
