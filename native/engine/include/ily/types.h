@@ -215,6 +215,7 @@ typedef struct IlyCameraCaptureDeviceInfo {
 #define ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO (1u << 4)
 #define ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA (1u << 5)
 #define ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION (1u << 6)
+#define ILY_PLATFORM_CAPABILITY_SECURE_STORE (1u << 7)
 
 typedef struct IlyPlatformCapabilities {
     uint32_t structSize;

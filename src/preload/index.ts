@@ -764,6 +764,7 @@ const api = {
       nativeAudio: boolean
       virtualCamera: boolean
       obsIntegration: boolean
+      secureStore: boolean
     } | null>,
     getCaptureDisplays: () => ipcRenderer.invoke('engine:preview:displays') as Promise<Array<{
       index: number

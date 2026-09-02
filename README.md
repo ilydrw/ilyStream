@@ -64,7 +64,7 @@ ilyStream is built with Electron, React, and TypeScript.
 ## 📝 Notes
 
 *   **Data Storage**: Application databases, local logs, and generated builds are stored in `%APPDATA%/ilyStream`.
-*   **Security**: Runtime credentials and API keys are intentionally excluded from git and stored securely on your local machine.
+*   **Security**: Runtime credentials and API keys are intentionally excluded from git. Sensitive settings use the native secure-store adapter (Windows DPAPI, macOS Keychain) when available, with Electron safeStorage retained as a compatibility fallback; Linux Secret Service support is planned before removing that fallback.
 
 ---
 Made for creators who would rather be live than fighting their tools.

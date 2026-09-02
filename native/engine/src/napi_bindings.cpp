@@ -5,6 +5,34 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <wincrypt.h>
+#elif defined(__APPLE__)
+#include <Security/Security.h>
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
+static constexpr size_t kMaxSecureStoreBytes = 1024 * 1024;
+
+#if defined(__APPLE__)
+static std::string HexEncode(const uint8_t* bytes, size_t length) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(length * 2);
+    for (size_t index = 0; index < length; ++index) {
+        result.push_back(kHex[(bytes[index] >> 4) & 0x0F]);
+        result.push_back(kHex[bytes[index] & 0x0F]);
+    }
+    return result;
+}
+
+static CFStringRef MacSecureStoreService() {
+    return CFStringCreateWithCString(
+        kCFAllocatorDefault, "com.ilystream.secure-store", kCFStringEncodingUTF8);
+}
+#endif
+
 static IlyColorDescription ParseColorDescription(
     const Napi::Object& object,
     const IlyColorDescription& fallback) {
@@ -75,7 +103,125 @@ static Napi::Value GetPlatformCapabilities(const Napi::CallbackInfo& info) {
     output.Set("nativeAudio", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO) != 0));
     output.Set("virtualCamera", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA) != 0));
     output.Set("obsIntegration", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION) != 0));
+    output.Set("secureStore", Napi::Boolean::New(env, (flags & ILY_PLATFORM_CAPABILITY_SECURE_STORE) != 0));
     return output;
+}
+
+static Napi::Value SecureStoreIsAvailable(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+#if defined(_WIN32) || defined(__APPLE__)
+    return Napi::Boolean::New(env, true);
+#else
+    return Napi::Boolean::New(env, false);
+#endif
+}
+
+static Napi::Value SecureStoreEncrypt(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "Expected a string").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    const std::string value = info[0].As<Napi::String>().Utf8Value();
+    if (value.size() > kMaxSecureStoreBytes) return env.Null();
+
+#if defined(_WIN32)
+    DATA_BLOB input{};
+    input.pbData = reinterpret_cast<BYTE*>(const_cast<char*>(value.data()));
+    input.cbData = static_cast<DWORD>(value.size());
+    DATA_BLOB encrypted{};
+    if (!CryptProtectData(&input, L"ilyStream credential", nullptr, nullptr, nullptr,
+                          CRYPTPROTECT_UI_FORBIDDEN, &encrypted)) {
+        return env.Null();
+    }
+    Napi::Buffer<uint8_t> result = Napi::Buffer<uint8_t>::Copy(
+        env, encrypted.pbData, encrypted.cbData);
+    LocalFree(encrypted.pbData);
+    return result;
+#elif defined(__APPLE__)
+    uint8_t accountBytes[16]{};
+    if (SecRandomCopyBytes(kSecRandomDefault, sizeof(accountBytes), accountBytes) != errSecSuccess) {
+        return env.Null();
+    }
+    const std::string account = HexEncode(accountBytes, sizeof(accountBytes));
+    CFStringRef service = MacSecureStoreService();
+    CFStringRef accountRef = CFStringCreateWithCString(
+        kCFAllocatorDefault, account.c_str(), kCFStringEncodingUTF8);
+    CFDataRef password = CFDataCreate(
+        kCFAllocatorDefault, reinterpret_cast<const UInt8*>(value.data()), value.size());
+    const void* keys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData };
+    const void* values[] = { kSecClassGenericPassword, service, accountRef, password };
+    CFDictionaryRef query = CFDictionaryCreate(
+        kCFAllocatorDefault, keys, values, 4, &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+    const OSStatus status = SecItemAdd(query, nullptr);
+    CFRelease(query);
+    CFRelease(password);
+    CFRelease(accountRef);
+    CFRelease(service);
+    if (status != errSecSuccess) return env.Null();
+    return Napi::Buffer<uint8_t>::Copy(
+        env, reinterpret_cast<const uint8_t*>(account.data()), account.size());
+#else
+    return env.Null();
+#endif
+}
+
+static Napi::Value SecureStoreDecrypt(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected an encrypted buffer").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    const Napi::Buffer<uint8_t> encrypted = info[0].As<Napi::Buffer<uint8_t>>();
+    if (encrypted.Length() > kMaxSecureStoreBytes) return env.Null();
+
+#if defined(_WIN32)
+    DATA_BLOB input{};
+    input.pbData = const_cast<BYTE*>(encrypted.Data());
+    input.cbData = static_cast<DWORD>(encrypted.Length());
+    DATA_BLOB decrypted{};
+    if (!CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr,
+                            CRYPTPROTECT_UI_FORBIDDEN, &decrypted)) {
+        return env.Null();
+    }
+    Napi::String result = Napi::String::New(
+        env, reinterpret_cast<const char*>(decrypted.pbData), decrypted.cbData);
+    LocalFree(decrypted.pbData);
+    return result;
+#elif defined(__APPLE__)
+    CFStringRef service = MacSecureStoreService();
+    CFStringRef account = CFStringCreateWithBytes(
+        kCFAllocatorDefault, encrypted.Data(), encrypted.Length(), kCFStringEncodingUTF8, false);
+    if (!account) {
+        CFRelease(service);
+        return env.Null();
+    }
+    const void* keys[] = { kSecClass, kSecAttrService, kSecAttrAccount,
+                           kSecReturnData, kSecMatchLimit };
+    const void* values[] = { kSecClassGenericPassword, service, account,
+                             kCFBooleanTrue, kSecMatchLimitOne };
+    CFDictionaryRef query = CFDictionaryCreate(
+        kCFAllocatorDefault, keys, values, 5, &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+    CFTypeRef resultRef = nullptr;
+    const OSStatus status = SecItemCopyMatching(query, &resultRef);
+    CFRelease(query);
+    CFRelease(account);
+    CFRelease(service);
+    if (status != errSecSuccess || !resultRef || CFGetTypeID(resultRef) != CFDataGetTypeID()) {
+        if (resultRef) CFRelease(resultRef);
+        return env.Null();
+    }
+    const auto* bytes = CFDataGetBytePtr(static_cast<CFDataRef>(resultRef));
+    const CFIndex length = CFDataGetLength(static_cast<CFDataRef>(resultRef));
+    Napi::String output = Napi::String::New(
+        env, reinterpret_cast<const char*>(bytes), static_cast<size_t>(length));
+    CFRelease(resultRef);
+    return output;
+#else
+    return env.Null();
+#endif
 }
 
 static Napi::Value CreateEngine(const Napi::CallbackInfo& info) {
@@ -1127,6 +1273,9 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("initializeSystem", Napi::Function::New(env, InitSystem));
     exports.Set("shutdownSystem", Napi::Function::New(env, ShutdownSystem));
     exports.Set("getPlatformCapabilities", Napi::Function::New(env, GetPlatformCapabilities));
+    exports.Set("secureStoreIsAvailable", Napi::Function::New(env, SecureStoreIsAvailable));
+    exports.Set("secureStoreEncrypt", Napi::Function::New(env, SecureStoreEncrypt));
+    exports.Set("secureStoreDecrypt", Napi::Function::New(env, SecureStoreDecrypt));
     exports.Set("createEngine", Napi::Function::New(env, CreateEngine));
     exports.Set("destroyEngine", Napi::Function::New(env, DestroyEngine));
     exports.Set("engineUpdate", Napi::Function::New(env, EngineUpdate));

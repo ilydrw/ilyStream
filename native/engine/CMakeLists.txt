@@ -176,6 +176,14 @@ endif()
 # Link ilystream_napi with ilystream_engine
 target_link_libraries(ilystream_napi PRIVATE ilystream_engine)
 
+if(WIN32)
+    # Native credential protection via the current user's DPAPI profile.
+    target_link_libraries(ilystream_napi PRIVATE crypt32)
+elseif(APPLE)
+    # Generic-password items back the native secure-store adapter on macOS.
+    target_link_libraries(ilystream_napi PRIVATE "-framework Security" "-framework CoreFoundation")
+endif()
+
 # On Windows, link against node.lib for the SAME Electron version as the headers
 # above (import lib must match the host Electron or the addon crashes on load).
 if(WIN32)

@@ -92,7 +92,7 @@ ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabil
         return ILY_ERROR_INVALID_ARGUMENT;
     }
 
-    uint32_t flags = ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO;
+    uint32_t flags = 0;
 #if defined(_WIN32)
     // These backends currently use Windows graphics/media APIs. Keeping the
     // declaration explicit prevents callers from attempting a partial Unix
@@ -102,11 +102,16 @@ ILY_API IlyResult IlyGetPlatformCapabilities(IlyPlatformCapabilities* outCapabil
              ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES |
              ILY_PLATFORM_CAPABILITY_PROGRAM_EXPORT |
              ILY_PLATFORM_CAPABILITY_VIRTUAL_CAMERA |
-             ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION;
+             ILY_PLATFORM_CAPABILITY_OBS_INTEGRATION |
+             ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO |
+             ILY_PLATFORM_CAPABILITY_SECURE_STORE;
+#elif defined(__APPLE__)
+    // macOS uses the login Keychain for native credential storage. Capture
+    // and shared-handle backends remain on the portable fallback path.
+    flags |= ILY_PLATFORM_CAPABILITY_SECURE_STORE;
 #else
-    // The cross-platform renderer still works on Unix, but capture and shared
-    // GPU-handle integrations are not wired to native backends yet.
-    flags &= ~ILY_PLATFORM_CAPABILITY_NATIVE_AUDIO;
+    // The cross-platform renderer still works on Linux, but native capture,
+    // shared GPU handles, and Secret Service integration are not wired yet.
 #endif
 
     outCapabilities->version = ILY_PLATFORM_CAPABILITIES_VERSION;

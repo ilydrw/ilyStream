@@ -137,6 +137,7 @@ export interface PlatformCapabilities {
   nativeAudio: boolean
   virtualCamera: boolean
   obsIntegration: boolean
+  secureStore: boolean
 }
 
 export const SRGB_FULL_COLOR: ColorDescription = {

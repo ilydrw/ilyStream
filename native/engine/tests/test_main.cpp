@@ -19,6 +19,9 @@ TEST_CASE("Platform capabilities are versioned and ABI-safe", "[platform]") {
     REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SCREEN_CAPTURE) != 0);
     REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_CAMERA_CAPTURE) != 0);
     REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SHARED_TEXTURES) != 0);
+    REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SECURE_STORE) != 0);
+#elif defined(__APPLE__)
+    REQUIRE((capabilities.flags & ILY_PLATFORM_CAPABILITY_SECURE_STORE) != 0);
 #else
     REQUIRE(capabilities.flags == 0);
 #endif

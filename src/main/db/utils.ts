@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron'
+import { decryptWithNativeSecureStore, encryptWithNativeSecureStore } from '../security/native-secure-store'
 
 const SENSITIVE_FIELDS = new Set([
   'sessionId',
@@ -33,15 +34,26 @@ const SENSITIVE_SETTING_KEYS = new Set([
 ])
 
 const ENC_PREFIX = 'enc:v1:'
+const NATIVE_ENC_PREFIX = 'native:v1:'
 
 export function encryptField(value: string): string {
-  if (value.startsWith(ENC_PREFIX)) return value
+  if (value.startsWith(ENC_PREFIX) || value.startsWith(NATIVE_ENC_PREFIX)) return value
+  const nativeEncrypted = encryptWithNativeSecureStore(value)
+  if (nativeEncrypted) return NATIVE_ENC_PREFIX + nativeEncrypted.toString('base64')
   if (!safeStorage.isEncryptionAvailable()) return value
   const encrypted = safeStorage.encryptString(value)
   return ENC_PREFIX + encrypted.toString('base64')
 }
 
 export function decryptField(value: string): string {
+  if (value.startsWith(NATIVE_ENC_PREFIX)) {
+    try {
+      const encrypted = Buffer.from(value.slice(NATIVE_ENC_PREFIX.length), 'base64')
+      return decryptWithNativeSecureStore(encrypted) ?? value
+    } catch {
+      return value
+    }
+  }
   if (!value.startsWith(ENC_PREFIX)) return value
   if (!safeStorage.isEncryptionAvailable()) {
     console.warn('[db] safeStorage not available — cannot decrypt field')
