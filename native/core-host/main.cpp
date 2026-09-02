@@ -3,6 +3,7 @@
 #include "program_mixer_core.h"
 #include "program_mixer_transport.h"
 #include "shared_audio_ring.h"
+#include "mixer-transport-config.h"
 #include "ily/engine.h"
 
 #include <windows.h>
@@ -18,7 +19,6 @@
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -250,50 +250,6 @@ std::uint64_t ParseGenerationText(const nlohmann::json& value) {
     return result;
 }
 
-std::optional<ily::audio::MasterDspConfig> ParseMasterDspConfig(const nlohmann::json& params) {
-    if (!params.contains("masterDsp")) return std::nullopt;
-    const auto& value = params.at("masterDsp");
-    if (!value.is_object()) throw std::runtime_error("Mixer masterDsp must be an object");
-    for (const auto& item : value.items()) {
-        if (item.key() != "headroom" && item.key() != "thresholdDb" &&
-            item.key() != "kneeDb" && item.key() != "ratio" &&
-            item.key() != "attackSeconds" && item.key() != "releaseSeconds" &&
-            item.key() != "sampleRate") {
-            throw std::runtime_error("Unknown mixer masterDsp field");
-        }
-    }
-    ily::audio::MasterDspConfig config;
-    if (value.contains("headroom")) {
-        config.headroom = static_cast<float>(RequiredFiniteNumber(value, "headroom", 0.01, 1.0));
-    }
-    if (value.contains("thresholdDb")) {
-        config.thresholdDb = static_cast<float>(RequiredFiniteNumber(value, "thresholdDb", -60.0, 0.0));
-    }
-    if (value.contains("kneeDb")) {
-        config.kneeDb = static_cast<float>(RequiredFiniteNumber(value, "kneeDb", 0.0, 30.0));
-    }
-    if (value.contains("ratio")) {
-        config.ratio = static_cast<float>(RequiredFiniteNumber(value, "ratio", 1.0, 100.0));
-    }
-    if (value.contains("attackSeconds")) {
-        config.attackSeconds = static_cast<float>(RequiredFiniteNumber(value, "attackSeconds", 0.000001, 10.0));
-    }
-    if (value.contains("releaseSeconds")) {
-        config.releaseSeconds = static_cast<float>(RequiredFiniteNumber(value, "releaseSeconds", 0.000001, 10.0));
-    }
-    if (value.contains("sampleRate")) {
-        const double sampleRate = RequiredFiniteNumber(value, "sampleRate", 48000.0, 48000.0);
-        if (std::floor(sampleRate) != sampleRate) {
-            throw std::runtime_error("Mixer masterDsp sampleRate must be an integer");
-        }
-        config.sampleRate = static_cast<std::uint32_t>(sampleRate);
-    }
-    if (!ily::audio::IsValidMasterDspConfig(config) || config.sampleRate != 48000) {
-        throw std::runtime_error("Mixer masterDsp configuration is out of range");
-    }
-    return config;
-}
-
 nlohmann::json StartMixerTransport(const nlohmann::json& params) {
     using nlohmann::json;
     if (g_mixerTransport) throw std::runtime_error("Program mixer transport is already running");
@@ -339,7 +295,7 @@ nlohmann::json StartMixerTransport(const nlohmann::json& params) {
     }
     options.outputRing = {"Local\\ilyStream.Program.Audio.NativeMixer." + outputSuffix,
         outputGeneration, sampleRate, channels, capacityFrames, blockFrames};
-    options.masterDsp = ParseMasterDspConfig(params);
+    options.masterDsp = ily::core_host::ParseMasterDspConfig(params);
     std::string error;
     auto transport = ily::audio::ProgramMixerTransport::Start(options, error);
     if (!transport) throw std::runtime_error(error);

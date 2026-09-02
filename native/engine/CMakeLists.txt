@@ -234,6 +234,7 @@ if(WIN32)
     add_executable(ilystream_core_host
         ../core-host/main.cpp
         ../core-host/protocol.cpp
+        ../core-host/mixer-transport-config.cpp
     )
     target_include_directories(ilystream_core_host PRIVATE ../core-host ../audio include)
     target_link_libraries(ilystream_core_host PRIVATE
@@ -293,6 +294,17 @@ add_executable(core_host_protocol_test
 )
 target_include_directories(core_host_protocol_test PRIVATE ../core-host)
 target_link_libraries(core_host_protocol_test PRIVATE
+    Catch2::Catch2WithMain
+    nlohmann_json::nlohmann_json
+)
+
+add_executable(master_dsp_protocol_test
+    ../core-host/mixer-transport-config.cpp
+    ../core-host/mixer-transport-config_test.cpp
+)
+target_include_directories(master_dsp_protocol_test PRIVATE ../core-host ../audio)
+target_link_libraries(master_dsp_protocol_test PRIVATE
+    ilystream_audio_core
     Catch2::Catch2WithMain
     nlohmann_json::nlohmann_json
 )
