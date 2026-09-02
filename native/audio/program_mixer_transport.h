@@ -34,6 +34,7 @@ struct ProgramMixerTransportStatus {
     std::uint64_t framesMixed = 0;
     std::uint64_t sourceUnderruns = 0;
     std::uint64_t sourceFramesSkipped = 0;
+    MasterDspStatus masterDsp;
 };
 
 /**

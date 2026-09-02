@@ -5,6 +5,14 @@ export interface NativeMixerTransportDiagnostics {
   framesMixed: number
   sourceUnderruns: number
   sourceFramesSkipped: number
+  masterDsp?: {
+    enabled: boolean
+    processedFrames: number
+    clippedFrames: number
+    maxInputPeak: number
+    maxOutputPeak: number
+    maxGainReductionDb: number
+  }
 }
 
 export interface NativeCoreDiagnostics {

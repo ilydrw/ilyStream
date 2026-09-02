@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 
 namespace ily::audio {
 
@@ -22,6 +23,15 @@ struct MasterDspConfig {
 
 bool IsValidMasterDspConfig(const MasterDspConfig& config) noexcept;
 
+struct MasterDspStatus {
+    bool enabled = false;
+    std::uint64_t processedFrames = 0;
+    std::uint64_t clippedFrames = 0;
+    float maxInputPeak = 0.0F;
+    float maxOutputPeak = 0.0F;
+    float maxGainReductionDb = 0.0F;
+};
+
 /** Stateful stereo safety processor for interleaved, finite PCM. */
 class MasterDsp final {
 public:
@@ -35,6 +45,8 @@ public:
     /** Returns false for invalid input; valid output is finite and bounded. */
     bool Process(float* interleavedStereo, std::size_t frameCount) noexcept;
 
+    MasterDspStatus GetStatus() const noexcept;
+
     float envelope() const noexcept { return m_envelope; }
     float lastGainDb() const noexcept { return m_lastGainDb; }
 
@@ -42,6 +54,11 @@ private:
     MasterDspConfig m_config;
     float m_envelope = 0.0F;
     float m_lastGainDb = 0.0F;
+    std::atomic<std::uint64_t> m_processedFrames{0};
+    std::atomic<std::uint64_t> m_clippedFrames{0};
+    std::atomic<float> m_maxInputPeak{0.0F};
+    std::atomic<float> m_maxOutputPeak{0.0F};
+    std::atomic<float> m_maxGainReductionDb{0.0F};
 };
 
 } // namespace ily::audio

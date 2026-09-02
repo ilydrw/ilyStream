@@ -80,6 +80,17 @@ describe('parseNativeMixerTransportStatus', () => {
     }
     expect(() => parseNativeMixerTransportStatus({ ...valid, running: 'true' })).toThrow('Invalid')
   })
+
+  it('accepts bounded optional master DSP telemetry', () => {
+    const masterDsp = {
+      enabled: true, processedFrames: 2048, clippedFrames: 0,
+      maxInputPeak: 0.8, maxOutputPeak: 0.7, maxGainReductionDb: 2.5
+    }
+    expect(parseNativeMixerTransportStatus({ ...valid, masterDsp }).masterDsp).toEqual(masterDsp)
+    expect(() => parseNativeMixerTransportStatus({ ...valid, masterDsp: {
+      ...masterDsp, maxOutputPeak: -1
+    } })).toThrow('Invalid')
+  })
 })
 
 describe('parseSharedCaptureTransport', () => {

@@ -228,7 +228,13 @@ nlohmann::json EvaluateMixerPolicy(const nlohmann::json& params) {
 nlohmann::json MixerTransportStatusJson(const ily::audio::ProgramMixerTransportStatus& status) {
     return {{"running", status.running}, {"blocksMixed", status.blocksMixed},
         {"framesMixed", status.framesMixed}, {"sourceUnderruns", status.sourceUnderruns},
-        {"sourceFramesSkipped", status.sourceFramesSkipped}};
+        {"sourceFramesSkipped", status.sourceFramesSkipped},
+        {"masterDsp", {{"enabled", status.masterDsp.enabled},
+            {"processedFrames", status.masterDsp.processedFrames},
+            {"clippedFrames", status.masterDsp.clippedFrames},
+            {"maxInputPeak", status.masterDsp.maxInputPeak},
+            {"maxOutputPeak", status.masterDsp.maxOutputPeak},
+            {"maxGainReductionDb", status.masterDsp.maxGainReductionDb}}}};
 }
 
 std::uint64_t ParseGenerationText(const nlohmann::json& value) {

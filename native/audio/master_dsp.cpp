@@ -53,6 +53,20 @@ MasterDsp::MasterDsp(MasterDspConfig config) : m_config(config) {
 void MasterDsp::Reset() noexcept {
     m_envelope = 0.0F;
     m_lastGainDb = 0.0F;
+    m_processedFrames.store(0, std::memory_order_relaxed);
+    m_clippedFrames.store(0, std::memory_order_relaxed);
+    m_maxInputPeak.store(0.0F, std::memory_order_relaxed);
+    m_maxOutputPeak.store(0.0F, std::memory_order_relaxed);
+    m_maxGainReductionDb.store(0.0F, std::memory_order_relaxed);
+}
+
+MasterDspStatus MasterDsp::GetStatus() const noexcept {
+    return {true,
+        m_processedFrames.load(std::memory_order_relaxed),
+        m_clippedFrames.load(std::memory_order_relaxed),
+        m_maxInputPeak.load(std::memory_order_relaxed),
+        m_maxOutputPeak.load(std::memory_order_relaxed),
+        m_maxGainReductionDb.load(std::memory_order_relaxed)};
 }
 
 bool MasterDsp::Process(float* interleavedStereo, std::size_t frameCount) noexcept {
@@ -82,6 +96,22 @@ bool MasterDsp::Process(float* interleavedStereo, std::size_t frameCount) noexce
         interleavedStereo[frame * 2] = left;
         interleavedStereo[frame * 2 + 1] = right;
         m_lastGainDb = gainDb;
+        m_processedFrames.fetch_add(1, std::memory_order_relaxed);
+        if (std::abs(left) >= 1.0F || std::abs(right) >= 1.0F) {
+            m_clippedFrames.fetch_add(1, std::memory_order_relaxed);
+        }
+        const float inputPeak = peak;
+        const float outputPeak = std::max(std::abs(left), std::abs(right));
+        float previous = m_maxInputPeak.load(std::memory_order_relaxed);
+        while (previous < inputPeak && !m_maxInputPeak.compare_exchange_weak(
+            previous, inputPeak, std::memory_order_relaxed)) {}
+        previous = m_maxOutputPeak.load(std::memory_order_relaxed);
+        while (previous < outputPeak && !m_maxOutputPeak.compare_exchange_weak(
+            previous, outputPeak, std::memory_order_relaxed)) {}
+        const float reduction = std::max(0.0F, -gainDb);
+        previous = m_maxGainReductionDb.load(std::memory_order_relaxed);
+        while (previous < reduction && !m_maxGainReductionDb.compare_exchange_weak(
+            previous, reduction, std::memory_order_relaxed)) {}
     }
     return true;
 }

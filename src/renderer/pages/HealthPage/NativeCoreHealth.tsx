@@ -16,6 +16,11 @@ export function NativeCoreHealth({ snapshot }: { snapshot: NativeCoreDiagnostics
     ['Source underruns', count(snapshot?.transport?.sourceUnderruns)],
     ['Source frames skipped', count(snapshot?.transport?.sourceFramesSkipped)],
     ['Native frames mixed', count(snapshot?.transport?.framesMixed)],
+    ['Native master DSP', snapshot?.transport?.masterDsp
+      ? (snapshot.transport.masterDsp.enabled ? 'Enabled (soak)' : 'Disabled') : '—'],
+    ['DSP gain reduction', snapshot?.transport?.masterDsp
+      ? `${snapshot.transport.masterDsp.maxGainReductionDb.toFixed(2)} dB` : '—'],
+    ['DSP clipped frames', count(snapshot?.transport?.masterDsp?.clippedFrames)],
     ['Policy evaluations', count(snapshot?.policy.evaluated)],
     ['Policy mismatches', count(snapshot?.policy.mismatches)],
     ['Policy rejections', count(snapshot?.policy.rejected)]

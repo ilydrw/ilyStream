@@ -157,6 +157,14 @@ export interface NativeMixerTransportStatus {
   framesMixed: number
   sourceUnderruns: number
   sourceFramesSkipped: number
+  masterDsp?: {
+    enabled: boolean
+    processedFrames: number
+    clippedFrames: number
+    maxInputPeak: number
+    maxOutputPeak: number
+    maxGainReductionDb: number
+  }
 }
 
 export class NativeCoreHostClient {
@@ -265,12 +273,30 @@ export function parseNativeMixerTransportStatus(value: unknown): NativeMixerTran
   if (typeof status.running !== 'boolean' || counters.some(key =>
     !Number.isSafeInteger(status[key]) || (status[key] as number) < 0
   )) throw new Error('Invalid native mixer transport status')
+  const dsp = status.masterDsp
+  if (dsp !== undefined) {
+    if (!dsp || typeof dsp !== 'object' || typeof (dsp as any).enabled !== 'boolean' ||
+      ['processedFrames', 'clippedFrames'].some(key =>
+        !Number.isSafeInteger((dsp as any)[key]) || (dsp as any)[key] < 0) ||
+      ['maxInputPeak', 'maxOutputPeak', 'maxGainReductionDb'].some(key =>
+        typeof (dsp as any)[key] !== 'number' || !Number.isFinite((dsp as any)[key]) || (dsp as any)[key] < 0)) {
+      throw new Error('Invalid native mixer transport status')
+    }
+  }
   return {
     running: status.running,
     blocksMixed: status.blocksMixed as number,
     framesMixed: status.framesMixed as number,
     sourceUnderruns: status.sourceUnderruns as number,
-    sourceFramesSkipped: status.sourceFramesSkipped as number
+    sourceFramesSkipped: status.sourceFramesSkipped as number,
+    ...(dsp ? { masterDsp: {
+      enabled: (dsp as any).enabled as boolean,
+      processedFrames: (dsp as any).processedFrames as number,
+      clippedFrames: (dsp as any).clippedFrames as number,
+      maxInputPeak: (dsp as any).maxInputPeak as number,
+      maxOutputPeak: (dsp as any).maxOutputPeak as number,
+      maxGainReductionDb: (dsp as any).maxGainReductionDb as number
+    } } : {})
   }
 }
 

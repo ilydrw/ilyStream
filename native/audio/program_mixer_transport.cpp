@@ -141,7 +141,8 @@ ProgramMixerTransportStatus ProgramMixerTransport::GetStatus() const noexcept {
         m_impl->blocksMixed.load(std::memory_order_relaxed),
         m_impl->framesMixed.load(std::memory_order_relaxed),
         m_impl->sourceUnderruns.load(std::memory_order_relaxed),
-        m_impl->sourceFramesSkipped.load(std::memory_order_relaxed)};
+        m_impl->sourceFramesSkipped.load(std::memory_order_relaxed),
+        m_impl->masterDsp ? m_impl->masterDsp->GetStatus() : MasterDspStatus{}};
 }
 
 ProgramMixerTransportStatus ProgramMixerTransport::Stop() noexcept {

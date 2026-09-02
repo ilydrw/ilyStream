@@ -19,6 +19,12 @@ TEST_CASE("master DSP applies headroom and leaves silence stable") {
     CHECK(std::abs(samples[1]) < 0.83F);
     CHECK(samples[2] == 0.0F);
     CHECK(samples[3] == 0.0F);
+    const auto status = dsp.GetStatus();
+    CHECK(status.enabled);
+    CHECK(status.processedFrames == 2);
+    CHECK(status.clippedFrames == 0);
+    CHECK(status.maxInputPeak > 0.8F);
+    CHECK(status.maxOutputPeak < 0.83F);
 }
 
 TEST_CASE("master DSP bounds overloaded finite PCM and rejects invalid input") {
