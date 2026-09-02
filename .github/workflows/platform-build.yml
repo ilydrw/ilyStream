@@ -21,8 +21,8 @@ jobs:
           - name: Windows x64
             os: windows-2022
             experimental: false
-          - name: macOS x64
-            os: macos-13
+          - name: macOS arm64
+            os: macos-14
             experimental: true
           - name: Linux x64
             os: ubuntu-24.04

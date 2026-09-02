@@ -9,6 +9,7 @@ const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 // Packaging is intentionally native to the runner. Cross-compiling Electron
 // plus native capture backends from another OS is not supported by this flow.
 const platform = process.platform
+const architecture = process.arch === 'arm64' ? 'arm64' : 'x64'
 const publish = process.argv.includes('--publish')
 
 if (!['win32', 'darwin', 'linux'].includes(platform)) {
@@ -92,7 +93,7 @@ function portableConfig() {
   config.asarUnpack = [
     '**/*.node',
     'node_modules/ffmpeg-static/**/*',
-    `node_modules/onnxruntime-node/bin/napi-v3/${platformDirectory}/x64/**/*`
+    `node_modules/onnxruntime-node/bin/napi-v3/${platformDirectory}/${architecture}/**/*`
   ]
   config.extraResources = [
     { from: nativeArtifact('ilystream_napi.node'), to: 'native-engine/ilystream_napi.node' },
