@@ -14,6 +14,7 @@ import { reportFatalError, buildStartupErrorHtml, writeCrashLog } from './lib/cr
 import { openExternalSafely, isSameOriginUrl, isProductionAppFileUrl } from './lib/url-handler'
 import { startMemoryTelemetry, stopMemoryTelemetry } from './system/memory-telemetry'
 import { disposeEnginePreview } from './ipc/handlers/engine-handlers'
+import { stopNativeUiPilot } from './native-ui/native-ui-pilot'
 
 // Global logger setup
 setupLogger()
@@ -349,6 +350,7 @@ app.on('before-quit', (event) => {
   isQuitting = true
   event.preventDefault()
   stopBackgroundTimers()
+  stopNativeUiPilot()
   disposeAutoUpdates()
   void (async () => {
     try {

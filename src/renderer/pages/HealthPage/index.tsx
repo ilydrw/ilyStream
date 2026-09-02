@@ -7,6 +7,7 @@ import {
   IconChecklist,
   IconClipboardCheck,
   IconCopy,
+  IconDeviceDesktop,
   IconRefresh,
   IconSend,
   IconShieldCheck,
@@ -341,6 +342,13 @@ export default function HealthPage() {
     setNotice('Diagnostic report copied.')
   }
 
+  const openNativeUi = async () => {
+    const result = await window.api.system.openNativeUi()
+    setNotice(result.launched
+      ? 'Native Health Center opened in a platform window.'
+      : (result.error || 'Could not open the native Health Center.'))
+  }
+
   const runLocalEventTest = async (platform: HealthPlatform) => {
     const label = rows.find((row) => row.platform === platform)?.label ?? platform
     setActiveCheck({ platform, kind: 'local' })
@@ -428,6 +436,10 @@ export default function HealthPage() {
             <button type="button" className="app-button" onClick={refresh} disabled={loading}>
               <IconRefresh size={14} />
               Refresh
+            </button>
+            <button type="button" className="app-button" onClick={() => void openNativeUi()}>
+              <IconDeviceDesktop size={14} />
+              Native pilot
             </button>
             <button type="button" className="app-button-primary" onClick={copyReport}>
               <IconCopy size={14} />

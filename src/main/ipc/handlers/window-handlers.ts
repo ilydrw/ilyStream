@@ -5,6 +5,7 @@ import { cpus } from 'os'
 import { getWindowsSettingsUri, type WindowsSettingsTarget } from '../../system/windows-settings'
 import { installUpdate, checkForUpdatesNow } from '../../services/update-service'
 import { secureHandle } from '../secure-handle'
+import { launchNativeUiPilot } from '../../native-ui/native-ui-pilot'
 
 export interface WindowHandlerOptions {
   /** Current recordings folder (honors the user override from Settings). */
@@ -21,6 +22,7 @@ export function registerWindowHandlers(window: BrowserWindow, options: WindowHan
     }
   })
   secureHandle(window, 'window:close', () => window.hide())
+  secureHandle(window, 'system:open-native-ui', () => launchNativeUiPilot())
   secureHandle(window, 'system:install-update', () => installUpdate())
   secureHandle(window, 'system:check-for-updates', () => checkForUpdatesNow())
   secureHandle(window, 'system:copy-to-clipboard', (_event, text: string) => {

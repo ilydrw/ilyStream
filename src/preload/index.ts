@@ -561,6 +561,10 @@ const api = {
       ipcRenderer.invoke('system:copy-to-clipboard', text),
     installUpdate: () => ipcRenderer.invoke('system:install-update'),
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
+    openNativeUi: () => ipcRenderer.invoke('system:open-native-ui') as Promise<{
+      launched: boolean
+      error?: string
+    }>,
     getAppInfo: () => ipcRenderer.invoke('system:get-app-info'),
     getResourceUsage: () =>
       ipcRenderer.invoke('system:get-resource-usage') as Promise<{

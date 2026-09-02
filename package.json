@@ -124,6 +124,12 @@
     ],
     "win": {
       "icon": "resources/ilyStream-AppIcon.ico",
+      "extraResources": [
+        {
+          "from": "native/engine/build/Release/ilystream_native_ui.exe",
+          "to": "native-engine/ilystream_native_ui.exe"
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -136,6 +142,22 @@
           "arch": [
             "x64"
           ]
+        }
+      ]
+    },
+    "mac": {
+      "extraResources": [
+        {
+          "from": "native/engine/build/ilystream_native_ui",
+          "to": "native-engine/ilystream_native_ui"
+        }
+      ]
+    },
+    "linux": {
+      "extraResources": [
+        {
+          "from": "native/engine/build/ilystream_native_ui",
+          "to": "native-engine/ilystream_native_ui"
         }
       ]
     },
