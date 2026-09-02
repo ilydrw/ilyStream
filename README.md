@@ -4,9 +4,11 @@
 
 [![Website](https://img.shields.io/badge/website-ilydrw.github.io%2FilyStream-blue)](https://ilydrw.github.io/ilyStream/)
 [![Version](https://img.shields.io/badge/version-0.0.28-green)](https://github.com/ilydrw/ilyStream/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows-brightgreen)](https://ilydrw.github.io/ilyStream/download/)
+[![Platform](https://img.shields.io/badge/targets-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://ilydrw.github.io/ilyStream/)
 
-**ilyStream** is a focused Windows broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place. No browser tabs, no complex terminal setups—just a native control room built for the live workflow.
+**ilyStream** is a cross-platform broadcast studio for creators who want streaming, overlays, chat, TTS, audio routing, and smart-light automation in one place. No browser tabs, no complex terminal setups—just a native control room built for the live workflow.
+
+The current public release is the Windows build. macOS and Linux packaging now use the same portable renderer/audio core, while their native screen capture, camera, virtual-camera, and OBS integrations are being brought up on their platform-specific backends.
 
 ## 🚀 Key Features
 
@@ -22,7 +24,7 @@
 ## 📦 Getting Started
 
 ### Users
-The easiest way to get started is to download the Windows installer:
+The easiest way to get started today is to download the Windows installer:
 *   **[Download the Latest Release](https://ilydrw.github.io/ilyStream/download/)**
 *   **[Read the Quick Start Guide](https://ilydrw.github.io/ilyStream/docs/getting-started/)**
 
